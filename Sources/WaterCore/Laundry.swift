@@ -5,10 +5,10 @@ import FoundationNetworking
 #endif
 
 public enum LaundryError: String, Error, LocalizedError {
-    case configuration = "洗衣配置无效"
-    case authentication = "U净登录已失效，请重新导入登录配置"
-    case network = "暂时无法连接U净，保留上次查询"
-    case response = "U净返回异常，暂时无法确认设备状态"
+    case configuration = "这个文件导入不了，确认是洗衣配置文件再试。"
+    case authentication = "U净 登录过期了，到设置里重新登录。"
+    case network = "暂时连不上 U净，先显示上次的状态。"
+    case response = "暂时连不上 U净，机器状态没更新。"
     public var errorDescription: String? { rawValue }
 }
 

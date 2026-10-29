@@ -3,8 +3,8 @@ import Foundation
 public enum UjingLoginError: String, Error, LocalizedError {
     case mobile = "请输入正确的 11 位手机号"
     case captcha = "请输入收到的验证码"
-    case rejected = "U净未接受这次请求，请核对信息后重试"
-    case verification = "U净要求额外验证，请先在官方客户端完成验证"
+    case rejected = "U净 未接受这次请求，请核对信息后重试"
+    case verification = "U净 要你先在它自己的 App 里验证一下，验证完再回来。"
     case uncertain = "请求结果未确认，请勿连续获取验证码，稍后再试"
     public var errorDescription: String? { rawValue }
 }

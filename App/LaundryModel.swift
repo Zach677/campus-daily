@@ -22,6 +22,8 @@ import WaterCore
     private var config: LaundryConfig?
     private var connection: UjingConnection?
     private var lastAttempt: Date?
+    private var activitySync: AnyCancellable?
+    private var endCheck: (end: Date, task: Task<Void, Never>)?
     private let provider = LaundryProvider { path, status, data in
         // Own transaction responses only; never persist request credentials or SDK callbacks.
         let folder = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
@@ -72,8 +74,29 @@ import WaterCore
                 checkout = controller?.record?.belongs(to:value) == true ? controller?.record : nil
                 if let data = (try? Data(contentsOf:snapshotURL)) ?? (try? Data(contentsOf:cacheURL)),
                    let old = try? JSONDecoder().decode(LaundrySnapshot.self,from:data), old.deviceId == value.deviceId { snapshot = old }
-            } else if status != errSecItemNotFound { issue = "请解锁后重新打开 App 读取洗衣配置" }
+            } else if status != errSecItemNotFound { issue = "解锁手机后再打开校日常。" }
         } catch { issue = "洗衣配置暂时无法读取" }
+        // Live Activity follows every change of the order or machine reading (after the change lands).
+        activitySync = $checkout.combineLatest($snapshot, $configured)
+            .debounce(for:.milliseconds(50), scheduler:RunLoop.main)
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.syncActivity() } }
+    }
+    /// Recomputes the laundry Live Activity from the current facts (also on foreground, for the minutes).
+    /// While the order runs, schedules one read-only order re-read a minute after the expected end so a
+    /// finished wash is noticed even when the laundry page is closed.
+    func syncActivity() {
+        let facts = LaundryFacts(model:self)
+        LaundryActivityController.shared.sync(facts:facts)
+        Reminders.shared.syncLaundry(facts:facts)
+        var end: Date?
+        if case .running(let value) = facts.phase() { end = value }
+        guard end != endCheck?.end else { return }
+        endCheck?.task.cancel(); endCheck = nil
+        guard let end else { return }
+        endCheck = (end, Task { [weak self] in
+            do { try await Task.sleep(for:.seconds(max(0, end.timeIntervalSinceNow) + 60)) } catch { return }
+            await self?.refreshOrder()
+        })
     }
     func importConfig(_ url: URL) throws {
         guard mayImport else { throw WaterError.busy }
@@ -194,7 +217,7 @@ import WaterCore
         do {
             let (resolved,value) = try await provider.discover(headers:headers,accountID:connection?.account.id ?? config?.accountID,qrCode:qrCode)
             candidateConfig = resolved; candidate = value
-        } catch { issue = (error as? LocalizedError)?.errorDescription ?? "无法识别这台洗衣机，请核对二维码" }
+        } catch { issue = (error as? LocalizedError)?.errorDescription ?? "没认出这台洗衣机，换个角度再扫一次。" }
     }
     func savePreparedMachine(name: String) throws {
         guard mayImport, let value = candidateConfig, let snapshot = candidate else { throw WaterError.busy }
@@ -221,7 +244,7 @@ import WaterCore
         let file = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("bootstrap.laundryconfig")
         guard FileManager.default.fileExists(atPath:file.path) else { return }
         do { try importConfig(file); try FileManager.default.removeItem(at:file) }
-        catch { issue = "洗衣配置导入失败，请检查格式" }
+        catch { issue = "这个文件导入不了，确认是洗衣配置文件再试。" }
     }
     func recoverDevelopmentOrderIfPresent() async {
         let file = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("bootstrap.laundryrecovery")
@@ -237,6 +260,7 @@ import WaterCore
         } catch { checkoutIssue = "旧预约恢复未完成，请刷新订单核对" }
     }
     func refresh(force: Bool = false) async {
+        syncActivity()
         guard let config, !loading else { return }
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < 60 { return }
         loading = true; issue = nil; lastAttempt = Date()
@@ -246,9 +270,9 @@ import WaterCore
             snapshot = value
             do { try JSONEncoder().encode(value).write(to:snapshotURL,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication]) }
             catch { issue = "已更新，本机缓存未保存" }
-        } catch { issue = (error as? LaundryError)?.rawValue ?? "洗衣查询失败，保留上次结果" }
+        } catch { issue = (error as? LaundryError)?.rawValue ?? "暂时连不上 U净，先显示上次的状态。" }
     }
-    func importFailed() { issue = "洗衣配置导入失败，请检查文件" }
+    func importFailed() { issue = "这个文件导入不了，确认是洗衣配置文件再试。" }
     var mayImport: Bool { !loading && !checkoutBusy && (controller?.record == nil || controller?.record?.stage == .completed) }
     var mayCreate: Bool {
         guard controller != nil, configured, !checkoutBusy, !loading, issue == nil,
@@ -270,11 +294,11 @@ import WaterCore
         return freshness == "已更新" ? snapshot.stateLabel : "上次" + snapshot.stateLabel
     }
     func createAndPay(_ selected: LaundryProgram) async {
-        // A fresh explicit “下单并前往支付宝” confirmation authorizes this sequence.
+        // A fresh explicit “下单并去支付宝付款？” confirmation authorizes this sequence.
         // A recovered/uncertain creation stops at the order card for a new confirmation.
-        checkoutProgress = "正在预约并核对机器…"
+        checkoutProgress = "正在下单…"
         guard await create(selected) else { checkoutProgress = nil; return }
-        checkoutProgress = "订单已确认，正在准备支付宝…"
+        checkoutProgress = "正在打开支付宝…"
         await pay()
     }
     @discardableResult private func create(_ selected: LaundryProgram) async -> Bool {
@@ -284,7 +308,7 @@ import WaterCore
         do { try await controller.create(config:config,snapshot:snapshot,program:selected); return true }
         catch {
             checkoutProgress = nil
-            checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "订单结果待核对，请勿重复下单"
+            checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "还没确认订单结果。先下拉刷新，别重复下单或付款。"
             if controller.record?.stage == .creating {
                 do {
                     if controller.record?.orderId != nil { try await controller.refresh(config:config) }
@@ -297,7 +321,7 @@ import WaterCore
     }
     func pay() async {
         guard !checkoutBusy, let config, let controller, let record = controller.record else { return }
-        checkoutBusy = true; checkoutIssue = nil; checkoutProgress = "正在获取支付宝付款入口…"
+        checkoutBusy = true; checkoutIssue = nil; checkoutProgress = "正在打开支付宝…"
         defer { checkout = controller.record; checkoutBusy = false }
         do {
             let payment = try await controller.payment(config:config)
@@ -309,28 +333,28 @@ import WaterCore
                 checkoutProgress = "正在打开支付宝…"
                 AlipayBridge.shared.pay(signed) { [weak self] status, memo in
                     Task {
-                        self?.checkoutProgress = "正在核对订单状态…"
+                        self?.checkoutProgress = "正在核对订单…"
                         await self?.refreshOrder()
                         self?.checkoutProgress = nil
-                        if status == "6001" { self?.checkoutIssue = "你已退出支付宝付款，请核对订单状态" }
+                        if status == "6001" { self?.checkoutIssue = "还没确认这笔付成功没有。先下拉刷新核对，别重复付款；确认没付成功，就取消订单重新下。" }
                         else if status != "9000" && status != "8000" {
-                            self?.checkoutIssue = memo.isEmpty ? "支付宝未完成付款，请核对订单状态" : "支付宝返回：" + String(memo.prefix(160))
+                            self?.checkoutIssue = memo.isEmpty ? "还没确认这笔付成功没有。先下拉刷新核对，别重复付款；确认没付成功，就取消订单重新下。" : "支付宝返回：" + String(memo.prefix(160))
                         }
                     }
                 }
             case .checkout(let url):
                 checkoutProgress = "正在打开支付宝…"
                 AlipayBridge.shared.openCheckout(url) { [weak self] opened in
-                    if opened { self?.checkoutProgress = "已打开支付宝，完成后返回核对订单" }
+                    if opened { self?.checkoutProgress = "已打开支付宝，付完回来会自动核对。" }
                     else {
                         self?.checkoutProgress = nil
-                        self?.checkoutIssue = "未能打开支付宝收银台，请核对订单状态"
+                        self?.checkoutIssue = "支付宝没打开。订单还留着，等一下再去付。"
                     }
                 }
             }
         } catch {
             checkoutProgress = nil
-            checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "付款结果待核对，请刷新订单"
+            checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "还没确认付没付成功，下拉刷新看看，别重复付款。"
         }
     }
     var mayCancel: Bool {
@@ -343,17 +367,20 @@ import WaterCore
         checkoutBusy = true; checkoutIssue = nil; checkoutProgress = nil
         defer { checkout = controller.record; checkoutBusy = false }
         do { try await controller.cancel(config:config) }
-        catch { checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "取消结果待核对，请刷新订单" }
+        catch {
+            // Only a refused precondition keeps its own wording; anything else leaves the cancel unconfirmed.
+            checkoutIssue = (error as? LaundryCheckoutError) == .pending ? LaundryCheckoutError.pending.rawValue : "还没确认订单取消了没有，下拉刷新看看。"
+        }
         await refresh(force:true)
     }
     func refreshOrder() async {
         guard !checkoutBusy, let config, let controller, controller.record?.belongs(to:config) == true else { return }
-        checkoutBusy = true; checkoutIssue = nil; checkoutProgress = "正在核对订单状态…"
+        checkoutBusy = true; checkoutIssue = nil; checkoutProgress = "正在核对订单…"
         defer { checkout = controller.record; checkoutBusy = false; checkoutProgress = nil }
         do {
             if controller.record?.orderId != nil { try await controller.refresh(config:config) }
             else if let id = try await provider.activeOrderID(config:config) { try await controller.recover(config:config,candidateOrderId:id) }
-            else { checkoutIssue = "暂未查到对应预约，请在U净订单核对；未重复提交" }
+            else { checkoutIssue = "没查到这笔订单，去 U净 的订单里看看。没有重复提交。" }
             if let record = controller.record, record.stage == .created, let id = record.orderId,
                let order = record.order, ["10","17"].contains(order.status.text), order.payFlag?.text == "0" {
                 await provider.preparePayment(config:config,id:id)
@@ -361,7 +388,7 @@ import WaterCore
         }
         catch {
             checkoutProgress = nil
-            checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "订单查询失败，保留上次状态"
+            checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "暂时连不上 U净，先显示上次的状态。"
         }
     }
     var freshness: String {

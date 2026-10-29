@@ -16,6 +16,51 @@ struct HomeData {
             switch self { case .showering(let date), .settling(let date): return date; default: return nil }
         }
     }
+    /// Home 🧺 row (Camo r2 home-row table).
+    enum Laundry: Equatable {
+        case unknown, idle, unpaid, starting, done, inUse, unresolved
+        case running(program: String, end: Date)
+        case unavailable(LaundryFacts.Unavailable)
+        var subtitle: String {
+            switch self {
+            case .unknown, .idle: return "常用"
+            case .unpaid: return "订单还没付款"
+            case .starting: return "已付款，等机器启动"
+            case .running(let program, let end): return program + " · " + LaundryFormat.clock(end) + " 洗完"
+            case .done: return "刚刚洗完"
+            case .inUse: return "有人在用"
+            case .unavailable(.offline): return "机器离线"
+            case .unavailable(.broken): return "机器故障"
+            case .unavailable(.disabled): return "机器停用"
+            case .unresolved: return "上次订单还没确认"
+            }
+        }
+        var value: RowValue? {
+            switch self {
+            case .unknown, .unavailable: return nil
+            case .idle: return .word("空闲")
+            case .unpaid: return .word("待付款")
+            case .starting: return .word("启动中")
+            case .running(_, let end): return .countdown(end:end)
+            case .done: return .word("洗好了")
+            case .inUse: return .word("使用中")
+            case .unresolved: return .accentWord("待核对")
+            }
+        }
+        /// VoiceOver words for the trailing value.
+        func spokenValue(now: Date = Date()) -> String? {
+            switch value {
+            case .word(let word)?, .accentWord(let word)?: return word
+            case .countdown(let end)?: return "还剩 \(LaundryFormat.minutesLeft(until:end, now:now)) 分钟"
+            default: return nil
+            }
+        }
+    }
+    struct LaundryDone: Equatable {
+        let id: String
+        let amount: Decimal?
+        let detail: String
+    }
     struct Recent: Identifiable, Equatable {
         let id: String
         let emoji: String
@@ -32,13 +77,16 @@ struct HomeData {
     var balance: Decimal?
     var balanceUpdated: Date?
     var cardLowLine: Decimal = 20
+    var powerLowLine: Decimal = 10
     var water = Water.idle
     var waterIssue: String?
     var lastShowerMinutes: Int?
     var lastShowerCost: Decimal?
     var laundryBound = false
     var laundryMachine: String?
-    var laundryValue: String?
+    var laundry = Laundry.unknown
+    /// A recently finished order, for the once-per-order done panel.
+    var laundryDone: LaundryDone?
     var recents: [Recent] = []
 
     // MARK: Electricity estimate
@@ -51,7 +99,7 @@ struct HomeData {
     var daysLeft: Int? { hoursLeft.map { Int(($0 / 24).rounded(.down)) } }
     var powerLow: Bool {
         guard let remainingKWh else { return false }
-        return remainingKWh < 10 || (daysLeft ?? 99) <= 1
+        return remainingKWh < powerLowLine || (daysLeft ?? 99) <= 1
     }
     /// 「今晚」/「明晚」 when the estimate runs out today/tomorrow.
     func runsOutWord(now: Date = Date(), calendar: Calendar = .current) -> String? {
@@ -112,6 +160,8 @@ extension HomeData {
         yesterdayKWh = snapshot?.electricity?.yesterdayKWh
         balance = snapshot?.balance
         balanceUpdated = snapshot?.balanceFetchedAt
+        let lines = ReminderKey.lines
+        powerLowLine = lines.power; cardLowLine = lines.card
 
         let stage = model.stage
         if !model.configured { water = .unconfigured }
@@ -132,10 +182,9 @@ extension HomeData {
 
         laundryBound = laundry.configured
         if let device = laundry.snapshot { laundryMachine = device.deviceNo }
-        if let order = laundry.checkout?.order, laundry.checkout?.stage != .completed, order.running,
-           let seconds = order.remainTime, seconds > 0 {
-            laundryValue = "还剩 \((seconds + 59) / 60) 分钟"
-        } else if let device = laundry.snapshot { laundryValue = device.stateLabel }
+        let facts = LaundryFacts(model:laundry)
+        self.laundry = Self.laundryRow(facts, now:now)
+        laundryDone = Self.laundryDone(facts, now:now)
         if let record = laundry.checkout {
             let machine = laundry.snapshot?.deviceId == record.deviceId ? laundry.snapshot?.deviceNo : nil
             recents.append(Recent(id:"laundry-\(record.orderId ?? record.createdAt.description)", emoji:"🧺",
@@ -146,10 +195,34 @@ extension HomeData {
     }
 }
 
+extension HomeData {
+    static func laundryRow(_ facts: LaundryFacts, now: Date = Date(), acknowledgedFailure: String? = nil) -> Laundry {
+        switch facts.phase(now:now, acknowledgedFailure:acknowledgedFailure) {
+        case .empty, .unknown: return .unknown
+        case .idle: return .idle
+        case .inUse: return .inUse
+        case .unavailable(let kind): return .unavailable(kind)
+        case .unpaid(let payable): return payable ? .unpaid : .unresolved
+        case .starting: return .starting
+        case .running(let end): return .running(program:facts.record?.programName ?? "洗衣", end:end)
+        case .check: return .unresolved
+        case .done: return .done
+        }
+    }
+    static func laundryDone(_ facts: LaundryFacts, now: Date = Date()) -> LaundryDone? {
+        guard let id = facts.doneOrderID(now:now), let record = facts.record else { return nil }
+        let program = facts.recordProgram.map(LaundryFormat.program) ?? record.programName
+        return LaundryDone(id:id, amount:facts.amount,
+                           detail:[program, facts.machine.map(LaundryFormat.machine)].compactMap { $0 }.joined(separator:" · "))
+    }
+}
+
 /// Settlement result panel content.
 enum SettlementResult: Equatable {
     case settled(minutes: Int?, amount: Decimal?)
     case unconfirmed
+    /// Laundry order 50 (r2 §1.7): 「衣服洗好了」 · amount · 「标准洗 · 45 分钟 · 3 号机」.
+    case laundryDone(amount: Decimal?, detail: String)
 }
 
 #if DEBUG
@@ -157,7 +230,11 @@ enum SettlementResult: Equatable {
 
 enum HomeDemo: String, CaseIterable {
     case normal, low, empty, shower, settled, unconfirmed, off, settings
+    case settingsOff = "settings-notif-off"
+    case settingsAsk = "settings-ask"
     case unconfirmedRow = "unconfirmed-row"
+    case laundryRun = "home-laundry-run"
+    case laundryCheck = "home-laundry-check"
 
     static func handle(_ url: URL) -> (HomeData, SettlementResult?)?? {
         guard url.scheme == "campusdaily", url.host == "demo" else { return nil }
@@ -174,7 +251,7 @@ enum HomeDemo: String, CaseIterable {
         data.remainingKWh = Decimal(string:"42.6"); data.yesterdayKWh = Decimal(string:"4.6")
         data.balance = Decimal(string:"86.50"); data.balanceUpdated = now.addingTimeInterval(-25 * 60)
         data.lastShowerMinutes = 11; data.lastShowerCost = Decimal(string:"1.32")
-        data.laundryBound = true; data.laundryMachine = "3"; data.laundryValue = "空闲"
+        data.laundryBound = true; data.laundryMachine = "3"; data.laundry = .idle
         let yesterday = calendar.date(bySettingHour:22, minute:14, second:0, of:calendar.date(byAdding:.day, value:-1, to:now)!)!
         let twoDays = calendar.date(bySettingHour:19, minute:2, second:0, of:calendar.date(byAdding:.day, value:-2, to:now)!)!
         data.recents = [
@@ -182,7 +259,13 @@ enum HomeDemo: String, CaseIterable {
             .init(id:"demo-laundry", emoji:"🧺", title:"洗衣 · 标准洗", date:twoDays, detail:"3 号机", amount:Decimal(string:"4.00")),
         ]
         switch self {
-        case .normal, .settings: return (data, nil)
+        case .normal, .settings, .settingsOff, .settingsAsk: return (data, nil)
+        case .laundryRun:
+            data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
+            return (data, nil)
+        case .laundryCheck:
+            data.laundry = .unresolved
+            return (data, nil)
         case .unconfirmedRow:
             data.water = .unresolved("上次结算还没确认")
             return (data, nil)
@@ -192,7 +275,7 @@ enum HomeDemo: String, CaseIterable {
             let days = target.timeIntervalSince(now) / 86400
             data.remainingKWh = Decimal(string:"4.8")
             data.yesterdayKWh = Decimal(4.8 / days)
-            data.laundryValue = "还剩 18 分钟"
+            data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
             return (data, nil)
         case .empty:
             var empty = HomeData(); empty.signedIn = false; empty.dorm = "3 栋 108"

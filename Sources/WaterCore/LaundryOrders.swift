@@ -34,7 +34,7 @@ public struct LaundryOrder: Codable, Sendable {
         case "40": return "洗衣中"
         case "50": return "洗衣完成"
         case "51": return "付款已超时"
-        case "52": return "启动失败，请查看U净订单"
+        case "52": return "机器没启动。去 U净 的订单里看看有没有扣款。"
         case "53": return "订单已取消"
         default: return statusRemark?.isEmpty == false ? statusRemark! : "订单状态待核对"
         }
@@ -272,10 +272,10 @@ public struct LaundryCheckoutRecord: Codable, Sendable {
     func save(_ value: LaundryCheckoutRecord) throws
 }
 public enum LaundryCheckoutError: String, Error, LocalizedError {
-    case pending = "已有待核对订单，请先刷新订单或在U净核对"
-    case changed = "设备或价格已变化，请刷新后重新确认"
-    case uncertain = "结果尚未确认，请刷新订单，勿重复下单或付款"
-    case checkoutUnavailable = "暂时无法打开支付宝，请保留订单并核对付款状态"
+    case pending = "上一笔订单还没确认，先核对它再下新的。"
+    case changed = "机器或价格变了，刷新一下再确认。"
+    case uncertain = "还没确认订单结果。先下拉刷新，别重复下单或付款。"
+    case checkoutUnavailable = "支付宝没打开。订单还留着，等一下再去付。"
     public var errorDescription: String? { rawValue }
 }
 

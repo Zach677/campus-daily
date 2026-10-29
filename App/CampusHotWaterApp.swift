@@ -4,12 +4,15 @@ import WaterCore
 
 @main struct CampusHotWaterApp: App {
     @StateObject private var water = WaterModel.shared
-    @StateObject private var campus = CampusModel()
+    @StateObject private var campus = CampusModel.shared
     @StateObject private var laundry = LaundryModel()
     init() {
         // FinishShowerLiveIntent (Live Activity button) runs in this process.
         ShowerActivityBridge.finish = { try await WaterModel.shared.run(start:false) }
+        // Notification delegate must be set before launch finishes, so a tapped banner is routed.
+        _ = Reminders.shared
     }
+    @Environment(\.scenePhase) private var phase
     var body: some Scene {
         WindowGroup {
             CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry)
@@ -23,6 +26,15 @@ import WaterCore
                     await laundry.refresh()
                 }
                 .onOpenURL { if $0.scheme != "campusdaily" { AlipayBridge.shared.handle($0); Task { await laundry.refreshOrder() } } }
+        }
+        .onChange(of:phase) { _, value in
+            if value == .background { Reminders.scheduleRefresh() }
+            if value == .active { Task { await Reminders.shared.refreshAuthorization() } }
+        }
+        // Background campus read: low power / card reminders (§5) and a fresh widget.
+        .backgroundTask(.appRefresh(Reminders.refreshTask)) {
+            Reminders.scheduleRefresh()
+            await CampusModel.shared.refresh(force:true)
         }
     }
 }

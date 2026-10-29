@@ -9,16 +9,19 @@ public enum WaterError: String, Error, LocalizedError {
     case malformedFrame = "水控回复格式异常，操作未确认"
     case notActive = "水控未返回使用中状态，未发送结束指令"
     case provider = "服务器未确认成功，请先核对校园热水记录"
-    case networkUncertain = "网络结果未确认，请勿重复提交；先核对校园热水记录"
+    case networkUncertain = "还没确认结算结果，别重复结束，先看看热水记录。"
     case storage = "无法安全保存操作记录，已阻止后续操作"
-    case bluetooth = "蓝牙连接失败，请靠近水控并退出其他水控连接页面"
+    // Raw values must be unique; shown text is `errorDescription` (same sentence as targetMissing, Camo r2).
+    case bluetooth = "蓝牙连接失败"
     case bluetoothOff = "请打开蓝牙并允许本 App 使用蓝牙"
     case targetNotFound = "未找到唯一的目标水控，请靠近后重试"
-    case targetMissing = "未发现目标水控，请靠近设备并退出其他水控连接页面"
+    case targetMissing = "没找到你宿舍的水控。靠近一点，并关掉其他连水控的 App。"
     case targetAmbiguous = "发现多个同名水控，尚无法确认目标设备"
-    case timedOut = "设备回复超时；若已有授权，请先查看当前记录"
+    case timedOut = "水控没回应。如果刚才已经开过水，先看看首页的记录。"
     case interrupted = "操作已中断，保留当前记录"
-    public var errorDescription: String? { rawValue }
+    public var errorDescription: String? { message }
+    /// User-facing sentence.
+    public var message: String { self == .bluetooth ? WaterError.targetMissing.rawValue : rawValue }
 }
 
 public struct WaterConfig: Codable, Equatable, Sendable {

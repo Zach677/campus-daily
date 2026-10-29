@@ -33,6 +33,14 @@
 		<string>Fonts/SpaceGrotesk[wght].ttf</string>
 		<string>Fonts/SpaceMono-Regular.ttf</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.beamjason.campushotwater.refresh</string>
+	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>CampusKeychainGroup</key>

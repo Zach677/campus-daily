@@ -4,7 +4,7 @@ public enum OnboardingError: String, Error, LocalizedError {
     case login = "尚未连接校园卡，请完成学校官方登录后等待自动同步"
     case response = "暂时无法读取学校信息，请稍后重试"
     case seed = "请先导入热水平台配置，再选择宿舍"
-    case identity = "热水身份未确认，请重新登录学校"
+    case identity = "学校登录过期了，重新登录一下。"
     public var errorDescription: String? { rawValue }
 }
 

@@ -19,6 +19,16 @@ struct SettlementPanel: View {
                 if let line = detail(minutes:minutes, charged:amount != nil) {
                     Text(line).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2).padding(.top,4)
                 }
+            case .laundryDone(let amount, let detail):
+                Mascot(size:52)
+                Text("衣服洗好了").scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,10)
+                if let amount {
+                    Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:.rounded, relativeTo:.largeTitle)
+                        .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,4)
+                }
+                if !detail.isEmpty {
+                    Text(detail).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2).padding(.top,4)
+                }
             case .unconfirmed:
                 Text("还没确认结算").scaledFont(20, .semibold, relativeTo:.title3).foregroundStyle(Theme.ink)
                 Text("先别重复结束，等一下看热水记录。").scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)

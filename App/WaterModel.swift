@@ -33,7 +33,7 @@ import WaterCore
             config = try PrivateConfigStore.load()
             configured = config != nil
             refresh()
-        } catch { status = WaterError.storage.rawValue; problem = true }
+        } catch { status = WaterError.storage.message; problem = true }
     }
     var mayStart: Bool { configured && controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
     var mayFinish: Bool { configured && !busy && stage?.mayClose == true && controller?.storageBlocked == false }
@@ -57,6 +57,7 @@ import WaterCore
         lastCost = controller?.session?.receipt?.amountYuan
         hasReceipt = controller?.session?.receipt != nil
         ShowerActivityController.shared.sync(session:controller?.session)
+        Reminders.shared.syncShower(started:stage?.mayClose == true ? sessionStarted : nil)
         if let stage { status = stage.label }
         else if configured { status = "准备好了，靠近水控即可开始" }
     }
@@ -86,9 +87,9 @@ import WaterCore
     func show(_ error: Error) {
         refresh()
         problem = true
-        status = (error as? WaterError)?.rawValue ?? "操作未确认，请查看当前记录后再继续"
+        status = (error as? WaterError)?.message ?? "操作未确认，请查看当前记录后再继续"
         if (error as? WaterError) == .wrongDevice, mayImport {
-            status = "所选水控不属于已保存的宿舍，请在连接检查中重新选择设备"
+            status = "这台水控不是你宿舍的，到设置 › 高级 › 连接检查里重新选。"
         }
     }
     private func requestDevice(_ candidates: [WaterDeviceCandidate]) async throws -> String {
@@ -124,7 +125,7 @@ import WaterCore
             verifiedDevice = bluetooth.verifiedInformation(id:id,machineID:config.machineID)
             inspectionStatus = "已匹配本宿舍水控，设备已保存"
         } catch {
-            inspectionStatus = (error as? LocalizedError)?.errorDescription ?? "暂未确认水控，请靠近设备后重试"
+            inspectionStatus = (error as? LocalizedError)?.errorDescription ?? "没连上水控，靠近一点再试。"
         }
     }
     func run(start: Bool, allowDeviceSelection: Bool = false) async throws {

@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 import WaterCore
 
 enum HomeRoute: Hashable { case power, powerSetup, card, water, laundry, washerSetup }
@@ -18,13 +19,29 @@ struct HomeView: View {
     @State private var startTick = 0
     @State private var successTick = 0
     @State private var errorTick = 0
+    @ObservedObject private var reminders = Reminders.shared
     @AppStorage("didSeeQuickSetup") private var didSeeQuickSetup = false
+    /// Last laundry order whose done panel was shown (once per order).
+    @AppStorage("laundryDoneShownOrder") private var laundryDoneShown = ""
     #if DEBUG
     @State private var demo: HomeData?
+    @State private var laundryDemo: LaundryDemo?
+    @State private var activityPreview: LaundryActivityPreview.Kind?
+    @State private var widgetPreview: WidgetPreview.Page?
     #endif
 
     private func openOnboarding() {
         onboarding = OnboardingRequest(step:.login)
+    }
+
+    /// Home is what the user sees: nothing pushed, no sheet, cover or panel on top, app in front.
+    private var homeClear: Bool {
+        var clear = phase == .active && path.isEmpty && !settings && onboarding == nil && panel == nil
+            && water.deviceCandidates.isEmpty
+        #if DEBUG
+        clear = clear && activityPreview == nil && widgetPreview == nil
+        #endif
+        return clear
     }
 
     private var settingsPreview: HomeData? {
@@ -78,6 +95,14 @@ struct HomeView: View {
             cover
             #endif
         }
+        #if DEBUG
+        .fullScreenCover(item:$activityPreview) { kind in
+            LaundryActivityPreview(kind:kind).onTapGesture { activityPreview = nil }.onOpenURL { handleDemo($0) }
+        }
+        .fullScreenCover(item:$widgetPreview) { page in
+            WidgetPreview(page:page.number).onTapGesture { widgetPreview = nil }.onOpenURL { handleDemo($0) }
+        }
+        #endif
         .task {
             #if DEBUG
             if demo != nil { return }
@@ -95,30 +120,75 @@ struct HomeView: View {
         .onChange(of:water.problem) { _, problem in
             if problem, unresolvedClose { presentUnconfirmed() }
         }
-        #if DEBUG
-        .onOpenURL { handleDemo($0) }
-        #endif
+        .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
+        .modifier(ReminderHooks(settings:$settings, path:$path, homeClear:homeClear))
+        .onOpenURL { url in
+            // Widget tap (campusdaily://home): back to the home screen.
+            if url.scheme == "campusdaily", url.host == "home" { settings = false; path = []; return }
+            #if DEBUG
+            handleDemo(url)
+            #endif
+        }
     }
 
     #if DEBUG
     /// Also called from inside the onboarding cover: while a full-screen cover is up,
     /// the URL is delivered to the cover's hierarchy instead of the home view.
     private func handleDemo(_ url: URL) {
+            if let kind = notifyDemo(url) { Task { await reminders.demoNotify(kind) }; return }
+            if let page = WidgetPreview.handle(url) { activityPreview = nil; widgetPreview = page; return }
+            widgetPreview = nil
+            if let kind = LaundryActivityPreview.handle(url) { activityPreview = kind; return }
+            activityPreview = nil
+            if LaundryActivityController.handleDemo(url) { return }
             if let onboard = OnboardingDemo.handle(url) {
                 settings = false; path = []
                 onboarding = OnboardingRequest(step:onboard.0, preview:onboard.1)
                 return
             }
+            if let laundryPage = LaundryDemo.handle(url) {
+                onboarding = nil; settings = false
+                demo = HomeDemo.normal.content().0
+                laundryDemo = laundryPage
+                panel = laundryPage.panel
+                // Fresh push so the page's @State starts from this demo.
+                path = []
+                Task { try? await Task.sleep(for:.milliseconds(350)); path = [.laundry] }
+                return
+            }
+            if url.host == "demo", url.lastPathComponent == "permission" {
+                // Pre-permission sheet over the home demo, whatever the real authorization is.
+                onboarding = nil; settings = false; path = []
+                demo = HomeDemo.normal.content().0
+                reminders.prompt = .app
+                return
+            }
+            if url.host == "demo", url.lastPathComponent == "permission-home" {
+                // Home demo, then the first-home-read trigger: the sheet appears once home is clear.
+                onboarding = nil; settings = false; path = []; panel = nil; laundryDemo = nil
+                demo = HomeDemo.normal.content().0
+                reminders.demoHomeRead()
+                return
+            }
+            let settingsDemos: [String:UNAuthorizationStatus] = ["settings":.authorized, "settings-notif-off":.denied,
+                                                                  "settings-ask":.notDetermined]
+            reminders.demoStatus = settingsDemos[url.lastPathComponent]
             guard let result = HomeDemo.handle(url) else { return }
-            onboarding = nil; settings = false; path = []
+            onboarding = nil; settings = false; path = []; laundryDemo = nil
             withAnimation(Theme.spring) {
                 demo = result?.0
                 panel = result?.1
             }
-            if url.lastPathComponent == "settings" {
+            if settingsDemos[url.lastPathComponent] != nil {
                 // Let any open sheet dismiss first, otherwise the reopen is coalesced away.
                 Task { try? await Task.sleep(for:.milliseconds(500)); settings = true }
             }
+    }
+    /// campusdaily://demo/notify/<kind>
+    private func notifyDemo(_ url: URL) -> String? {
+        let parts = Array(url.pathComponents.dropFirst())
+        guard url.scheme == "campusdaily", url.host == "demo", parts.first == "notify" else { return nil }
+        return parts.count > 1 ? parts[1] : "laundry"
     }
     #endif
 
@@ -300,12 +370,14 @@ struct HomeView: View {
     }
     private func laundryRow(_ data: HomeData) -> some View {
         StatusRow(emoji:"🧺", title:laundryTitle(data),
-                  subtitle:data.laundryBound ? "常用" : "扫机身上的码来绑定",
-                  value:data.laundryBound ? data.laundryValue.map { .word($0) } : nil)
+                  subtitle:data.laundryBound ? data.laundry.subtitle : "扫机身上的码来绑定",
+                  value:data.laundryBound ? data.laundry.value : nil)
     }
     private func laundryLabel(_ data: HomeData) -> String {
         guard data.laundryBound else { return "洗衣，扫机身上的码来绑定" }
-        return [laundryTitle(data), data.laundryValue, "常用"].compactMap { $0 }.joined(separator:"，")
+        var subtitle = data.laundry.subtitle
+        if case .running(let program, let end) = data.laundry { subtitle = program + "，" + LaundryFormat.spokenClock(end) + "洗完" }
+        return [laundryTitle(data), data.laundry.spokenValue(), subtitle].compactMap { $0 }.joined(separator:"，")
     }
 
     @ViewBuilder private func recentRows(_ data: HomeData) -> some View {
@@ -328,7 +400,12 @@ struct HomeView: View {
         case .powerSetup: CampusPowerSetupView()
         case .card: CampusRechargeView(kind:.card)
         case .water: WaterDetail()
-        case .laundry: LaundryDetail()
+        case .laundry:
+            #if DEBUG
+            LaundryDetail(demo:laundryDemo)
+            #else
+            LaundryDetail()
+            #endif
         case .washerSetup: WasherSetupView()
         }
     }
@@ -346,10 +423,17 @@ struct HomeView: View {
         }
     }
 
-    private enum PillKind: Equatable { case start, starting, finish, settling, signIn, review }
+    private enum PillKind: Equatable { case start, starting, finish, settling, signIn, review, laundryReview }
 
     private func pillKind(_ data: HomeData) -> PillKind? {
         guard data.signedIn else { return .signIn }
+        let water = waterPillKind(data)
+        // Laundry 待核对 takes the dock only when the shower is idle (shower 待核对 wins).
+        if data.laundryBound, data.laundry == .unresolved, water == nil || water == .start { return .laundryReview }
+        return water
+    }
+
+    private func waterPillKind(_ data: HomeData) -> PillKind? {
         switch data.water {
         case .unconfigured: return nil
         case .showering: return .finish
@@ -396,6 +480,7 @@ struct HomeView: View {
         case .settling: background = Theme.fill; foreground = Theme.ink2; title = "正在结算…"
         case .signIn: background = Theme.pill; foreground = Theme.pillInk; title = "登录学校账号"
         case .review: background = Theme.pill; foreground = Theme.pillInk; title = "核对上次结算"
+        case .laundryReview: background = Theme.pill; foreground = Theme.pillInk; title = "核对洗衣订单"
         }
         return Button { tap(kind) } label: {
             HStack(spacing:8) {
@@ -405,6 +490,8 @@ struct HomeView: View {
                     .lineLimit(1).minimumScaleFactor(0.8)
                     .contentTransition(reduceMotion ? .opacity : .interpolate)
             }
+            // One line at any size: cap the label; the pill grows with it (minHeight, not a fixed height).
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             .foregroundStyle(foreground)
             .padding(.horizontal,16)
             .frame(maxWidth:.infinity).frame(minHeight:60)
@@ -424,6 +511,7 @@ struct HomeView: View {
         switch kind {
         case .signIn: openOnboarding()
         case .review: path.append(.water)
+        case .laundryReview: path.append(.laundry)
         case .start:
             // An unchecked record blocks a new start: show it instead of failing.
             guard water.mayStart else { path.append(.water); return }
@@ -453,6 +541,16 @@ struct HomeView: View {
         }
         successTick += 1
         panel = .settled(minutes:minutes, amount:water.lastCost)
+    }
+
+    private func presentLaundryDone(_ done: HomeData.LaundryDone?) {
+        #if DEBUG
+        if demo != nil { return }
+        #endif
+        guard let done, done.id != laundryDoneShown, panel == nil else { return }
+        laundryDoneShown = done.id
+        successTick += 1
+        panel = .laundryDone(amount:done.amount, detail:done.detail)
     }
 
     private func presentUnconfirmed() {
@@ -486,6 +584,9 @@ struct HomeView: View {
             }
         case .signIn: openOnboarding()
         case .review: path.append(.water)
+        case .laundryReview:
+            laundryDemo = LaundryDemo.make(.check)
+            path.append(.laundry)
         case .starting, .settling: break
         }
     }

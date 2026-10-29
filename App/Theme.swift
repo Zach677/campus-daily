@@ -33,12 +33,8 @@ enum Theme {
         if parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty { return parts[0] + " 栋 " + parts[1] }
         return value
     }
-    static func yuan(_ value: Decimal) -> String {
-        "¥" + value.formatted(.number.precision(.fractionLength(2)).grouping(.never).locale(Locale(identifier:"en_US_POSIX")))
-    }
-    static func kwh(_ value: Decimal) -> String {
-        value.formatted(.number.precision(.fractionLength(1)).grouping(.never).locale(Locale(identifier:"en_US_POSIX")))
-    }
+    static func yuan(_ value: Decimal) -> String { CampusFormat.yuan(value) }
+    static func kwh(_ value: Decimal) -> String { CampusFormat.kwh(value) }
     static func weekday(_ date: Date, calendar: Calendar = .current) -> String {
         "周" + ["日","一","二","三","四","五","六"][calendar.component(.weekday, from:date) - 1]
     }
@@ -47,12 +43,9 @@ enum Theme {
         formatter.locale = Locale(identifier:"en_US_POSIX"); formatter.dateFormat = "HH:mm"
         return formatter.string(from:date)
     }
-    /// 「10:32 更新」/「昨天 22:10 更新」/「10月26日更新」
+    /// 「10:32 更新」/「昨天 22:10 更新」/「10月26日更新」 (shared with the widget).
     static func updated(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
-        if calendar.isDate(date, inSameDayAs:now) { return clock(date) + " 更新" }
-        if calendar.isDateInYesterday(date) { return "昨天 " + clock(date) + " 更新" }
-        let parts = calendar.dateComponents([.month,.day], from:date)
-        return "\(parts.month ?? 0)月\(parts.day ?? 0)日更新"
+        CampusFormat.updated(date, now:now, calendar:calendar)
     }
     /// Recent-row time: 「刚刚」/「今天 09:12」/「昨天 22:14」/「周一 19:02」/「10月20日 19:02」
     static func when(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {

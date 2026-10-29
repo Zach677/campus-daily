@@ -34,6 +34,8 @@ private enum CampusConfigStore {
 }
 
 @MainActor final class CampusModel: ObservableObject {
+    /// One instance, so the background refresh task can reach it.
+    static let shared = CampusModel()
     @Published private(set) var configured = false
     @Published private(set) var loading = false
     @Published private(set) var snapshot: CampusSnapshot?
@@ -98,9 +100,9 @@ private enum CampusConfigStore {
         do {
             try JSONEncoder().encode(snapshot).write(to:cacheURL,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
             try CampusSharedCache.save(snapshot)
-            WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances")
+            WidgetCenter.shared.reloadAllTimelines()
         }
-        catch { issue = "余额已读取，本机缓存未保存" }
+        catch { issue = "余额读到了，但没能存下来，小组件可能不更新。" }
     }
     func importConfig(_ url: URL) throws {
         guard !loading else { throw WaterError.busy }
@@ -145,7 +147,7 @@ private enum CampusConfigStore {
         let file = root.appendingPathComponent("bootstrap.campusconfig")
         if FileManager.default.fileExists(atPath:file.path) {
             do { try importConfig(file); try FileManager.default.removeItem(at:file) }
-            catch { issue = "校园配置导入失败，请检查格式" }
+            catch { issue = "这个文件导入不了，确认是校园卡配置文件再试。" }
         }
         let powerFile = root.appendingPathComponent("bootstrap.campuspowerbinding")
         if let config, let data = try? Data(contentsOf:powerFile),
@@ -196,6 +198,9 @@ private enum CampusConfigStore {
         issue = next.cardError?.rawValue
         if issue == nil, next.room == nil, config.dormRoom.isEmpty { issue = next.roomError?.rawValue }
         saveSnapshot()
+        Reminders.shared.evaluateCampus(next)
+        // First read with both numbers: home may explain reminders (shown once home is visible).
+        Reminders.shared.campusRead(next)
     }
     /// Sign out of the school account: removes only the campus config and balance caches.
     /// Water sessions/config and laundry data are untouched.
@@ -207,7 +212,7 @@ private enum CampusConfigStore {
         WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances")
         config = nil; configured = false; snapshot = nil; issue = nil; lastAttempt = nil
     }
-    func importFailed(_ error: Error) { issue = (error as? CampusError)?.rawValue ?? "校园配置导入失败，请检查格式" }
+    func importFailed(_ error: Error) { issue = (error as? CampusError)?.rawValue ?? "这个文件导入不了，确认是校园卡配置文件再试。" }
 }
 
 private extension String { var nonEmpty: String? { isEmpty ? nil : self } }

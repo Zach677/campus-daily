@@ -21,7 +21,7 @@ struct CampusRechargeView: View {
             Text("学校官方充值页面 · 请核对账户、宿舍和金额后付款")
                 .font(.footnote).foregroundStyle(.secondary).padding(12)
             if let context {
-                CampusRechargeBrowser(context:context,power:kind == .power) { issue = "网页登录已过期，请重新登录学校账号" }
+                CampusRechargeBrowser(context:context,power:kind == .power) { issue = "学校登录过期了，重新登录一下。" }
                     .id(revision)
             } else if loading {
                 ProgressView("正在确认学校登录…").frame(maxWidth:.infinity,maxHeight:.infinity)

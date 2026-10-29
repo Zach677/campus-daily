@@ -87,7 +87,7 @@ struct UjingLoginView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("U净绑定手机号",text:$mobile).keyboardType(.phonePad).textContentType(.telephoneNumber)
+                    TextField("U净 绑定手机号",text:$mobile).keyboardType(.phonePad).textContentType(.telephoneNumber)
                         .accessibilityIdentifier("ujingMobile")
                     HStack {
                         TextField("短信验证码",text:$code).keyboardType(.numberPad).textContentType(.oneTimeCode)
@@ -99,12 +99,12 @@ struct UjingLoginView: View {
                                 .accessibilityIdentifier("sendUjingSMS")
                         }
                     }
-                    Toggle("我已阅读并同意 U净服务协议和隐私政策",isOn:$consent).font(.footnote)
+                    Toggle("我已阅读并同意 U净 服务协议和隐私政策",isOn:$consent).font(.footnote)
                     HStack(spacing:20) {
                         Link("服务协议",destination:URL(string:"https://wx.zhinengxiyifang.cn/about_us/service_agreement.html")!)
                         Link("隐私政策",destination:URL(string:"https://wx.zhinengxiyifang.cn/static/user-agreement/app2.0/20260804/ujing_privacy_policy.html")!)
                     }.font(.footnote)
-                } footer: { Text("使用你自己的 U净账号。手机号与验证码仅发送给 U净官方登录接口，登录凭据保存在本机钥匙串。") }
+                } footer: { Text("用你自己的 U净 账号。手机号和验证码只发给 U净 官方，登录信息只存在这台手机上。") }
                 if login.sent { Text("已请求验证码，请查看短信").font(.footnote).foregroundStyle(.secondary) }
                 if let issue = login.issue { Text(issue).font(.footnote).foregroundStyle(.orange) }
                 Button {

@@ -130,11 +130,11 @@ struct VerifiedWaterDevice {
     func inspect(config: WaterConfig, remembered: String?) async throws -> String {
         try await scan(config:config)
         recordScan(remembered:remembered)
-        if targets.isEmpty { return WaterError.targetMissing.rawValue }
+        if targets.isEmpty { return WaterError.targetMissing.message }
         if let remembered, targets.keys.contains(where: { $0.uuidString == remembered }) {
             return "发现 \(targets.count) 个同名水控，已识别上次使用的设备"
         }
-        return targets.count == 1 ? "发现 1 个目标候选，开始时会核对水控编号" : WaterError.targetAmbiguous.rawValue
+        return targets.count == 1 ? "发现 1 个目标候选，开始时会核对水控编号" : WaterError.targetAmbiguous.message
     }
     func connect(config: WaterConfig, expectedPeripheral: String?, preferredPeripheral: String?) async throws -> String {
         try await prepare(config:config)

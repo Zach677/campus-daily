@@ -19,7 +19,7 @@ struct WasherSetupView: View {
                     .font(.headline)
                 Text(laundry.accountConnected ? "机器名称会自动填写，核对后点保存即可。" : "收到验证码后登录，再扫一次二维码，以后就能直接找到机器。")
                     .font(.footnote).foregroundStyle(.secondary)
-                Button(laundry.accountConnected ? "更新 U净登录" : "登录 U净") { login = true }
+                Button(laundry.accountConnected ? "更新 U净 登录" : "登录 U净") { login = true }
                     .disabled(!laundry.mayImport).accessibilityIdentifier("ujingLoginEntry")
             }
             Section("常用洗衣机") {
@@ -79,15 +79,15 @@ struct WasherSetupView: View {
                         let request = VNDetectBarcodesRequest(); request.symbologies = [.qr]
                         try VNImageRequestHandler(data:data).perform([request])
                         let codes = Set((request.results ?? []).compactMap(\.payloadStringValue))
-                        guard codes.count == 1, let text = codes.first else { issue = "请选择只包含一台洗衣机二维码的清晰照片"; return }
+                        guard codes.count == 1, let text = codes.first else { issue = "照片里有好几个码，选一张只拍了一台的。"; return }
                         resolve(text)
-                    } catch { issue = "照片中未识别到有效的洗衣机二维码" }
+                    } catch { issue = "没认出这台洗衣机，换个角度再扫一次。" }
                 }
             }
     }
     private func resolve(_ text: String) {
         do { try WasherQRCode.validate(text) }
-        catch { issue = "请扫描 U净洗衣机机身二维码"; return }
+        catch { issue = "扫洗衣机机身上的码。"; return }
         issue = nil
         Task {
             await laundry.prepareMachine(qrCode:text)

@@ -1,255 +1,734 @@
 import SwiftUI
 import WaterCore
 
+/// Laundry page (design r2 §1): hero sentence + hairline lists + bottom dock, same skeleton as home.
+/// All ordering/payment safety lives in `LaundryModel` / `LaundryCheckoutController`; this view only
+/// decides what to show and forwards explicit user confirmations.
 struct LaundryDetail: View {
     @EnvironmentObject private var laundry: LaundryModel
-    @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedId: Int?
-    @State private var draft: LaundryProgram?
-    @State private var review = false
-    @State private var confirmPayment = false
-    @State private var confirmCancellation = false
-    private let accent = NativeTheme.tint
-    private var selected: LaundryProgram? {
-        laundry.snapshot?.programs.first(where: { $0.id == selectedId }) ?? laundry.snapshot?.programs.first
+    @State private var sheet: LaundrySheet?
+    /// A confirmed create/pay sequence is running (covers the gap between its two steps).
+    @State private var submitting = false
+    /// Re-reading the machine right before the confirmation sheet.
+    @State private var preparing = false
+    /// Order 52 the user has already checked (page falls back to idle + note).
+    @AppStorage("laundryAckFailedOrder") private var ackFailure = ""
+    #if DEBUG
+    @State private var demo: LaundryDemo?
+    init(demo: LaundryDemo? = nil) { _demo = State(initialValue:demo) }
+    private var isDemo: Bool { demo != nil }
+    #else
+    init() {}
+    private var isDemo: Bool { false }
+    #endif
+
+    private var facts: LaundryFacts {
+        #if DEBUG
+        if let demo { return demo.facts }
+        #endif
+        return LaundryFacts(model:laundry)
     }
+    private var notifiesWhenDone: Bool {
+        #if DEBUG
+        if let demo { return demo.notify }
+        #endif
+        // 「洗衣洗好时」 reminder ships in round 2 block B; until then never promise a notification.
+        return false
+    }
+
+    var body: some View {
+        let facts = facts
+        let phase = facts.phase(acknowledgedFailure:ackFailure)
+        let busy = submitting || (facts.busy && Self.showsBusyDock(phase))
+        ScrollView {
+            VStack(alignment:.leading, spacing:0) {
+                hero(facts, phase:phase)
+                    .padding(.horizontal,24).padding(.top,20).padding(.bottom,6)
+                below(facts, phase:phase, busy:busy)
+            }
+            .padding(.bottom,24)
+            .frame(maxWidth:600)
+            .frame(maxWidth:.infinity)
+        }
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle("洗衣").navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge:.bottom, spacing:0) { dock(facts, phase:phase, busy:busy) }
+        .refreshable { await reload() }
+        .task {
+            #if DEBUG
+            if let initial = demo?.sheet {
+                try? await Task.sleep(for:.milliseconds(450))
+                sheet = initial == .cancel ? .cancel : confirmSheet(facts, newOrder:true)
+                return
+            }
+            #endif
+            guard !isDemo else { return }
+            await laundry.refresh(); await laundry.refreshOrder()
+        }
+        // Unpaid reservation: re-read once the server's auto-cancel countdown passes (unchanged behaviour).
+        .task(id:facts.record?.orderUpdatedAt) {
+            guard !isDemo, let record = facts.record, record.stage != .completed, let order = record.order,
+                  order.status.text == "10", let seconds = order.countDown, seconds > 0 else { return }
+            do { try await Task.sleep(for:.seconds(seconds + 1)) } catch { return }
+            await laundry.refreshOrder()
+        }
+        // Running: read the order once shortly after the expected end (read only).
+        .task(id:runEnd(phase)) {
+            guard !isDemo, let end = runEnd(phase) else { return }
+            let wait = max(0, end.timeIntervalSinceNow) + 60
+            do { try await Task.sleep(for:.seconds(wait)) } catch { return }
+            await laundry.refreshOrder()
+        }
+        .sheet(item:$sheet) { item in sheetView(item, facts:facts).typesettingLanguage(Theme.typesetting) }
+        .sensoryFeedback(.selection, trigger:selectedId)
+    }
+
+    /// Pages whose dock turns into the 「正在下单…」/「正在核对订单…」 progress pill while the model works.
+    private static func showsBusyDock(_ phase: LaundryFacts.Phase) -> Bool {
+        switch phase {
+        case .idle, .done, .unpaid, .check: return true
+        default: return false
+        }
+    }
+
+    private func runEnd(_ phase: LaundryFacts.Phase) -> Date? {
+        if case .running(let end) = phase { return end }
+        return nil
+    }
+
+    // MARK: Hero
+
+    private func hero(_ facts: LaundryFacts, phase: LaundryFacts.Phase) -> some View {
+        VStack(alignment:.leading, spacing:0) { heroContent(facts, phase:phase) }
+            .frame(maxWidth:.infinity, alignment:.leading)
+    }
+
+    @ViewBuilder private func heroContent(_ facts: LaundryFacts, phase: LaundryFacts.Phase) -> some View {
+        switch phase {
+        case .running(let end):
+            LaundryRunHero(machine:facts.machine, program:facts.record?.programName ?? "洗衣",
+                           minutes:facts.recordProgram?.time, end:end, notify:notifiesWhenDone)
+            issues(facts, sub:nil)
+        case .starting:
+            VStack(alignment:.leading, spacing:0) {
+                liveLabel("正在启动", machine:facts.machine)
+                sentence([.init(text:"已付款，\n等机器启动。")]).padding(.top,8)
+                issues(facts, sub:nil)
+            }
+        default:
+            let copy = heroCopy(facts, phase:phase)
+            VStack(alignment:.leading, spacing:0) {
+                if let meta = meta(facts, phase:phase) {
+                    Text(meta).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2).padding(.bottom,8)
+                }
+                sentence(copy.sentence)
+                if let sub = copy.sub {
+                    Text(sub).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).lineSpacing(3)
+                        .fixedSize(horizontal:false, vertical:true).padding(.top,10)
+                }
+                issues(facts, sub:copy.sub)
+            }
+            .frame(maxWidth:.infinity, alignment:.leading)
+        }
+    }
+
+    private func liveLabel(_ text: String, machine: String?) -> some View {
+        HStack(alignment:.firstTextBaseline, spacing:7) {
+            PulseDot().alignmentGuide(.firstTextBaseline) { $0[.bottom] + 2 }
+            Text([text, machine.map(LaundryFormat.machine)].compactMap { $0 }.joined(separator:" · "))
+                .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+        }
+    }
+
+    private func meta(_ facts: LaundryFacts, phase: LaundryFacts.Phase) -> String? {
+        guard phase != .empty, let snapshot = facts.snapshot else { return nil }
+        return [LaundryFormat.machine(snapshot.deviceNo), facts.store].compactMap { $0 }.joined(separator:" · ")
+    }
+
+    private func heroCopy(_ facts: LaundryFacts, phase: LaundryFacts.Phase) -> (sentence: [HomeData.Segment], sub: String?) {
+        let machine = facts.snapshot.map { LaundryFormat.machine($0.deviceNo) } ?? "这台洗衣机"
+        switch phase {
+        case .empty:
+            return ([.init(text:"扫一下洗衣机上的码，\n以后在这里就能下单。")], "对准机身上的二维码。")
+        case .unknown:
+            return ([.init(text:"还没读到洗衣机，\n下拉刷新一下。")], nil)
+        case .idle, .done:
+            return ([.init(text:"\(machine)空闲，\n放好衣服就能洗。")], nil)
+        case .inUse:
+            return ([.init(text:"\(machine)有人在用。")], "换一台，或者等会儿再来。")
+        case .unavailable(let kind):
+            let word = kind == .offline ? "离线了。" : kind == .broken ? "坏了。" : "停用了。"
+            return ([.init(text:machine + word)], "换一台试试。")
+        case .unpaid(let payable):
+            let amount = facts.amount.map(Theme.yuan) ?? ""
+            let sub = payable
+                ? programLine(facts).map { $0 + "。付完款机器可能马上开始洗。" } ?? "付完款机器可能马上开始洗。"
+                : "还没确认这笔付成功没有。先下拉刷新核对，别重复付款；确认没付成功，就取消订单重新下。"
+            return ([.init(text:"还有一笔 "), .init(text:amount, color:Theme.accentLarge), .init(text:" 没付款。")], sub)
+        case .check(let failedStart):
+            if failedStart { return ([.init(text:"机器没启动。")], "去 U净 的订单里看看有没有扣款。") }
+            return ([.init(text:"上次订单\n还没确认。")], "还没确认订单结果。先下拉刷新，别重复下单或付款。")
+        case .running, .starting:
+            return ([], nil)
+        }
+    }
+
+    private func programLine(_ facts: LaundryFacts) -> String? {
+        if let program = facts.recordProgram { return LaundryFormat.program(program) }
+        return facts.record?.programName
+    }
+
+    private func sentence(_ segments: [HomeData.Segment]) -> some View {
+        var text = AttributedString()
+        for segment in segments {
+            var run = AttributedString(segment.text)
+            run.foregroundColor = segment.color ?? Theme.ink
+            text += run
+        }
+        return Text(text)
+            .scaledFont(30, .bold, relativeTo:.title)
+            .tracking(-0.6).lineSpacing(5)
+            .fixedSize(horizontal:false, vertical:true)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// Error lines: gray with exclamationmark.circle, never orange/red. Cached data stays visible.
+    @ViewBuilder private func issues(_ facts: LaundryFacts, sub: String?) -> some View {
+        let lines = [facts.checkoutIssue, facts.issue, facts.outcomeNote()].compactMap { $0 }
+            .reduce(into:[String]()) { list, line in if line != sub, !list.contains(line) { list.append(line) } }
+        ForEach(lines, id:\.self) { line in
+            Label {
+                Text(line).fixedSize(horizontal:false, vertical:true)
+            } icon: {
+                Image(systemName:"exclamationmark.circle")
+            }
+            .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
+            .padding(.top,10)
+        }
+    }
+
+    // MARK: Below the hero
+
+    @ViewBuilder private func below(_ facts: LaundryFacts, phase: LaundryFacts.Phase, busy: Bool) -> some View {
+        switch phase {
+        case .idle, .done:
+            programList(facts, selectable:true, enabled:!busy && !preparing, dimmed:busy)
+        case .inUse, .unavailable:
+            programList(facts, selectable:false, enabled:false, dimmed:true)
+        case .running, .starting:
+            orderRows(facts, phase:phase)
+        case .check:
+            if let record = facts.record {
+                HomeSectionHeader(text:"最近").padding(.top,30)
+                RecentRow(item:.init(id:"laundry-check", emoji:"🧺", title:"洗衣 · " + record.programName, date:record.createdAt,
+                                     detail:facts.machine.map(LaundryFormat.machine), amount:nil),
+                          accentWord:"待核对")
+            }
+        case .unpaid, .empty, .unknown:
+            EmptyView()
+        }
+    }
+
+    private func selected(_ facts: LaundryFacts) -> LaundryProgram? {
+        guard let programs = facts.snapshot?.programs else { return nil }
+        if let selectedId, let match = programs.first(where:{ $0.id == selectedId }) { return match }
+        if let device = facts.snapshot?.deviceId {
+            let last = UserDefaults.standard.integer(forKey:Self.lastProgramKey(device))
+            if let match = programs.first(where:{ $0.id == last }) { return match }
+        }
+        return programs.first
+    }
+    static func lastProgramKey(_ device: String) -> String { "laundryLastProgram." + device }
+
+    @ViewBuilder private func programList(_ facts: LaundryFacts, selectable: Bool, enabled: Bool, dimmed: Bool) -> some View {
+        if let programs = facts.snapshot?.programs, !programs.isEmpty {
+            let chosen = selectable ? selected(facts)?.id : nil
+            HomeSectionHeader(text:"选程序").padding(.top,30)
+            VStack(spacing:0) {
+                ForEach(Array(programs.enumerated()), id:\.element.id) { index, program in
+                    if index > 0 { RowSeparator() }
+                    LaundryProgramRow(program:program, selected:chosen == program.id) { selectedId = program.id }
+                        .disabled(!enabled)
+                        .opacity(dimmed ? 0.4 : 1)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func orderRows(_ facts: LaundryFacts, phase: LaundryFacts.Phase) -> some View {
+        if let record = facts.record {
+            HomeSectionHeader(text:"这笔订单").padding(.top,30)
+            VStack(spacing:0) {
+                StatusRow(emoji:"🧺", title:programLine(facts) ?? record.programName,
+                          subtitle:[facts.machine.map(LaundryFormat.machine), facts.store].compactMap { $0 }.joined(separator:" · "))
+                    .accessibilityElement(children:.combine)
+                if record.order?.paid == true {
+                    RowSeparator()
+                    // Payment channel is not in the order detail, so no 「支付宝」 subtitle.
+                    StatusRow(emoji:"💳", title:"已付款", value:facts.amount.map { .amount(Theme.yuan($0)) })
+                        .accessibilityElement(children:.ignore)
+                        .accessibilityLabel(["已付款", facts.amount.map(LaundryFormat.spokenYuan)].compactMap { $0 }.joined(separator:"，"))
+                }
+            }
+        }
+    }
+
+    // MARK: Dock
+
+    @ViewBuilder private func dock(_ facts: LaundryFacts, phase: LaundryFacts.Phase, busy: Bool) -> some View {
+        if busy {
+            DockBar {
+                DockPillLabel(title:facts.progress ?? (submitting ? "正在下单…" : "正在核对订单…"), style:.busy)
+                    .accessibilityElement(children:.combine)
+            }
+        } else {
+            idleDock(facts, phase:phase)
+        }
+    }
+
+    @ViewBuilder private func idleDock(_ facts: LaundryFacts, phase: LaundryFacts.Phase) -> some View {
+        switch phase {
+        case .running, .starting, .unknown:
+            EmptyView()
+        case .idle, .done:
+            let program = selected(facts)
+            let title = "下单" + (program.map { " · " + Theme.yuan($0.price) } ?? "")
+            DockBar {
+                Button { order() } label: {
+                    DockPillLabel(title:title, style:preparing ? .busy : (facts.mayCreate && program != nil ? .primary : .disabled))
+                }
+                .buttonStyle(PressScaleStyle())
+                .disabled(!facts.mayCreate || preparing || program == nil)
+                .accessibilityLabel(program.map { "下单，" + LaundryFormat.spokenYuan($0.price) } ?? "下单")
+                .accessibilityIdentifier("reviewLaundryOrder")
+            }
+        case .unpaid(let payable):
+            DockBar {
+                if payable {
+                    Button { sheet = confirmSheet(facts, newOrder:false) } label: {
+                        DockPillLabel(title:"去付款" + (facts.amount.map { " " + Theme.yuan($0) } ?? ""),
+                                      style:facts.busy ? .disabled : .primary)
+                    }
+                    .buttonStyle(PressScaleStyle()).disabled(facts.busy)
+                } else {
+                    checkButton(facts, failedStart:false)
+                }
+                if facts.mayCancel {
+                    Button { sheet = .cancel } label: { DockRoundLabel(symbol:"xmark") }
+                        .buttonStyle(PressScaleStyle())
+                        .accessibilityLabel("取消订单")
+                        .accessibilityIdentifier("cancelLaundryOrder")
+                }
+            }
+        case .check(let failedStart):
+            DockBar { checkButton(facts, failedStart:failedStart) }
+        case .inUse, .unavailable:
+            DockBar {
+                DockPillLabel(title:unavailableTitle(phase), style:.disabled)
+                    .accessibilityElement(children:.combine).accessibilityAddTraits(.isStaticText)
+                NavigationLink(value:HomeRoute.washerSetup) { DockRoundLabel(symbol:"qrcode.viewfinder") }
+                    .buttonStyle(PressScaleStyle())
+                    .accessibilityLabel("扫另一台洗衣机")
+            }
+        case .empty:
+            DockBar {
+                NavigationLink(value:HomeRoute.washerSetup) { DockPillLabel(title:"扫洗衣机", symbol:"qrcode.viewfinder") }
+                    .buttonStyle(PressScaleStyle())
+            }
+        }
+    }
+
+    private func unavailableTitle(_ phase: LaundryFacts.Phase) -> String {
+        switch phase {
+        case .unavailable(.offline): return "机器离线"
+        case .unavailable(.broken): return "机器故障"
+        case .unavailable(.disabled): return "机器停用"
+        default: return "有人在用"
+        }
+    }
+
+    private func checkButton(_ facts: LaundryFacts, failedStart: Bool) -> some View {
+        Button {
+            Task {
+                await reload()
+                if failedStart, let id = facts.record?.orderId { ackFailure = id }
+            }
+        } label: { DockPillLabel(title:"核对洗衣订单", style:facts.busy ? .disabled : .primary) }
+            .buttonStyle(PressScaleStyle())
+            .disabled(facts.busy)
+    }
+
+    // MARK: Actions
+
+    private func reload() async {
+        #if DEBUG
+        if demo != nil { try? await Task.sleep(for:.milliseconds(700)); return }
+        #endif
+        await laundry.refresh(force:true); await laundry.refreshOrder()
+    }
+
+    /// Same sequence as before: re-read the machine, then ask for one explicit confirmation.
+    private func order() {
+        #if DEBUG
+        if demo != nil { sheet = confirmSheet(facts, newOrder:true); return }
+        #endif
+        preparing = true
+        Task {
+            await laundry.refresh(force:true)
+            preparing = false
+            let facts = LaundryFacts(model:laundry)
+            guard laundry.mayCreate, selected(facts) != nil else { return }
+            sheet = confirmSheet(facts, newOrder:true)
+        }
+    }
+
+    private func confirmSheet(_ facts: LaundryFacts, newOrder: Bool) -> LaundrySheet? {
+        if newOrder {
+            guard let program = selected(facts) else { return nil }
+            return .confirm(program:program, newOrder:true)
+        }
+        return .confirm(program:nil, newOrder:false)
+    }
+
+    @ViewBuilder private func sheetView(_ item: LaundrySheet, facts: LaundryFacts) -> some View {
+        switch item {
+        case .confirm(let program, let newOrder):
+            let machine = facts.snapshot.map { LaundryFormat.machine($0.deviceNo) }
+            let line = [machine, program.map(LaundryFormat.program) ?? programLine(facts)].compactMap { $0 }.joined(separator:" · ")
+            LaundryPaySheet(title:newOrder ? "下单并去支付宝付款？" : "去支付宝付款？", line:line,
+                            amount:program?.price ?? facts.amount) {
+                sheet = nil
+                if newOrder, let program { submit(program) } else { payExisting() }
+            }
+        case .cancel:
+            LaundryCancelSheet {
+                sheet = nil
+                cancel()
+            }
+        }
+    }
+
+    private func submit(_ program: LaundryProgram) {
+        #if DEBUG
+        if demo != nil { runDemoBusy(); return }
+        #endif
+        if let device = laundry.snapshot?.deviceId { UserDefaults.standard.set(program.id, forKey:Self.lastProgramKey(device)) }
+        submitting = true
+        Task { await laundry.createAndPay(program); submitting = false }
+    }
+
+    private func payExisting() {
+        #if DEBUG
+        if demo != nil { runDemoBusy(); return }
+        #endif
+        submitting = true
+        Task { await laundry.pay(); submitting = false }
+    }
+
+    private func cancel() {
+        #if DEBUG
+        if demo != nil { withAnimation(Theme.spring) { demo = LaundryDemo.make(.idle) }; return }
+        #endif
+        Task { await laundry.cancelOrder() }
+    }
+
+    #if DEBUG
+    /// Fake progress only — never places an order.
+    private func runDemoBusy() {
+        let previous = demo
+        Task {
+            demo?.facts.busy = true; demo?.facts.mayCreate = false
+            demo?.facts.progress = "正在下单…"
+            try? await Task.sleep(for:.seconds(1.2))
+            demo?.facts.progress = "正在打开支付宝…"
+            try? await Task.sleep(for:.seconds(1.2))
+            demo?.facts.progress = "正在核对订单…"
+            try? await Task.sleep(for:.seconds(1.2))
+            demo = previous
+        }
+    }
+    #endif
+}
+
+enum LaundrySheet: Identifiable, Equatable {
+    /// `program` for a new order; nil to pay the existing unpaid order.
+    case confirm(program: LaundryProgram?, newOrder: Bool)
+    case cancel
+    var id: String {
+        switch self {
+        case .confirm(let program, let newOrder): return "confirm-\(newOrder)-\(program?.id ?? -1)"
+        case .cancel: return "cancel"
+        }
+    }
+    static func == (a: LaundrySheet, b: LaundrySheet) -> Bool { a.id == b.id }
+}
+
+// MARK: - Rows & hero
+
+/// 「选程序」 row (r2 §1.4): selection mark · 「标准洗 · 45 分钟」 · price.
+struct LaundryProgramRow: View {
+    let program: LaundryProgram
+    let selected: Bool
+    let action: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
+    var body: some View {
+        Button(action:action) {
+            HStack(alignment:typeSize.isAccessibilitySize ? .top : .center, spacing:14) {
+                mark
+                if typeSize.isAccessibilitySize {
+                    VStack(alignment:.leading, spacing:6) { titles; price }
+                    Spacer(minLength:0)
+                } else {
+                    titles
+                    Spacer(minLength:8)
+                    price
+                }
+            }
+            .padding(.vertical,10).frame(minHeight:56)
+            .padding(.horizontal,24)
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityElement(children:.ignore)
+        .accessibilityLabel("\(program.workModelName)，\(program.time) 分钟，\(LaundryFormat.spokenYuan(program.price))")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : [.isButton])
+    }
+    private var mark: some View {
+        ZStack {
+            if selected {
+                Circle().fill(Theme.accentText)
+                Image(systemName:"checkmark").font(.system(size:13, weight:.bold)).foregroundStyle(Theme.accentInk)
+            } else {
+                Circle().strokeBorder(Theme.ink3, lineWidth:1.5)
+            }
+        }
+        .frame(width:24, height:24)
+    }
+    private var titles: some View {
+        VStack(alignment:.leading, spacing:2) {
+            Text(LaundryFormat.program(program)).scaledFont(17, .medium).foregroundStyle(Theme.ink)
+            if let note {
+                Text(note).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                    .frame(maxWidth:typeSize.isAccessibilitySize ? nil : 200, alignment:.leading)
+            }
+        }.fixedSize(horizontal:false, vertical:true)
+    }
+    private var price: some View {
+        Text(Theme.yuan(program.price)).scaledFont(20, .semibold, design:.rounded, relativeTo:.title3)
+            .monospacedDigit().foregroundStyle(Theme.ink).lineLimit(1)
+    }
+    /// Camo's single-spin note (the machine's own description text is not decoded).
+    private var note: String? { program.workModelName == "单脱水" ? "最多 3/4 桶，适合手洗的衣服甩干" : nil }
+}
+
+/// Running hero (r2 §1.5): live label · minutes left · progress line · sub.
+struct LaundryRunHero: View {
+    let machine: String?
+    let program: String
+    /// Program length in minutes, when the machine lists it (drives the progress line).
+    let minutes: Int?
+    let end: Date
+    let notify: Bool
+    var body: some View {
+        TimelineView(minuteSchedule(to:end)) { context in
+            let left = LaundryFormat.minutesLeft(until:end, now:context.date)
+            VStack(alignment:.leading, spacing:0) {
+                HStack(alignment:.firstTextBaseline, spacing:7) {
+                    PulseDot().alignmentGuide(.firstTextBaseline) { $0[.bottom] + 2 }
+                    Text(["正在洗衣", machine.map(LaundryFormat.machine)].compactMap { $0 }.joined(separator:" · "))
+                        .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+                }
+                HStack(alignment:.firstTextBaseline, spacing:6) {
+                    Text("\(left)")
+                        .scaledFont(76, .semibold, design:.rounded, relativeTo:.largeTitle, cap:96)
+                        .monospacedDigit().tracking(-2).foregroundStyle(Theme.ink)
+                        .contentTransition(.numericText(countsDown:true))
+                        .animation(.default, value:left)
+                    Text("分钟").scaledFont(28, .semibold, relativeTo:.title).foregroundStyle(Theme.ink2)
+                }
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .padding(.top,6)
+                if let minutes, minutes > 0 {
+                    let total = Double(minutes * 60)
+                    let fraction = min(1, max(0, 1 - end.timeIntervalSince(context.date) / total))
+                    Capsule().fill(Theme.fill).frame(height:4)
+                        .overlay(alignment:.leading) {
+                            GeometryReader { proxy in
+                                Capsule().fill(Theme.accent).frame(width:proxy.size.width * fraction)
+                            }
+                        }
+                        .padding(.top,16)
+                }
+                Text(program + " · " + LaundryFormat.clock(end) + " 洗完。" + (notify ? "洗好了会通知你。" : ""))
+                    .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).lineSpacing(3)
+                    .fixedSize(horizontal:false, vertical:true)
+                    .padding(.top,10)
+            }
+            .frame(maxWidth:.infinity, alignment:.leading)
+            .accessibilityElement(children:.ignore)
+            .accessibilityLabel(["正在洗衣", machine.map(LaundryFormat.machine), "还剩 \(left) 分钟",
+                                 LaundryFormat.spokenClock(end) + "洗完"].compactMap { $0 }.joined(separator:"，"))
+        }
+    }
+}
+
+// MARK: - Sheets
+
+/// One confirmation before any order or payment request (replaces the old review sheet + Alipay alert).
+private struct LaundryPaySheet: View {
+    let title: String
+    let line: String
+    let amount: Decimal?
+    let confirm: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var submitted = false
+    var body: some View {
+        LaundrySheetBody(height:360) {
+            Text(title).scaledFont(24, .bold, relativeTo:.title2).foregroundStyle(Theme.ink)
+                .fixedSize(horizontal:false, vertical:true)
+            Text(line).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,14)
+            if let amount {
+                Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:.rounded, relativeTo:.largeTitle)
+                    .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,2)
+            }
+            Text("付完款机器可能马上开始洗，先把衣服放好。实际金额以支付宝里显示的为准。")
+                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).lineSpacing(4)
+                .fixedSize(horizontal:false, vertical:true).padding(.top,14)
+            Button { submitted = true; confirm() } label: { DockPillLabel(title:"去付款") }
+                .buttonStyle(PressScaleStyle()).disabled(submitted)
+                .padding(.top,24)
+                .accessibilityIdentifier("submitLaundryOrder")
+            Button { dismiss() } label: {
+                Text("先不付").scaledFont(17, .medium).foregroundStyle(Theme.ink2)
+                    .frame(maxWidth:.infinity).frame(minHeight:50).contentShape(Rectangle())
+            }.buttonStyle(RowPressStyle())
+        }
+    }
+}
+
+private struct LaundryCancelSheet: View {
+    let confirm: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var submitted = false
+    var body: some View {
+        LaundrySheetBody(height:280) {
+            Text("取消这笔订单？").scaledFont(24, .bold, relativeTo:.title2).foregroundStyle(Theme.ink)
+            Text("只能取消还没付款的订单，取消后这台机器会让给别人。")
+                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).lineSpacing(4)
+                .fixedSize(horizontal:false, vertical:true).padding(.top,14)
+            Button { submitted = true; confirm() } label: { DockPillLabel(title:"取消订单", style:.destructive) }
+                .buttonStyle(PressScaleStyle()).disabled(submitted)
+                .padding(.top,24)
+                .accessibilityIdentifier("confirmCancelLaundryOrder")
+            Button { dismiss() } label: {
+                Text("留着").scaledFont(17, .medium).foregroundStyle(Theme.ink2)
+                    .frame(maxWidth:.infinity).frame(minHeight:50).contentShape(Rectangle())
+            }.buttonStyle(RowPressStyle())
+        }
+    }
+}
+
+/// Sheet chrome: `group` background, drag indicator, ≈height detent + large, scrolls at large text.
+private struct LaundrySheetBody<Content: View>: View {
+    let height: CGFloat
+    @ViewBuilder var content: Content
     var body: some View {
         ScrollView {
-            VStack(alignment:.leading,spacing:20) {
-                if let value = laundry.snapshot {
-                    deviceCard(value)
-                    if let record = laundry.checkout {
-                        if record.stage == .completed {
-                            HStack {
-                                Text(record.order?.label ?? "上次订单已结束").font(.subheadline)
-                                Spacer()
-                                Text(record.order?.paid == true ? "已付款" : "未支付").font(.caption).foregroundStyle(.secondary)
-                            }.padding(16).background(NothingTheme.surface,in:RoundedRectangle(cornerRadius:18))
-                        } else { orderCard(record) }
-                    }
-                    if laundry.checkout == nil || laundry.checkout?.stage == .completed {
-                    HStack {
-                        Text("选择程序").font(.title3.weight(.semibold))
-                        Spacer()
-                        Text("按当前价格").font(.caption).foregroundStyle(.secondary)
-                    }.padding(.horizontal,4)
-                    VStack(spacing:10) {
-                        ForEach(value.programs) { program in programRow(program) }
-                    }
-                    }
-                } else {
-                    ContentUnavailableView(laundry.configured ? "等待设备信息" : "尚未配置洗衣机",
-                        systemImage:"washer",description:Text(laundry.configured ? "下拉刷新查看机器" : "先登录 U净，再扫码添加常用机器"))
-                    NavigationLink("设置常用洗衣机") { WasherSetupView() }
-                }
-                if let issue = laundry.issue { Label(issue,systemImage:"exclamationmark.circle").font(.footnote).foregroundStyle(.orange) }
-                if laundry.checkout == nil, let issue = laundry.checkoutIssue { Text(issue).font(.footnote).foregroundStyle(.orange) }
-                if laundry.checkout == nil || laundry.checkout?.stage == .completed {
-                    Text("先放好衣物。确认机器与程序后再下单，付款可能使设备开始运行。")
-                        .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
-                }
-            }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
-        }.background(NativeTheme.background).tint(NativeTheme.tint)
-            .navigationTitle("洗衣机").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement:.topBarTrailing) {
-                    Button { Task { await laundry.refresh(force:true); await laundry.refreshOrder() } } label: {
-                        if laundry.loading || laundry.checkoutBusy { ProgressView() }
-                        else { Image(systemName:"arrow.clockwise").frame(width:44,height:44) }
-                    }.disabled(laundry.loading || laundry.checkoutBusy).accessibilityLabel("刷新洗衣机")
-                }
-            }
-            .safeAreaInset(edge:.bottom) {
-                if laundry.configured && (laundry.checkout == nil || laundry.checkout?.stage == .completed) {
-                    Button {
-                        Task {
-                            await laundry.refresh(force:true)
-                            guard laundry.mayCreate, let value = selected else { return }
-                            draft = value; review = true
-                        }
-                    } label: {
-                        HStack {
-                            if laundry.checkoutBusy { ProgressView().controlSize(.small) }
-                            Text(laundry.checkoutBusy ? (laundry.checkoutProgress ?? "正在处理…") : (laundry.loading ? "正在核对" : "确认程序"))
-                            Spacer()
-                            if !laundry.checkoutBusy {
-                                if let selected { Text(selected.price,format:.currency(code:"CNY")).monospacedDigit() }
-                                Image(systemName:"arrow.right")
-                            }
-                        }.padding(.horizontal,18).frame(minHeight:54)
-                    }.buttonStyle(WaterButtonStyle(primary:true,accent:accent))
-                        .disabled(!laundry.mayCreate).padding(.horizontal,20).padding(.vertical,12)
-                        .background(NativeTheme.background).accessibilityIdentifier("reviewLaundryOrder")
-                }
-            }
-            .task { await laundry.refresh(); await laundry.refreshOrder() }
-            .refreshable { await laundry.refresh(force:true); await laundry.refreshOrder() }
-            .sheet(isPresented:$review) {
-                if let draft, let value = laundry.snapshot {
-                    LaundryReviewSheet(program:draft,machine:"\(value.storeName) · \(value.deviceNo)号") {
-                        review = false
-                        Task { await laundry.createAndPay(draft) }
-                    }.presentationDetents([.medium,.large]).presentationDragIndicator(.visible)
-                }
-            }
-            .alert("确认支付宝付款",isPresented:$confirmPayment) {
-                Button("确认付款") { Task { await laundry.pay() } }
-                Button("暂不付款",role:.cancel) {}
-            } message: {
-                Text("付款可能扣款并启动这台洗衣机。请确认衣物已放好，实际金额以支付宝收银台为准。")
-            }
-            .sheet(isPresented:$confirmCancellation) {
-                LaundryCancellationSheet(program:laundry.checkout?.programName ?? "当前程序") {
-                    confirmCancellation = false
-                    Task { await laundry.cancelOrder() }
-                }.presentationDetents([.medium,.large]).presentationDragIndicator(.visible)
-            }
-    }
-    private func deviceCard(_ value: LaundrySnapshot) -> some View {
-        VStack(alignment:.leading,spacing:14) {
-            HStack(alignment:.top,spacing:14) {
-                Image(systemName:"washer").font(.title).foregroundStyle(accent)
-                    .frame(width:52,height:52).background(accent.opacity(0.08),in:RoundedRectangle(cornerRadius:16))
-                VStack(alignment:.leading,spacing:6) {
-                    Text("\(value.deviceNo)号 · \(value.deviceTypeName)").font(.headline)
-                    Text(value.storeName).font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-            HStack {
-                Label(laundry.deviceStateText,systemImage:"circle.fill").font(.caption.weight(.medium)).foregroundStyle(accent)
-                Spacer()
-                Text(laundry.freshness).font(.caption).foregroundStyle(.secondary)
-            }
-            Text("查询于 \(value.fetchedAt.formatted(date:.omitted,time:.standard))").font(.caption).foregroundStyle(.secondary)
-        }.padding(20).frame(maxWidth:.infinity,alignment:.leading)
-            .background(NothingTheme.surface,in:RoundedRectangle(cornerRadius:16))
-    }
-    private func programRow(_ program: LaundryProgram) -> some View {
-        let isSelected = selected?.id == program.id
-        return Button { selectedId = program.id } label: {
-            HStack(alignment:.center,spacing:14) {
-                Image(systemName:isSelected ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(isSelected ? accent : Color.secondary)
-                VStack(alignment:.leading,spacing:6) {
-                    Text(program.workModelName).font(.headline).foregroundStyle(.primary)
-                    Text("\(program.time)分钟").font(.subheadline).foregroundStyle(.secondary)
-                }
-                Spacer(minLength:8)
-                Text(program.price,format:.currency(code:"CNY")).font(.title3.weight(.semibold)).monospacedDigit().foregroundStyle(.primary)
-            }.padding(18).frame(maxWidth:.infinity,minHeight:82)
-                .background(isSelected ? accent.opacity(0.08) : NothingTheme.surface,in:RoundedRectangle(cornerRadius:16))
-                .overlay(RoundedRectangle(cornerRadius:16).strokeBorder(isSelected ? accent.opacity(0.5) : .clear,lineWidth:1))
-        }.buttonStyle(.plain).disabled(laundry.checkoutBusy)
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-    private func orderCard(_ record: LaundryCheckoutRecord) -> some View {
-        VStack(alignment:.leading,spacing:14) {
-            Text(record.stage == .completed ? "上次洗衣订单" : "当前洗衣订单").font(.subheadline).foregroundStyle(.secondary)
-            Text(record.order?.label ?? "正在核对预约结果").font(.headline)
-            Text(record.order?.payPrice ?? record.expectedPrice,format:.currency(code:"CNY"))
-                .font(.system(.largeTitle,design:.rounded).weight(.semibold)).monospacedDigit()
-            Text("实际金额以支付宝收银台为准").font(.caption).foregroundStyle(.secondary)
-            LabeledContent("洗衣程序",value:record.programName).font(.subheadline)
-            if record.order?.payFlag?.text == "0" { Text("未支付").font(.caption).foregroundStyle(.secondary) }
-            if let issue = laundry.checkoutIssue { Text(issue).font(.footnote).foregroundStyle(.orange) }
-            if let progress = laundry.checkoutProgress {
-                HStack(spacing:9) {
-                    if laundry.checkoutBusy { ProgressView().controlSize(.small) }
-                    else { Image(systemName:"arrow.up.right.square") }
-                    Text(progress).font(.footnote).foregroundStyle(.secondary)
-                }
-            }
-            if let order = record.order, order.status.text == "10", let seconds = order.countDown, seconds > 0 {
-                TimelineView(.periodic(from:.now,by:1)) { context in
-                    let remaining = max(0,seconds - Int(context.date.timeIntervalSince(record.orderUpdatedAt ?? record.createdAt)))
-                    Text(remaining > 0 ? String(format:"%02d:%02d 后自动取消",remaining / 60,remaining % 60) : "等待服务器确认预约状态")
-                        .font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
-                }
-            }
-            if let order = record.order, order.running, let seconds = order.remainTime, seconds > 0 {
-                Text("剩余约 \((seconds + 59) / 60)分钟").font(.subheadline)
-            }
-            if record.stage == .created, let order = record.order,
-               ["10","17"].contains(order.status.text), order.payFlag?.text == "0" {
-                Text("请先放好衣物，付款可能启动洗衣机。").font(.footnote).foregroundStyle(.secondary)
-                Button { confirmPayment = true } label: {
-                    Label("前往支付宝",systemImage:"arrow.up.right.square").frame(maxWidth:.infinity,minHeight:50)
-                }.buttonStyle(WaterButtonStyle(primary:true,accent:accent)).disabled(laundry.checkoutBusy)
-            }
-            Button { Task { await laundry.refreshOrder() } } label: {
-                Label(laundry.checkoutBusy ? "正在处理" : "刷新订单状态",systemImage:"arrow.clockwise")
-                    .frame(maxWidth:.infinity,minHeight:44)
-            }.disabled(laundry.checkoutBusy)
-            if laundry.mayCancel {
-                Button(role:.destructive) { confirmCancellation = true } label: {
-                    Label("取消订单",systemImage:"xmark.circle").frame(maxWidth:.infinity,minHeight:44)
-                }.accessibilityIdentifier("cancelLaundryOrder")
-            }
-            if record.stage == .creating || record.stage == .cancellationRequested ||
-               (record.stage == .paymentRequested && record.order?.paid != true && record.order?.running != true) {
-                Text("结果未确认时请勿重复下单或付款，可在U净订单中核对。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }.padding(20).background(NothingTheme.surface,in:RoundedRectangle(cornerRadius:16))
-            .task(id:record.orderUpdatedAt) {
-                if let order = record.order, order.status.text == "10", let seconds = order.countDown, seconds > 0 {
-                    do { try await Task.sleep(for:.seconds(seconds + 1)) } catch { return }
-                    await laundry.refreshOrder()
-                }
-            }
+            VStack(alignment:.leading, spacing:0) { content }
+                .padding(.horizontal,24).padding(.top,30).padding(.bottom,12)
+                .frame(maxWidth:.infinity, alignment:.leading)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .presentationDetents([.height(height), .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Theme.group)
     }
 }
 
-private struct LaundryCancellationSheet: View {
-    let program: String
-    let confirm: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var submitted = false
-    var body: some View {
-        NavigationStack {
-            VStack(alignment:.leading,spacing:24) {
-                Text("取消这次预约？").font(.title2.weight(.semibold))
-                Text(program).font(.headline)
-                Text("取消后将释放预约。此操作仅适用于尚未支付的订单。")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                Button(role:.destructive) { submitted = true; confirm() } label: {
-                    Text("确认取消订单").frame(maxWidth:.infinity,minHeight:52)
-                }.buttonStyle(.borderedProminent).tint(.red).disabled(submitted)
-                    .accessibilityIdentifier("confirmCancelLaundryOrder")
-                Spacer(minLength:0)
-            }.padding(24).navigationTitle("取消订单").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement:.cancellationAction) { Button("保留订单") { dismiss() } } }
-        }
-    }
-}
+#if DEBUG
+// MARK: - DEBUG demo (campusdaily://demo/laundry/<state>); fake data, never places an order.
 
-private struct LaundryReviewSheet: View {
-    let program: LaundryProgram
-    let machine: String
-    let confirm: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var submitted = false
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment:.leading,spacing:24) {
-                    VStack(alignment:.leading,spacing:8) {
-                        Text(machine).font(.headline)
-                        Text("\(program.workModelName) · \(program.time)分钟").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    HStack(alignment:.firstTextBaseline) {
-                        Text("预计金额").foregroundStyle(.secondary)
-                        Spacer()
-                        Text(program.price,format:.currency(code:"CNY")).font(.largeTitle.weight(.semibold)).monospacedDigit()
-                    }
-                    Text("确认后将预约这台机器并前往支付宝。付款可能扣款并启动设备，请提前放好衣物，实际金额以收银台为准。")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                    Button { submitted = true; confirm() } label: {
-                        Text("下单并前往支付宝").frame(maxWidth:.infinity,minHeight:52)
-                    }.buttonStyle(WaterButtonStyle(primary:true,accent:Color.primary))
-                        .disabled(submitted).accessibilityIdentifier("submitLaundryOrder")
-                }.padding(24)
-            }.navigationTitle("核对订单").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() } } }
+struct LaundryDemo {
+    enum Kind: String {
+        case idle, busy, unpaid, run, check, inuse, offline, broken, disabled, empty, done, confirm, cancel
+    }
+    enum InitialSheet { case confirm, cancel }
+    var facts: LaundryFacts
+    var sheet: InitialSheet?
+    var panel: SettlementResult?
+    var notify = true
+
+    static func handle(_ url: URL) -> LaundryDemo? {
+        let parts = Array(url.pathComponents.dropFirst())
+        guard url.scheme == "campusdaily", url.host == "demo", parts.first == "laundry" else { return nil }
+        return make(Kind(rawValue:parts.count > 1 ? parts[1] : "idle") ?? .idle)
+    }
+
+    static func make(_ kind: Kind, now: Date = Date()) -> LaundryDemo {
+        var facts = LaundryFacts()
+        facts.configured = true
+        facts.snapshot = snapshot(status:0)
+        facts.mayCreate = true
+        var demo = LaundryDemo(facts:facts)
+        switch kind {
+        case .idle: break
+        case .confirm: demo.sheet = .confirm
+        case .busy:
+            demo.facts.busy = true; demo.facts.mayCreate = false; demo.facts.progress = "正在打开支付宝…"
+        case .unpaid, .cancel:
+            demo.facts.snapshot = snapshot(status:11, active:"demo1")
+            demo.facts.record = record(stage:"created", status:"10", paid:false, remain:nil, created:now.addingTimeInterval(-60), now:now)
+            demo.facts.mayCreate = false; demo.facts.mayCancel = true
+            if kind == .cancel { demo.sheet = .cancel }
+        case .run:
+            demo.facts.snapshot = snapshot(status:1, active:"demo1")
+            demo.facts.record = record(stage:"created", status:"40", paid:true, remain:18 * 60 - 30,
+                                       created:now.addingTimeInterval(-27 * 60), now:now)
+            demo.facts.mayCreate = false
+        case .check:
+            demo.facts.record = record(stage:"creating", status:nil, paid:false, remain:nil, created:now.addingTimeInterval(-12 * 60), now:now)
+            demo.facts.mayCreate = false
+        case .inuse: demo.facts.snapshot = snapshot(status:1); demo.facts.mayCreate = false
+        case .offline: demo.facts.snapshot = snapshot(status:8); demo.facts.mayCreate = false
+        case .broken: demo.facts.snapshot = snapshot(status:2); demo.facts.mayCreate = false
+        case .disabled: demo.facts.snapshot = snapshot(status:9); demo.facts.mayCreate = false
+        case .empty: demo.facts = LaundryFacts()
+        case .done:
+            demo.facts.record = record(stage:"completed", status:"50", paid:true, remain:nil, created:now.addingTimeInterval(-50 * 60), now:now)
+            demo.panel = .laundryDone(amount:Decimal(string:"4.00"), detail:"标准洗 · 45 分钟 · 3 号机")
         }
+        return demo
+    }
+
+    private static func decode<T: Decodable>(_ object: [String:Any]) -> T {
+        let data = try! JSONSerialization.data(withJSONObject:object)
+        return try! JSONDecoder().decode(T.self, from:data)
+    }
+
+    static func snapshot(status: Int, active: String? = nil) -> LaundrySnapshot {
+        let programs: [[String:Any]] = [(1,"标准洗",45,400),(2,"快洗",30,300),(3,"大物洗",60,500),(4,"单脱水",6,100)].map {
+            ["workModelId":$0.0, "workModelName":$0.1, "time":$0.2, "basePrice":$0.3, "hide":0, "isPromotion":0, "promotionPrice":0]
+        }
+        var object: [String:Any] = ["deviceId":"demo-washer", "deviceNo":"3", "deviceTypeName":"波轮洗衣机", "storeName":"4 栋洗衣房",
+                                    "moduleType":7, "status":status, "createOrderEnabled":status == 0, "programs":programs,
+                                    "fetchedAt":Date().timeIntervalSinceReferenceDate, "storeId":"demo-store", "deviceTypeId":1]
+        if let active { object["activeOrderId"] = active }
+        return decode(object)
+    }
+
+    static func record(stage: String, status: String?, paid: Bool, remain: Int?, created: Date, now: Date) -> LaundryCheckoutRecord {
+        var object: [String:Any] = ["deviceId":"demo-washer", "programId":1, "programName":"标准洗", "expectedPrice":4,
+                                    "createdAt":created.timeIntervalSinceReferenceDate, "stage":stage]
+        if let status {
+            var order: [String:Any] = ["orderId":"demo1", "deviceId":"demo-washer", "status":status, "payFlag":paid ? "1" : "0",
+                                       "deviceWashModelId":1, "payPrice":4]
+            if let remain { order["remainTime"] = remain }
+            if status == "10" { order["countDown"] = 600 }
+            object["orderId"] = "demo1"; object["order"] = order
+            object["orderUpdatedAt"] = now.timeIntervalSinceReferenceDate
+        }
+        return decode(object)
     }
 }
+#endif
