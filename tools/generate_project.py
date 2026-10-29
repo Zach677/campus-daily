@@ -6,6 +6,36 @@ import json
 
 root = Path(__file__).resolve().parents[1]
 project = root / 'CampusHotWater.xcodeproj'
+
+# Personal signing lives in private/signing.json (git-ignored), e.g.
+#   {"team": "ABCDE12345", "bundle_id": "com.example.campushotwater"}
+# The widget gets bundle_id + ".balances". If the file is missing but the
+# existing project already carries a Team / Bundle ID picked in Xcode, those
+# are saved there first, so they survive every regeneration.
+import re
+signing_file = root / 'private/signing.json'
+DEFAULT_BUNDLE = 'com.beamjason.campushotwater'
+signing = {}
+if signing_file.exists():
+    signing = json.loads(signing_file.read_text())
+else:
+    old_pbx = project / 'project.pbxproj'
+    if old_pbx.exists():
+        text = old_pbx.read_text()
+        teams = re.findall(r'DEVELOPMENT_TEAM = "?([A-Z0-9]{10})"?;', text)
+        ids = [i.strip('"') for i in re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);', text)]
+        apps = [i for i in ids if not i.endswith('.balances') and i != DEFAULT_BUNDLE]
+        if teams:
+            signing['team'] = teams[0]
+        if apps:
+            signing['bundle_id'] = apps[0]
+        if signing:
+            signing_file.parent.mkdir(parents=True, exist_ok=True)
+            signing_file.write_text(json.dumps(signing, indent=2) + '\n')
+            print(f'Saved your signing settings to {signing_file.relative_to(root)}')
+bundle_id = signing.get('bundle_id') or DEFAULT_BUNDLE
+team = signing.get('team', '')
+team_setting = f'DEVELOPMENT_TEAM = {team}; ' if team else ''
 project.mkdir(exist_ok=True)
 def uid(name): return hashlib.sha256(name.encode()).hexdigest()[:24].upper()
 objects = []
@@ -67,8 +97,8 @@ project_configs = []
 target_configs = []
 for mode in ('Debug','Release'):
     project_configs.append(obj('project:'+mode, 'isa = XCBuildConfiguration; name = '+mode+'; buildSettings = { CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; };'))
-    settings = '''PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = com.beamjason.campushotwater;
-    CODE_SIGN_STYLE = Automatic; CODE_SIGN_ENTITLEMENTS = App/Campus.entitlements; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = App/Info.plist;
+    settings = f'''PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = {bundle_id};
+    CODE_SIGN_STYLE = Automatic; {team_setting} CODE_SIGN_ENTITLEMENTS = App/Campus.entitlements; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = App/Info.plist;
     OTHER_LDFLAGS = ("$(inherited)", "-ObjC", "-lc++", "-lz");
     INFOPLIST_KEY_CFBundleDisplayName = "校日常";
     INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "连接你选择的校园水控，完成授权、结束并结算。";
@@ -99,8 +129,8 @@ widget_resources = obj('widget-resources', f'isa = PBXResourcesBuildPhase; build
 widget_product = obj('widget-product', 'isa = PBXFileReference; explicitFileType = wrapper.app-extension; path = CampusDailyWidget.appex; sourceTree = BUILT_PRODUCTS_DIR;')
 widget_configs = []
 for mode in ['Debug','Release']:
-    settings = f"""PRODUCT_NAME = CampusDailyWidget; PRODUCT_BUNDLE_IDENTIFIER = com.beamjason.campushotwater.balances;
-    CODE_SIGN_STYLE = Automatic; CODE_SIGN_ENTITLEMENTS = Widget/Campus.entitlements;
+    settings = f"""PRODUCT_NAME = CampusDailyWidget; PRODUCT_BUNDLE_IDENTIFIER = {bundle_id}.balances;
+    CODE_SIGN_STYLE = Automatic; {team_setting} CODE_SIGN_ENTITLEMENTS = Widget/Campus.entitlements;
     GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = Widget/Info.plist;
     INFOPLIST_KEY_CFBundleDisplayName = \"校园双余额\";
     IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;
@@ -126,4 +156,4 @@ schemes.mkdir(parents=True, exist_ok=True)
 <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="CampusHotWater.app" BlueprintName="CampusHotWater" ReferencedContainer="container:CampusHotWater.xcodeproj"/></BuildableProductRunnable></LaunchAction>
 <ProfileAction buildConfiguration="Release"/><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/>
 </Scheme>''')
-print('Generated CampusHotWater.xcodeproj (no signing identity embedded)')
+print('Generated CampusHotWater.xcodeproj' + (f' signed as {bundle_id}, team {team}' if team else ' (no signing team: pick one in Xcode once, then run this again)'))
