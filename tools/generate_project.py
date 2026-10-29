@@ -2,6 +2,7 @@
 """Generate a dependency-free Xcode project; identities stay in local build flags."""
 from pathlib import Path
 import hashlib
+import json
 
 root = Path(__file__).resolve().parents[1]
 project = root / 'CampusHotWater.xcodeproj'
@@ -48,12 +49,17 @@ extra_resources = [fontbuild, automationbuild]
 profile = root / 'private/distribution/WaterPlatformProfile.json'
 resource_files = [assetbuild, sdkresourcebuild] + extra_resources
 resphase = obj('resources', f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(resource_files)}); runOnlyForDeploymentPostprocessing = 0;')
-profilephase = obj('private-water-profile-debug-only', '''isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = ();
-    inputPaths = ("$(SRCROOT)/private/distribution/WaterPlatformProfile.json");
-    name = "Development-only private water profile";
-    outputPaths = ("$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WaterPlatformProfile.json");
+# Debug builds without a local profile (simulator, UI review) skip staging; the app then reports
+# OnboardingError.platform. Release builds still require a valid platform-only profile.
+profile_script = ('if [ -z "$CAMPUS_WATER_PROFILE_PATH" ] && [ "$CONFIGURATION" = "Debug" ]; then\n'
+    '  echo "note: CAMPUS_WATER_PROFILE_PATH not set; Debug build has no bundled water platform"\n  exit 0\nfi\n'
+    'python3 "$SRCROOT/tools/stage_platform_profile.py" --profile "$CAMPUS_WATER_PROFILE_PATH" --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/CampusWaterPlatform.json"\n')
+profilephase = obj('bundled-water-platform', f'''isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = ();
+    inputPaths = ("$(CAMPUS_WATER_PROFILE_PATH)", "$(SRCROOT)/tools/stage_platform_profile.py");
+    name = "Stage shared water platform";
+    outputPaths = ("$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CampusWaterPlatform.json");
     runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh;
-    shellScript = "if [ \\\"$CONFIGURATION\\\" = \\\"Debug\\\" ] && [ -f \\\"$SRCROOT/private/distribution/WaterPlatformProfile.json\\\" ]; then\\n  mkdir -p \\\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\\\"\\n  cp \\\"$SRCROOT/private/distribution/WaterPlatformProfile.json\\\" \\\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WaterPlatformProfile.json\\\"\\n  echo \\\"WARNING: private WaterPlatformProfile is embedded in this DEBUG app. Do not distribute it.\\\"\\nfi\\n";''')
+    shellScript = {json.dumps(profile_script)};''')
 project_configs = []
 target_configs = []
 for mode in ('Debug','Release'):
@@ -67,7 +73,7 @@ for mode in ('Debug','Release'):
     INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
     INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
     INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-    TARGETED_DEVICE_FAMILY = 1; MARKETING_VERSION = 0.8.0; CURRENT_PROJECT_VERSION = 29;
+    TARGETED_DEVICE_FAMILY = 1; MARKETING_VERSION = 0.8.0; CURRENT_PROJECT_VERSION = 36;
     ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
     SWIFT_EMIT_LOC_STRINGS = YES; ENABLE_PREVIEWS = YES;
     LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -96,7 +102,7 @@ for mode in ['Debug','Release']:
     INFOPLIST_KEY_CFBundleDisplayName = \"校园双余额\";
     IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;
     TARGETED_DEVICE_FAMILY = 1; APPLICATION_EXTENSION_API_ONLY = YES; SKIP_INSTALL = YES;
-    MARKETING_VERSION = 0.8.0; CURRENT_PROJECT_VERSION = 29;
+    MARKETING_VERSION = 0.8.0; CURRENT_PROJECT_VERSION = 36;
     LD_RUNPATH_SEARCH_PATHS = (\"$(inherited)\",\"@executable_path/Frameworks\",\"@executable_path/../../Frameworks\");
     SWIFT_OPTIMIZATION_LEVEL = \"{'-Onone' if mode == 'Debug' else '-O'}\";
     """

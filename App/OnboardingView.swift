@@ -104,6 +104,9 @@ struct OnboardingView: View {
                 }
                 .padding(.top,30)
             }
+            if step == .dorm, preview == nil, !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil && !campus.powerConfigured {
+                powerApartment.padding(.top,30)
+            }
             if let issue {
                 Text(issue).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.redText)
                     .fixedSize(horizontal:false, vertical:true).padding(.top,16)
@@ -146,6 +149,40 @@ struct OnboardingView: View {
         case .dorm: return dorm.map { "已经从学校账号读到：\($0)。不对就改一下。" } ?? "没读到你的宿舍，手动选一下。"
         case .washer: return "先登录 U净，再扫机身上的码，以后一按就能付款。"
         case .done: return nil
+        }
+    }
+
+    /// Upstream 0.8.0-beta.2: the school directory can list two buildings with the same name.
+    /// Automatic meter matching then needs the student to confirm the apartment once.
+    @ViewBuilder private var powerApartment: some View {
+        VStack(alignment:.leading, spacing:0) {
+            if !campus.powerChoices.isEmpty {
+                Text("学校里有同名楼栋，选一下你住的公寓，电表就能绑上。")
+                    .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
+                    .fixedSize(horizontal:false, vertical:true).padding(.bottom,6)
+                ForEach(Array(campus.powerChoices.enumerated()), id:\.element.id) { index, candidate in
+                    if index > 0 { Hairline() }
+                    Button { campus.choosePowerApartment(candidate) } label: {
+                        HStack(spacing:14) {
+                            Text(candidate.label).scaledFont(17).foregroundStyle(Theme.ink)
+                                .fixedSize(horizontal:false, vertical:true)
+                            Spacer()
+                            if campus.matchingPower { ProgressView().controlSize(.small) }
+                            else { Image(systemName:"chevron.right").font(.system(size:13, weight:.semibold)).foregroundStyle(Theme.ink3) }
+                        }
+                        .frame(minHeight:50).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).disabled(campus.matchingPower)
+                    .accessibilityIdentifier("powerApartment-" + candidate.id)
+                }
+            }
+            if let issue = campus.powerMatchIssue {
+                Text(issue).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
+                    .fixedSize(horizontal:false, vertical:true).padding(.top,8)
+                Button("重试匹配电表") { campus.matchPowerAutomatically() }
+                    .scaledFont(17, .medium).foregroundStyle(Theme.accentText)
+                    .frame(minHeight:44).disabled(campus.matchingPower)
+            }
         }
     }
 

@@ -10,13 +10,11 @@ struct ReminderLines: Codable, Equatable {
     var card: Decimal { Decimal(cardYuan) }
 
     private static let service = "CampusDaily.reminder-lines.v1"
+    /// No explicit access group: like CampusSharedCache, Security uses the default group both
+    /// targets are signed with (first entry of keychain-access-groups).
     private static func query() -> [String:Any] {
-        var query: [String:Any] = [kSecClass as String:kSecClassGenericPassword,
-                                   kSecAttrService as String:service, kSecAttrAccount as String:"lines"]
-        if let group = Bundle.main.object(forInfoDictionaryKey:"CampusKeychainGroup") as? String, !group.isEmpty {
-            query[kSecAttrAccessGroup as String] = group
-        }
-        return query
+        [kSecClass as String:kSecClassGenericPassword,
+         kSecAttrService as String:service, kSecAttrAccount as String:"lines"]
     }
     /// Shared value, or the defaults when nothing was saved yet.
     static func shared() -> ReminderLines {

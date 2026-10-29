@@ -18,10 +18,18 @@ import WaterCore
             CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry)
                 .onChange(of:campus.room,initial:true) { ShowerActivityController.shared.dorm = Theme.dorm(campus.room) ?? "" }
                 .task {
+                    #if CAMPUS_ACCESS_DIAGNOSTICS
+                    if ProcessInfo.processInfo.arguments.contains("--check-water-access") {
+                        await AccessDiagnostics.run(campus:campus)
+                        return
+                    }
+                    #endif
                     water.importDevelopmentConfigIfPresent()
                     campus.importDevelopmentConfigIfPresent()
                     laundry.importDevelopmentConfigIfPresent()
+                    await water.migrateBundledDirectIfNeeded(campus:campus.onboardingLogin)
                     await laundry.recoverDevelopmentOrderIfPresent()
+                    campus.matchPowerAutomatically()
                     await campus.refresh()
                     await laundry.refresh()
                 }
@@ -98,7 +106,7 @@ struct WaterDetail: View {
                     Button { perform(start:!closing) } label: {
                         HStack {
                             if water.busy { ProgressView().tint(Theme.pillInk).controlSize(.small) }
-                            Text(water.busy ? "正在处理…" : closing ? "结束并结算" : water.stage == .settled ? "再次开始洗澡" : "开始洗澡")
+                            Text(water.busy ? "正在处理…" : closing ? "结束并结算" : "开始洗澡")
                             Spacer(); Image(systemName:closing ? "stop.circle" : "arrow.up.right")
                         }.padding(.horizontal,18).frame(minHeight:52)
                     }.buttonStyle(WaterButtonStyle(primary:true,accent:NativeTheme.tint))

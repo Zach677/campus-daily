@@ -43,7 +43,5 @@
 	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
-	<key>CampusKeychainGroup</key>
-	<string>$(AppIdentifierPrefix)com.beamjason.campushotwater</string>
 </dict>
 </plist>
