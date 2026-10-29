@@ -84,7 +84,13 @@ struct ScriptsCampusFace: View {
             .accessibilityLabel("宿舍剩余电量 \(number(snapshot?.electricity?.remainingKWh)) 度，校园卡 \(number(snapshot?.balance)) 元，电费余额 \(number(snapshot?.electricity?.balanceYuan)) 元")
     }
 }
-@main struct CampusDailyWidget: Widget {
+@main struct CampusDailyBundle: WidgetBundle {
+    var body: some Widget {
+        CampusDailyWidget()
+        ShowerLiveActivity()
+    }
+}
+struct CampusDailyWidget: Widget {
     let kind = "CampusDailyBalances"
     var body: some WidgetConfiguration {
         StaticConfiguration(kind:kind,provider:CampusTimeline()) { entry in

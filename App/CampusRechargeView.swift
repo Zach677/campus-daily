@@ -18,7 +18,7 @@ struct CampusRechargeView: View {
     @State private var revision = UUID()
     var body: some View {
         VStack(spacing:0) {
-            Text("学校官方充值页面 · 请核对账户、寝室和金额后付款")
+            Text("学校官方充值页面 · 请核对账户、宿舍和金额后付款")
                 .font(.footnote).foregroundStyle(.secondary).padding(12)
             if let context {
                 CampusRechargeBrowser(context:context,power:kind == .power) { issue = "网页登录已过期，请重新登录学校账号" }

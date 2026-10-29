@@ -4,10 +4,9 @@ import SwiftUI
 enum NativeTheme {
     static let background = Color(uiColor:.systemGroupedBackground)
     static let surface = Color(uiColor:.secondarySystemGroupedBackground)
-    static let tint = Color(uiColor:UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor(red:0.54,green:0.73,blue:1,alpha:1) : UIColor(red:0.09,green:0.37,blue:0.79,alpha:1)
-    })
-    static let action = Color(red:0.09,green:0.37,blue:0.79)
+    // One accent app-wide (design r1 §1); primary buttons use the black/white pill colors.
+    static let tint = Theme.accentText
+    static let action = Theme.pill
     static let radius: CGFloat = 16
 }
 
@@ -24,7 +23,7 @@ enum NothingTheme {
 struct NothingButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.body.weight(.semibold)).foregroundStyle(.white)
+        configuration.label.font(.body.weight(.semibold)).foregroundStyle(Theme.pillInk)
             .frame(maxWidth:.infinity,minHeight:52)
             .background(NativeTheme.action,in:RoundedRectangle(cornerRadius:12))
             .opacity(enabled ? (configuration.isPressed ? 0.76 : 1) : 0.4)

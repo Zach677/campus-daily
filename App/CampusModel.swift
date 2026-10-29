@@ -20,6 +20,7 @@ private enum CampusConfigStore {
         try value.validate()
         return value
     }
+    static func delete() { SecItemDelete(query as CFDictionary) }
     static func save(_ value: CampusConfig) throws {
         try value.validate()
         let changes: [String:Any] = [kSecValueData as String:try JSONEncoder().encode(value),
@@ -195,6 +196,16 @@ private enum CampusConfigStore {
         issue = next.cardError?.rawValue
         if issue == nil, next.room == nil, config.dormRoom.isEmpty { issue = next.roomError?.rawValue }
         saveSnapshot()
+    }
+    /// Sign out of the school account: removes only the campus config and balance caches.
+    /// Water sessions/config and laundry data are untouched.
+    func signOut() {
+        guard !loading else { return }
+        CampusConfigStore.delete()
+        try? FileManager.default.removeItem(at:cacheURL)
+        CampusSharedCache.clear()
+        WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances")
+        config = nil; configured = false; snapshot = nil; issue = nil; lastAttempt = nil
     }
     func importFailed(_ error: Error) { issue = (error as? CampusError)?.rawValue ?? "校园配置导入失败，请检查格式" }
 }

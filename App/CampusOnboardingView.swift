@@ -182,7 +182,7 @@ struct CampusOnboardingView: View {
     @State private var saved = false
     @State private var issue: String?
     private let provider = DormOnboardingProvider()
-    private let levels = ["校区","楼栋","楼层","寝室"]
+    private let levels = ["校区","楼栋","楼层","宿舍"]
     var body: some View {
         Form {
             if let address = draft?.portalDormAddress, !address.isEmpty {
@@ -211,7 +211,7 @@ struct CampusOnboardingView: View {
                         VStack(alignment:.leading,spacing:10) {
                             Label(machine.name,systemImage:"drop").font(.headline)
                             Text("水控编号 " + machine.id).font(.caption.monospaced()).foregroundStyle(.secondary)
-                            Text("核对是你的寝室后保存。保存不会出水，也不会更改学校绑定。")
+                            Text("核对是你的宿舍后保存。保存不会出水，也不会更改学校绑定。")
                                 .font(.footnote).foregroundStyle(.secondary)
                             Button(suggestedPower == nil ? "保存此宿舍" : "保存热水和电表") { save(machine) }
                                 .buttonStyle(.borderedProminent).frame(minHeight:44)
@@ -301,7 +301,7 @@ struct CampusOnboardingView: View {
         defer { busy = false }
         do {
             if level == 3 { machines = try await provider.machines(room:option.id,school:identity.school,seed:seed)
-                if machines.isEmpty { issue = "该寝室暂未返回水控，请核对寝室" }
+                if machines.isEmpty { issue = "这间宿舍没有找到水控，请核对宿舍" }
             } else {
                 options[level+1] = try await provider.options(parent:option.id,rooms:level == 2,seed:seed)
                 busy = false

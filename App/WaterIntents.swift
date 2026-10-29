@@ -12,7 +12,7 @@ struct StartShowerIntent: AppIntent {
 }
 
 struct FinishShowerIntent: AppIntent {
-    static var title: LocalizedStringResource = "结束结算"
+    static var title: LocalizedStringResource = "结束并结算"
     static var description = IntentDescription("结束本 App 开启的热水会话并提交结算。")
     static var openAppWhenRun = true
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
@@ -30,7 +30,7 @@ struct WaterShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: StartShowerIntent(), phrases: ["用\(.applicationName)开始洗澡"],
                     shortTitle: "开始洗澡", systemImageName: "drop.fill")
-        AppShortcut(intent: FinishShowerIntent(), phrases: ["用\(.applicationName)结束结算"],
-                    shortTitle: "结束结算", systemImageName: "stop.circle")
+        AppShortcut(intent: FinishShowerIntent(), phrases: ["用\(.applicationName)结束并结算"],
+                    shortTitle: "结束并结算", systemImageName: "stop.circle")
     }
 }

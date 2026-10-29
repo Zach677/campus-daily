@@ -14,9 +14,9 @@ struct CampusPowerSetupView: View {
     var body: some View {
         List {
             Section {
-                Text(path.isEmpty ? "选择校区、楼栋和寝室" : path.map(\.name).joined(separator:" · "))
+                Text(path.isEmpty ? "选择校区、楼栋和宿舍" : path.map(\.name).joined(separator:" · "))
                     .font(.headline)
-                Text("电表与热水水控是独立绑定，核对寝室后再保存。")
+                Text("电表与热水水控是独立绑定，核对宿舍后再保存。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if busy { Text("正在读取电表信息…").foregroundStyle(.secondary) }
@@ -35,7 +35,7 @@ struct CampusPowerSetupView: View {
                             Text(meter.room).font(.headline)
                             Text("剩余 \(NSDecimalNumber(decimal:meter.remainingKWh).stringValue) 度 · 电费 \(NSDecimalNumber(decimal:meter.balanceYuan).stringValue) 元")
                                 .font(.subheadline).foregroundStyle(.secondary)
-                            Text("确认是我的寝室并保存").font(.footnote)
+                            Text("确认是我的宿舍并保存").font(.footnote)
                         }.padding(.vertical,8)
                     }.disabled(busy)
                 }
@@ -43,7 +43,7 @@ struct CampusPowerSetupView: View {
             if !path.isEmpty { Button("重新选择位置") { Task { await loadRoot() } }.disabled(busy) }
         }.scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
             .navigationTitle("绑定宿舍电表").navigationBarTitleDisplayMode(.inline)
-            .searchable(text:$search,prompt:"搜索楼栋或寝室")
+            .searchable(text:$search,prompt:"搜索楼栋或宿舍")
             .task { await loadRoot() }
     }
     private func loadRoot() async {

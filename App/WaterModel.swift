@@ -10,6 +10,8 @@ import WaterCore
     @Published private(set) var status = "导入个人配置后即可使用"
     @Published private(set) var problem = false
     @Published private(set) var lastEnded: Date?
+    /// startedAt of the current/last session (shower timer, 「上次 N 分钟」).
+    @Published private(set) var sessionStarted: Date?
     @Published private(set) var lastCost: Decimal?
     @Published private(set) var hasReceipt = false
     private var controller: WaterController?
@@ -51,8 +53,10 @@ import WaterCore
     private func refresh() {
         stage = controller?.session?.stage
         lastEnded = controller?.session?.endedAt
+        sessionStarted = controller?.session?.startedAt
         lastCost = controller?.session?.receipt?.amountYuan
         hasReceipt = controller?.session?.receipt != nil
+        ShowerActivityController.shared.sync(session:controller?.session)
         if let stage { status = stage.label }
         else if configured { status = "准备好了，靠近水控即可开始" }
     }
@@ -134,7 +138,7 @@ import WaterCore
                 try await controller.start(config:config,preferredPeripheral:UserDefaults.standard.string(forKey:deviceKey(config)))
                 if let id = controller.session?.peripheralID { UserDefaults.standard.set(id,forKey:deviceKey(config)) }
             }
-            else { try await controller.finish(config: config) }
+            else { ShowerActivityController.shared.settling(); try await controller.finish(config: config) }
             refresh()
         } catch {
             if (error as? WaterError) == .wrongDevice, start {

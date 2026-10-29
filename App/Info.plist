@@ -33,6 +33,8 @@
 		<string>Fonts/SpaceGrotesk[wght].ttf</string>
 		<string>Fonts/SpaceMono-Regular.ttf</string>
 	</array>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>CampusKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)com.beamjason.campushotwater</string>
 </dict>

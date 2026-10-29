@@ -62,7 +62,7 @@ for mode in ('Debug','Release'):
     CODE_SIGN_STYLE = Automatic; CODE_SIGN_ENTITLEMENTS = App/Campus.entitlements; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = App/Info.plist;
     OTHER_LDFLAGS = ("$(inherited)", "-ObjC", "-lc++", "-lz");
     INFOPLIST_KEY_CFBundleDisplayName = "校日常";
-    INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "连接你选择的校园水控，完成授权和结束结算。";
+    INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "连接你选择的校园水控，完成授权、结束并结算。";
     INFOPLIST_KEY_NSCameraUsageDescription = "扫描洗衣机机身二维码，保存你的常用机器。";
     INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
     INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
