@@ -6,6 +6,8 @@ import WaterCore
 struct HomeData {
     enum Water: Equatable {
         case unconfigured
+        /// Hot water can't be used in this build or at this school (no start); the reason is the subtitle.
+        case unavailable(String)
         case idle
         case starting
         case showering(Date)
@@ -170,6 +172,8 @@ extension HomeData {
         else if let stage, stage != .settled {
             water = .unresolved(stage == .closeWritePending || stage == .settlementPending ? "上次结算还没确认" : stage.label)
         }
+        else if model.platformMissing { water = .unavailable(OnboardingError.platform.rawValue) }
+        else if model.schoolClosed, stage == nil || stage == .settled { water = .unavailable(model.status) }
         else { water = .idle }
         if model.problem, water == .idle { waterIssue = model.status }
         var recents: [Recent] = []
@@ -235,6 +239,10 @@ enum HomeDemo: String, CaseIterable {
     case unconfirmedRow = "unconfirmed-row"
     case laundryRun = "home-laundry-run"
     case laundryCheck = "home-laundry-check"
+    /// Hot-water row when the build has no bundled platform profile (OnboardingError.platform).
+    case noPlatform = "no-platform"
+    /// Hot-water row when the service says this school isn't open (transactions_not_enabled).
+    case notOpen = "not-open"
 
     static func handle(_ url: URL) -> (HomeData, SettlementResult?)?? {
         guard url.scheme == "campusdaily", url.host == "demo" else { return nil }
@@ -291,11 +299,18 @@ enum HomeDemo: String, CaseIterable {
         case .off:
             data.water = .unconfigured
             return (data, nil)
+        case .noPlatform:
+            // Live path: WaterModel.platformMissing (direct dorm saved, no bundled platform profile).
+            data.water = .unavailable(OnboardingError.platform.rawValue)
+            return (data, nil)
+        case .notOpen:
+            data.water = .unavailable(WaterAccessError(status:403, code:"transactions_not_enabled").errorDescription ?? "")
+            return (data, nil)
         }
     }
 }
 
-/// campusdaily://demo/onboard/{1,2,2-missing,3,done}
+/// campusdaily://demo/onboard/{1,2,2-missing,2-samename,3,done}
 enum OnboardingDemo {
     static func handle(_ url: URL) -> (OnboardingView.Step, OnboardingView.Preview)? {
         let parts = Array(url.pathComponents.dropFirst())
@@ -304,6 +319,10 @@ enum OnboardingDemo {
         switch parts.count > 1 ? parts[1] : "1" {
         case "2": return (.dorm, preview)
         case "2-missing": preview.dorm = nil; return (.dorm, preview)
+        case "2-samename":
+            // Upstream 0.8.0-beta.2 same-name building picker, with sample directory labels.
+            preview.powerChoices = ["半山公寓 · 3 栋", "兰香公寓 · 3 栋"]
+            return (.dorm, preview)
         case "3": return (.washer, preview)
         case "done": return (.done, preview)
         default: return (.login, preview)

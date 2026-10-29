@@ -9,6 +9,8 @@ struct OnboardingView: View {
     struct Preview {
         var dorm: String?
         var laundryConnected = false
+        /// Same-name building choices (labels) for the dorm step's apartment picker.
+        var powerChoices: [String] = []
     }
 
     var preview: Preview?
@@ -29,6 +31,8 @@ struct OnboardingView: View {
     @State private var dormPicker = false
     @State private var washer = false
     @State private var issue: String?
+    /// Same-name apartment picked on the dorm step (candidate id); confirmed by 「就是这间」.
+    @State private var apartment: String?
 
     private var dorm: String? { preview != nil ? preview?.dorm : Theme.dorm(campus.room) }
     private var laundryConnected: Bool { preview?.laundryConnected ?? laundry.accountConnected }
@@ -41,17 +45,6 @@ struct OnboardingView: View {
                     .id(step)
                     .transition(reduceMotion ? .opacity : .push(from:.trailing))
                     .frame(maxWidth:.infinity, maxHeight:.infinity, alignment:.topLeading)
-            }
-            .overlay(alignment:.topTrailing) {
-                // The done screen is the end: no 「跳过」 there.
-                if step != .done {
-                    Button("跳过") { skip() }
-                        .scaledFont(17, .medium).foregroundStyle(Theme.ink2)
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                        .padding(.horizontal,28).padding(.top,8).frame(minHeight:44)
-                        .background(Theme.bg.opacity(typeSize.isAccessibilitySize ? 1 : 0))
-                        .transition(.opacity)
-                }
             }
             .safeAreaInset(edge:.bottom, spacing:0) {
                 // Accessibility sizes: the controls scroll with the content (end of the ScrollView)
@@ -106,6 +99,8 @@ struct OnboardingView: View {
             }
             if step == .dorm, preview == nil, !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil && !campus.powerConfigured {
                 powerApartment.padding(.top,30)
+            } else if step == .dorm, let choices = preview?.powerChoices, !choices.isEmpty {
+                previewApartment(choices).padding(.top,30)
             }
             if let issue {
                 Text(issue).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.redText)
@@ -157,31 +152,65 @@ struct OnboardingView: View {
     @ViewBuilder private var powerApartment: some View {
         VStack(alignment:.leading, spacing:0) {
             if !campus.powerChoices.isEmpty {
-                Text("学校里有同名楼栋，选一下你住的公寓，电表就能绑上。")
-                    .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
-                    .fixedSize(horizontal:false, vertical:true).padding(.bottom,6)
+                apartmentHint
                 ForEach(Array(campus.powerChoices.enumerated()), id:\.element.id) { index, candidate in
                     if index > 0 { Hairline() }
-                    Button { campus.choosePowerApartment(candidate) } label: {
-                        HStack(spacing:14) {
-                            Text(candidate.label).scaledFont(17).foregroundStyle(Theme.ink)
-                                .fixedSize(horizontal:false, vertical:true)
-                            Spacer()
-                            if campus.matchingPower { ProgressView().controlSize(.small) }
-                            else { Image(systemName:"chevron.right").font(.system(size:13, weight:.semibold)).foregroundStyle(Theme.ink3) }
-                        }
-                        .frame(minHeight:50).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain).disabled(campus.matchingPower)
-                    .accessibilityIdentifier("powerApartment-" + candidate.id)
+                    apartmentRow(candidate.label, selected:apartment == candidate.id) { apartment = candidate.id }
+                        .disabled(campus.matchingPower)
+                        .accessibilityIdentifier("powerApartment-" + candidate.id)
                 }
             }
             if let issue = campus.powerMatchIssue {
                 Text(issue).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal:false, vertical:true).padding(.top,8)
-                Button("重试匹配电表") { campus.matchPowerAutomatically() }
+                Button("再找一次电表") { campus.matchPowerAutomatically() }
                     .scaledFont(17, .medium).foregroundStyle(Theme.accentText)
                     .frame(minHeight:44).disabled(campus.matchingPower)
+            }
+        }
+    }
+
+    private var apartmentHint: some View {
+        Text("学校里有同名楼栋，选一下你住的公寓，电表就能绑上。")
+            .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
+            .fixedSize(horizontal:false, vertical:true).padding(.bottom,6)
+    }
+
+    /// Single-select row: a tap only marks it; 「就是这间」 confirms.
+    private func apartmentRow(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action:action) {
+            HStack(spacing:14) {
+                Text(label).scaledFont(17).foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal:false, vertical:true)
+                Spacer()
+                if selected {
+                    Image(systemName:"checkmark").scaledFont(17, .semibold).foregroundStyle(Theme.accentText)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(minHeight:50).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label.replacingOccurrences(of:" · ", with:" "))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var waitingForApartment: Bool { choosingApartment && apartment == nil }
+
+    /// The dorm step lists same-name apartments; 「就是这间」 waits for a choice.
+    private var choosingApartment: Bool {
+        guard step == .dorm else { return false }
+        if let choices = preview?.powerChoices { return !choices.isEmpty }
+        return !campus.powerChoices.isEmpty
+    }
+
+    /// DEBUG demo: the same picker with sample labels; tapping does nothing.
+    private func previewApartment(_ choices: [String]) -> some View {
+        VStack(alignment:.leading, spacing:0) {
+            apartmentHint
+            ForEach(Array(choices.enumerated()), id:\.offset) { index, label in
+                if index > 0 { Hairline() }
+                apartmentRow(label, selected:apartment == "preview-\(index)") { apartment = "preview-\(index)" }
             }
         }
     }
@@ -211,15 +240,17 @@ struct OnboardingView: View {
             }
             Button(action:primary) {
                 // Same pill style on every step (18 semibold, headline-relative).
+                // Waiting for an apartment choice: the home dock's disabled look (「正在结算…」: fill + ink2).
                 Text(primaryTitle)
-                    .scaledFont(18, .semibold, relativeTo:.headline).foregroundStyle(Theme.pillInk)
+                    .scaledFont(18, .semibold, relativeTo:.headline).foregroundStyle(waitingForApartment ? Theme.ink2 : Theme.pillInk)
                     .lineLimit(2).minimumScaleFactor(0.8).multilineTextAlignment(.center)
                     .padding(.horizontal,20).padding(.vertical,8)
                     .frame(maxWidth:.infinity, minHeight:60)
-                    .background(Theme.pill, in:Capsule())
+                    .background(waitingForApartment ? Theme.fill : Theme.pill, in:Capsule())
                     .contentTransition(reduceMotion ? .opacity : .interpolate)
             }
             .buttonStyle(PressScaleStyle())
+            .disabled(waitingForApartment)
             .accessibilityLabel(primaryTitle)
             // Fixed slot below the pill so the pill doesn't jump between steps.
             ZStack(alignment:.top) {
@@ -258,7 +289,11 @@ struct OnboardingView: View {
         case .login:
             if preview != nil { advance() } else { login = true }
         case .dorm:
-            if dorm != nil { advance() } else { openDormPicker() }
+            if choosingApartment {
+                guard let apartment else { return }
+                if let candidate = campus.powerChoices.first(where:{ $0.id == apartment }) { campus.choosePowerApartment(candidate) }
+                advance()
+            } else if dorm != nil { advance() } else { openDormPicker() }
         case .washer:
             if preview != nil { advance() }
             else if laundryConnected { washer = true }
@@ -270,10 +305,6 @@ struct OnboardingView: View {
     private func openDormPicker() {
         guard preview == nil else { return }
         dormPicker = true
-    }
-
-    private func skip() {
-        advance()   // on .done (last step) advance() closes
     }
 
     private func advance() {

@@ -55,7 +55,7 @@ struct CampusRechargeView: View {
                   campus.onboardingLogin?.accToken == config.accToken else { throw CampusError.expired }
             context = result
         } catch is CancellationError { }
-          catch { issue = (error as? CampusError) == .expired ? "校园登录已过期，请重新登录学校账号" : (error as? LocalizedError)?.errorDescription ?? "学校页面暂时无法打开，请重试" }
+          catch { issue = (error as? CampusError) == .expired ? "学校登录过期了，重新登录一下。" : (error as? LocalizedError)?.errorDescription ?? "学校页面暂时无法打开，请重试" }
     }
 }
 

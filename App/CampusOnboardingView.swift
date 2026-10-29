@@ -151,7 +151,7 @@ struct CampusLoginSheet: View {
                     }
                 }
                 if let issue = browser.issue { Text(issue).font(.footnote).foregroundStyle(.orange).padding(10) }
-                if browser.stalled { Button("重试自动连接") { browser.retry?() }
+                if browser.stalled { Button("再连一次") { browser.retry?() }
                     .buttonStyle(.borderedProminent).padding().disabled(browser.reading) }
                 if browser.stalled || manual {Button("备用方式") { manual.toggle() }.font(.footnote).padding(.vertical,4)}
                 if manual { Button {
@@ -188,14 +188,14 @@ struct CampusOnboardingView: View {
     var body: some View {
         Form {
             if water.onboardingProfile == nil {
-                Section("热水接入") {
-                    Text("完成学校登录后直接读取本人宿舍与水控，无需导入配置文件。")
+                Section("热水") {
+                    Text("登录学校账号后会自动读到宿舍和水控，不用导入文件。")
                         .font(.footnote).foregroundStyle(.secondary)
-                    if draft != nil {Button("重试自动连接") {Task {await prepare()}}.disabled(busy || !water.mayImport || campus.loading)}
-                    DisclosureGroup("备用接入方式") {
-                        Button("导入热水接入文件") {importingPlatform = true}
+                    if draft != nil {Button("再连一次") {Task {await prepare()}}.disabled(busy || !water.mayImport || campus.loading)}
+                    DisclosureGroup("导入热水配置") {
+                        Button("选择配置文件") {importingPlatform = true}
                             .disabled(busy || !water.mayImport).accessibilityIdentifier("importWaterPlatform")
-                        Text("仅用于旧版迁移或开发排查。正常使用无需导入文件。")
+                        Text("平时用不到，只在从旧版迁移或排查问题时用。")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -203,7 +203,7 @@ struct CampusOnboardingView: View {
             if let address = draft?.portalDormAddress, !address.isEmpty {
                 Section("学校登记宿舍") {
                     Text(address).font(.subheadline)
-                    if autoMatched {Text(campus.powerConfigured ? "热水宿舍已匹配，电表已保存。" : "已匹配热水宿舍，请核对后保存。")
+                    if autoMatched {Text(campus.powerConfigured ? "宿舍和电表都找到了。" : "找到你的宿舍了，核对一下再保存。")
                         .font(.footnote).foregroundStyle(.secondary)}
                 }
             }
@@ -212,19 +212,19 @@ struct CampusOnboardingView: View {
                 Button { login = true } label: { Label(draft == nil ? "登录并连接校园卡" : "重新登录",systemImage:"person.crop.circle") }
                     .accessibilityIdentifier("officialCampusLogin").disabled(busy)
                 if draft != nil {
-                    Label("已读取校园登录",systemImage:"checkmark.circle").foregroundStyle(.green)
+                    Label("已读取学校账号",systemImage:"checkmark.circle").foregroundStyle(.green)
                     Button(identity == nil ? "继续读取宿舍" : "重新读取宿舍") { Task { await prepare() } }
                         .disabled(busy || !water.mayImport || campus.loading).accessibilityIdentifier("prepareDormOnboarding")
                 }
-            } header: { Text("校园登录") } footer: { Text("学校验证密码，App 不保存；登录后直接读取本人的校园卡和宿舍信息。") }
+            } header: { Text("学校账号") } footer: { Text("密码只交给学校，不经过我们。登录后会读到你的校园卡和宿舍。") }
             if serviceEnabled == false {
-                Section {Text("在线身份和宿舍可配置；开始用水仍在验收，暂未开放。")
+                Section {Text("宿舍已经设好了，热水开放后就能用。")
                     .font(.footnote).foregroundStyle(.orange)}
             }
             if identity != nil {
                 Section("热水宿舍") {
                     if autoMatched, let address = draft.flatMap({PortalDormAddress.parse($0.portalDormAddress)}) {
-                        LabeledContent("已匹配宿舍",value:address.shortRoom)
+                        LabeledContent("已匹配宿舍",value:Theme.dorm(address.shortRoom) ?? address.shortRoom)
                         DisclosureGroup("更换宿舍") {dormMenus}
                     } else {dormMenus}
                     ForEach(machines) { machine in
@@ -233,7 +233,7 @@ struct CampusOnboardingView: View {
                             Text("水控编号 " + machine.id).font(.caption.monospaced()).foregroundStyle(.secondary)
                             Text("核对是你的宿舍后保存。保存不会出水，也不会更改学校绑定。")
                                 .font(.footnote).foregroundStyle(.secondary)
-                            Button("保存此宿舍") {Task {await save(machine)}}
+                            Button("就是这间") {Task {await save(machine)}}
                                 .buttonStyle(.borderedProminent).frame(minHeight:44)
                                 .disabled(busy || !water.mayImport || campus.loading || saved).accessibilityIdentifier("saveDormBinding")
                         }.padding(.vertical,6)
@@ -250,13 +250,13 @@ struct CampusOnboardingView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
-        }.navigationTitle("校园登录与宿舍").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("学校账号与宿舍").navigationBarTitleDisplayMode(.inline)
             .fileImporter(isPresented:$importingPlatform,allowedContentTypes:[.json,.data]) {result in
                 do {
                     try water.importPlatform(result.get()); issue = nil
                     if draft != nil {Task {await prepare()}}
                     else {login = true}
-                } catch {issue = "接入文件未导入。请选择平台专用文件，不要使用他人的完整热水配置。"}
+                } catch {issue = "没导入成功。选热水平台给的配置文件，别用别人的完整配置。"}
             }
             .sheet(isPresented:$login) { CampusLoginSheet { value in
                 draft = value; identity = nil; options = [[],[],[],[]]; selected = []; machines = []; saved = false; issue = nil
@@ -289,7 +289,7 @@ struct CampusOnboardingView: View {
     private func prepare() async {
         guard !busy, let draft, water.mayImport else { return }
         do { try campus.acceptLogin(draft) }
-        catch { issue = "校园登录暂未保存，请稍后重试"; return }
+        catch { issue = "学校账号暂未保存，请稍后重试"; return }
         // The card is ready independently of hot-water platform provisioning
         // or whether the user finishes choosing a dorm in this visit.
         Task { await campus.refresh(force:true) }

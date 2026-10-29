@@ -3,7 +3,7 @@ import CryptoKit
 
 public enum CampusError: String, Error, LocalizedError, Sendable {
     case configuration = "请完成学校账号与宿舍设置"
-    case expired = "校园登录需更新，请重新登录学校账号"
+    case expired = "学校登录过期了，重新登录一下。"
     case network = "暂时无法连接学校"
     case offline = "校园查询未联网，请检查本 App 的无线数据权限"
     case timedOut = "学校连接超时，稍后下拉重试"

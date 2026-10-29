@@ -5,7 +5,7 @@ public enum OnboardingError: String, Error, LocalizedError {
     case response = "暂时无法读取学校信息，请稍后重试"
     case seed = "请先导入热水平台配置，再选择宿舍"
     case identity = "学校登录过期了，重新登录一下。"
-    case platform = "当前安装包未包含热水平台配置，请更新完整版本"
+    case platform = "这个版本没带热水配置，热水暂时用不了。"
     public var errorDescription: String? { rawValue }
 }
 

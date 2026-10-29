@@ -9,6 +9,8 @@ import WaterCore
     @Published private(set) var stage: SessionStage?
     @Published private(set) var status = "导入个人配置后即可使用"
     @Published private(set) var problem = false
+    /// The hot-water service answered that this school isn't open yet (「本校暂未开放」); cleared on the next refresh.
+    @Published private(set) var schoolClosed = false
     @Published private(set) var lastEnded: Date?
     /// startedAt of the current/last session (shower timer, 「上次 N 分钟」).
     @Published private(set) var sessionStarted: Date?
@@ -39,7 +41,11 @@ import WaterCore
             refresh()
         } catch { status = WaterError.storage.message; problem = true }
     }
-    var mayStart: Bool { configured && !reviewingIdentity && !residenceReviewRequired && config?.access == nil && controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
+    /// Direct-access dorm saved, but this build has no bundled platform profile (OnboardingError.platform):
+    /// hot water can't be used until a complete build is installed.
+    var platformMissing: Bool { config?.access != nil && !hasBundledPlatform }
+    private lazy var hasBundledPlatform: Bool = bundledPlatform != nil
+    var mayStart: Bool { configured && !platformMissing && !schoolClosed && !reviewingIdentity && !residenceReviewRequired && config?.access == nil && controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
     var mayFinish: Bool { configured && !busy && stage?.mayClose == true && controller?.storageBlocked == false }
     var mayImport: Bool { controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
     var onboardingSeed: WaterConfig? { config }
@@ -106,7 +112,7 @@ import WaterCore
             reviewingIdentity = true;residenceReviewRequired = true
             UserDefaults.standard.set(true,forKey:"water.needsResidenceReview")
             problem = true
-            status = "宿舍保存未完成，请重新核对校园账号和水控"
+            status = "宿舍没存上，再核对一下学校账号和水控。"
             throw error
         }
     }
@@ -142,6 +148,7 @@ import WaterCore
         reviewingIdentity = false
     }
     private func refresh() {
+        schoolClosed = false
         stage = controller?.session?.stage
         lastEnded = controller?.session?.endedAt
         sessionStarted = controller?.session?.startedAt
@@ -150,9 +157,9 @@ import WaterCore
         ShowerActivityController.shared.sync(session:controller?.session)
         Reminders.shared.syncShower(started:stage?.mayClose == true ? sessionStarted : nil)
         if residenceReviewRequired && (stage == nil || stage == .settled) {
-            status = "学校宿舍已变更，请先重新确认宿舍水控";problem = true
+            status = "学校那边的宿舍变了，重新选一下水控。";problem = true
         } else if let stage { status = stage.label }
-        else if configured { status = config?.access?.isCurrent == false ? "请重新登录学校账号以更新热水连接" : "准备好了，靠近水控即可开始" }
+        else if configured { status = config?.access?.isCurrent == false ? "学校登录过期了，重新登录一下。" : "准备好了，靠近水控就能开始洗。" }
     }
     func importConfig(_ url: URL) throws {
         guard mayImport else { throw WaterError.unresolved }
@@ -180,7 +187,8 @@ import WaterCore
     func show(_ error: Error) {
         refresh()
         problem = true
-        status = (error as? LocalizedError)?.errorDescription ?? "操作未确认，请查看当前记录后再继续"
+        status = (error as? LocalizedError)?.errorDescription ?? "还没确认刚才的操作，先看看首页的记录。"
+        schoolClosed = (error as? WaterAccessError)?.code == "transactions_not_enabled"
         if (error as? WaterError) == .wrongDevice, mayImport {
             status = "这台水控不是你宿舍的，到设置 › 高级 › 连接检查里重新选。"
         }

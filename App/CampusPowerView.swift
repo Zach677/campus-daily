@@ -43,7 +43,7 @@ struct CampusPowerSetupView: View {
             }
             if !path.isEmpty { Button("重新选择位置") { Task { await loadRoot() } }.disabled(busy) }
         }.scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
-            .navigationTitle("绑定宿舍电表").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("绑定电表").navigationBarTitleDisplayMode(.inline)
             .searchable(text:$search,prompt:"搜索楼栋或宿舍")
             .task { await loadRoot() }
     }
@@ -74,10 +74,10 @@ struct AutomaticPowerSection: View {
     @EnvironmentObject private var campus: CampusModel
     var body: some View {
         if campus.matchingPower || !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil || campus.powerConfigured {
-            Section("宿舍电表") {
-                if campus.matchingPower {Label("正在匹配电表，可以先保存热水宿舍",systemImage:"bolt")}
+            Section("电表") {
+                if campus.matchingPower {Label("正在找电表，可以先保存宿舍。",systemImage:"bolt")}
                 else if !campus.powerChoices.isEmpty {
-                    Text("学校目录里有同名楼栋，只需确认一次公寓。")
+                    Text("有同名楼栋，选一次你住的公寓就行。")
                         .font(.footnote).foregroundStyle(.secondary)
                     ForEach(campus.powerChoices) {candidate in
                         Button(candidate.label) {campus.choosePowerApartment(candidate)}
@@ -86,7 +86,7 @@ struct AutomaticPowerSection: View {
                 } else if campus.powerConfigured {Label("电表已保存",systemImage:"checkmark.circle").foregroundStyle(Theme.ink2)}
                 if let issue = campus.powerMatchIssue {
                     Text(issue).font(.footnote).foregroundStyle(.secondary)
-                    Button("重试匹配电表") {campus.matchPowerAutomatically()}
+                    Button("再找一次电表") {campus.matchPowerAutomatically()}
                 }
             }
         }

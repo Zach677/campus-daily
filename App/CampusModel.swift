@@ -67,16 +67,17 @@ private enum CampusConfigStore {
     }
     var room: String {
         let full = snapshot?.room ?? config?.dormRoom.nonEmpty ?? "未配置"
-        if let address = PortalDormAddress.parse(full) {return address.shortRoom}
+        if let address = PortalDormAddress.parse(full) {return address.building + " 栋 " + address.room}
         let parts = full.components(separatedBy:" · ")
         if parts.count == 4, parts[1].hasSuffix("栋") {
             let building = String(parts[1].dropLast())
             let number = parts[3]
             if !building.isEmpty, !number.isEmpty, building.allSatisfy(\.isNumber), number.allSatisfy(\.isNumber) {
-                return building + "栋" + number
+                return building + " 栋 " + number
             }
         }
-        return full
+        // Display only: 「2栋504」 → 「2 栋 504」 (stored values stay as the school wrote them).
+        return Theme.dorm(full) ?? full
     }
     var balanceText: String {
         guard let value = snapshot?.balance else { return "—" }
@@ -249,11 +250,11 @@ private enum CampusConfigStore {
                 guard !Task.isCancelled, let current = self.config, scope.accepts(current) else {return}
                 matchingPower = false; powerChoices = result.choices
                 if let suggestion = result.suggestion {try applyAutomaticPower(suggestion,scope:scope)}
-                else if result.choices.isEmpty {powerMatchIssue = "未找到唯一电表，可手动选择位置或稍后重试。"}
+                else if result.choices.isEmpty {powerMatchIssue = "没找到你宿舍的电表，手动选一下位置，或者等会儿再试。"}
             } catch {
                 guard !Task.isCancelled, let current = self.config, scope.accepts(current) else {return}
                 matchingPower = false
-                powerMatchIssue = (error as? LocalizedError)?.errorDescription ?? "电表暂未匹配，请稍后重试。"
+                powerMatchIssue = (error as? LocalizedError)?.errorDescription ?? "电表还没读到，等会儿再试。"
             }
         }
     }
@@ -269,11 +270,11 @@ private enum CampusConfigStore {
                 guard !Task.isCancelled, let current = self.config, scope.accepts(current) else {return}
                 matchingPower = false
                 if let suggestion {try applyAutomaticPower(suggestion,scope:scope)}
-                else {powerMatchIssue = "该位置未返回唯一的本宿舍电表，请核对公寓或手动选择。"}
+                else {powerMatchIssue = "没找到你宿舍的电表，手动选一下位置，或者等会儿再试。"}
             } catch {
                 guard !Task.isCancelled, let current = self.config, scope.accepts(current) else {return}
                 matchingPower = false
-                powerMatchIssue = (error as? LocalizedError)?.errorDescription ?? "电表暂时无法读取，请重试。"
+                powerMatchIssue = (error as? LocalizedError)?.errorDescription ?? "电表还没读到，等会儿再试。"
             }
         }
     }

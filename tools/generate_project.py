@@ -49,11 +49,14 @@ extra_resources = [fontbuild, automationbuild]
 profile = root / 'private/distribution/WaterPlatformProfile.json'
 resource_files = [assetbuild, sdkresourcebuild] + extra_resources
 resphase = obj('resources', f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(resource_files)}); runOnlyForDeploymentPostprocessing = 0;')
-# Debug builds without a local profile (simulator, UI review) skip staging; the app then reports
-# OnboardingError.platform. Release builds still require a valid platform-only profile.
-profile_script = ('if [ -z "$CAMPUS_WATER_PROFILE_PATH" ] && [ "$CONFIGURATION" = "Debug" ]; then\n'
-    '  echo "note: CAMPUS_WATER_PROFILE_PATH not set; Debug build has no bundled water platform"\n  exit 0\nfi\n'
-    'python3 "$SRCROOT/tools/stage_platform_profile.py" --profile "$CAMPUS_WATER_PROFILE_PATH" --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/CampusWaterPlatform.json"\n')
+# The profile comes from CAMPUS_WATER_PROFILE_PATH, else private/distribution/WaterPlatformProfile.json
+# (tools/fetch_platform_profile.py). Debug builds without either (simulator, UI review) skip staging;
+# the app then reports OnboardingError.platform. Release builds still require a valid profile.
+profile_script = ('P="$CAMPUS_WATER_PROFILE_PATH"\n'
+    'if [ -z "$P" ] && [ -f "$SRCROOT/private/distribution/WaterPlatformProfile.json" ]; then P="$SRCROOT/private/distribution/WaterPlatformProfile.json"; fi\n'
+    'if [ -z "$P" ] && [ "$CONFIGURATION" = "Debug" ]; then\n'
+    '  echo "warning: no water platform profile; hot water will not connect. Run python3 tools/fetch_platform_profile.py"\n  exit 0\nfi\n'
+    'python3 "$SRCROOT/tools/stage_platform_profile.py" --profile "$P" --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/CampusWaterPlatform.json"\n')
 profilephase = obj('bundled-water-platform', f'''isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = ();
     inputPaths = ("$(CAMPUS_WATER_PROFILE_PATH)", "$(SRCROOT)/tools/stage_platform_profile.py");
     name = "Stage shared water platform";

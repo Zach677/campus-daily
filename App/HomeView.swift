@@ -334,6 +334,7 @@ struct HomeView: View {
     private func waterSubtitle(_ data: HomeData) -> String {
         switch data.water {
         case .unconfigured: return "先在设置里导入热水配置"
+        case .unavailable(let reason): return reason
         case .showering, .settling: return "正在洗澡"
         case .unresolved(let label): return label
         case .idle, .starting:
@@ -344,14 +345,21 @@ struct HomeView: View {
     }
     private func waterValue(_ data: HomeData) -> RowValue? {
         switch data.water {
-        case .unconfigured: return nil
+        case .unconfigured, .unavailable: return nil
         case .showering, .settling: return .word("使用中")
         case .unresolved: return .accentWord("待核对")
         case .idle, .starting: return .word("可以洗")
         }
     }
     private func waterRow(_ data: HomeData) -> some View {
-        StatusRow(emoji:"🚿", title:"热水", subtitle:waterSubtitle(data), value:waterValue(data))
+        StatusRow(emoji:"🚿", title:"热水", subtitle:waterSubtitle(data), value:waterValue(data), dimmed:isUnavailable(data.water))
+    }
+    /// Hot water can't be used (not imported, no platform, school not open): ink2 title, no value, no pill.
+    private func isUnavailable(_ water: HomeData.Water) -> Bool {
+        switch water {
+        case .unconfigured, .unavailable: return true
+        default: return false
+        }
     }
     private func waterLabel(_ data: HomeData) -> String {
         var parts = ["热水"]
@@ -435,7 +443,7 @@ struct HomeView: View {
 
     private func waterPillKind(_ data: HomeData) -> PillKind? {
         switch data.water {
-        case .unconfigured: return nil
+        case .unconfigured, .unavailable: return nil
         case .showering: return .finish
         case .settling: return .settling
         case .starting: return .starting

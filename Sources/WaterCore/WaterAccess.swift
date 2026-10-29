@@ -31,13 +31,13 @@ public struct WaterAccessError: Error, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch code {
         case "school_login_required", "school_login_expired", "access_expired", "login_required":
-            return "学校登录需更新，请重新登录学校账号"
-        case "transactions_not_enabled": return "热水接入正在验收，暂未开放开始用水"
-        case "water_unresolved": return "仍有未确认的热水记录，请先核对记录"
-        case "wrong_device", "bind_required", "invalid_location": return "宿舍或水控需要重新核对，请返回宿舍设置"
-        case "rate_limited": return "查询较频繁，请稍后重试"
-        case "access_network_unavailable": return "无法连接热水接入服务，请检查网络后重试"
-        default: return "热水在线接入暂时不可用，请稍后重新读取宿舍"
+            return "学校登录过期了，重新登录一下。"
+        case "transactions_not_enabled": return "本校暂未开放"
+        case "water_unresolved": return "上次结算还没确认，先核对它。"
+        case "wrong_device", "bind_required", "invalid_location": return "宿舍或水控要重新核对，到设置 › 宿舍里看看。"
+        case "rate_limited": return "刷新得太频繁了，过一会儿再试。"
+        case "access_network_unavailable": return "连不上热水平台，看看网络再试。"
+        default: return "暂时连不上热水平台，等一下再刷新。"
         }
     }
     public init(status: Int, code: String) {
