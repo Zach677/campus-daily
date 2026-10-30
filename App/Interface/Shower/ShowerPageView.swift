@@ -8,7 +8,7 @@ enum ShowerPageText {
     static let connectingBody = "站近一点，蓝牙别关。"
     static let runningLabel = "正在洗澡"
     static let runningBody = "按水控上的出水键就有热水，结算后显示费用。"
-    static let runningNote = "锁屏也行，在锁屏或灵动岛上也能结束并结算。"
+    static let runningNote = "锁屏或灵动岛上也能结束并结算。"
     static let settling = "正在结算…"
     static let settlingBody = "先别离开水控。"
     static let doneLabel = "洗好了"
@@ -19,7 +19,7 @@ enum ShowerPageText {
     static let inUse = "水控有人在用"
     static let inUseBody = "附近的水控有人在用，现在开不了水。等它空了再试。这次没扣钱。"
     static let unsure = "不确定结算了没有"
-    static let unsureBody = "别再点结算，免得重复扣钱。去学校的热水记录里核对这次洗澡。"
+    static let unsureBody = "别再点结算，免得重复扣钱。核对一下学校那边这次扣了没有。"
     static let check = "这次洗澡要核对一下"
     static let checkBody = "水控显示已经停了，但这次还没结算上。去学校的热水记录里看看扣了没有，核对完才能再洗。"
     /// The home button while that check waits.
