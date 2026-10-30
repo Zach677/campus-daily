@@ -283,8 +283,15 @@ public enum CampusParser {
         request.setValue(Self.base + referer, forHTTPHeaderField: "Referer")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let bytes: Data, response: URLResponse
-        do { (bytes,response) = try await session.data(for: request) }
+        do {
+            try Task.checkCancellation()
+            (bytes,response) = try await session.data(for: request)
+            try Task.checkCancellation()
+        }
         catch {
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                throw CancellationError()
+            }
             #if DEBUG
             if let trace { CampusTrace.log("\(trace) network urlError=\((error as? URLError)?.errorCode ?? 0)") }
             else { print("CAMPUS_READ_NETWORK urlError=\((error as? URLError)?.errorCode ?? 0)") }
@@ -359,7 +366,10 @@ public enum CampusParser {
         #else
         let trace: String? = nil
         #endif
-        let login = try? await officialLogin(config, trace:trace)
+        var login: [String:Any]?
+        do { login = try await officialLogin(config, trace:trace) }
+        catch is CancellationError { throw CancellationError() }
+        catch { /* Retain the existing captured-card fallback for other login-bridge errors. */ }
         if let id = login?["syscustid"] as? String, !id.isEmpty { balanceID = id }
         try Task.checkCancellation()
         var custid = config.custid

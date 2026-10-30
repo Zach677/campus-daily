@@ -90,6 +90,9 @@ public struct WaterSession: Codable, Equatable, Sendable {
     /// Closed by the user after checking the official record (no receipt, no end time).
     /// Optional so sessions saved by earlier versions still decode.
     public var resolvedManually: Bool?
+    /// Persist an observed mismatch so relaunch cannot present a stale authorization as current.
+    public var stateReviewRequired: Bool?
+    public var requiresStateReview: Bool { stateReviewRequired == true }
     public init(stage: SessionStage, machineID: String, peripheralID: String, startedAt: Date = Date()) {
         self.stage = stage; self.machineID = machineID; self.peripheralID = peripheralID
         self.startedAt = startedAt

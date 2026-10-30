@@ -273,7 +273,13 @@ struct AdvancedSettingsView: View {
     @State private var importKind = ConfigImport.campus
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
-    private var version: String { (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + " · 内测" }
+    @State private var diagnosticURL: URL?
+    @State private var sharingDiagnostics = false
+    @State private var diagnosticFailed = false
+    private var version: String {
+        (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + " (" +
+        (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + ") · 内测"
+    }
     private func importRow(_ title: String, _ kind: ConfigImport) -> some View {
         Button { importKind = kind; importing = true } label: { ChevronRow(title:title) }
     }
@@ -317,6 +323,19 @@ struct AdvancedSettingsView: View {
                 Text("只读取设备编号，不会出水。核对后会断开，开始洗澡时再连接。")
             }.listRowBackground(Theme.group)
             Section {
+                Button { Task { await water.reviewCurrentSession() } } label: { ChevronRow(title:"只读检查本次水控状态") }
+                    .disabled(!water.mayFinish).accessibilityIdentifier("reviewWaterSession")
+                Button {
+                    do { diagnosticURL = try water.exportDiagnostics(); sharingDiagnostics = true }
+                    catch { diagnosticFailed = true }
+                } label: { ChevronRow(title:"导出热水诊断") }.accessibilityIdentifier("exportWaterDiagnostics")
+            } header: { Text("热水排查") } footer: {
+                VStack(alignment:.leading, spacing:6) {
+                    Text("只读检查：仅查询已保存会话的设备，不开水、不关水、不结算。")
+                    Text("诊断文件包含版本、操作时间和设备回复类型，不含账号、密钥或设备编号。仅记录更新后的操作。")
+                }
+            }.listRowBackground(Theme.group)
+            Section {
                 Link(destination:URL(string:"shortcuts://")!) { ChevronRow(title:"快捷指令") }
             } footer: {
                 Text("在“快捷指令” App 里搜“校日常”，就能把“开始洗澡”和“结束并结算”加到主屏幕或操作按钮上。")
@@ -329,6 +348,10 @@ struct AdvancedSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("高级").navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented:$sharingDiagnostics) {
+            if let diagnosticURL { WaterDiagnosticShare(url:diagnosticURL) }
+        }
+        .alert("诊断文件暂未生成", isPresented:$diagnosticFailed) { Button("知道了", role:.cancel) {} }
         .fileImporter(isPresented:$importing, allowedContentTypes:[.json, .data]) { result in
             importIssue = nil
             do {

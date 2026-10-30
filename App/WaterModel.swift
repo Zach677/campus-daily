@@ -38,7 +38,7 @@ import WaterCore
             return try await self.requestDevice(candidates)
         }
         do {
-            controller = try WaterController(transport: bluetooth, provider: HTTPSWaterProvider(), store: FileSessionStore())
+            controller = try WaterController(transport: bluetooth, provider: HTTPSWaterProvider(), store: FileSessionStore(), diagnostics: WaterDiagnosticReport.trace)
             config = try PrivateConfigStore.load()
             importedPlatform = try WaterPlatformStore.load()
             configured = config != nil
@@ -53,10 +53,11 @@ import WaterCore
     var mayFinish: Bool { configured && !busy && stage?.mayClose == true && controller?.storageBlocked == false }
     var mayImport: Bool { controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
     /// Offer the manual 「核对过了」 action only where the record can't move on by itself:
-    /// any unresolved stage that can't be finished, or a finishable one whose device reported idle.
+    /// any unresolved stage that can't be finished, or a finishable one whose device reported idle
+    /// (in this launch, or persisted by the controller as `requiresStateReview`).
     var mayResolveManually: Bool {
         guard controller != nil, !busy, controller?.storageBlocked == false, let stage, stage != .settled else { return false }
-        return !stage.mayClose || finishFoundIdle
+        return !stage.mayClose || finishFoundIdle || controller?.session?.requiresStateReview == true
     }
     /// Deliberate user action: the user checked the official hot-water record. Never contacts device or server.
     func resolveManually() throws {
@@ -184,7 +185,11 @@ import WaterCore
         resolvedManually = controller?.session?.resolvedManually == true
         ShowerActivityController.shared.sync(session:controller?.session)
         Reminders.shared.syncShower(started:stage?.mayClose == true ? sessionStarted : nil)
-        if residenceReviewRequired && (stage == nil || stage == .settled) {
+        if controller?.session?.requiresStateReview == true, stage != .settled {
+            // Persisted by the controller when a finish found the device not in use; survives relaunch.
+            problem = true
+            status = WaterError.notActive.message + "；请核对现场及官方用水记录"
+        } else if residenceReviewRequired && (stage == nil || stage == .settled) {
             status = "学校那边的宿舍变了，重新选一下水控。";problem = true
         } else if resolvedManually, stage == .settled { status = "上次洗澡已手动核对" }
         else if let stage { status = stage.label }
@@ -218,6 +223,7 @@ import WaterCore
         problem = true
         status = (error as? LocalizedError)?.errorDescription ?? "还没确认刚才的操作，先看看首页的记录。"
         schoolClosed = (error as? WaterAccessError)?.code == "transactions_not_enabled"
+        WaterDiagnosticReport.trace.record(.operationFailed, stage: stage, error: (error as? WaterError) ?? .interrupted)
         if (error as? WaterError) == .wrongDevice, mayImport {
             status = "这台水控不是你宿舍的，到设置 › 高级 › 连接检查里重新选。"
         }
@@ -244,6 +250,18 @@ import WaterCore
         choice?.resume(throwing:WaterError.interrupted)
     }
     private func deviceKey(_ config: WaterConfig) -> String { "water.verifiedPeripheral." + config.machineID.uppercased() }
+    func exportDiagnostics() throws -> URL {
+        try WaterDiagnosticReport.export(stage: stage, needsReview: controller?.session?.requiresStateReview == true)
+    }
+    func reviewCurrentSession() async {
+        guard mayFinish, let controller, let config else { return }
+        busy = true; status = "正在只读检查水控状态…"
+        defer { busy = false }
+        do {
+            _ = try await controller.review(config: config)
+            problem = false; refresh()
+        } catch { show(error) }
+    }
     func inspectBluetooth() async {
         guard mayImport, let config, let controller else { return }
         busy = true; inspecting = true; selectionAllowed = true; verifiedDevice = nil
