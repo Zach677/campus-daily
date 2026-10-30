@@ -128,8 +128,19 @@ enum Service: String, Sendable { case cas, portal, ecykt, lxt6, ujing }
 
 ### 2.1 School: CAS → portal → ecykt
 
-**Login (interactive, WKWebView).** CAS uses a JS-encrypted password form; we never see or store
-the password. The app opens the CAS login for the portal service in a non-persistent
+**Login (account and password, native).** `CASLoginClient` drives the CAS password form without a
+web view: `GET /cas/login?service=<portal>` (keep the `SESSION` cookie for this one login, read
+the form's `execution`), `GET /cas/jwt/publicKey` (PEM), then one `POST /cas/login` with
+`"__RSA__" + base64(RSA PKCS#1 v1.5(password))`, `failN=0`, an empty captcha and the install's
+random `fpVisitorId`; the redirect is not followed. Its `Location` carries the CAS `ticket`, a JWT
+whose payload `idToken` is the **portal token** (with its own `exp`, about 8 h). Then step 2 below.
+A refused login with 账号或密码 in the page's `errors` is `wrongCredentials`; captcha, lock,
+extra verification, a missing `execution`, a page without errors or any other shape is
+`cannotLoginDirectly` (the UI offers the web login). Never retried: 30 failures lock the account.
+The password is sent only to CAS, kept only if the user opts in (`school.password`), never logged.
+
+**Login (interactive, WKWebView).** The fallback. CAS uses a JS-encrypted password form; on this
+path we never see the password. The app opens the CAS login for the portal service in a non-persistent
 `WKWebsiteDataStore`, the user signs in, then:
 
 1. On the portal origin, read `localStorage.token` → **portal token** (`X-Id-Token` JWT).
@@ -167,7 +178,9 @@ struct EcyktClient { // POST JSON, acc_token in header AND body
 
 | Credential | Source | Stored | Lifetime (observed) |
 |---|---|---|---|
-| portal token | CAS login (WebView) | Keychain `school.portal` (WhenUnlocked) | unknown |
+| portal token (`idToken`) + `exp` | CAS login (password form or WebView) | Keychain `school.portal` (WhenUnlocked) | about 8 h (`exp`) |
+| school account, saved password (opt-in), paused flag | the login form / Settings › 学校账号 | Keychain `school.password` (AfterFirstUnlock) | until sign-out, reset or turned off |
+| CAS `fpVisitorId` (random 32 hex per install) | first password login | Keychain `school.device` (private group) | until sign-out or reset |
 | ecykt token + `syscustid` + `custid` + `areacode` + UA | exchange / elecampus_state | Keychain `school.ecykt` (AfterFirstUnlock, so BG refresh works) | > 64 min incl. 28 min idle; real TTL unknown |
 | dorm address, chosen meter id, building path | portal / user choice | Keychain `school.profile` | until changed |
 
@@ -192,9 +205,14 @@ Facts the design relies on (from the read-only captures):
    what it read; the refresher reduces it into the snapshot and stores it.
 3. Done. Card/power failures are recorded per tile; a liveness failure marks **all** school tiles
    with a "重新登录" state even if old values are shown (values keep their `fetchedAt`).
-4. Silent re-exchange (only when not running in background): if a portal token exists,
-   `eCardTicketURL` → `exchange` → retry step 1 once. Portal `-1001`/`-1` → `sessionExpired(.portal)`
-   → UI asks the user to sign in again. No loops, no retries beyond one.
+4. Silent re-exchange (only when not running in background): if a portal token exists and its
+   `exp` (known after a password login) has not passed, `eCardTicketURL` → `exchange` → retry
+   step 1 once. Portal `-1001`/`-1` → `sessionExpired(.portal)` → go to step 5.
+5. Saved password (foreground or background, only if the user chose to save it and it is not
+   paused): one CAS login (`CASLoginClient`), then `eCardTicketURL` → `exchange` → step 1. Any
+   failure except no network pauses the saved password (`SchoolAccount.paused`) and the UI asks
+   the user to sign in again; it is tried again only after the user signs in or saves a password.
+   No loops, no retries beyond one.
 
 **One refresh at a time.** Callers today are pull-to-refresh, the app coming to the foreground,
 the background task, and the refreshes after a state change (sign-in, meter choice, recharge).
@@ -456,6 +474,8 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 |---|---|---|---|
 | school credentials (`school.portal`, `school.ecykt`) | Keychain | portal: WhenUnlockedThisDeviceOnly; ecykt: AfterFirstUnlockThisDeviceOnly | portal: no (private group); ecykt: **yes** |
 | school profile (dorm, meter) | Keychain `school.profile` | AfterFirstUnlockThisDeviceOnly | **yes** |
+| school account + saved password (opt-in) | Keychain `school.password` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget will sign in by itself) |
+| CAS login device id | Keychain `school.device` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | water binding, shower session | Keychain `water.binding`, `water.session` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |

@@ -13,6 +13,28 @@ public struct PortalToken: Sendable, Equatable, Codable, CustomStringConvertible
     public var debugDescription: String { description }
 }
 
+/// The school account the user signed in with. `password` is present only when the user chose
+/// to save it; `paused` is set when an automatic sign-in with it failed, so it is not tried
+/// again until the user signs in or saves a password again.
+public struct SchoolAccount: Sendable, Equatable, Codable, CustomStringConvertible, CustomDebugStringConvertible {
+    public var account: String
+    public var password: String?
+    public var paused: Bool
+    public init(account: String, password: String? = nil, paused: Bool = false) {
+        self.account = account; self.password = password; self.paused = paused
+    }
+    /// The saved password, unless automatic sign-in is paused.
+    public var usablePassword: String? { paused ? nil : password.flatMap { $0.isEmpty ? nil : $0 } }
+    /// For display: first two and last two characters, the rest hidden.
+    public var masked: String {
+        let chars = Array(account)
+        guard chars.count > 4 else { return String(repeating: "•", count: max(chars.count, 1)) }
+        return String(chars.prefix(2)) + String(repeating: "•", count: chars.count - 4) + String(chars.suffix(2))
+    }
+    public var description: String { "SchoolAccount(<redacted>, password: \(password == nil ? "none" : "saved"), paused: \(paused))" }
+    public var debugDescription: String { description }
+}
+
 /// Everything ecykt calls need. `syscustid`/`custid` are server ciphertexts that change on
 /// every response: never compare them, always keep the latest.
 public struct EcyktSession: Sendable, Equatable, Codable, CustomStringConvertible, CustomDebugStringConvertible {

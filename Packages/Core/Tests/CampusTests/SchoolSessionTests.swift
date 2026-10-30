@@ -6,13 +6,14 @@ struct Harness {
     let server = StubServer()
     let store = InMemorySecureStore()
     let clock = FakeClock()
+    var passwordLogin: SchoolPasswordLogin? = nil
     var vault: StoredSchoolVault { StoredSchoolVault(store: store) }
     var snapshots: SharedSnapshotStore { SharedSnapshotStore(store: store) }
 
     func session() -> SchoolSession {
         let http = server.makeClient()
         return SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http), vault: vault,
-                             now: clock.function)
+                             passwordLogin: passwordLogin, now: clock.function)
     }
 
     /// The refresher over this harness's session and shared store.

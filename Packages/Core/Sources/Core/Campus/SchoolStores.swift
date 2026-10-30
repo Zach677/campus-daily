@@ -17,4 +17,10 @@ public struct StoredSchoolVault: SchoolVault {
     public func saveEcyktSession(_ session: EcyktSession?) throws { try store.writeJSON(session, .schoolEcykt) }
     public func profile() throws -> SchoolProfile? { try store.readJSON(SchoolProfile.self, .schoolProfile) }
     public func saveProfile(_ profile: SchoolProfile?) throws { try store.writeJSON(profile, .schoolProfile) }
+    public func account() throws -> SchoolAccount? { try store.readJSON(SchoolAccount.self, .schoolPassword) }
+    public func saveAccount(_ account: SchoolAccount?) throws { try store.writeJSON(account, .schoolPassword) }
+
+    private struct DeviceBox: Codable { var id: String }
+    public func loginDeviceID() throws -> String? { try store.readJSON(DeviceBox.self, .schoolDevice)?.id }
+    public func saveLoginDeviceID(_ id: String?) throws { try store.writeJSON(id.map(DeviceBox.init), .schoolDevice) }
 }

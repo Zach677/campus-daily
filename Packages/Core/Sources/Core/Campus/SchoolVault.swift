@@ -9,4 +9,8 @@ public protocol SchoolVault: Sendable {
     func saveEcyktSession(_ session: EcyktSession?) throws
     func profile() throws -> SchoolProfile?
     func saveProfile(_ profile: SchoolProfile?) throws
+    func account() throws -> SchoolAccount?
+    func saveAccount(_ account: SchoolAccount?) throws
+    func loginDeviceID() throws -> String?
+    func saveLoginDeviceID(_ id: String?) throws
 }

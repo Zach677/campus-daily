@@ -6,6 +6,10 @@ public enum StoreKey: String, Sendable, CaseIterable {
     case schoolPortal = "school.portal"
     case schoolEcykt = "school.ecykt"
     case schoolProfile = "school.profile"
+    /// The school account, and its password only if the user chose to save it.
+    case schoolPassword = "school.password"
+    /// The browser id the school login sees from this install (random, not personal).
+    case schoolDevice = "school.device"
     case showerBinding = "water.binding"
     case showerSession = "water.session"
     case laundryAccount = "laundry.account"
@@ -28,13 +32,14 @@ public enum StoreKey: String, Sendable, CaseIterable {
     }
 
     /// Written to the shared access group so the widget extension can read them: the snapshot and
-    /// reminder lines it shows, and the school card session and dorm/meter profile it will need to
-    /// read the balance and meter by itself. Everything else (portal token, hot-water and laundry
-    /// items) lives only in the app's private group, which the widget is not entitled to.
+    /// reminder lines it shows, and the school card session, dorm/meter profile and saved school
+    /// password it will need to read the balance and meter by itself. Everything else (portal
+    /// token, login device id, hot-water and laundry items) lives only in the app's private
+    /// group, which the widget is not entitled to.
     public var isShared: Bool {
         switch self {
-        case .sharedSnapshot, .sharedReminderLines, .schoolEcykt, .schoolProfile: return true
-        case .schoolPortal, .showerBinding, .showerSession, .laundryAccount, .laundryCheckout: return false
+        case .sharedSnapshot, .sharedReminderLines, .schoolEcykt, .schoolProfile, .schoolPassword: return true
+        case .schoolPortal, .schoolDevice, .showerBinding, .showerSession, .laundryAccount, .laundryCheckout: return false
         }
     }
 }

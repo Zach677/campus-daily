@@ -101,7 +101,8 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.account, "default")
         XCTAssertEqual(StoreKey.schoolPortal.accessibility, .whenUnlockedThisDeviceOnly)
         XCTAssertEqual(StoreKey.schoolEcykt.accessibility, .afterFirstUnlockThisDeviceOnly)
-        XCTAssertEqual(StoreKey.allCases.filter(\.isShared), [.schoolEcykt, .schoolProfile, .sharedSnapshot, .sharedReminderLines])
+        XCTAssertEqual(StoreKey.allCases.filter(\.isShared), [.schoolEcykt, .schoolProfile, .schoolPassword, .sharedSnapshot, .sharedReminderLines])
+        XCTAssertEqual(StoreKey.schoolPassword.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(PreferenceKey.reminder("card"), "xrc.reminder.card")
         XCTAssertEqual(PreferenceKey.laundryAckFailedOrder, "xrc.laundry.ackFailedOrder")
         XCTAssertEqual(SharedSnapshotStore.widgetKind, "XiaoRiChangBalances")
@@ -115,7 +116,9 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.laundryCheckout.service, "com.beamjason.xiaorichang.laundry.checkout.v1")
         XCTAssertEqual(StoreKey.sharedReminderLines.service, "com.beamjason.xiaorichang.shared.reminderLines.v1")
         XCTAssertEqual(PreferenceKey.schoolLaundry, "xrc.laundry.school")
-        XCTAssertEqual(StoreKey.allCases.count, 9, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.schoolPassword.service, "com.beamjason.xiaorichang.school.password.v1")
+        XCTAssertEqual(StoreKey.schoolDevice.service, "com.beamjason.xiaorichang.school.device.v1")
+        XCTAssertEqual(StoreKey.allCases.count, 11, "a new item needs its stored name pinned here")
     }
 
     /// The Swift names say shower; the stored names stay what installed builds already wrote.
@@ -190,7 +193,13 @@ final class KeychainStoreTests: XCTestCase {
         try vault.saveEcyktSession(EcyktSession(token: "t", syscustid: "s"))
         try vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: "示例校区99栋9号1层991房")))
         try vault.savePortalToken(PortalToken("p"))
+        try vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try vault.saveLoginDeviceID("99000000000000000000000000000991")
         XCTAssertNotNil(kc.items[key(.schoolEcykt, group)])
+        XCTAssertNotNil(kc.items[key(.schoolPassword, group)], "the widget will sign in again with the saved password")
+        XCTAssertEqual(kc.accessibility[key(.schoolPassword, group)], .afterFirstUnlockThisDeviceOnly)
+        XCTAssertNil(kc.items[key(.schoolDevice, group)])
+        XCTAssertNotNil(kc.items[key(.schoolDevice, app)])
         XCTAssertNotNil(kc.items[key(.schoolProfile, group)])
         XCTAssertEqual(kc.accessibility[key(.schoolEcykt, group)], .afterFirstUnlockThisDeviceOnly,
                        "background and widget reads work while the phone is locked")
@@ -198,6 +207,8 @@ final class KeychainStoreTests: XCTestCase {
         // The widget process (shared group only) reads the same session.
         let widget = StoredSchoolVault(store: KeychainSecureStore(backend: FakeKeychainView(kc, entitlements: [group]), accessGroup: group))
         XCTAssertEqual(try widget.ecyktSession()?.syscustid, "s")
+        XCTAssertEqual(try widget.account()?.usablePassword, "synthetic-pw-991")
+        XCTAssertNil(try widget.loginDeviceID())
     }
 
     /// An item the app wrote before it was pinned to the group (default group) is still read.

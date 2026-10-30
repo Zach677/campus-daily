@@ -55,6 +55,7 @@ public actor SchoolSession {
     let portal: PortalClient
     let ecykt: EcyktClient
     let vault: SchoolVault
+    let passwordLogin: SchoolPasswordLogin?
     let now: @Sendable () -> Date
     /// Bumped by `signOut()`. Work that awaited the network checks it before writing the
     /// Keychain, so a sign-out in the middle is never undone by a late write.
@@ -62,9 +63,59 @@ public actor SchoolSession {
     /// Upper bound on directory calls when locating the room node.
     static let maxDirectoryCalls = 40
 
-    public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault,
+    public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, passwordLogin: SchoolPasswordLogin? = nil,
                 now: @escaping @Sendable () -> Date = Date.init) {
-        self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.now = now
+        self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
+    }
+
+    // MARK: Account and password
+
+    /// Sign-in from the app's own form: one password login, then the same path as a portal
+    /// token from the web page. The password is kept only when `savePassword` is on.
+    /// Throws `SchoolLoginFailure` for the login itself, `ServiceError` for the steps after it.
+    public func signIn(account: String, password: String, savePassword: Bool) async throws -> SignInSummary {
+        let started = signOutGeneration
+        let token = try await passwordLoginOnce(account: account, password: password)
+        try ensureSignedIn(since: started)
+        let summary = try await signIn(portalToken: token)
+        try ensureSignedIn(since: started)
+        try vault.saveAccount(SchoolAccount(account: account, password: savePassword ? password : nil))
+        return summary
+    }
+
+    /// Settings › 学校账号 › 保存密码: checks the password with one login before keeping it.
+    /// The account is the signed-in one when known.
+    public func savePassword(_ password: String, account given: String? = nil) async throws {
+        guard let account = given ?? ((try? vault.account()) ?? nil)?.account, !account.isEmpty else {
+            throw SchoolLoginFailure.wrongCredentials
+        }
+        let started = signOutGeneration
+        let token = try await passwordLoginOnce(account: account, password: password)
+        try ensureSignedIn(since: started)
+        try vault.savePortalToken(token)
+        try vault.saveAccount(SchoolAccount(account: account, password: password))
+    }
+
+    /// Turning 保存密码 off: the password goes at once; the account name stays for display.
+    public func forgetPassword() throws {
+        guard let stored = try vault.account() else { return }
+        try vault.saveAccount(SchoolAccount(account: stored.account))
+    }
+
+    /// The signed-in account (nil after a web sign-in, which never tells us the account).
+    public func account() -> SchoolAccount? { (try? vault.account()) ?? nil }
+
+    private func passwordLoginOnce(account: String, password: String) async throws -> PortalToken {
+        guard let passwordLogin else { throw SchoolLoginFailure.cannotLoginDirectly }
+        return try await passwordLogin.login(account: account, password: password, visitorID: loginDeviceID())
+    }
+
+    /// A random 32-hex id, kept for this install so the school sees the same browser each time.
+    private func loginDeviceID() -> String {
+        if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return id }
+        let id = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+        try? vault.saveLoginDeviceID(id)
+        return id
     }
 
     // MARK: Sign-in
@@ -103,6 +154,8 @@ public actor SchoolSession {
         let started = signOutGeneration
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
+        // The web page never tells us the account, so a saved password may belong to someone else.
+        try vault.saveAccount(nil)
         if let portalToken { try vault.savePortalToken(portalToken) }
         try vault.saveEcyktSession(updated)
         var residence: PortalResidence?
@@ -122,12 +175,16 @@ public actor SchoolSession {
         try vault.savePortalToken(nil)
         try vault.saveEcyktSession(nil)
         try vault.saveProfile(nil)
+        try vault.saveAccount(nil)
+        try vault.saveLoginDeviceID(nil)
     }
 
     // MARK: Refresh
 
-    /// Liveness (`getSysBindCustInfo`), at most one silent re-exchange (foreground only),
-    /// then balance + meter in parallel. Never calls `loginBySysId`.
+    /// Liveness (`getSysBindCustInfo`); when the card session is dead, at most one way back in:
+    /// the portal token (foreground only, unless it is known to have expired), else the saved
+    /// password (one login, never retried; any refusal pauses it until the user signs in again).
+    /// Then balance + meter in parallel. Never calls `loginBySysId`.
     public func refresh(inBackground: Bool) async -> SchoolReading {
         guard let stored = (try? vault.ecyktSession()) ?? nil else {
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
@@ -139,19 +196,30 @@ public actor SchoolSession {
         do {
             live = try await liveCard(stored)
         } catch let e as ServiceError where e.isSessionExpired {
-            guard !inBackground, let portalToken = (try? vault.portalToken()) ?? nil else {
-                return SchoolReading(outcome: .needsLogin(e), checkedAt: now())
+            var lastError = e
+            var recovered: (BoundCard, EcyktSession)?
+            if !inBackground, let portalToken = (try? vault.portalToken()) ?? nil,
+               portalToken.expiresAt.map({ $0 > now() }) ?? true {
+                do {
+                    reexchanged = true
+                    let fresh = try await exchangeSession(portalToken: portalToken, userAgent: stored.userAgent, previous: stored)
+                    recovered = try await liveCard(fresh)
+                } catch let e2 as ServiceError where e2.isSessionExpired {
+                    lastError = e2
+                } catch {
+                    // Re-exchange failed for another reason: the ecykt login is still known dead.
+                    return SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true)
+                }
             }
-            do {
-                reexchanged = true
-                let fresh = try await exchangeSession(portalToken: portalToken, userAgent: stored.userAgent, previous: stored)
-                live = try await liveCard(fresh)
-            } catch let e2 as ServiceError where e2.isSessionExpired {
-                return SchoolReading(outcome: .needsLogin(e2), checkedAt: now(), reexchanged: true)
-            } catch {
-                // Re-exchange failed for another reason: the ecykt login is still known dead.
-                return SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true)
+            if recovered == nil {
+                switch await signInWithSavedPassword(previous: stored, since: started) {
+                case .signedIn(let found): reexchanged = true; recovered = found
+                case .offline: return SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: reexchanged)
+                case .unavailable: break
+                }
             }
+            guard let recovered else { return SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: reexchanged) }
+            live = recovered
         } catch let e as ServiceError {
             return SchoolReading(outcome: .failed(e), checkedAt: now())
         } catch {
@@ -170,6 +238,35 @@ public actor SchoolSession {
         guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         return SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
                              roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged)
+    }
+
+    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable }
+
+    /// The last step of the refresh: one login with the saved password. Anything but success
+    /// or no network pauses the password, so a wrong or blocked login is never repeated.
+    private func signInWithSavedPassword(previous: EcyktSession, since started: Int) async -> PasswordStep {
+        guard let saved = (try? vault.account()) ?? nil, let password = saved.usablePassword else { return .unavailable }
+        do {
+            let token = try await passwordLoginOnce(account: saved.account, password: password)
+            let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)
+            let found = try await liveCard(fresh)
+            guard started == signOutGeneration else { return .unavailable }
+            try? vault.savePortalToken(token)
+            return .signedIn(found)
+        } catch SchoolLoginFailure.offline {
+            return .offline
+        } catch let e as ServiceError where e == .offline || e == .timedOut {
+            // The password was accepted; only the steps after it lost the network.
+            return .offline
+        } catch is CancellationError {
+            return .unavailable
+        } catch {
+            if started == signOutGeneration, var paused = (try? vault.account()) ?? nil, paused.account == saved.account {
+                paused.paused = true
+                try? vault.saveAccount(paused)
+            }
+            return .unavailable
+        }
     }
 
     // MARK: Electricity
