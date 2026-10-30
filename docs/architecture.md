@@ -178,9 +178,9 @@ struct EcyktClient { // POST JSON, acc_token in header AND body
 
 | Credential | Source | Stored | Lifetime (observed) |
 |---|---|---|---|
-| portal token (`idToken`) + `exp` | CAS login (password form or WebView) | Keychain `school.portal` (WhenUnlocked) | about 8 h (`exp`) |
+| portal token (`idToken`) + `exp` | CAS login (password form or WebView) | Keychain `school.portal` (AfterFirstUnlock, shared) | about 8 h (`exp`) |
 | school account, saved password (opt-in), paused flag | the login form / Settings › 学校账号 | Keychain `school.password` (AfterFirstUnlock) | until sign-out, reset or turned off |
-| CAS `fpVisitorId` (random 32 hex per install) | first password login | Keychain `school.device` (private group) | until sign-out or reset |
+| CAS `fpVisitorId` (random 32 hex per install) | first password login | Keychain `school.device` (shared) | until sign-out or reset |
 | ecykt token + `syscustid` + `custid` + `areacode` + UA | exchange / elecampus_state | Keychain `school.ecykt` (AfterFirstUnlock, so BG refresh works) | > 64 min incl. 28 min idle; real TTL unknown |
 | dorm address, chosen meter id, building path | portal / user choice | Keychain `school.profile` | until changed |
 
@@ -476,10 +476,10 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 
 | Data | Store | Accessibility | Shared with widget |
 |---|---|---|---|
-| school credentials (`school.portal`, `school.ecykt`) | Keychain | portal: WhenUnlockedThisDeviceOnly; ecykt: AfterFirstUnlockThisDeviceOnly | portal: no (private group); ecykt: **yes** |
+| school credentials (`school.portal`, `school.ecykt`) | Keychain | AfterFirstUnlockThisDeviceOnly | **yes** (the widget renews the card session with the portal token) |
 | school profile (dorm, meter) | Keychain `school.profile` | AfterFirstUnlockThisDeviceOnly | **yes** |
-| school account + saved password (opt-in) | Keychain `school.password` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget will sign in by itself) |
-| CAS login device id | Keychain `school.device` | AfterFirstUnlockThisDeviceOnly | never (private group) |
+| school account + saved password (opt-in) | Keychain `school.password` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget signs in by itself) |
+| CAS login device id | Keychain `school.device` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget's login shows the same browser id) |
 | water binding, shower session | Keychain `water.binding`, `water.session` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
@@ -499,10 +499,12 @@ written to the shared group; all others are written to the private group, which 
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
 registration. Today the widget reads only `shared.snapshot` and `shared.reminderLines`; the
 school card session and profile are shared so the widget can later read the balance and meter by
-itself. Builds before the private group existed kept every item in the shared group: at launch
-(and on any read that finds one there) a private item is written to the private group, read back,
-and only then deleted from the shared group; a failed step keeps the original and retries next
-launch, so nobody is signed out or loses a binding. No App Group is introduced: the current build has none and
+itself. An item can still sit in its old group: builds before the private group existed kept
+every item in the shared group, and builds before the widget refreshed by itself kept the portal
+token (then WhenUnlocked) and the login device id in the private group. At launch
+(`migrateItemGroups()`) and on any read that finds one there, the item is written to its group
+with today's accessibility, read back, and only then deleted from the old group; a failed step
+keeps the original and retries next launch, so nobody is signed out or loses a binding. No App Group is introduced: the current build has none and
 re-signers of the public IPA may not get one. Live Activities get data via ActivityKit content
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.

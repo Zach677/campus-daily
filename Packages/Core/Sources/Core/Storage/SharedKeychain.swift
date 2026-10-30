@@ -54,9 +54,9 @@ public enum SharedKeychain {
     public static let keychainStore = KeychainSecureStore(backend:SecItemKeychainBackend(), groups:groups)
     public static var store: SecureStore { keychainStore }
 
-    /// Moves private items an older build left in the shared group; call once at app launch.
+    /// Moves items an older build left in the other group; call once at app launch.
     @discardableResult
-    public static func migratePrivateItems() -> [StoreKey] { keychainStore.migratePrivateItems() }
+    public static func migrateItemGroups() -> [StoreKey] { keychainStore.migrateItemGroups() }
 }
 
 /// The default access group, probed until a probe succeeds and then kept for the process.

@@ -27,19 +27,20 @@ public enum StoreKey: String, Sendable, CaseIterable {
         case afterFirstUnlockThisDeviceOnly
     }
 
-    public var accessibility: Accessibility {
-        self == .schoolPortal ? .whenUnlockedThisDeviceOnly : .afterFirstUnlockThisDeviceOnly
-    }
+    /// Every item is readable after the first unlock, so the background refresh and the widget
+    /// work while the phone is locked. None leaves this device (no iCloud Keychain, no backup
+    /// restore onto another phone).
+    public var accessibility: Accessibility { .afterFirstUnlockThisDeviceOnly }
 
     /// Written to the shared access group so the widget extension can read them: the snapshot and
-    /// reminder lines it shows, and the school card session, dorm/meter profile and saved school
-    /// password it will need to read the balance and meter by itself. Everything else (portal
-    /// token, login device id, hot-water and laundry items) lives only in the app's private
-    /// group, which the widget is not entitled to.
+    /// reminder lines it shows, and everything its own school refresh needs (card session, portal
+    /// token, dorm/meter profile, saved account and password, login device id). Hot-water and
+    /// laundry items live only in the app's private group, which the widget is not entitled to.
     public var isShared: Bool {
         switch self {
-        case .sharedSnapshot, .sharedReminderLines, .schoolEcykt, .schoolProfile, .schoolPassword: return true
-        case .schoolPortal, .schoolDevice, .showerBinding, .showerSession, .laundryAccount, .laundryCheckout: return false
+        case .sharedSnapshot, .sharedReminderLines, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
+            return true
+        case .showerBinding, .showerSession, .laundryAccount, .laundryCheckout: return false
         }
     }
 }
