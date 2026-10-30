@@ -198,6 +198,40 @@ final class SignOutWhileStoringTheTokenTests: XCTestCase {
     }
 }
 
+/// The other process signs out (lease, school items, empty snapshot) after this read renewed
+/// the lease but before it saved: the snapshot it saves is cleared again.
+final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
+    func testNumbersSavedAfterASignOutAreCleared() async throws {
+        let h = Harness()
+        try h.signedIn()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        try h.server.serve("ecykt/card-getRecordList-ok")
+        let store = h.store, snapshots = h.snapshots
+        store.beforeNextWrite(to: .sharedSnapshot) {
+            try? store.delete(.sharedRefreshLease)
+            for key: StoreKey in [.schoolPassword, .schoolPortal, .schoolEcykt, .schoolProfile, .schoolDevice] { try? store.delete(key) }
+            try? snapshots.saveSnapshot(SchoolSnapshotReducer.reduce(.empty, .signedOut))
+        }
+        let report = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
+        XCTAssertFalse(report.snapshotSaved)
+        XCTAssertEqual(try h.snapshots.loadSnapshot(), SchoolSnapshotReducer.reduce(.empty, .signedOut))
+    }
+
+    /// Lost to the other process's read, still signed in: what was saved stays.
+    func testALeaseTakenOverWhileSignedInKeepsTheSave() async throws {
+        let h = Harness()
+        try h.signedIn()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        try h.server.serve("ecykt/card-getRecordList-ok")
+        let store = h.store
+        store.beforeNextWrite(to: .sharedSnapshot) { try? store.delete(.sharedRefreshLease) }
+        _ = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
+        XCTAssertNotNil(try h.snapshots.loadSnapshot()?.card.value)
+    }
+}
+
 /// The lease ran out by itself (nobody took it) while the read was stopped: the "timed out"
 /// that read reports is not written into the snapshot.
 final class ExpiredLeaseWriteTests: XCTestCase {

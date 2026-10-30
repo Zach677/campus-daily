@@ -169,6 +169,11 @@ public actor SchoolSession {
     /// The signed-in account (nil after a web sign-in, which never tells us the account).
     public func account() -> SchoolAccount? { (try? vault.account()) ?? nil }
 
+    /// False only when the card session was read and is not there.
+    public func hasCardSession() -> Bool {
+        do { return try vault.ecyktSession() != nil } catch { return true }
+    }
+
     /// The person signed in now, or nil when nobody is.
     private func signedInPerson() -> SignedInPerson? {
         let session = (try? vault.ecyktSession()) ?? nil

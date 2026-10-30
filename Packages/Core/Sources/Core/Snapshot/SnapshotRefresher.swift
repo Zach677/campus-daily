@@ -12,9 +12,14 @@ public protocol SchoolReader: Sendable {
     /// storing (the balance and the meter while the card records are still on their way).
     func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool,
                  numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading
+    /// False only when the stored card session is known to be gone (signed out); a read that
+    /// fails says nothing.
+    func hasCardSession() async -> Bool
 }
 
 public extension SchoolReader {
+    func hasCardSession() async -> Bool { true }
+
     func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool,
                  numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
         await refresh(inBackground: inBackground, mayMint: mayMint)
@@ -210,7 +215,7 @@ public actor SnapshotRefresher {
                                            numbers: { [weak self] partial in
                                                _ = await self?.write(partial, started: started, lease: lease)
                                            })
-        let report = write(reading, started: started, lease: lease)
+        let report = await write(reading, started: started, lease: lease)
         // The heartbeat has stopped before the lease is given back: a renewal still running
         // would otherwise bring it back and hold the other process off for a whole lease.
         heartbeat?.cancel()
@@ -224,7 +229,11 @@ public actor SnapshotRefresher {
     /// whether or not another process took it, or a sign-out in the other process removed it),
     /// or the other process already wrote a newer reading: nothing is written either; a lease
     /// that ran out is not this read's failure to record.
-    private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) -> RefreshReport {
+    ///
+    /// The renewal and the save are two steps: a sign-out in the other process can land between
+    /// them and clear the snapshot just before this one is saved. So the lease is checked once
+    /// more after saving; lost, and nobody signed in any more, the snapshot is cleared again.
+    private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) async -> RefreshReport {
         guard started == generation, !Task.isCancelled else {
             let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
             return RefreshReport(outcome: outcome, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
@@ -238,6 +247,10 @@ public actor SnapshotRefresher {
         do { try store.saveSnapshot(snapshot) } catch {
             saved = false
             diagnostic(Self.saveFailedEvent(error))
+        }
+        if saved, let lease, !lease.holds(), !(await school.hasCardSession()) {
+            try? store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
+            return RefreshReport(outcome: .notSignedIn, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
         }
         return RefreshReport(outcome: reading.outcome, snapshot: snapshot, reexchanged: reading.reexchanged, snapshotSaved: saved)
     }

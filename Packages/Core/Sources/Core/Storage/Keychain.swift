@@ -265,12 +265,18 @@ public final class InMemorySecureStore: SecureStore, @unchecked Sendable {
     private var failing: Set<StoreKey> = []
     private var unreadable = false
     private var afterWrite: [StoreKey: @Sendable () -> Void] = [:]
+    private var beforeWrite: [StoreKey: @Sendable () -> Void] = [:]
 
     public init() {}
 
     /// Runs `step` once, right after the next write to `key` (as another process would act next).
     public func onNextWrite(to key: StoreKey, _ step: @escaping @Sendable () -> Void) {
         lock.withLock { afterWrite[key] = step }
+    }
+
+    /// Runs `step` once, right before the next write to `key`.
+    public func beforeNextWrite(to key: StoreKey, _ step: @escaping @Sendable () -> Void) {
+        lock.withLock { beforeWrite[key] = step }
     }
 
     /// Every read fails as the Keychain does before the first unlock (`errSecInteractionNotAllowed`).
@@ -288,6 +294,7 @@ public final class InMemorySecureStore: SecureStore, @unchecked Sendable {
     }
 
     public func write(_ data: Data, for key: StoreKey) throws {
+        lock.withLock { beforeWrite.removeValue(forKey: key) }?()
         let step = try lock.withLock { () -> (@Sendable () -> Void)? in
             if failing.contains(key) { throw StorageError(operation: "write \(key.rawValue)", status: -1) }
             items[key] = data
