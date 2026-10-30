@@ -67,7 +67,7 @@ final class SchoolSignOutRaceTests: XCTestCase {
         try h.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
         let hold = Hold(h, self, suffix: "/electricnew/service")
         let session = h.session()
-        async let result: Void = session.chooseMatchedMeter(Meter(comAddress: "000000000991", name: "99栋991"))
+        async let result: Void = session.chooseMatchedMeter(MeterCandidate(meter: Meter(comAddress: "000000000991", name: "99栋991"), path: []))
         await fulfillment(of: [hold.reached], timeout: 5)
         try await session.signOut()
         hold.release.signal()

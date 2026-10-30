@@ -1,14 +1,16 @@
 import Foundation
 import Core
 
-/// One same-name meter offered when the electricity match is ambiguous.
+/// One same-name meter offered when the electricity match is ambiguous, told apart by its
+/// full location (校区 · 公寓 · 楼栋 · 房间): the names alone are identical (tester §1).
 struct PowerChoice: Identifiable, Equatable {
-    var id: String { meter.comAddress }
-    let meter: Meter
+    var id: String { candidate.id }
+    let candidate: MeterCandidate
+    var meter: Meter { candidate.meter }
+    var location: String { candidate.location }
     var label: String {
-        var parts = [meter.name]
+        var parts = [location]
         if let money = meter.leftMoney { parts.append("电费 " + Theme.yuan(money.yuan)) }
-        if let kwh = meter.remainingKWh { parts.append("剩 " + Theme.kwh(kwh) + " 度") }
         return parts.joined(separator:" · ")
     }
 }
@@ -219,7 +221,7 @@ struct PowerChoice: Identifiable, Equatable {
                     profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
                     await refresher.noteChange()
                     await refresh(force:true)
-                case .chooseAmong(let meters): powerChoices = meters.map(PowerChoice.init)
+                case .chooseAmong(let candidates): powerChoices = candidates.map(PowerChoice.init)
                 case .manualPicker: powerMatchIssue = "没自动找到电表，去「绑定电表」里选一下。"
                 case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「绑定电表」里选一下。"
                 }
@@ -233,7 +235,7 @@ struct PowerChoice: Identifiable, Equatable {
         Task {
             defer { matchingPower = false }
             do {
-                try await session.chooseMatchedMeter(choice.meter)
+                try await session.chooseMatchedMeter(choice.candidate)
                 await refresher.noteChange()
                 powerChoices = []; powerMatchIssue = nil
                 profile = (try? AppEnvironment.schoolVault.profile()) ?? nil

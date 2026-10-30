@@ -206,7 +206,7 @@ struct OnboardingView: View {
     }
 
     private var apartmentHint: some View {
-        Text("学校里有同名楼栋，选一下你住的公寓，电表就能绑上。")
+        Text("有 \(preview?.powerChoices.count ?? campus.powerChoices.count) 个同名的电表位置，选你宿舍的那个。")
             .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
             .fixedSize(horizontal:false, vertical:true).padding(.bottom,6)
     }
@@ -285,7 +285,7 @@ struct OnboardingView: View {
             // Fixed slot below the pill so the pill doesn't jump between steps.
             ZStack(alignment:.top) {
                 if step == .dorm && dorm != nil {
-                    Button("换一间") { openDormPicker() }
+                    Button(choosingApartment ? "都不是，换一间" : "换一间") { openDormPicker() }
                         .scaledFont(17, .medium).foregroundStyle(Theme.ink2)
                         .frame(minHeight:44).padding(.top,4)
                 }

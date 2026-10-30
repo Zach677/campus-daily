@@ -196,6 +196,29 @@ public struct MeterBinding: Sendable, Equatable, Codable {
     }
 }
 
+/// One of several meters that carry the dorm's name, with where it sits in the electricity
+/// directory, so same-named buildings in different apartments can be told apart.
+public struct MeterCandidate: Sendable, Equatable, Identifiable {
+    public var id: String { meter.comAddress }
+    /// The room-level row when the room was found, else the campus-wide row.
+    public var meter: Meter
+    /// campus → (apartment) → building → floor → room. Only the campus when the room
+    /// node could not be found; the choice is then saved against the campus (wide read).
+    public var path: [PowerNode]
+    public init(meter: Meter, path: [PowerNode]) { self.meter = meter; self.path = path }
+
+    /// The room node, when the walk reached it.
+    public var room: PowerNode? { path.count >= 4 ? path.last : nil }
+
+    /// 校区 · 公寓 · 楼栋 · 房间 (the floor level is left out); just the meter's name after
+    /// the campus when the room was not found.
+    public var location: String {
+        var names = path.map(\.name)
+        if room != nil { names.remove(at: names.count - 2) } else { names.append(meter.name) }
+        return names.joined(separator: " · ")
+    }
+}
+
 // MARK: - Card records
 
 public struct CardRecord: Sendable, Equatable, Codable {

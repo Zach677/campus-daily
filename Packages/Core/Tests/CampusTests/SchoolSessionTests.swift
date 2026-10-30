@@ -285,7 +285,7 @@ final class SchoolElectricityTests: XCTestCase {
         return T.editingData(f) { data in
             guard let text = data.text, case .array(var rows)? = try? JSONValue.parse(text) else { return }
             for (i, name) in extra.enumerated() {
-                rows.append(.object(["comAddress": .string(i == 0 ? "000000000991" : "00000000099\(i)"), "piplineName": .string(name),
+                rows.append(.object(["comAddress": .string("00000000099\(i + 1)"), "piplineName": .string(name),
                                      "type": .string("电表"), "leftMoney": .string("36.92"), "remaining": .string("52.00"),
                                      "onlineStatus": .string("在线")]))
             }
@@ -346,6 +346,40 @@ final class SchoolElectricityTests: XCTestCase {
         let r2 = try await many.session().resolveElectricity()
         guard case .chooseAmong(let list) = r2 else { return XCTFail("\(r2)") }
         XCTAssertEqual(list.count, 2)
+        // The directory walk failed here, so each keeps the campus and its own row name.
+        XCTAssertEqual(list.map(\.location), ["星湖校区 · 99栋991", "星湖校区 · 99栋 991"])
+        XCTAssertEqual(list.map(\.room), [nil, nil])
+    }
+
+    /// Tester §1: two 99栋 in different apartments. Each choice carries its apartment, and
+    /// picking one binds that room's node (1-row reads), not the campus.
+    func testSameNamedBuildingsAreToldApartByTheirApartment() async throws {
+        let h = Harness()
+        try h.signedIn()
+        h.server.serve(try Self.campusMeters(extra: ["99栋991", "99栋991"]), matchBody: ["server", "buildingID"])
+        let service = "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service"
+        func level(_ parent: String, _ name: String, _ id: String) {
+            h.server.respond("POST", service, bodyMatch: ["server": "/api/getBuildingInfo", "buildingID": parent],
+                             body: Data(#"{"code":0,"msg":"获取成功","data":"[{\"buildingName\":\"\#(name)\",\"buildingID\":\"\#(id)\"}]"}"#.utf8))
+        }
+        level("991001002", "99栋", "991001002000109")
+        level("991001002000109", "1楼", "991001002000109000001")
+        level("991001002000109000001", "991", "991001002000109000001003")
+        h.server.respond("POST", service, bodyMatch: ["server": "/api/getMeterStatus", "buildingID": "991001002000109000001003"],
+                         body: Data(#"{"code":0,"msg":"获取成功","data":"[{\"comAddress\":\"000000000992\",\"piplineName\":\"99栋991\",\"leftMoney\":\"12.00\"}]"}"#.utf8))
+        try Self.serveTree(h)
+        let session = h.session()
+        let result = try await session.resolveElectricity()
+        guard case .chooseAmong(let list) = result else { return XCTFail("\(result)") }
+        XCTAssertEqual(list.map(\.location), ["星湖校区 · 半山公寓 · 99栋 · 991", "星湖校区 · 樱花公寓 · 99栋 · 991"])
+        XCTAssertEqual(list.map(\.room?.id), ["991001001000109000001003", "991001002000109000001003"])
+        XCTAssertEqual(list.map(\.meter.comAddress), ["000000000991", "000000000992"])
+        XCTAssertTrue(h.server.unmatched.isEmpty)
+        XCTAssertNil(try h.vault.profile()?.meter, "nothing is saved until the user picks")
+
+        try await session.chooseMatchedMeter(list[1])
+        XCTAssertEqual(try h.vault.profile()?.meter,
+                       MeterBinding(nodeID: "991001002000109000001003", comAddress: "000000000992", label: "99栋 991", nodeIsRoom: true))
     }
 
     func testNoParsedAddress() async throws {

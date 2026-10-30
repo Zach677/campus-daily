@@ -78,7 +78,7 @@ struct AutomaticPowerSection: View {
             Section("电表") {
                 if campus.matchingPower {Label("正在找电表，可以先保存宿舍。",systemImage:"bolt")}
                 else if !campus.powerChoices.isEmpty {
-                    Text("有同名楼栋，选一次你住的公寓就行。")
+                    Text("有 \(campus.powerChoices.count) 个同名的电表位置，选你宿舍的那个。")
                         .font(.footnote).foregroundStyle(.secondary)
                     ForEach(campus.powerChoices) {candidate in
                         Button(candidate.label) {campus.choosePower(candidate)}
