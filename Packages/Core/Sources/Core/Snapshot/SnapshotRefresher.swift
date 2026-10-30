@@ -39,7 +39,7 @@ public struct RefreshReport: Sendable, Equatable {
 public actor SnapshotRefresher {
     let school: SchoolReader
     let store: SnapshotStoring
-    /// Event names only (no values), e.g. when the snapshot could not be saved.
+    /// Failures worth a look, by event name only (no values), e.g. the snapshot could not be saved.
     let diagnostic: @Sendable (String) -> Void
 
     private struct Run {
@@ -70,7 +70,7 @@ public actor SnapshotRefresher {
 
     public static let osLog: @Sendable (String) -> Void = { event in
         #if canImport(os)
-        Logger(subsystem: "com.beamjason.xiaorichang", category: "snapshot").info("\(event, privacy: .public)")
+        Logger(subsystem: "com.beamjason.xiaorichang", category: "snapshot").error("\(event, privacy: .public)")
         #endif
     }
 
