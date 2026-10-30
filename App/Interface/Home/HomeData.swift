@@ -73,6 +73,9 @@ struct HomeData {
     /// DEBUG demo only: why Settings › 高级 › 重置校日常 is locked (the live value comes from the shower).
     var resetLock: AppReset.Lock?
     var dorm: String?
+    /// Settings: 「校区 · 公寓 · 楼栋 · 房间」 of the dorm and of the bound meter (they can differ).
+    var dormLocation: String?
+    var meterLocation: String?
     var powerBound = true
     /// Balance, meter and card records with their own read times and errors.
     var snapshot = HomeSnapshot()
@@ -122,6 +125,8 @@ extension HomeData {
         signedIn = campus.configured
         schoolAccount = campus.account
         dorm = Theme.dorm(campus.room)
+        dormLocation = campus.profile?.dormLocation
+        meterLocation = campus.profile?.meterLocation
         snapshot = campus.snapshot
         powerBound = campus.powerConfigured
         refreshing = campus.loading
@@ -242,6 +247,8 @@ enum HomeDemo: String, CaseIterable {
         let calendar = Calendar.current
         var data = HomeData()
         data.dorm = "3 栋 108"
+        data.dormLocation = "北校区 · 东苑公寓 · 3 栋 · 108"
+        data.meterLocation = "北校区 · 东苑公寓 · 3 栋 · 108"
         data.schoolAccount = SchoolAccount(account:"99100991")
         let read = now.addingTimeInterval(-25 * 60)
         data.snapshot = Self.snapshot(now:now, read:read, kwh:"42.6", dailyKWh:"4.6")

@@ -244,8 +244,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// Manual picker.
     func directory(parent: String?) async throws -> [PowerNode] { try await session.directory(parent:parent) }
     func meterRows(nodeID: String) async throws -> [Meter] { try await session.meterRows(nodeID:nodeID) }
-    func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool) async throws {
-        try await session.chooseMeter(nodeID:nodeID, meter:meter, nodeIsRoom:nodeIsRoom)
+    func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool, path: [String] = []) async throws {
+        try await session.chooseMeter(nodeID:nodeID, meter:meter, nodeIsRoom:nodeIsRoom, path:path)
         await refresher.noteChange()
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         powerChoices = []; powerMatchIssue = nil

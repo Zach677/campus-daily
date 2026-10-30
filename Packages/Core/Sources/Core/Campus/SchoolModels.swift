@@ -191,8 +191,12 @@ public struct MeterBinding: Sendable, Equatable, Codable {
     public var comAddress: String
     public var label: String
     public var nodeIsRoom: Bool
-    public init(nodeID: String, comAddress: String, label: String, nodeIsRoom: Bool) {
+    /// Full location 「校区 · 公寓 · 楼栋 · 房间」 as chosen; nil for bindings saved before it
+    /// was kept (Settings then falls back to `label`).
+    public var location: String?
+    public init(nodeID: String, comAddress: String, label: String, nodeIsRoom: Bool, location: String? = nil) {
         self.nodeID = nodeID; self.comAddress = comAddress; self.label = label; self.nodeIsRoom = nodeIsRoom
+        self.location = location
     }
 }
 
@@ -215,7 +219,7 @@ public struct MeterCandidate: Sendable, Equatable, Identifiable {
     public var location: String {
         var names = path.map(\.name)
         if room != nil { names.remove(at: names.count - 2) } else { names.append(meter.name) }
-        return names.joined(separator: " · ")
+        return PowerLocation.joined(names)
     }
 }
 

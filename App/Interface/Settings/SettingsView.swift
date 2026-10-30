@@ -64,7 +64,9 @@ struct SettingsView: View {
                         SettingsRow(emoji:"🎓", title:"学校账号", value:AccountText.row(signedIn:data.signedIn, account:data.schoolAccount))
                     }
                     NavigationLink { CampusOnboardingView() } label: {
-                        SettingsRow(emoji:"🏠", title:"宿舍", value:data.dorm ?? "去设置")
+                        // Full location under the title (design §5a); 「去设置」 until there is one.
+                        if let location = data.dormLocation { SettingsRow(emoji:"🏠", title:"宿舍", detail:location) }
+                        else { SettingsRow(emoji:"🏠", title:"宿舍", value:data.dorm ?? "去设置") }
                     }
                 }.listRowBackground(Theme.group)
                 Section {
@@ -92,7 +94,8 @@ struct SettingsView: View {
                         }
                     }
                     NavigationLink { CampusPowerSetupView() } label: {
-                        SettingsRow(emoji:"⚡", title:"电表", value:data.powerBound ? "已绑定" : "去绑定")
+                        if data.powerBound, let location = data.meterLocation { SettingsRow(emoji:"⚡", title:"电表", detail:location) }
+                        else { SettingsRow(emoji:"⚡", title:"电表", value:data.powerBound ? "已绑定" : "去绑定") }
                     }
                 } header: {
                     Text("设备")
@@ -251,11 +254,22 @@ struct SettingsRow: View {
     /// Keeps the emoji's space but doesn't draw it (a sub-row aligned with the row above).
     var hidesEmoji = false
     var value: String? = nil
+    /// Second line under the title (a full location), 13 ink2, wraps; replaces `value`.
+    var detail: String? = nil
     @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         HStack(spacing:12) {
             Text(emoji).scaledFont(17).frame(minWidth:24).fixedSize().opacity(hidesEmoji ? 0 : 1).accessibilityHidden(true)
-            if typeSize.isAccessibilitySize {
+            if let detail {
+                VStack(alignment:.leading, spacing:2) {
+                    titleText
+                    Text(detail).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                        .fixedSize(horizontal:false, vertical:true)
+                        .accessibilityLabel(detail.replacingOccurrences(of:" · ", with:"，"))
+                }
+                .frame(minHeight:62, alignment:.leading)
+                Spacer(minLength:0)
+            } else if typeSize.isAccessibilitySize {
                 // Large text: value goes under the title instead of being truncated.
                 VStack(alignment:.leading, spacing:2) {
                     titleText

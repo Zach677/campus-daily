@@ -28,7 +28,7 @@ struct CampusPowerSetupView: View {
                     Button {
                         guard let building = path.last else { return }
                         Task {
-                            do { try await campus.chooseMeter(nodeID:building.id, meter:meter, nodeIsRoom:true); dismiss() }
+                            do { try await campus.chooseMeter(nodeID:building.id, meter:meter, nodeIsRoom:true, path:path.map(\.name)); dismiss() }
                             catch { issue = "没保存上，再试一次。" }
                         }
                     } label: {

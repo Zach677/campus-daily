@@ -611,11 +611,14 @@ public actor SchoolSession {
         case .one(let m): meter = m
         }
 
-        var binding = MeterBinding(nodeID: campus.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: false)
+        var binding = MeterBinding(nodeID: campus.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: false,
+                                   location: MeterCandidate(meter: meter, path: [campus]).location)
         var found = meter
-        if let located = try await locateRoomNode(session, campus: campus, address: address, comAddress: meter.comAddress) {
-            binding = MeterBinding(nodeID: located.0.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: true)
-            found = located.1
+        if let located = try await locateRoomNode(session, campus: campus, address: address, comAddress: meter.comAddress),
+           let room = located.room {
+            binding = MeterBinding(nodeID: room.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: true,
+                                   location: located.location)
+            found = located.meter
         }
         profile.meter = binding
         try ensureSignedIn(since: started)
@@ -624,9 +627,11 @@ public actor SchoolSession {
     }
 
     /// Manual choice from the picker (`buildings(parent:)` walk in the UI, then a meter row).
-    public func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool) throws {
+    /// `path` = the directory names walked down to `nodeID`, kept as the full location.
+    public func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool, path: [String] = []) throws {
         var profile = try vault.profile() ?? SchoolProfile()
-        profile.meter = MeterBinding(nodeID: nodeID, comAddress: meter.comAddress, label: meter.name, nodeIsRoom: nodeIsRoom)
+        profile.meter = MeterBinding(nodeID: nodeID, comAddress: meter.comAddress, label: meter.name, nodeIsRoom: nodeIsRoom,
+                                     location: path.isEmpty ? nil : PowerLocation.label(path))
         try vault.saveProfile(profile)
     }
 
@@ -639,14 +644,16 @@ public actor SchoolSession {
         guard let address = profile.residence?.address else { throw ServiceError.malformed(.portal, "data.gydz") }
         let meter = candidate.meter
         if let room = candidate.room {
-            profile.meter = MeterBinding(nodeID: room.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: true)
+            profile.meter = MeterBinding(nodeID: room.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: true,
+                                         location: candidate.location)
             try ensureSignedIn(since: started)
             try vault.saveProfile(profile)
             return
         }
         let campuses = try await ecykt.buildings(session, parent: nil).filter { address.matchesCampus($0.name) }
         guard campuses.count == 1, let campus = campuses.first else { throw ServiceError.malformed(.ecykt, "campus") }
-        profile.meter = MeterBinding(nodeID: campus.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: false)
+        profile.meter = MeterBinding(nodeID: campus.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: false,
+                                     location: MeterCandidate(meter: meter, path: [campus]).location)
         try ensureSignedIn(since: started)
         try vault.saveProfile(profile)
     }
@@ -676,13 +683,13 @@ public actor SchoolSession {
     }
 
     /// Walks campus → (apartment) → building → floor → room with name filters. Returns the
-    /// room node whose meter has `comAddress`.
-    func locateRoomNode(_ s: EcyktSession, campus: PowerNode, address: DormAddress, comAddress: String) async throws -> (PowerNode, Meter)? {
+    /// room-level row whose meter has `comAddress`, with its path.
+    func locateRoomNode(_ s: EcyktSession, campus: PowerNode, address: DormAddress, comAddress: String) async throws -> MeterCandidate? {
         guard let paths = try await roomPaths(s, campus: campus, address: address) else { return nil }
         for path in paths.prefix(4) {
             guard let room = path.last else { continue }
             let meters = try await ecykt.meters(s, nodeID: room.id)
-            if let m = meters.first(where: { $0.comAddress == comAddress }) { return (room, m) }
+            if let m = meters.first(where: { $0.comAddress == comAddress }) { return MeterCandidate(meter: m, path: path) }
         }
         return nil
     }

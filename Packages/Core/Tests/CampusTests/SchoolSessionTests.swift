@@ -310,9 +310,11 @@ final class SchoolElectricityTests: XCTestCase {
         try Self.serveTree(h)
         let result = try await h.session().resolveElectricity()
         guard case .matched(let binding, let meter) = result else { return XCTFail("\(result)") }
-        XCTAssertEqual(binding, Harness.roomBinding)
+        var expected = Harness.roomBinding
+        expected.location = "星湖校区 · 半山公寓 · 99栋 · 991"
+        XCTAssertEqual(binding, expected)
         XCTAssertEqual(meter.name, "99栋991")
-        XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
+        XCTAssertEqual(try h.vault.profile()?.meter, expected)
         XCTAssertTrue(h.server.unmatched.isEmpty)
         XCTAssertEqual(h.server.requests.filter { $0.bodyField("server") == "/api/getMeterStatus" && $0.bodyField("buildingID") == "991001" }.count, 1,
                        "one campus-wide meter read")
@@ -327,7 +329,8 @@ final class SchoolElectricityTests: XCTestCase {
                          bodyMatch: ["server": "/api/getBuildingInfo"], body: Data(#"{"code":0,"msg":"获取成功","data":"[]"}"#.utf8))
         let result = try await h.session().resolveElectricity()
         guard case .matched(let binding, _) = result else { return XCTFail("\(result)") }
-        XCTAssertEqual(binding, MeterBinding(nodeID: "991001", comAddress: "000000000991", label: "99栋 991", nodeIsRoom: false))
+        XCTAssertEqual(binding, MeterBinding(nodeID: "991001", comAddress: "000000000991", label: "99栋 991", nodeIsRoom: false,
+                                               location: "星湖校区 · 99栋991"))
     }
 
     func testZeroOrManyMatchesGoToPicker() async throws {
@@ -379,7 +382,8 @@ final class SchoolElectricityTests: XCTestCase {
 
         try await session.chooseMatchedMeter(list[1])
         XCTAssertEqual(try h.vault.profile()?.meter,
-                       MeterBinding(nodeID: "991001002000109000001003", comAddress: "000000000992", label: "99栋 991", nodeIsRoom: true))
+                       MeterBinding(nodeID: "991001002000109000001003", comAddress: "000000000992", label: "99栋 991", nodeIsRoom: true,
+                                    location: "星湖校区 · 樱花公寓 · 99栋 · 991"))
     }
 
     func testNoParsedAddress() async throws {
