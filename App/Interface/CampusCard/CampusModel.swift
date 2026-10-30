@@ -65,6 +65,9 @@ struct PowerChoice: Identifiable, Equatable {
         let report = await refresher.refresh(inBackground:inBackground, includingChanges:force)
         guard started == signOutGeneration else { return }
         snapshot = report.snapshot
+        // A cancelled refresh (the view went away, the pull was abandoned) reads as offline; that
+        // says nothing about the school, so it neither shows an issue nor counts as a refresh.
+        guard !Task.isCancelled else { return }
         lastRefresh = Date()
         switch report.outcome {
         case .ok: issue = nil
