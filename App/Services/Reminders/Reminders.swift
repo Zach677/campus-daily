@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 import UserNotifications
-import BackgroundTasks
 import WidgetKit
 import Core
 
@@ -39,7 +38,6 @@ enum ReminderKey {
 /// it only reads facts the models already have.
 @MainActor final class Reminders: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = Reminders()
-    nonisolated static let refreshTask = "com.beamjason.xiaorichang.refresh"
 
     enum PromptOrigin: String, Identifiable { case settings, app; var id: String { rawValue } }
     enum Route: Equatable { case home, laundry }
@@ -313,15 +311,6 @@ enum ReminderKey {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let target = response.notification.request.content.userInfo["route"] as? String
         await MainActor.run { self.route = target == "laundry" ? .laundry : .home }
-    }
-
-    // MARK: Background refresh
-
-    /// Asks for a campus read in the background (~hourly, the system decides).
-    nonisolated static func scheduleRefresh() {
-        let request = BGAppRefreshTaskRequest(identifier:refreshTask)
-        request.earliestBeginDate = Date().addingTimeInterval(3600)
-        try? BGTaskScheduler.shared.submit(request)
     }
 
     #if DEBUG

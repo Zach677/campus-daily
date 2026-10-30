@@ -25,7 +25,7 @@ import Core
                 .onOpenURL { if $0.scheme != "campusdaily" { AlipayBridge.shared.handle($0); Task { await laundry.refreshOrder() } } }
         }
         .onChange(of:phase) { _, value in
-            if value == .background { Reminders.scheduleRefresh() }
+            if value == .background { BackgroundRefresh.scheduleRefresh() }
             if value == .active {
                 Task { await Reminders.shared.refreshAuthorization() }
                 // Back from Alipay without a callback URL (checkout links): read the order.
@@ -33,9 +33,6 @@ import Core
             }
         }
         // Background campus read: low power / card reminders (§5) and a fresh widget.
-        .backgroundTask(.appRefresh(Reminders.refreshTask)) {
-            Reminders.scheduleRefresh()
-            await CampusModel.shared.refresh(force:true, inBackground:true)
-        }
+        .backgroundTask(.appRefresh(BackgroundRefresh.refreshTask)) { await BackgroundRefresh.run() }
     }
 }
