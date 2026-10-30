@@ -30,10 +30,12 @@ extension ShowerModel {
                 pageEvent(.endReturned)
             }
         case .dismissRecord:
+            let record = page.record
             Task {
-                // A cancelled start may still be winding down.
+                // A cancelled start may still be winding down. Only this record is cleared: the
+                // wait can outlast the next start, whose record stays.
                 while busy { try? await Task.sleep(for:.milliseconds(50)) }
-                await dismiss()
+                await dismiss(only:record)
             }
         case .openReview:
             reviewRequested = true

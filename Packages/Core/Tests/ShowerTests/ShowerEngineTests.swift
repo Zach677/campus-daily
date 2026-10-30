@@ -150,6 +150,22 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(idle.lastReceipt, receipt)
     }
 
+    /// A dismiss for a record that has since been replaced (a new start ran) clears nothing.
+    func testDismissOnlyClearsTheRecordItWasAskedFor() async throws {
+        let e = try engine()
+        try await startRunning(e)
+        transport.script(.frame(FakeFrames.active), .frame(consumption))
+        gateway.scriptSettle(.ok(receipt))
+        let done = try await e.finish(binding)
+        var earlier = done
+        earlier.startedAt = done.startedAt?.addingTimeInterval(-600)
+        let kept = try await e.dismiss(only: earlier)
+        XCTAssertEqual(kept, done)
+        XCTAssertEqual(try vault.showerState()?.phase, .done)
+        let idle = try await e.dismiss(only: done)
+        XCTAssertEqual(idle.phase, .idle)
+    }
+
     func testUpdatesStreamPublishesEveryPhase() async throws {
         let e = try engine()
         let stream = await e.updates()

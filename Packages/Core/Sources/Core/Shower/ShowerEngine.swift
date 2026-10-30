@@ -204,9 +204,12 @@ public actor ShowerEngine {
         return try await run(nil, .resolveManually)
     }
 
+    /// Clears a finished or harmless record. `only`: the record the caller saw; when the record
+    /// is no longer that one (a new start has run since), nothing is cleared.
     @discardableResult
-    public func dismiss() async throws -> ShowerState {
+    public func dismiss(only expected: ShowerState? = nil) async throws -> ShowerState {
         try guardIdle()
+        if let expected, expected != state { return state }
         return try await run(nil, .dismiss)
     }
 

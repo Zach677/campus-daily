@@ -296,9 +296,9 @@ enum ShowerProfileFiles {
         if let result = try? await engine.confirmSettleRetry(binding) { apply(result) }
     }
 
-    func dismiss() async {
+    func dismiss(only record: ShowerState? = nil) async {
         guard let engine, !busy else { return }
-        if let result = try? await engine.dismiss() { apply(result) }
+        if let result = try? await engine.dismiss(only:record) { apply(result) }
     }
 
     /// Read-only: connect, ask the identity (0xAA), disconnect. Never sent during a session.
