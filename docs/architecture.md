@@ -68,7 +68,8 @@ Snapshot refresher reduces it into the shared snapshot.
   Core `ShowerTransport` protocol, so tests drive the state machine with a fake transport.
 - The three features do not reference each other; shared pieces go in Common. Each feature owns
   its persistence protocol and Keychain store; Storage knows no feature types.
-- The widget never touches the shower or laundry state machines; it reads the snapshot only.
+- The widget never touches the shower or laundry state machines; it runs the school refresh
+  (`SchoolRefreshStack`, the same one the app builds) and draws the snapshot.
 - Only Networking creates URL sessions.
 
 Pure / testable vs platform:
@@ -224,8 +225,8 @@ foreground, the BG task and the widget):**
 liveness OK); `school.portal` carries `obtainedAt` (first saved). When the liveness check or the
 portal says one is dead, one diagnostic line records only the kind and measured minutes:
 `school.credentialExpired kind=card ageMinutes=152 aliveMinutes=92` / `kind=portal ageMinutes=481`
-(once per credential per process). The app also writes it to the diagnostics file; the widget's
-goes to the system log only.
+(once per credential per process). Both processes write it to the system log only
+(subsystem `com.beamjason.xiaorichang`, category `snapshot`).
 
 **One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
 the background task, the refreshes after a state change (sign-in, meter choice, recharge), and
@@ -255,6 +256,19 @@ through `RefreshLease`, the shared item `shared.refreshLease` = `{owner, expires
 Residual: the Keychain has no compare-and-delete, so two processes that both find the same lease
 stale within microseconds could both delete and create. The read-back before minting and the
 write-back rule above (step 6) keep that from losing a session; it only costs one extra read.
+
+**The widget's own refresh.** `SchoolRefreshStack` builds the school session (with the CAS
+password login) and the refresher with its lease, the same in both processes (`role` "app" /
+"widget" names the lease owner). The timeline provider (`getTimeline`) runs `WidgetRefresh.run`:
+no read when nobody is signed in or the snapshot was checked less than 10 minutes ago (the app
+just did, or an earlier widget read); else one `refresh(inBackground: true)` through the same
+ladder and write path, waiting at most 5 s for the app's lease and giving up after 20 s (the read
+is cancelled and writes nothing; the stored snapshot is drawn). Policy `.after(now + 30 min)`.
+The state drawn (fresh / stale / expired / never) is `WidgetStatus.freshness(snapshot, account,
+now)` in Core, from the stored `fetchedAt`, `needsLogin` and whether a password is saved; when
+the numbers will turn stale by time alone before the next timeline, a second entry switches at
+that second (`WidgetStatus.staleAt`). Tap: expired / never → `campusdaily://login` (the login
+step), else `campusdaily://home`. Red is only for low electricity.
 
 **Electricity resolution.** The power tree contains apartment levels that the dorm address lacks,
 so do not walk it level by level. Onboarding: call `meters(nodeID: <campus node>)` once (≈2.3k
@@ -522,9 +536,8 @@ then the shared group `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared`
 iOS puts an item written without a group into the first listed group. Items marked "yes" are
 written to the shared group; all others are written to the private group, which the widget is
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
-registration. Today the widget reads only `shared.snapshot` and `shared.reminderLines`; the
-school card session and profile are shared so the widget can later read the balance and meter by
-itself. An item can still sit in its old group: builds before the private group existed kept
+registration. The widget reads the school items above for its own refresh, and `shared.snapshot`,
+`shared.reminderLines` and `shared.refreshLease`. An item can still sit in its old group: builds before the private group existed kept
 every item in the shared group, and builds before the widget refreshed by itself kept the portal
 token (then WhenUnlocked) and the login device id in the private group. At launch
 (`migrateItemGroups()`) and on any read that finds one there, the item is written to its group

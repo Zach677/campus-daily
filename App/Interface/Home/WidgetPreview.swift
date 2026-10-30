@@ -1,47 +1,63 @@
 #if DEBUG
 import SwiftUI
+import Core
 
-/// campusdaily://demo/widget-preview[/2] — draws the 「校日常」 widget views in the app at home-screen
+/// campusdaily://demo/widget-preview[/2|/3] — draws the 「校日常」 widget views in the app at home-screen
 /// sizes (small 170×170, medium 364×170, corner 22, 16pt margins), because widgets can't be
 /// captured from the simulator CLI. Same view code as the widget; follows the system appearance.
 struct WidgetPreview: View {
     struct Page: Identifiable { let number: Int; var id: Int { number } }
-    /// Page 1 or 2, nil when the URL is not a widget preview.
+    /// Page 1, 2 or 3, nil when the URL is not a widget preview.
     static func handle(_ url: URL) -> Page? {
         let parts = Array(url.pathComponents.dropFirst())
         guard url.scheme == "campusdaily", url.host == "demo", parts.first == "widget-preview" else { return nil }
-        return Page(number:parts.count > 1 && parts[1] == "2" ? 2 : 1)
+        let number = parts.count > 1 ? Int(parts[1]) ?? 1 : 1
+        return Page(number:(1...3).contains(number) ? number : 1)
     }
     var page = 1
     @Environment(\.colorScheme) private var scheme
     private var updated: Date {
         Calendar.current.date(bySettingHour:10, minute:32, second:0, of:Date()) ?? Date()
     }
-    private func model(power: String = "42.6", card: String = "86.50", extras: Bool = false) -> CampusWidgetModel {
-        CampusWidgetModel(signedIn:true, remainingKWh:Decimal(string:power), balance:Decimal(string:card),
-                          yesterdayKWh:extras ? Decimal(string:"5.1") : nil,
-                          powerBalance:extras ? Decimal(string:"23.40") : nil, updated:updated)
+    private var staleTime: Date {
+        Calendar.current.date(bySettingHour:8, minute:10, second:0, of:Date()) ?? Date()
     }
+    private func model(_ state: WidgetFreshness = .fresh, power: String = "42.6", card: String = "86.50", extras: Bool = false) -> CampusWidgetModel {
+        CampusWidgetModel(state:state, remainingKWh:Decimal(string:power), balance:Decimal(string:card),
+                          yesterdayKWh:extras ? Decimal(string:"5.1") : nil,
+                          powerBalance:extras ? Decimal(string:"23.40") : nil, updated:state == .stale ? staleTime : updated)
+    }
+    /// Signed in, nothing read yet.
+    private var firstRead: CampusWidgetModel { CampusWidgetModel(state:.fresh) }
     var body: some View {
         VStack(spacing:8) {
-            if page == 1 {
+            switch page {
+            case 1:
+                // The four states (design §4), small and medium.
                 HStack(spacing:24) {
-                    tile(model(), caption:"小号")
-                    tile(model(power:"4.8"), caption:"小号 · 电量低")
+                    tile(model(), caption:"正常")
+                    tile(model(.stale), caption:"没存密码 · 过期")
                 }
                 HStack(spacing:24) {
-                    tile(.signedOut, caption:"没登录")
-                    tile(.needsRefresh, caption:"登录了 · 还没数据")
+                    tile(model(.expired), caption:"登录过期了")
+                    tile(.never, caption:"从没登录")
                 }
-                tile(model(extras:true), medium:true, caption:"中号 · 有昨天用电和电费余额")
+                tile(model(extras:true), medium:true, caption:"中号 · 正常")
+                tile(model(.stale, extras:true), medium:true, caption:"中号 · 没存密码 · 过期")
+            case 2:
+                tile(model(.expired, extras:true), medium:true, caption:"中号 · 登录过期了")
+                tile(.never, medium:true, caption:"中号 · 从没登录")
+                HStack(spacing:24) {
+                    tile(model(power:"4.8"), caption:"电量低（只有电量变红）")
+                    tile(model(.stale, power:"4.8", card:"12.30"), caption:"过期 · 都低")
+                }
+            default:
+                HStack(spacing:24) {
+                    tile(firstRead, caption:"登录了 · 还没数据")
+                    tile(model(.expired, power:"4.8", card:"12.30"), caption:"登录过期 · 电量低")
+                }
+                tile(firstRead, medium:true, caption:"中号 · 登录了 · 还没数据")
                 tile(model(), medium:true, caption:"中号 · 只有余额")
-            } else {
-                tile(.signedOut, medium:true, caption:"中号 · 没登录")
-                tile(.needsRefresh, medium:true, caption:"中号 · 登录了 · 还没数据")
-                HStack(spacing:24) {
-                    tile(model(card:"12.30"), caption:"小号 · 校园卡低")
-                    tile(model(power:"4.8", card:"12.30"), caption:"小号 · 都低")
-                }
             }
         }
         .padding(.top,64)

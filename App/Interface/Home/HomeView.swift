@@ -146,8 +146,16 @@ struct HomeView: View {
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
         .modifier(ReminderHooks(settings:$settings, path:$path, homeClear:homeClear))
         .onOpenURL { url in
-            // Widget tap (campusdaily://home): back to the home screen.
+            // Widget tap: campusdaily://home back to the home screen; campusdaily://login (login
+            // expired, never signed in) straight to the login step.
             if url.scheme == "campusdaily", url.host == "home" { settings = false; path = []; return }
+            if url.scheme == "campusdaily", url.host == "login" {
+                let sheetUp = settings
+                settings = false; path = []
+                // As after a reset: let the settings sheet go first, or the cover is not presented.
+                Task { if sheetUp { try? await Task.sleep(for:.milliseconds(600)) }; openOnboarding() }
+                return
+            }
             #if DEBUG
             handleDemo(url)
             #endif

@@ -9,20 +9,20 @@ import Core
 enum AppEnvironment {
     static let store: SecureStore = SharedKeychain.store
 
-    static let schoolHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.school)
+    static let schoolHTTP: HTTPClient = SchoolRefreshStack.schoolHTTP()
     static let showerHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWater)
     static let laundryHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.laundry)
 
     static let schoolVault = StoredSchoolVault(store:store)
     static let showerVault = StoredShowerVault(store:store)
     static let laundryVault = StoredLaundryVault(store:store)
-    private static let snapshots = SharedSnapshotStore(store:store) {
-        WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind)
-    }
+    /// The same stack the widget builds for its own reads; the two take turns through the lease.
+    private static let schoolStack = SchoolRefreshStack(store:store, http:schoolHTTP, role:"app",
+                                                        leaseWait:SchoolRefreshStack.appLeaseWait,
+                                                        didWriteSnapshot:{ WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind) })
 
-    static let school = SchoolSession(portal:PortalClient(http:schoolHTTP), ecykt:EcyktClient(http:schoolHTTP),
-                                      vault:schoolVault, passwordLogin:CASLoginClient(http:schoolHTTP))
-    static let refresher = SnapshotRefresher(school:school, store:snapshots)
+    static var school: SchoolSession { schoolStack.session }
+    static var refresher: SnapshotRefresher { schoolStack.refresher }
 
     static var userAgent: String {
         let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "dev"
