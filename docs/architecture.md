@@ -259,7 +259,7 @@ through `RefreshLease`, the shared item `shared.refreshLease` = `{owner, expires
 - a read that lost the lease (it ran out and was taken, or a sign-out removed it) stops at the next
   of those steps and writes nothing;
 - snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
-  dropped, and a "nobody signed in" reading leaves an emptied snapshot empty.
+  dropped (unless more than 30 minutes older: the clock moved back, and the reading is written), and a "nobody signed in" reading leaves an emptied snapshot empty.
 Residual: the Keychain has no compare-and-delete, so two processes that both find the same lease
 stale within microseconds could both delete and create. The read-back before minting and the
 write-back rule above (step 6) keep that from losing a session; it only costs one extra read.

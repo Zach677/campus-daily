@@ -141,4 +141,25 @@ final class TwoRefresherTests: XCTestCase {
         XCTAssertNotEqual(SnapshotRefresher.apply(SchoolReading(outcome: .failed(.offline), checkedAt: t1), to: s), s, "same time is not older")
         XCTAssertEqual(SnapshotRefresher.apply(SchoolReading(outcome: .notSignedIn, checkedAt: t2), to: .empty), .empty)
     }
+
+    /// The clock was set back after a check was stored: the stored time is far in the future of
+    /// every new reading. Those readings are written, not dropped as older.
+    func testAReadingAfterTheClockMovedBackStillUpdates() async throws {
+        let ahead = Date(timeIntervalSince1970: 1_793_330_000)
+        let mem = InMemorySecureStore()
+        let snapshots = SharedSnapshotStore(store: mem)
+        var stored = SchoolSnapshotReducer.reduce(.empty, .livenessOK(at: ahead))
+        stored = SchoolSnapshotReducer.reduce(stored, .balance(.success(Money(fen: 900)), at: ahead))
+        try snapshots.saveSnapshot(stored)
+        let now = ahead.addingTimeInterval(-24 * 3600)
+        let reading = SchoolReading(outcome: .ok, checkedAt: now, balance: .success(Money(fen: 100)), readAt: now)
+        XCTAssertFalse(SnapshotRefresher.isOlder(reading, than: stored))
+        let report = await refresher(ScriptedSchoolReader(reading), mem, owner: "app-1").refresh(inBackground: false)
+        XCTAssertTrue(report.snapshotSaved)
+        XCTAssertEqual(try snapshots.loadSnapshot()?.checkedAt, now)
+        XCTAssertEqual(try snapshots.loadSnapshot()?.card.value, Money(fen: 100))
+        // A reading only a little behind is still the other process's older one.
+        let slow = SchoolReading(outcome: .ok, checkedAt: ahead.addingTimeInterval(-120))
+        XCTAssertTrue(SnapshotRefresher.isOlder(slow, than: stored))
+    }
 }

@@ -220,10 +220,17 @@ public actor SnapshotRefresher {
         }
     }
 
+    /// How far a reading in one process can trail one the other process stored: one read
+    /// with the lease kept alive (a few minutes at most), with ample room. A clock set back by
+    /// less than this holds updates off for at most this long.
+    static let maxReadOverlap: TimeInterval = 30 * 60
+
     /// A reading checked before the stored snapshot was: the other process wrote a newer one.
+    /// A stored check further ahead than any read could overlap means the clock moved back
+    /// since then; that one is replaced, or the snapshot would never update again.
     public static func isOlder(_ reading: SchoolReading, than snapshot: HomeSnapshot) -> Bool {
-        guard let stored = snapshot.checkedAt else { return false }
-        return reading.checkedAt < stored
+        guard let stored = snapshot.checkedAt, reading.checkedAt < stored else { return false }
+        return stored.timeIntervalSince(reading.checkedAt) <= maxReadOverlap
     }
 
     /// Pure: the snapshot after one school reading. A reading older than the snapshot changes
