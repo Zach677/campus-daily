@@ -1,7 +1,6 @@
 import SwiftUI
 import WidgetKit
-import DailyCore
-import DailyStore
+import Core
 
 struct CampusEntry: TimelineEntry { let date: Date; let model: CampusWidgetModel }
 struct CampusTimeline: TimelineProvider {

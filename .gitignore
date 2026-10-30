@@ -7,6 +7,11 @@ artifacts/
 output/
 build/
 CampusHotWater.xcodeproj/
+XiaoRiChang.xcodeproj/
+/.DerivedData/
+.build-tests/
+# Local signing override (see Configuration/Base.xcconfig)
+Configuration/Developer.xcconfig
 .DS_Store
 __pycache__/
 *.pyc
