@@ -4,7 +4,7 @@ import Core
 
 /// What the 「校日常」 widget shows (design-r2 §4). Built from the shared campus cache;
 /// compiled into the widget and the app (DEBUG preview only).
-struct CampusWidgetModel {
+struct CampusWidgetModel: Sendable {
     /// Numbers to show. False = the empty state (see `loggedIn` for which copy).
     var signedIn: Bool
     /// A school login exists but nothing is cached yet: 「打开校日常⏎刷新一下」.

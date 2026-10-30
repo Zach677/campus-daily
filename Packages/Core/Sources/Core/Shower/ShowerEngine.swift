@@ -30,7 +30,10 @@ public enum ShowerTargetSelection {
 
     /// Probes same-name candidates with the read-only `AA` command and returns the one whose
     /// identity is `machineID`. RSSI only orders probes; it never establishes ownership.
+    /// Runs on the caller's actor, so a probe that touches actor state (the Bluetooth transport
+    /// on the main actor) is never sent elsewhere.
     public static func identify(_ candidates: [String], machineID: String,
+                                isolation: isolated (any Actor)? = #isolation,
                                 probe: (String) async throws -> Data) async throws -> String {
         var seen = Set<String>()
         var sawOther = false

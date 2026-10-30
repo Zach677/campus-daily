@@ -13,7 +13,7 @@ import Core
         // Reuse an activity left over from a previous launch; drop any duplicates.
         let existing = Activity<ShowerActivityAttributes>.activities.filter { $0.activityState == .active }
         activity = existing.first
-        for extra in existing.dropFirst() { Task { await extra.end(nil, dismissalPolicy:.immediate) } }
+        for extra in existing.dropFirst() { Task { await Self.endActivity(extra.id, nil, .immediate) } }
     }
 
     private var label: String {
@@ -26,7 +26,7 @@ import Core
         guard let activity else { return }
         var state = activity.content.state
         state.phase = .settling
-        Task { await activity.update(ActivityContent(state:state, staleDate:nil)) }
+        Task { await Self.updateActivity(activity.id, ActivityContent(state:state, staleDate:nil)) }
     }
 
     /// Reconcile with the engine's current state.
@@ -45,7 +45,7 @@ import Core
             guard let started = state.startedAt, var next = activity?.content.state else { return }
             next.startedAt = started; next.phase = .settling
             if let activity, activity.content.state != next {
-                Task { await activity.update(ActivityContent(state:next, staleDate:nil)) }
+                Task { await Self.updateActivity(activity.id, ActivityContent(state:next, staleDate:nil)) }
             }
         case .done:
             guard activity != nil, let started = state.startedAt else { return endNow() }
@@ -66,7 +66,7 @@ import Core
         if let activity {
             // E.g. a failed finish that left the session active: show the button again.
             guard activity.content.state != state else { return }
-            Task { await activity.update(ActivityContent(state:state, staleDate:nil)) }
+            Task { await Self.updateActivity(activity.id, ActivityContent(state:state, staleDate:nil)) }
             return
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
@@ -77,12 +77,26 @@ import Core
     private func end(_ state: ShowerActivityAttributes.ContentState, after date: Date) {
         guard let current = activity else { return }
         activity = nil
-        Task { await current.end(ActivityContent(state:state, staleDate:nil), dismissalPolicy:.after(date)) }
+        Task { await Self.endActivity(current.id, ActivityContent(state:state, staleDate:nil), .after(date)) }
     }
 
     private func endNow() {
         guard let current = activity else { return }
         activity = nil
-        Task { await current.end(nil, dismissalPolicy:.immediate) }
+        Task { await Self.endActivity(current.id, nil, .immediate) }
+    }
+
+    // `Activity` isn't Sendable, so it can't be handed from the main actor to ActivityKit's async
+    // calls. Pass its id instead and look it up again off the main actor; the calling task
+    // still starts on the main actor, so updates keep their order.
+    private typealias State = ShowerActivityAttributes.ContentState
+    private nonisolated static func updateActivity(_ id: String, _ content: ActivityContent<State>) async {
+        guard let activity = Activity<ShowerActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
+        await activity.update(content)
+    }
+
+    private nonisolated static func endActivity(_ id: String, _ content: ActivityContent<State>?, _ policy: ActivityUIDismissalPolicy) async {
+        guard let activity = Activity<ShowerActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
+        await activity.end(content, dismissalPolicy:policy)
     }
 }

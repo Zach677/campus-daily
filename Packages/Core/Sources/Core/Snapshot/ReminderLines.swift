@@ -2,7 +2,7 @@ import Foundation
 
 /// The user's 「电量低于 N 度」/「校园卡低于 N 元」 lines, shared with the widget through the
 /// Keychain item `shared.reminderLines`. Defaults 10 度 / 20 元.
-public struct ReminderLines: Codable, Equatable {
+public struct ReminderLines: Sendable, Codable, Equatable {
     public var powerKWh: Int = 10
     public var cardYuan: Int = 20
     public var power: Decimal { Decimal(powerKWh) }

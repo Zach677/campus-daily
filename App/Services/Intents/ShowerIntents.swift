@@ -1,10 +1,10 @@
 import AppIntents
 
 struct StartShowerIntent: AppIntent {
-    static var title: LocalizedStringResource = "开始洗澡"
-    static var description = IntentDescription("连接你的水控并申请本次授权，然后按水控上的出水键。")
-    static var openAppWhenRun = true
-    static var authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
+    static let title: LocalizedStringResource = "开始洗澡"
+    static let description = IntentDescription("连接你的水控并申请本次授权，然后按水控上的出水键。")
+    static let openAppWhenRun = true
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         try await ShowerModel.shared.run(start: true)
         return .result(dialog: "水控连上了，按出水键开水。")
@@ -12,10 +12,10 @@ struct StartShowerIntent: AppIntent {
 }
 
 struct FinishShowerIntent: AppIntent {
-    static var title: LocalizedStringResource = "结束并结算"
-    static var description = IntentDescription("结束本 App 开启的热水会话并提交结算。")
-    static var openAppWhenRun = true
-    static var authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
+    static let title: LocalizedStringResource = "结束并结算"
+    static let description = IntentDescription("结束本 App 开启的热水会话并提交结算。")
+    static let openAppWhenRun = true
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         try await ShowerModel.shared.run(start: false)
         if let amount = ShowerModel.shared.lastCost {

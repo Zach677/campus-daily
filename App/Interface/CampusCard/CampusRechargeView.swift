@@ -97,7 +97,7 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
                message.frameInfo.securityOrigin.protocol == "https", message.frameInfo.securityOrigin.host == "ecykt.gdbtu.edu.cn",
                message.body as? String == "expired" { expired() }
         }
-        func webView(_ webView: WKWebView,decidePolicyFor action: WKNavigationAction,decisionHandler: @escaping (WKNavigationActionPolicy)->Void) {
+        func webView(_ webView: WKWebView,decidePolicyFor action: WKNavigationAction,decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy)->Void) {
             guard action.targetFrame?.isMainFrame != false else { decisionHandler(.allow); return }
             guard let url = action.request.url, url.user == nil, url.password == nil, url.port == nil || url.port == 443 else {
                 if let url = action.request.url { ShowerDiagnosticReport.record(RechargeNavigation.blockedEvent(url)) }

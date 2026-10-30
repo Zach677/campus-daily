@@ -13,7 +13,7 @@ import Core
         // Reuse a running activity from a previous launch; drop duplicates.
         let existing = Activity<LaundryActivityAttributes>.activities.filter { $0.activityState == .active }
         activity = existing.first
-        for extra in existing.dropFirst() { Task { await extra.end(nil, dismissalPolicy:.immediate) } }
+        for extra in existing.dropFirst() { Task { await Self.endActivity(extra.id, nil, .immediate) } }
     }
 
     func sync(facts: LaundryFacts, now: Date = Date()) {
@@ -44,7 +44,7 @@ import Core
             state.phase = .running; state.endsAt = end; state.minutesLeft = minutes
             if state.startedAt > end { state.startedAt = end }
             guard state != current.content.state else { return }
-            Task { await current.update(ActivityContent(state:state, staleDate:end)) }
+            Task { await Self.updateActivity(current.id, ActivityContent(state:state, staleDate:end)) }
             return
         }
         if activity != nil { endNow() }   // a different order: one laundry activity at a time
@@ -69,21 +69,34 @@ import Core
         var state = current.content.state
         state.phase = .done; state.minutesLeft = 0; state.endsAt = min(state.endsAt, now)
         if state.startedAt > state.endsAt { state.startedAt = state.endsAt }
-        Task { await current.end(ActivityContent(state:state, staleDate:now), dismissalPolicy:.after(now.addingTimeInterval(5 * 60))) }
+        Task { await Self.endActivity(current.id, ActivityContent(state:state, staleDate:now), .after(now.addingTimeInterval(5 * 60))) }
     }
 
     /// 学校洗衣机 switched off: end any laundry activity at once.
     func endAll() {
         endNow()
         for extra in Activity<LaundryActivityAttributes>.activities where extra.activityState == .active {
-            Task { await extra.end(nil, dismissalPolicy:.immediate) }
+            Task { await Self.endActivity(extra.id, nil, .immediate) }
         }
     }
 
     private func endNow() {
         guard let current = activity else { return }
         activity = nil
-        Task { await current.end(nil, dismissalPolicy:.immediate) }
+        Task { await Self.endActivity(current.id, nil, .immediate) }
+    }
+
+    // `Activity` isn't Sendable, so it can't be handed from the main actor to ActivityKit's async
+    // calls. Pass its id instead and look it up again off the main actor; the calling task
+    // still starts on the main actor, so updates keep their order.
+    private nonisolated static func updateActivity(_ id: String, _ content: ActivityContent<State>) async {
+        guard let activity = Activity<LaundryActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
+        await activity.update(content)
+    }
+
+    private nonisolated static func endActivity(_ id: String, _ content: ActivityContent<State>?, _ policy: ActivityUIDismissalPolicy) async {
+        guard let activity = Activity<LaundryActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
+        await activity.end(content, dismissalPolicy:policy)
     }
 
     #if DEBUG

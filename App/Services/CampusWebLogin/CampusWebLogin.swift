@@ -116,7 +116,7 @@ struct OfficialCampusBrowser: UIViewRepresentable {
             state.progress.pageStarted(host:webView.url?.host)
         }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { connect(webView) }
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy)->Void) {
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy)->Void) {
             guard navigationAction.targetFrame?.isMainFrame != false else { decisionHandler(.allow); return }
             guard let url = navigationAction.request.url,
                   url.scheme == "https", ["portal.gdbtu.edu.cn","cas.gdbtu.edu.cn","ecykt.gdbtu.edu.cn"].contains(url.host ?? ""),
