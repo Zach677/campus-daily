@@ -99,14 +99,18 @@ public actor SchoolSession {
     /// Bumped by `signOut()`. Work that awaited the network checks it before writing the
     /// Keychain, so a sign-out in the middle is never undone by a late write.
     private var signOutGeneration = 0
+    /// How long the card records may take after the numbers were handed over.
+    let recordsTimeout: TimeInterval
     /// Upper bound on directory calls when locating the room node.
     static let maxDirectoryCalls = 40
 
     public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, passwordLogin: SchoolPasswordLogin? = nil,
                 now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in },
-                credentialLog: CredentialLifetimeLog? = nil, createsLoginDeviceID: Bool = true) {
+                credentialLog: CredentialLifetimeLog? = nil, createsLoginDeviceID: Bool = true,
+                recordsTimeout: TimeInterval = CardActivity.timeout) {
         self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
         self.diagnostic = diagnostic; self.credentialLog = credentialLog; self.createsLoginDeviceID = createsLoginDeviceID
+        self.recordsTimeout = recordsTimeout
     }
 
     // MARK: Account and password
@@ -302,6 +306,14 @@ public actor SchoolSession {
     /// stored one is still the one this read started from: a sign-out or a newer session from
     /// the other process is never overwritten.
     public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true }) async -> SchoolReading {
+        await refresh(inBackground: inBackground, mayMint: mayMint, numbers: { _ in })
+    }
+
+    /// As above; `numbers` gets the reading with the balance and the meter (no records) as
+    /// soon as they are in, so they can be stored before the slower card records arrive. The
+    /// returned reading has all three; the records are given up after `recordsTimeout`.
+    public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true },
+                        numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
         guard let stored = (try? vault.ecyktSession()) ?? nil else {
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
@@ -348,17 +360,31 @@ public actor SchoolSession {
 
         let binding = ((try? vault.profile()) ?? nil)?.meter
         let range = CardActivity.range(at: now())
+        let timeout = recordsTimeout
+        let ecykt = self.ecykt
+        // Started with the other two, but nothing waits for it before the numbers are handed over.
+        let records = Task {
+            await Self.within(timeout) {
+                await Self.captureError {
+                    let page = try await ecykt.cardRecords(session, custid: card.custid, begin: range.begin, end: range.end,
+                                                           page: 1, pageSize: CardActivity.pageSize, timeout: timeout)
+                    return CardActivity(records: page.rows, begin: range.begin, end: range.end,
+                                        complete: page.total <= page.rows.count)
+                }
+            }
+        }
         async let balanceResult = capture { try await self.ecykt.balance(session, custid: card.custid) }
         async let meterResult = readMeter(session, binding: binding)
-        async let activityResult = capture {
-            let page = try await self.ecykt.cardRecords(session, custid: card.custid, begin: range.begin, end: range.end,
-                                                        page: 1, pageSize: CardActivity.pageSize)
-            return CardActivity(records: page.rows, begin: range.begin, end: range.end, complete: page.total <= page.rows.count)
+        let (b, m) = await (balanceResult, meterResult)
+        guard started == signOutGeneration else {
+            records.cancel()
+            return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
-        let (b, m, a) = await (balanceResult, meterResult, activityResult)
-        guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         var reading = SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
                                     roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged)
+        await numbers(reading)
+        let a = await withTaskCancellationHandler { await records.value } onCancel: { records.cancel() }
+        guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         reading.activity = a
         return reading
     }
@@ -744,9 +770,50 @@ public actor SchoolSession {
         }
     }
 
+    /// `body`'s result, or `.timedOut` once `seconds` passed (the body is then cancelled and
+    /// not waited for).
+    static func within<T: Sendable>(_ seconds: TimeInterval,
+                                    _ body: @escaping @Sendable () async -> Result<T, ServiceError>) async -> Result<T, ServiceError> {
+        let once = FirstResult<Result<T, ServiceError>>()
+        let work = Task { await once.offer(await body()) }
+        let timer = Task {
+            try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+            await once.offer(.failure(.timedOut))
+        }
+        let result = await withTaskCancellationHandler {
+            await once.value()
+        } onCancel: {
+            Task { await once.offer(.failure(.timedOut)) }
+        }
+        work.cancel(); timer.cancel()
+        return result
+    }
+
     nonisolated func capture<T: Sendable>(_ body: @Sendable () async throws -> T) async -> Result<T, ServiceError> {
+        await Self.captureError(body)
+    }
+
+    static func captureError<T: Sendable>(_ body: @Sendable () async throws -> T) async -> Result<T, ServiceError> {
         do { return .success(try await body()) }
         catch let e as ServiceError { return .failure(e) }
         catch { return .failure(.offline) }
+    }
+}
+
+/// The first value offered wins; `value()` waits for it.
+actor FirstResult<T: Sendable> {
+    private var result: T?
+    private var waiters: [CheckedContinuation<T, Never>] = []
+
+    func offer(_ value: T) {
+        guard result == nil else { return }
+        result = value
+        for waiter in waiters { waiter.resume(returning: value) }
+        waiters = []
+    }
+
+    func value() async -> T {
+        if let result { return result }
+        return await withCheckedContinuation { waiters.append($0) }
     }
 }

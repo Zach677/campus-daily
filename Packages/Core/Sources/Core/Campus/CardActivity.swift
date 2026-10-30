@@ -34,6 +34,9 @@ public struct CardActivity: Sendable, Equatable, Codable {
     /// Records asked for per refresh: the day before yesterday through today, one page.
     public static let days = 3
     public static let pageSize = 50
+    /// The records are read after the balance and the meter are stored, and given up after
+    /// this long: the widget has about 20 s in all.
+    public static let timeout: TimeInterval = 6
 
     /// `begin`/`end` for a read at `now`.
     public static func range(at now: Date, calendar: Calendar = SchoolCalendar.shanghai) -> (begin: String, end: String) {

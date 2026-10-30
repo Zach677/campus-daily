@@ -12,15 +12,19 @@ struct Harness {
     var keepsCredentialLog = false
     /// False for the widget's session.
     var createsLoginDeviceID = true
+    var recordsTimeout = CardActivity.timeout
+    /// Runs before the card records request is sent (the stub server's gate would block every request).
+    var beforeRecords: (@Sendable () async -> Void)? = nil
     var vault: StoredSchoolVault { StoredSchoolVault(store: store) }
     var snapshots: SharedSnapshotStore { SharedSnapshotStore(store: store) }
 
     func session() -> SchoolSession {
-        let http = server.makeClient()
+        let stub = server.makeClient()
+        let http: HTTPClient = beforeRecords.map { HeldRecordsClient(inner: stub, hold: $0) } ?? stub
         return SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http), vault: vault,
                              passwordLogin: passwordLogin, now: clock.function, diagnostic: diagnostic,
                              credentialLog: keepsCredentialLog ? CredentialLifetimeLog(store: store) : nil,
-                             createsLoginDeviceID: createsLoginDeviceID)
+                             createsLoginDeviceID: createsLoginDeviceID, recordsTimeout: recordsTimeout)
     }
 
     /// The refresher over this harness's session and shared store.
@@ -426,6 +430,57 @@ final class CardActivityRefreshTests: XCTestCase {
         XCTAssertTrue(h.server.unmatched.isEmpty)
     }
 
+    /// The balance and the meter are stored before the card records answer.
+    func testTheNumbersAreStoredBeforeTheRecordsAnswer() async throws {
+        var h = Harness()
+        let seen = Box<HomeSnapshot?>(nil)
+        let snapshots = h.snapshots
+        h.beforeRecords = {
+            for _ in 0..<300 {
+                if let stored = (try? snapshots.loadSnapshot()) ?? nil, stored.card.value != nil { seen.value = stored; return }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+        try h.signedIn(meter: Harness.roomBinding)
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        try h.server.serve("ecykt/electric-getMeterStatus-room", matchBody: ["server", "buildingID"])
+        try h.server.serve("ecykt/card-getRecordList-ok")
+        let report = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(report.outcome, .ok)
+        let early = try XCTUnwrap(seen.value, "balance stored while the records were still being read")
+        XCTAssertNotNil(early.power.value)
+        XCTAssertNil(early.activity.value)
+        XCTAssertNotNil(report.snapshot.activity.value, "the records land after")
+        XCTAssertEqual(try h.snapshots.loadSnapshot(), report.snapshot)
+    }
+
+    /// Records slower than their timeout are given up: the balance is stored all the same and
+    /// the last records stay, marked as not updated.
+    func testSlowRecordsAreGivenUpAndTheBalanceKept() async throws {
+        var h = Harness()
+        h.recordsTimeout = 0.3
+        h.beforeRecords = { try? await Task.sleep(nanoseconds: 3_000_000_000) }
+        try h.signedIn()
+        var old = HomeSnapshot()
+        let earlier = h.clock.now.addingTimeInterval(-3600)
+        old.activity.succeed(CardActivity(records: [], begin: "20261028", end: "20261030", complete: true), at: earlier)
+        old.checkedAt = earlier
+        try h.snapshots.saveSnapshot(old)
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        try h.server.serve("ecykt/card-getRecordList-ok")
+        let started = Date()
+        let report = await h.refresher().refresh(inBackground: true)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2.5, "not waited for")
+        XCTAssertEqual(report.outcome, .ok)
+        XCTAssertNotNil(report.snapshot.card.value)
+        XCTAssertEqual(report.snapshot.activity.value, old.activity.value, "the last records stay")
+        XCTAssertEqual(report.snapshot.activity.fetchedAt, earlier)
+        XCTAssertEqual(report.snapshot.activity.error, .timedOut)
+        XCTAssertEqual(try h.snapshots.loadSnapshot(), report.snapshot)
+    }
+
     /// Records that can't be read leave the balance alone, and the last records stay with their time.
     func testUnreadableRecordsDoNotStopTheBalance() async throws {
         let h = Harness()
@@ -443,3 +498,24 @@ final class CardActivityRefreshTests: XCTestCase {
     }
 }
 
+/// A value a stub server's gate can set and the test read afterwards.
+final class Box<T>: @unchecked Sendable {
+    // @unchecked: guarded by `lock`.
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+}
+
+/// Holds the card records request in an async wait before passing it on.
+struct HeldRecordsClient: HTTPClient {
+    let inner: HTTPClient
+    let hold: @Sendable () async -> Void
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        if request.url.path.hasSuffix("/getRecordList") { await hold() }
+        return try await inner.send(request)
+    }
+}

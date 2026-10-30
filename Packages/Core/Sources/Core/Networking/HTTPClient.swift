@@ -14,6 +14,8 @@ public struct HTTPRequest: Sendable {
     public var isStateChanging: Bool
     /// Short endpoint name for logs (no query, no ids), e.g. "getUserBalance".
     public var logName: String
+    /// A shorter wait than the client's own for a request that may be given up early; nil = the client's.
+    public var timeout: TimeInterval?
 
     public static let defaultBodyLimit = 64 * 1024
     public static let largeBodyLimit = 1024 * 1024

@@ -74,6 +74,7 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
         urlRequest.httpMethod = request.method.rawValue
         urlRequest.httpBody = request.body
         urlRequest.httpShouldHandleCookies = false
+        if let timeout = request.timeout { urlRequest.timeoutInterval = min(timeout, Self.requestTimeout) }
         for (k, v) in request.headers { urlRequest.setValue(v, forHTTPHeaderField: k) }
 
         let data: Data

@@ -8,6 +8,17 @@ import os
 /// password or writes a credential back; false = stop there.
 public protocol SchoolReader: Sendable {
     func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading
+    /// `numbers` may be called once, before the end, with a reading that is already worth
+    /// storing (the balance and the meter while the card records are still on their way).
+    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool,
+                 numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading
+}
+
+public extension SchoolReader {
+    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool,
+                 numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
+        await refresh(inBackground: inBackground, mayMint: mayMint)
+    }
 }
 
 extension SchoolSession: SchoolReader {}
@@ -195,16 +206,26 @@ public actor SnapshotRefresher {
         // halfway and mint or log in a second time.
         let heartbeat = lease.map { Self.keepAlive($0, every: renewInterval) }
         defer { heartbeat?.cancel() }
-        let reading = await school.refresh(inBackground: inBackground, mayMint: { lease?.renew() ?? true })
-        // Signed out meanwhile, or nobody wants this read any more: write nothing.
+        // The balance and the meter are stored as soon as they are in (a widget that runs out of
+        // time while the card records load keeps them); the full reading is stored at the end.
+        let reading = await school.refresh(inBackground: inBackground, mayMint: { lease?.renew() ?? true },
+                                           numbers: { [weak self] partial in
+                                               _ = await self?.write(partial, started: started, lease: lease)
+                                           })
+        return write(reading, started: started, lease: lease)
+    }
+
+    /// Stores one reading under the same rules each time. Signed out meanwhile, or nobody
+    /// wants this read any more: nothing is written. Lost the lease meanwhile (it ran out,
+    /// whether or not another process took it, or a sign-out in the other process removed it),
+    /// or the other process already wrote a newer reading: nothing is written either; a lease
+    /// that ran out is not this read's failure to record.
+    private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) -> RefreshReport {
         guard started == generation, !Task.isCancelled else {
             let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
             return RefreshReport(outcome: outcome, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
         }
         let stored = latest()
-        // Lost the lease meanwhile (it ran out, whether or not another process took it, or a
-        // sign-out in the other process removed it), or the other process already wrote a newer
-        // reading: write nothing. A lease that ran out is not this read's failure to record.
         guard lease?.renew() ?? true, !Self.isOlder(reading, than: stored) else {
             return RefreshReport(outcome: reading.outcome, snapshot: stored, reexchanged: reading.reexchanged, snapshotSaved: false)
         }

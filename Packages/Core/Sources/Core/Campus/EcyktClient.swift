@@ -93,8 +93,8 @@ public struct EcyktClient: Sendable {
 
     /// `card/getRecordList` (wallet history). Dates are `yyyyMMdd`.
     public func cardRecords(_ s: EcyktSession, custid: String, begin: String, end: String,
-                            page: Int = 1, pageSize: Int = 20) async throws -> CardRecordPage {
-        let data = try await call("/card/getRecordList", s, validating: false, extra: [
+                            page: Int = 1, pageSize: Int = 20, timeout: TimeInterval? = nil) async throws -> CardRecordPage {
+        let data = try await call("/card/getRecordList", s, validating: false, timeout: timeout, extra: [
             "custid": .string(custid), "begin": .string(begin), "end": .string(end), "datetype": .int(1),
             "pageNum": .int(Int64(page)), "pageSize": .int(Int64(pageSize)), "dcflag": .string(""), "address": .string(""),
         ])
@@ -202,16 +202,17 @@ public struct EcyktClient: Sendable {
         }
     }
 
-    private func call(_ path: String, _ s: EcyktSession, validating: Bool, extra: [String: JSONValue],
+    private func call(_ path: String, _ s: EcyktSession, validating: Bool, timeout: TimeInterval? = nil, extra: [String: JSONValue],
                       referer: Referer = .recharge, bodyLimit: Int = HTTPRequest.defaultBodyLimit,
                       name: String? = nil) async throws -> JSONValue {
         var body = extra
         body["syscustid"] = .string(s.syscustid)
         body["acc_token"] = .string(s.token)
         guard let url = URL(string: SchoolEndpoints.ecyktBase.absoluteString + path) else { throw ServiceError.badRequest(.ecykt) }
-        let req = HTTPRequest.postJSON(service: .ecykt, url: url,
+        var req = HTTPRequest.postJSON(service: .ecykt, url: url,
                                        headers: baseHeaders(userAgent: s.userAgent, referer: referer, token: s.token),
                                        json: body, bodyLimit: bodyLimit, logName: name ?? url.lastPathComponent)
+        req.timeout = timeout
         return try await decode(try await http.send(req), validating: validating)
     }
 
