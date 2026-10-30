@@ -437,8 +437,8 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 
 | Data | Store | Accessibility | Shared with widget |
 |---|---|---|---|
-| school credentials (`school.portal`, `school.ecykt`) | Keychain | portal: WhenUnlockedThisDeviceOnly; ecykt: AfterFirstUnlockThisDeviceOnly | no |
-| school profile (dorm, meter) | Keychain `school.profile` | AfterFirstUnlockThisDeviceOnly | no |
+| school credentials (`school.portal`, `school.ecykt`) | Keychain | portal: WhenUnlockedThisDeviceOnly; ecykt: AfterFirstUnlockThisDeviceOnly | portal: no; ecykt: **yes** |
+| school profile (dorm, meter) | Keychain `school.profile` | AfterFirstUnlockThisDeviceOnly | **yes** |
 | water binding, shower session | Keychain `water.binding`, `water.session` | AfterFirstUnlockThisDeviceOnly | no |
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | no |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
@@ -449,9 +449,12 @@ All Keychain items use service `com.beamjason.xiaorichang.<name>.v1`, account `d
 Session stores (water/laundry) write synchronously and fail closed: a failed write blocks the
 next side effect (`storage` error), same as today.
 
-Widget sharing: the widget reads only `shared.snapshot` and `shared.reminderLines`, never
-credentials, via the **keychain access group** (works with any signing team incl. free Personal
-Teams, no portal registration). No App Group is introduced: the current build has none and
+Widget sharing: items marked "yes" are written with the **keychain access group**
+`$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared` (`SharedKeychain.groupIdentifier`, listed in
+both entitlements files; works with any signing team incl. free Personal Teams, no portal
+registration). Today the widget reads only `shared.snapshot` and `shared.reminderLines`; the
+school card session and profile are shared so the widget can read the balance and meter by itself.
+The widget never reads the portal token, hot-water or laundry items. No App Group is introduced: the current build has none and
 re-signers of the public IPA may not get one. Live Activities get data via ActivityKit content
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.

@@ -54,20 +54,20 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.account, "default")
         XCTAssertEqual(StoreKey.schoolPortal.accessibility, .whenUnlockedThisDeviceOnly)
         XCTAssertEqual(StoreKey.schoolEcykt.accessibility, .afterFirstUnlockThisDeviceOnly)
-        XCTAssertEqual(StoreKey.allCases.filter(\.isShared), [.sharedSnapshot, .sharedReminderLines])
+        XCTAssertEqual(StoreKey.allCases.filter(\.isShared), [.schoolEcykt, .schoolProfile, .sharedSnapshot, .sharedReminderLines])
         XCTAssertEqual(PreferenceKey.reminder("card"), "xrc.reminder.card")
         XCTAssertEqual(PreferenceKey.laundryAckFailedOrder, "xrc.laundry.ackFailedOrder")
         XCTAssertEqual(SharedSnapshotStore.widgetKind, "XiaoRiChangBalances")
     }
 
-    func testSharedItemsUseAccessGroupCredentialsNever() throws {
+    func testSharedItemsUseAccessGroupPortalTokenNever() throws {
         let kc = FakeKeychain()
         let store = KeychainSecureStore(backend: kc, accessGroup: group)
         try store.write(Data("s".utf8), for: .sharedSnapshot)
-        try store.write(Data("c".utf8), for: .schoolEcykt)
+        try store.write(Data("c".utf8), for: .schoolPortal)
         XCTAssertEqual(kc.items[.init(service: StoreKey.sharedSnapshot.service, group: group)], Data("s".utf8))
-        XCTAssertEqual(kc.items[.init(service: StoreKey.schoolEcykt.service, group: nil)], Data("c".utf8))
-        XCTAssertEqual(kc.accessibility[.init(service: StoreKey.schoolEcykt.service, group: nil)], .afterFirstUnlockThisDeviceOnly)
+        XCTAssertEqual(kc.items[.init(service: StoreKey.schoolPortal.service, group: nil)], Data("c".utf8))
+        XCTAssertEqual(kc.accessibility[.init(service: StoreKey.schoolPortal.service, group: nil)], .whenUnlockedThisDeviceOnly)
         XCTAssertFalse(store.isUsingFallback)
         XCTAssertEqual(try store.read(.sharedSnapshot), Data("s".utf8))
         // Overwrite goes through update.
@@ -90,6 +90,50 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(kc.calls, ["add -"])
         try store.delete(.sharedSnapshot)
         XCTAssertNil(try store.read(.sharedSnapshot))
+    }
+
+    /// The widget reads the school session and profile through the same access group.
+    func testSchoolSessionAndProfileUseTheSharedGroup() throws {
+        let kc = FakeKeychain()
+        let store = KeychainSecureStore(backend: kc, accessGroup: group)
+        let vault = StoredSchoolVault(store: store)
+        try vault.saveEcyktSession(EcyktSession(token: "t", syscustid: "s"))
+        try vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: "示例校区9栋9号1层199房")))
+        try vault.savePortalToken(PortalToken("p"))
+        XCTAssertNotNil(kc.items[.init(service: StoreKey.schoolEcykt.service, group: group)])
+        XCTAssertNotNil(kc.items[.init(service: StoreKey.schoolProfile.service, group: group)])
+        XCTAssertEqual(kc.accessibility[.init(service: StoreKey.schoolEcykt.service, group: group)], .afterFirstUnlockThisDeviceOnly,
+                       "background and widget reads work while the phone is locked")
+        XCTAssertNil(kc.items[.init(service: StoreKey.schoolPortal.service, group: group)])
+        for key in [StoreKey.waterBinding, .waterSession, .laundryAccount, .laundryCheckout] { XCTAssertFalse(key.isShared, key.rawValue) }
+        // A second store in the same group (the widget process) reads the same session.
+        let widget = StoredSchoolVault(store: KeychainSecureStore(backend: kc, accessGroup: group))
+        XCTAssertEqual(try widget.ecyktSession()?.syscustid, "s")
+    }
+
+    /// An item the app wrote before it was pinned to the group (default group) is still read.
+    func testSchoolSessionWrittenWithoutGroupStillReads() throws {
+        let kc = FakeKeychain()
+        kc.items[.init(service: StoreKey.schoolEcykt.service, group: nil)] = try JSONEncoder().encode(EcyktSession(token: "t", syscustid: "old"))
+        let vault = StoredSchoolVault(store: KeychainSecureStore(backend: kc, accessGroup: group))
+        XCTAssertEqual(try vault.ecyktSession()?.syscustid, "old")
+    }
+
+    /// The group the store uses is the one both entitlements files list.
+    func testAccessGroupMatchesBothEntitlements() throws {
+        XCTAssertEqual(SharedKeychain.groupIdentifier, "com.beamjason.xiaorichang.shared")
+        XCTAssertEqual(SharedKeychain.accessGroup(teamPrefixedFrom: "TEAMID1234.com.beamjason.xiaorichang"), group)
+        XCTAssertEqual(SharedKeychain.accessGroup(teamPrefixedFrom: "TEAMID1234.com.beamjason.xiaorichang.shared"), group)
+        XCTAssertNil(SharedKeychain.accessGroup(teamPrefixedFrom: "nodot"))
+        XCTAssertNil(SharedKeychain.accessGroup(teamPrefixedFrom: ".leadingdot"))
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for path in ["App/Resources/App.entitlements", "Widget/Widget.entitlements"] {
+            let data = try Data(contentsOf: root.appendingPathComponent(path))
+            let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any], path)
+            let groups = try XCTUnwrap(plist["keychain-access-groups"] as? [String], path)
+            XCTAssertEqual(groups, ["$(AppIdentifierPrefix)" + SharedKeychain.groupIdentifier], path)
+        }
     }
 
     func testReadErrorsThrow() {

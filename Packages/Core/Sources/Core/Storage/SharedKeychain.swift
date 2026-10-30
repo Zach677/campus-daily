@@ -21,10 +21,19 @@ public enum SharedKeychain {
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
-              let group = (out as? [String:Any])?[kSecAttrAccessGroup as String] as? String,
-              let dot = group.firstIndex(of:".") else { return nil }
-        return String(group[..<dot]) + ".com.beamjason.xiaorichang.shared"
+              let group = (out as? [String:Any])?[kSecAttrAccessGroup as String] as? String else { return nil }
+        return accessGroup(teamPrefixedFrom:group)
     }()
+
+    /// The group name after the team prefix, as listed in App.entitlements and Widget.entitlements
+    /// (`$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared`).
+    public static let groupIdentifier = "com.beamjason.xiaorichang.shared"
+
+    /// `<TeamPrefix>.` + `groupIdentifier`, taking the team prefix from any group this build wrote to.
+    public static func accessGroup(teamPrefixedFrom group: String) -> String? {
+        guard let dot = group.firstIndex(of:"."), dot != group.startIndex else { return nil }
+        return String(group[..<dot]) + "." + groupIdentifier
+    }
 
     public static let store: SecureStore = KeychainSecureStore(backend:SecItemKeychainBackend(), accessGroup:accessGroup)
 }
