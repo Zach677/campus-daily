@@ -436,7 +436,7 @@ import WaterCore
         checkoutBusy = true; checkoutIssue = nil; checkoutProgress = "正在核对订单…"
         defer { checkout = controller.record?.belongs(to:config) == true ? controller.record : nil; checkoutBusy = false; checkoutProgress = nil }
         do { try await controller.adopt(config:config) }
-        catch { checkoutIssue = "上一笔订单是用之前的 U净 登录下的，这里查不到它。去 U净 的订单里核对，核对完之前这里不能下新单。" }
+        catch { checkoutIssue = "上一笔订单是用之前的 U净 账号下的，这里查不到。先去 U净 App 的订单里核对，核对完才能在这里下新单。" }
     }
     /// 核对 on a failed start (52): re-read, and record the check only if the re-read worked.
     func checkFailedOrder() async {

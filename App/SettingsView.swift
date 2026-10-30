@@ -37,7 +37,7 @@ struct SettingsView: View {
                     if data.water == .unconfigured {
                         // Hot water is set up by choosing the dorm (controller binding), not by a file.
                         NavigationLink { CampusOnboardingView() } label: {
-                            SettingsRow(emoji:"🚿", title:"热水", value:"去设置宿舍")
+                            SettingsRow(emoji:"🚿", title:"热水", value:"未选")
                         }
                     } else {
                         NavigationLink { WaterDetail() } label: {

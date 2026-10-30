@@ -335,7 +335,7 @@ struct HomeView: View {
 
     private func waterSubtitle(_ data: HomeData) -> String {
         switch data.water {
-        case .unconfigured: return "去设置宿舍"
+        case .unconfigured: return "先在设置里选好宿舍"
         case .unavailable(let reason): return reason
         case .showering, .settling: return "正在洗澡"
         case .unresolved(let label): return label

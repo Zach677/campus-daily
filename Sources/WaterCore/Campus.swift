@@ -38,16 +38,16 @@ public enum CampusError: Error, LocalizedError, Sendable, Hashable {
         switch self {
         case .configuration: return "请完成学校账号与宿舍设置"
         case .expired: return "学校登录过期了，重新登录一下。"
-        case .network: return "暂时无法连接学校"
+        case .network: return "暂时连不上学校，等一下再试。"
         case .offline: return "校园查询未联网，请检查本 App 的无线数据权限"
         case .timedOut: return "学校连接超时，稍后下拉重试"
         case .secureConnection: return "学校安全连接未建立，请检查网络和系统时间"
         case .response: return "学校未返回有效数据"
         case .ambiguous: return "宿舍或校园卡绑定不唯一，请在官方页面核对"
         case .rejected(_, let message):
-            return message.isEmpty ? "学校这次没有受理，稍后再试" : "学校提示：" + message
-        case .unbound: return "学校账号还没绑定校园卡，请先在学校官方页面绑定"
-        case .accountMismatch: return "学校返回的校园卡和登录的账号对不上，请重新登录后再试"
+            return message.isEmpty ? "学校这次没办成，等一下再试。" : "学校提示：" + message
+        case .unbound: return "你的学校账号还没绑校园卡，先去学校那边绑好再来。"
+        case .accountMismatch: return "读到的校园卡和登录的账号对不上，重新登录一下再试。"
         }
     }
     public var errorDescription: String? { message }
@@ -55,6 +55,7 @@ public enum CampusError: Error, LocalizedError, Sendable, Hashable {
     /// Copy used as the Codable value before 0.8.0 (snapshots saved by older builds).
     static let legacyCopy: [String:CampusError] = [
         "请完成学校账号与宿舍设置": .configuration, "学校登录过期了，重新登录一下。": .expired,
+        // Earlier .network copy; old snapshots still decode.
         "暂时无法连接学校": .network, "校园查询未联网，请检查本 App 的无线数据权限": .offline,
         "学校连接超时，稍后下拉重试": .timedOut, "学校安全连接未建立，请检查网络和系统时间": .secureConnection,
         "学校未返回有效数据": .response, "宿舍或校园卡绑定不唯一，请在官方页面核对": .ambiguous,
