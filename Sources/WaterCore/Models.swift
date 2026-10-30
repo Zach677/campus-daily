@@ -87,9 +87,12 @@ public struct WaterSession: Codable, Equatable, Sendable {
     public let startedAt: Date
     public var endedAt: Date?
     public var receipt: SettlementReceipt?
-    public init(stage: SessionStage, machineID: String, peripheralID: String) {
+    /// Closed by the user after checking the official record (no receipt, no end time).
+    /// Optional so sessions saved by earlier versions still decode.
+    public var resolvedManually: Bool?
+    public init(stage: SessionStage, machineID: String, peripheralID: String, startedAt: Date = Date()) {
         self.stage = stage; self.machineID = machineID; self.peripheralID = peripheralID
-        startedAt = Date()
+        self.startedAt = startedAt
     }
 }
 

@@ -33,8 +33,10 @@ final class NoRedirect: NSObject, URLSessionTaskDelegate {
         catch { throw WaterError.networkUncertain }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
               data.count <= 65536, let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let code = root["code"] as? NSNumber, CFGetTypeID(code) != CFBooleanGetTypeID(), code.doubleValue == 0,
-              let body = root["data"] as? [String: Any] else { throw WaterError.provider }
+              let code = root["code"] as? NSNumber, CFGetTypeID(code) != CFBooleanGetTypeID() else { throw WaterError.provider }
+        // Only an explicit non-zero result code is a definite refusal.
+        guard code.doubleValue == 0 else { throw WaterProviderRefusal() }
+        guard let body = root["data"] as? [String: Any] else { throw WaterError.provider }
         return body
     }
     public func authorize(config: WaterConfig, frame: Data) async throws -> Authorization {

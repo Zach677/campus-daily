@@ -34,29 +34,32 @@ struct VerifiedWaterDevice {
     private var channelError: WaterError?
     private var writeAcknowledged = false
     private var step: String?
-    private var waiter: CheckedContinuation<Void, Error>?
+    private let waiter = WaterWaitSlot()
     private var timer: Task<Void, Never>?
 
     private func wait(_ name: String, seconds: Double = 15, begin: () -> Void) async throws {
         try Task.checkCancellation()
-        guard waiter == nil else { throw WaterError.busy }
+        guard !waiter.isWaiting else { throw WaterError.busy }
+        // The timer and cancel handler only ever finish this wait (token), never a later step.
+        let token = waiter.reserve()
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 step = name
-                waiter = continuation
+                waiter.attach(continuation, token: token)
                 timer = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(seconds)) } catch { return }
-                    self?.complete(.failure(WaterError.timedOut))
+                    self?.complete(.failure(WaterError.timedOut), token: token)
                 }
                 begin()
             }
-        }, onCancel: { Task { @MainActor [weak self] in self?.complete(.failure(WaterError.interrupted)) } })
+        }, onCancel: { Task { @MainActor [weak self] in self?.complete(.failure(WaterError.interrupted), token: token) } })
     }
-    private func complete(_ result: Result<Void, Error>) {
-        let continuation = waiter
-        waiter = nil; step = nil
+    /// `token` nil: a device callback for the current step.
+    private func complete(_ result: Result<Void, Error>, token: Int? = nil) {
+        guard waiter.accepts(token) else { return }
+        step = nil
         timer?.cancel(); timer = nil
-        continuation?.resume(with: result)
+        waiter.complete(result)
     }
     private func prepare(config: WaterConfig) async throws {
         if manager == nil { manager = CBCentralManager(delegate: self, queue: .main) }

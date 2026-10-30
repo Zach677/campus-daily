@@ -11,7 +11,7 @@ import WaterCore
     private var activity: Activity<ShowerActivityAttributes>?
     private init() {
         // Reuse an activity left over from a previous launch; drop any duplicates.
-        let existing = Activity<ShowerActivityAttributes>.activities
+        let existing = Activity<ShowerActivityAttributes>.activities.filter { $0.activityState == .active }
         activity = existing.first
         for extra in existing.dropFirst() { Task { await extra.end(nil, dismissalPolicy:.immediate) } }
     }
@@ -34,13 +34,15 @@ import WaterCore
         guard let session else { return endNow() }
         switch session.stage {
         case .active, .authorizationWritePending:
-            // Only a confirmed .active session creates an activity; a write-pending one may keep it.
-            if session.stage == .active || activity != nil { startOrResume(session.startedAt) }
+            // Write-pending shows as 洗澡中 too (water may be running), with the unconfirmed line.
+            startOrResume(session.startedAt, writeUnconfirmed:session.stage == .authorizationWritePending)
         case .closeWritePending, .settlementPending:
             // Close was sent but not confirmed (refresh only sees this after a failed finish or a relaunch).
             end(.init(startedAt:session.startedAt, phase:.unconfirmed), after:Date().addingTimeInterval(15 * 60))
         case .settled:
             guard activity != nil else { return }
+            // Closed by hand after checking the official record: no duration or amount to show.
+            if session.resolvedManually == true { return endNow() }
             let ended = session.endedAt ?? Date()
             let minutes = max(1, Int((ended.timeIntervalSince(session.startedAt) / 60).rounded()))
             // amountYuan comes only from the server receipt; nil means "not reported", never an estimate.
@@ -51,8 +53,9 @@ import WaterCore
         }
     }
 
-    private func startOrResume(_ startedAt: Date) {
-        let state = ShowerActivityAttributes.ContentState(startedAt:startedAt, phase:.active)
+    private func startOrResume(_ startedAt: Date, writeUnconfirmed: Bool = false) {
+        let state = ShowerActivityAttributes.ContentState(startedAt:startedAt, phase:.active,
+                                                          writeUnconfirmed:writeUnconfirmed ? true : nil)
         if let activity {
             // E.g. a failed finish that left the session active: show the button again.
             guard activity.content.state != state else { return }

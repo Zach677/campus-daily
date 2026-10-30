@@ -16,6 +16,10 @@ import WaterCore
     @Published private(set) var sessionStarted: Date?
     @Published private(set) var lastCost: Decimal?
     @Published private(set) var hasReceipt = false
+    /// The last record was closed by the user after checking the official record (no receipt).
+    @Published private(set) var resolvedManually = false
+    /// The last finish found the device not in use, so the open record can never close by itself.
+    @Published private(set) var finishFoundIdle = false
     private var controller: WaterController?
     private var config: WaterConfig?
     @Published private var importedPlatform: WaterPlatformProfile?
@@ -48,6 +52,29 @@ import WaterCore
     var mayStart: Bool { configured && !platformMissing && !schoolClosed && !reviewingIdentity && !residenceReviewRequired && config?.access == nil && controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
     var mayFinish: Bool { configured && !busy && stage?.mayClose == true && controller?.storageBlocked == false }
     var mayImport: Bool { controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
+    /// Offer the manual 「核对过了」 action only where the record can't move on by itself:
+    /// any unresolved stage that can't be finished, or a finishable one whose device reported idle.
+    var mayResolveManually: Bool {
+        guard controller != nil, !busy, controller?.storageBlocked == false, let stage, stage != .settled else { return false }
+        return !stage.mayClose || finishFoundIdle
+    }
+    /// Deliberate user action: the user checked the official hot-water record. Never contacts device or server.
+    func resolveManually() throws {
+        guard mayResolveManually, let controller else { throw busy ? WaterError.busy : WaterError.noSession }
+        do { try controller.resolveManually() } catch { show(error); throw error }
+        finishFoundIdle = false; problem = false
+        refresh()
+    }
+    /// Why mayStart is false, as the error a Shortcut or Siri reports. Uses existing messages only.
+    private var startBlocker: Error {
+        if controller?.storageBlocked != false { return WaterError.storage }
+        if !configured { return WaterError.invalidConfig }
+        if platformMissing { return OnboardingError.platform }
+        if schoolClosed { return WaterAccessError(status:403, code:"transactions_not_enabled") }
+        if !(stage == nil || stage == .settled) { return WaterError.unresolved }
+        if busy { return WaterError.busy }
+        return OnboardingError.identity
+    }
     var onboardingSeed: WaterConfig? { config }
     var onboardingProfile: WaterPlatformProfile? {
         if let config, config.access == nil { return WaterPlatformProfile(legacy:config) }
@@ -154,11 +181,13 @@ import WaterCore
         sessionStarted = controller?.session?.startedAt
         lastCost = controller?.session?.receipt?.amountYuan
         hasReceipt = controller?.session?.receipt != nil
+        resolvedManually = controller?.session?.resolvedManually == true
         ShowerActivityController.shared.sync(session:controller?.session)
         Reminders.shared.syncShower(started:stage?.mayClose == true ? sessionStarted : nil)
         if residenceReviewRequired && (stage == nil || stage == .settled) {
             status = "学校那边的宿舍变了，重新选一下水控。";problem = true
-        } else if let stage { status = stage.label }
+        } else if resolvedManually, stage == .settled { status = "上次洗澡已手动核对" }
+        else if let stage { status = stage.label }
         else if configured { status = config?.access?.isCurrent == false ? "学校登录过期了，重新登录一下。" : "准备好了，靠近水控就能开始洗。" }
     }
     func importConfig(_ url: URL) throws {
@@ -230,16 +259,19 @@ import WaterCore
         }
     }
     func run(start: Bool, allowDeviceSelection: Bool = false) async throws {
+        let tapped = Date()
         guard !busy else { throw WaterError.busy }
         guard !start || (!reviewingIdentity && !residenceReviewRequired) else {throw OnboardingError.identity}
         guard let controller, let config else { throw WaterError.invalidConfig }
         guard config.access == nil else {throw OnboardingError.identity}
-        busy = true; problem = false; selectionAllowed = allowDeviceSelection
+        // UI, Shortcuts and Siri share one start rule (mayStart), including 「本校暂未开放」.
+        if start, !mayStart { throw startBlocker }
+        busy = true; problem = false; finishFoundIdle = false; selectionAllowed = allowDeviceSelection
         status = start ? "正在连接并申请授权…" : "正在结束并结算…"
         defer { busy = false; selectionAllowed = false }
         do {
             if start {
-                try await controller.start(config:config,preferredPeripheral:UserDefaults.standard.string(forKey:deviceKey(config)))
+                try await controller.start(config:config,preferredPeripheral:UserDefaults.standard.string(forKey:deviceKey(config)),startedAt:tapped)
                 if let id = controller.session?.peripheralID { UserDefaults.standard.set(id,forKey:deviceKey(config)) }
             }
             else { ShowerActivityController.shared.settling(); try await controller.finish(config: config) }
@@ -248,6 +280,7 @@ import WaterCore
             if (error as? WaterError) == .wrongDevice, start {
                 UserDefaults.standard.removeObject(forKey:deviceKey(config))
             }
+            if (error as? WaterError) == .notActive, !start { finishFoundIdle = true }
             show(error)
             throw (error as? WaterError) ?? WaterError.interrupted
         }

@@ -88,7 +88,8 @@ struct HomeView: View {
         .sheet(isPresented:$settings) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
         .fullScreenCover(item:$onboarding, onDismiss:{ didSeeQuickSetup = true }) { request in
             // .id: a new request must reset the cover's @State (step), not reuse it.
-            let cover = OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id)
+            // Own device chooser: a sheet from the home root can't show above this cover.
+            let cover = OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id).waterDevicePicker()
             #if DEBUG
             cover.onOpenURL { handleDemo($0) }
             #else
@@ -113,7 +114,7 @@ struct HomeView: View {
             if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
         }
         .onChange(of:water.stage) { old, value in
-            guard old != nil, old != .settled, value == .settled else { return }
+            guard old != nil, old != .settled, value == .settled, !water.resolvedManually else { return }
             presentSettled()
             Task { await campus.refresh(force:true) }
         }
@@ -240,7 +241,7 @@ struct HomeView: View {
     @ViewBuilder private func hero(_ data: HomeData) -> some View {
         ZStack(alignment:.topLeading) {
             if let start = data.water.showering, data.signedIn {
-                ShowerHero(start:start, dorm:data.dorm)
+                ShowerHero(start:start, dorm:data.dorm, unconfirmed:data.showerUnconfirmed)
                     .transition(heroTransition)
             } else {
                 VStack(alignment:.leading, spacing:14) {

@@ -84,4 +84,8 @@ enum PrivateConfigStore {
     func save(_ session: WaterSession) throws {
         try JSONEncoder().encode(session).write(to: path, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
+    func clear() throws {
+        guard FileManager.default.fileExists(atPath: path.path) else { return }
+        try FileManager.default.removeItem(at: path)
+    }
 }

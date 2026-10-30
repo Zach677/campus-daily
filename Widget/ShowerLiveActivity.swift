@@ -13,7 +13,9 @@ private enum ShowerStyle {
         return formatter.string(from:date)
     }
     /// Only ever called with a server-confirmed amount.
-    static func yuan(_ value: Decimal) -> String { "¥" + value.formatted(.number.precision(.fractionLength(2)).grouping(.never)) }
+    static func yuan(_ value: Decimal) -> String {
+        "¥" + value.formatted(.number.precision(.fractionLength(2)).grouping(.never).locale(Locale(identifier:"en_US_POSIX")))
+    }
 }
 
 private typealias ShowerState = ShowerActivityAttributes.ContentState
@@ -27,6 +29,20 @@ private extension ShowerState {
         }
     }
     var showsTimer: Bool { phase == .active || phase == .settling }
+    /// Device didn't confirm the authorization write; only while the timer runs.
+    var writeUnconfirmedLine: Bool { phase == .active && writeUnconfirmed == true }
+}
+
+/// 「水控没回应，有热水就照常洗」 under the timer (lock screen, expanded island; never compact/minimal).
+private struct ShowerUnconfirmedLine: View {
+    var body: some View {
+        HStack(spacing:4) {
+            Image(systemName:"exclamationmark.circle").font(.system(size:13)).accessibilityHidden(true)
+            Text(ShowerCopy.writeUnconfirmed).font(.footnote)
+        }
+        .foregroundStyle(.white.opacity(0.55)).lineLimit(1).minimumScaleFactor(0.8)
+        .transition(.opacity)
+    }
 }
 
 private struct ShowerTimer: View {
@@ -92,7 +108,9 @@ private struct ShowerLockScreen: View {
             HStack(alignment:.bottom) {
                 VStack(alignment:.leading, spacing:4) {
                     if state.showsTimer { ShowerTimer(state:state, size:44) } else { ShowerResult(state:state, size:44) }
-                    Text(caption).font(.system(size:13)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                    // The unconfirmed line takes the caption's place: the lock-screen card keeps its height.
+                    if state.writeUnconfirmedLine { ShowerUnconfirmedLine() }
+                    else { Text(caption).font(.system(size:13)).foregroundStyle(.white.opacity(0.55)).lineLimit(1) }
                 }
                 Spacer(minLength:8)
                 if state.showsTimer { ShowerFinishButton(state:state) }
@@ -122,6 +140,7 @@ struct ShowerLiveActivity: Widget {
                     VStack(alignment:.leading, spacing:10) {
                         if state.showsTimer {
                             ShowerTimer(state:state, size:36)
+                            if state.writeUnconfirmedLine { ShowerUnconfirmedLine() }
                             ShowerFinishButton(state:state, fullWidth:true)
                         } else {
                             HStack(alignment:.lastTextBaseline) {
