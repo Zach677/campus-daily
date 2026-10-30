@@ -2,11 +2,11 @@ import SwiftUI
 import UserNotifications
 import Core
 
-enum HomeRoute: Hashable { case power, powerSetup, card, water, laundry, washerSetup }
+enum HomeRoute: Hashable { case power, powerSetup, card, shower, laundry, washerSetup }
 
 /// Single home screen: date · the two numbers · update line · shower button · 洗衣 · 最近.
 struct HomeView: View {
-    @EnvironmentObject var water: ShowerModel
+    @EnvironmentObject var shower: ShowerModel
     @EnvironmentObject var campus: CampusModel
     @EnvironmentObject var laundry: LaundryModel
     @Environment(\.scenePhase) var phase
@@ -73,7 +73,7 @@ struct HomeView: View {
         #if DEBUG
         if let demo { return demo }
         #endif
-        return HomeData(campus:campus, water:water, laundry:laundry)
+        return HomeData(campus:campus, shower:shower, laundry:laundry)
     }
 
     var body: some View {
@@ -89,7 +89,7 @@ struct HomeView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement:.topBarTrailing) { gear } }
                     .refreshable { await pull() }
-                    .onChange(of:data.water.showering) { old, new in
+                    .onChange(of:data.shower.showering) { old, new in
                         if old == nil, new != nil { withAnimation(reduceMotion ? nil : Theme.spring) { proxy.scrollTo("top", anchor:.top) } }
                     }
                 }
@@ -129,9 +129,9 @@ struct HomeView: View {
             if demo != nil { return }
             #endif
             // A reset the app was killed in: finished now (then the guide opens), or not, and why.
-            await resetter.resumeIfInterrupted(campus:campus, water:water, laundry:laundry)
+            await resetter.resumeIfInterrupted(campus:campus, water:shower, laundry:laundry)
             if resetter.completed > 0 { return }
-            if !didSeeQuickSetup && !campus.configured && !water.configured && !laundry.configured { openOnboarding() }
+            if !didSeeQuickSetup && !campus.configured && !shower.configured && !laundry.configured { openOnboarding() }
         }
         .alert(ResetLockText.blockedTitle, isPresented:Binding(get:{ resetter.resumeStopped != nil },
                                                                set:{ if !$0 { resetter.resumeStopped = nil } })) {
@@ -146,12 +146,12 @@ struct HomeView: View {
         .onChange(of:phase) { _, value in
             if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
         }
-        .onChange(of:water.state.phase) { old, value in
+        .onChange(of:shower.state.phase) { old, value in
             guard old != .done, value == .done else { return }
             presentSettled()
             Task { await campus.refresh(force:true) }
         }
-        .onChange(of:water.problem) { _, problem in
+        .onChange(of:shower.problem) { _, problem in
             if problem, unresolvedClose { presentUnconfirmed() }
         }
         .onChange(of:resetter.completed) { _, _ in afterReset() }
@@ -198,13 +198,13 @@ struct HomeView: View {
         #endif
         switch kind {
         case .signIn: openOnboarding()
-        case .review, .showering, .settling: path.append(.water)
+        case .review, .showering, .settling: path.append(.shower)
         case .start:
             // An unchecked record blocks a new start: show it instead of failing.
-            guard water.mayStart else { path.append(.water); return }
+            guard shower.mayStart else { path.append(.shower); return }
             startTick += 1
             Task {
-                do { try await water.run(start:true) }
+                do { try await shower.run(start:true) }
                 catch { errorTick += 1 }
             }
         case .starting: break
@@ -215,18 +215,18 @@ struct HomeView: View {
     func pull() async {
         await campus.refresh(force:true)
         await laundry.refresh(force:true)
-        if case .failed = HomeData(campus:campus, water:water, laundry:laundry).updateLine { errorTick += 1 }
+        if case .failed = HomeData(campus:campus, shower:shower, laundry:laundry).updateLine { errorTick += 1 }
     }
 
-    var unresolvedClose: Bool { water.unresolvedClose }
+    var unresolvedClose: Bool { shower.unresolvedClose }
 
     func presentSettled() {
         var minutes: Int?
-        if let start = water.sessionStarted, let end = water.lastEnded {
+        if let start = shower.sessionStarted, let end = shower.lastEnded {
             minutes = max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
         }
         successTick += 1
-        panel = .settled(minutes:minutes, amount:water.lastCost)
+        panel = .settled(minutes:minutes, amount:shower.lastCost)
     }
 
     func presentLaundryDone(_ done: HomeData.LaundryDone?) {

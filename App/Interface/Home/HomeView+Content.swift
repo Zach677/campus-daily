@@ -19,7 +19,7 @@ extension HomeView {
                 .padding(.top,28)
             HomeUpdateLineView(line:data.updateLine, now:now)
                 .padding(.top,16).padding(.horizontal,24)
-            shower(data).padding(.top,28)
+            showerSection(data).padding(.top,28)
             if data.laundryEnabled {
                 HomeSectionHeader(text:"洗衣").padding(.top,30)
                 rowLink(data.laundryBound ? .laundry : .washerSetup, label:laundryLabel(data)) { laundryRow(data) }
@@ -50,13 +50,13 @@ extension HomeView {
     // MARK: Shower
 
     /// The shower button, or a plain row when hot water can't be used here.
-    @ViewBuilder func shower(_ data: HomeData) -> some View {
+    @ViewBuilder func showerSection(_ data: HomeData) -> some View {
         if let kind = showerKind(data) {
             HomeShowerButton(kind:kind) { tap(kind) }
         } else {
             VStack(spacing:0) {
                 Hairline()
-                rowLink(.water, label:"热水，" + showerUnavailableReason(data)) {
+                rowLink(.shower, label:"热水，" + showerUnavailableReason(data)) {
                     StatusRow(emoji:"🚿", title:"热水", subtitle:showerUnavailableReason(data), dimmed:true)
                 }
                 Hairline()
@@ -66,10 +66,10 @@ extension HomeView {
 
     func showerKind(_ data: HomeData) -> HomeShowerButton.Kind? {
         guard data.signedIn else { return .signIn }
-        switch data.water {
+        switch data.shower {
         case .unconfigured, .unavailable: return nil
         case .idle:
-            if let issue = data.waterIssue { return .start(caption:issue) }
+            if let issue = data.showerIssue { return .start(caption:issue) }
             let last = data.lastShowerMinutes.map { "上次 \($0) 分钟" + (data.lastShowerCost.map { " · " + Theme.yuan($0) } ?? "") }
             return .start(caption:last)
         case .starting: return .starting
@@ -81,7 +81,7 @@ extension HomeView {
     }
 
     func showerUnavailableReason(_ data: HomeData) -> String {
-        switch data.water {
+        switch data.shower {
         case .unavailable(let reason): return reason
         default: return "先在设置里选好宿舍"
         }
@@ -120,7 +120,7 @@ extension HomeView {
                 VStack(spacing:0) {
                     if index > 0 { RowSeparator() }
                     if item.source == .app {
-                        NavigationLink(value:item.kind == .laundry ? HomeRoute.laundry : HomeRoute.water) { RecentRow(item:item) }
+                        NavigationLink(value:item.kind == .laundry ? HomeRoute.laundry : HomeRoute.shower) { RecentRow(item:item) }
                             .buttonStyle(RowPressStyle())
                     } else {
                         RecentRow(item:item)
@@ -144,7 +144,7 @@ extension HomeView {
             CampusRechargeView(kind:.card)
             #endif
         // Not set up yet: hot water is bound by choosing the dorm.
-        case .water: if water.configured { ShowerDetail() } else { CampusOnboardingView() }
+        case .shower: if shower.configured { ShowerDetail() } else { CampusOnboardingView() }
         case .laundry:
             #if DEBUG
             LaundryDetail(demo:laundryDemo)

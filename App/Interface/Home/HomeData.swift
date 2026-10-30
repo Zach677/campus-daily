@@ -79,9 +79,9 @@ struct HomeData {
     var lines = ReminderLines()
     /// A school refresh is running (this process).
     var refreshing = false
-    var water = Shower.idle
+    var shower = Shower.idle
     /// The last start failed (shown under the shower button instead of the last shower).
-    var waterIssue: String?
+    var showerIssue: String?
     /// Showering, but the device never confirmed the authorization write (said under the button).
     var showerUnconfirmed = false
     var lastShowerMinutes: Int?
@@ -118,7 +118,7 @@ struct HomeData {
 // MARK: - Live data
 
 extension HomeData {
-    @MainActor init(campus: CampusModel, water model: ShowerModel, laundry: LaundryModel, now: Date = Date()) {
+    @MainActor init(campus: CampusModel, shower model: ShowerModel, laundry: LaundryModel, now: Date = Date()) {
         signedIn = campus.configured
         schoolAccount = campus.account
         dorm = Theme.dorm(campus.room)
@@ -128,17 +128,17 @@ extension HomeData {
         lines = ReminderKey.lines
 
         let state = model.state
-        if !model.configured { water = .unconfigured }
-        else if state.canFinish, let start = model.sessionStarted { water = model.busy ? .settling(start) : .showering(start) }
-        else if let start = state.startedAt, state.phase == .closing || state.phase == .settling { water = .settling(start) }
-        else if state.phase == .authorizing || (model.busy && (state.phase == .idle || state.phase == .done)) { water = .starting }
+        if !model.configured { shower = .unconfigured }
+        else if state.canFinish, let start = model.sessionStarted { shower = model.busy ? .settling(start) : .showering(start) }
+        else if let start = state.startedAt, state.phase == .closing || state.phase == .settling { shower = .settling(start) }
+        else if state.phase == .authorizing || (model.busy && (state.phase == .idle || state.phase == .done)) { shower = .starting }
         else if state.phase == .failed, state.failure?.needsReview == true {
-            water = .unresolved(model.unresolvedClose ? "上次结算还没确认" : ShowerDisplay.failureTitle(state.failure))
+            shower = .unresolved(model.unresolvedClose ? "上次结算还没确认" : ShowerDisplay.failureTitle(state.failure))
         }
-        else if model.platformMissing { water = .unavailable(ShowerModel.platformMissingText) }
-        else { water = .idle }
-        if model.problem, water == .idle { waterIssue = model.status }
-        showerUnconfirmed = state.phase == .writePending && water.showering != nil
+        else if model.platformMissing { shower = .unavailable(ShowerModel.platformMissingText) }
+        else { shower = .idle }
+        if model.problem, shower == .idle { showerIssue = model.status }
+        showerUnconfirmed = state.phase == .writePending && shower.showering != nil
         var activities: [AppActivity] = []
         if state.phase == .done, let start = model.sessionStarted, let end = model.lastEnded {
             let minutes = max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
@@ -267,11 +267,11 @@ enum HomeDemo: String, CaseIterable {
             data.snapshot.activity = Tile()
             return (data, nil)
         case .settingsResetShower:
-            data.water = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
+            data.shower = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
             data.resetLock = .showering
             return (data, nil)
         case .settingsResetUnsure:
-            data.water = .unresolved("上次结算还没确认")
+            data.shower = .unresolved("上次结算还没确认")
             data.resetLock = .unsettled
             return (data, nil)
         case .settingsResetLaundry:
@@ -303,7 +303,7 @@ enum HomeDemo: String, CaseIterable {
             data.laundry = .unresolved
             return (data, nil)
         case .unconfirmedRow:
-            data.water = .unresolved("上次结算还没确认")
+            data.shower = .unresolved("上次结算还没确认")
             return (data, nil)
         case .low:
             // Runs out tomorrow evening (只够到明晚); the balance is under the default line too.
@@ -317,10 +317,10 @@ enum HomeDemo: String, CaseIterable {
             empty.laundryBound = true; empty.laundryMachine = "3"; empty.laundry = .idle
             return (empty, nil)
         case .shower:
-            data.water = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
+            data.shower = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
             return (data, nil)
         case .showerUnconfirmed:
-            data.water = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
+            data.shower = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
             data.showerUnconfirmed = true
             return (data, nil)
         case .settled:
@@ -329,14 +329,14 @@ enum HomeDemo: String, CaseIterable {
         case .unconfirmed:
             return (data, .unconfirmed)
         case .off:
-            data.water = .unconfigured
+            data.shower = .unconfigured
             return (data, nil)
         case .noPlatform:
             // Live path: ShowerModel.platformMissing (direct dorm saved, no bundled platform profile).
-            data.water = .unavailable(ShowerModel.platformMissingText)
+            data.shower = .unavailable(ShowerModel.platformMissingText)
             return (data, nil)
         case .notOpen:
-            data.water = .unavailable("本校暂未开放")
+            data.shower = .unavailable("本校暂未开放")
             return (data, nil)
         }
     }

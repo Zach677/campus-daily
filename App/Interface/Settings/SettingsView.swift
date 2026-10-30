@@ -35,7 +35,7 @@ struct SettingsView: View {
     @ObservedObject private var reminders = Reminders.shared
     @Environment(\.openURL) private var openURL
 
-    private var data: HomeData { preview ?? HomeData(campus:campus, water:water, laundry:laundry) }
+    private var data: HomeData { preview ?? HomeData(campus:campus, shower:water, laundry:laundry) }
     /// DEBUG demo: the switch flips locally (seeded from the demo data).
     @State private var previewLaundry: Bool?
     /// 「去设置热水」 after an account switch.
@@ -68,7 +68,7 @@ struct SettingsView: View {
                     }
                 }.listRowBackground(Theme.group)
                 Section {
-                    if data.water == .unconfigured {
+                    if data.shower == .unconfigured {
                         // Hot water is set up by choosing the dorm (controller binding), not by a file.
                         NavigationLink { CampusOnboardingView() } label: {
                             SettingsRow(emoji:"🚿", title:"热水", value:"未选")

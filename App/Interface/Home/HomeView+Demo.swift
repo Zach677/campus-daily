@@ -92,14 +92,14 @@ extension HomeView {
         switch kind {
         case .start:
             startTick += 1
-            withAnimation(Theme.spring) { demo?.water = .showering(Date()) }
+            withAnimation(Theme.spring) { demo?.shower = .showering(Date()) }
         case .showering(let start, _):
-            withAnimation(Theme.spring) { demo?.water = .settling(start) }
+            withAnimation(Theme.spring) { demo?.shower = .settling(start) }
             Task {
                 try? await Task.sleep(for:.seconds(1.5))
                 let minutes = max(1, Int((Date().timeIntervalSince(start) / 60).rounded()))
                 withAnimation(Theme.spring) {
-                    demo?.water = .idle
+                    demo?.shower = .idle
                     demo?.lastShowerMinutes = minutes; demo?.lastShowerCost = Decimal(string:"1.32")
                     demo?.appActivities.insert(AppActivity(id:"demo-\(Date().timeIntervalSince1970)", kind:.shower(minutes:minutes),
                                                            date:Date(), amount:Money(fen:132)), at:0)
@@ -108,7 +108,7 @@ extension HomeView {
                 panel = .settled(minutes:minutes, amount:Decimal(string:"1.32"))
             }
         case .signIn: openOnboarding()
-        case .review, .settling: path.append(.water)
+        case .review, .settling: path.append(.shower)
         case .starting: break
         }
     }
