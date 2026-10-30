@@ -471,7 +471,12 @@ struct HomeView: View {
         switch route {
         case .power: if campus.powerConfigured { CampusRechargeView(kind:.power) } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
-        case .card: CampusRechargeView(kind:.card, demoBlocked:rechargeBlockedDemo)
+        case .card:
+            #if DEBUG
+            CampusRechargeView(kind:.card, demoBlocked:rechargeBlockedDemo)
+            #else
+            CampusRechargeView(kind:.card)
+            #endif
         // Not set up yet: hot water is bound by choosing the dorm.
         case .water: if water.configured { ShowerDetail() } else { CampusOnboardingView() }
         case .laundry:
