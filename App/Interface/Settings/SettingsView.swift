@@ -280,7 +280,7 @@ struct AccountView: View {
 }
 
 /// Plain ink title + system-style chevron (actions that aren't NavigationLinks).
-private struct ChevronRow: View {
+struct ChevronRow: View {
     let title: String
     @Environment(\.isEnabled) private var enabled
     var body: some View {
@@ -301,16 +301,9 @@ struct AdvancedSettingsView: View {
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
     var preview: HomeData? = nil
     @EnvironmentObject private var water: ShowerModel
-    /// Same source as the main page's 「热水」 row: a dorm controller is bound (HomeData.water != .unconfigured).
-    private var waterConfigured: Bool { preview.map { $0.water != .unconfigured } ?? water.configured }
-    /// 检查水控状态 only means something while a session may be running.
-    private var mayReview: Bool { preview.map { $0.water.showering != nil } ?? water.mayFinish }
     @State private var importing = false
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
-    @State private var diagnosticURL: URL?
-    @State private var sharingDiagnostics = false
-    @State private var diagnosticFailed = false
     private var version: String {
         (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + "（" +
         (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + "）· 测试版"
@@ -331,43 +324,7 @@ struct AdvancedSettingsView: View {
                     Text("一般不用导入。有没结算的记录时，别卸载 App，也别换配置。")
                 }
             }.listRowBackground(Theme.group)
-            Section {
-                if waterConfigured {
-                    Button { if preview == nil { Task { await water.inspectBluetooth() } } } label: {
-                        Label(water.inspecting ? "正在核对…" : "核对宿舍的水控", systemImage:"antenna.radiowaves.left.and.right")
-                    }.disabled(preview == nil && !water.mayImport).accessibilityIdentifier("inspectWaterBluetooth")
-                    if let message = water.inspectionStatus {
-                        Text(message).font(.subheadline).foregroundStyle(Theme.ink2).accessibilityIdentifier("waterInspectionStatus")
-                    }
-                    if let device = water.verifiedDevice {
-                        LabeledContent("水控名称", value:device.name)
-                        LabeledContent("水控编号", value:device.machineID).accessibilityIdentifier("verifiedWaterMachine")
-                        if let rssi = device.rssi { LabeledContent("本次信号", value:"\(rssi) dBm") }
-                        VStack(alignment:.leading, spacing:4) {
-                            Text("水控标识 " + String(device.id.prefix(8)) + "…")
-                            Text("发现 \(device.nearbyCount) 台同名水控，已按宿舍水控编号匹配。")
-                            Text("核对于 " + device.verifiedAt.formatted(date:.omitted, time:.standard))
-                        }.font(.caption).foregroundStyle(Theme.ink2)
-                    }
-                } else {
-                    Text("导入热水配置后可以检查").foregroundStyle(Theme.ink2)
-                }
-            } header: { Text("连接检查") } footer: {
-                Text("只读水控编号，不会开水。读完就断开，洗澡时再连。")
-            }.listRowBackground(Theme.group)
-            Section {
-                Button { if preview == nil { Task { await water.reviewCurrentSession() } } } label: { ChevronRow(title:"检查水控状态") }
-                    .disabled(!mayReview).accessibilityIdentifier("reviewWaterSession")
-                Button {
-                    do { diagnosticURL = try water.exportDiagnostics(); sharingDiagnostics = true }
-                    catch { diagnosticFailed = true }
-                } label: { ChevronRow(title:"导出热水诊断") }.accessibilityIdentifier("exportWaterDiagnostics")
-            } header: { Text("热水排查") } footer: {
-                VStack(alignment:.leading, spacing:6) {
-                    Text("只看状态，不会开水，也不会结算。")
-                    Text("诊断文件里有版本、操作时间和水控的回应，没有账号、密钥和水控编号。只记这次更新以后的操作。")
-                }
-            }.listRowBackground(Theme.group)
+            ShowerTroubleshootingSections(preview:preview)
             Section {
                 Link(destination:URL(string:"shortcuts://")!) { ChevronRow(title:"快捷指令") }
             } footer: {
@@ -381,10 +338,6 @@ struct AdvancedSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("高级").navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented:$sharingDiagnostics) {
-            if let diagnosticURL { ShowerDiagnosticShare(url:diagnosticURL) }
-        }
-        .alert("还没有诊断记录，洗一次澡后再来导出。", isPresented:$diagnosticFailed) { Button("好", role:.cancel) {} }
         .fileImporter(isPresented:$importing, allowedContentTypes:[.json, .data]) { result in
             importIssue = nil
             do {
