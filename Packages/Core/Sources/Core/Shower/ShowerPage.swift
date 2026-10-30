@@ -267,7 +267,8 @@ public struct ShowerPageFlow: Sendable, Equatable {
             let wasOn = [ShowerPhase.writePending, .running, .closing, .settling].contains(flow.record.phase)
             if !flow.presented, wasOn, next.phase == .done || next.phase == .failed { f.presented = true }
             // An end from there found the controller stopped: the check comes up the same way.
-            if !flow.presented, next.mayBeFlowing, next.stateReviewRequired, !flow.record.stateReviewRequired { f.presented = true }
+            // Only an end does that; a probe from Settings leaves the page where it is.
+            if !flow.presented, flow.record.phase == .closing, next.mayBeFlowing, next.stateReviewRequired { f.presented = true }
             // Nothing left to show (resolved elsewhere, an authorization that never applied).
             if f.presented, !f.starting, f.page == nil { f.presented = false }
             return (f, [])

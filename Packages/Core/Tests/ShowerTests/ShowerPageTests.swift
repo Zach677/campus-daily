@@ -234,6 +234,16 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertEqual(flow.page?.phase, .needsCheck)
     }
 
+    /// 检查水控状态 in Settings found the controller stopped: the record waits for a check, but
+    /// Settings stays open (only an end brings the check up by itself).
+    func testAProbeFromSettingsDoesNotBringTheCheckUp() {
+        var flow = ShowerPageFlow(record: ShowerState(phase: .running, startedAt: t0))
+        _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, reviewing: true)))
+        _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)))
+        XCTAssertFalse(flow.presented)
+        XCTAssertEqual(flow.page?.phase, .needsCheck, "the home button still says 核对上次洗澡")
+    }
+
     /// 结束并结算 came back to the timer: a line says why, until the next tap.
     func testAnEndThatWasNotSentSaysWhy() {
         let cases: [(ShowerNotice?, ShowerEndFailure)] = [
