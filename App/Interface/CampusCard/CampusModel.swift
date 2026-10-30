@@ -37,6 +37,9 @@ struct PowerChoice: Identifiable, Equatable {
     @Published var signOutFailed = false
     private var lastRefresh: Date?
     private var refreshesRunning = 0
+    /// Refreshes the Keychain interrupted one after another (writes refused).
+    private var interruptions = InterruptionStreak()
+    static let keepsInterrupting = "数字没存上，有一阵没更新了。重启一下手机再试。"
     /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.
     private var signOutGeneration = 0
     private let session = AppEnvironment.school
@@ -97,8 +100,13 @@ struct PowerChoice: Identifiable, Equatable {
         guard !report.leaseBusy else { return }
         // The saved password changed while this read ran (or the Keychain refused a write):
         // nothing to report, the numbers stay, and the next refresh is not held off. The same when
-        // this read lost the lease (back from a long suspension, say): nothing failed.
-        guard report.outcome != .interrupted, report.outcome != .leaseLost else { issue = nil; return }
+        // this read lost the lease (back from a long suspension, say): nothing failed. Several
+        // interruptions in a row are the Keychain refusing writes: that is shown.
+        let stuck = interruptions.record(report.outcome)
+        guard report.outcome != .interrupted, report.outcome != .leaseLost else {
+            issue = stuck ? Self.keepsInterrupting : nil
+            return
+        }
         lastRefresh = Date()
         switch report.outcome {
         case .ok: issue = nil
