@@ -23,9 +23,10 @@ public enum KeychainStatus {
 /// `isShared` is true, and the app's private group for everything else.
 ///
 /// Re-signed IPAs may lose the `keychain-access-groups` entitlement. When a write with a group
-/// fails, the store falls back to **no access group** (the default group) for that group and
-/// remembers it for later reads/writes; the widget then simply has no data, and the app keeps
-/// working.
+/// fails with `errSecMissingEntitlement`, the store falls back to **no access group** (the
+/// default group) for that group and remembers it for later reads/writes; the widget then simply
+/// has no data, and the app keeps working. Any other write failure (a locked device, say) is
+/// thrown and changes nothing for later writes.
 ///
 /// Builds before the private group existed wrote every item into the shared group (then the only
 /// one). A private item still found there is moved: written to the private group, read back,
@@ -34,8 +35,7 @@ public enum KeychainStatus {
 public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
     // @unchecked: mutable state guarded by `lock`.
     private let backend: KeychainBackend
-    private let sharedGroup: String?
-    private let privateGroup: String?
+    private let groups: @Sendable () -> (shared: String?, private: String?)
     private let lock = NSLock()
     private var unavailable: Set<String> = []
 
@@ -44,9 +44,22 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
     /// then use the default group.
     public init(backend: KeychainBackend, accessGroup: String?, privateGroup: String? = nil) {
         self.backend = backend
-        self.sharedGroup = accessGroup
-        self.privateGroup = privateGroup == accessGroup ? nil : privateGroup
+        let resolved = (shared: accessGroup, private: privateGroup == accessGroup ? nil : privateGroup)
+        self.groups = { resolved }
     }
+
+    /// Groups resolved on each use from `probe`, so a probe that failed early (before the first
+    /// unlock) is retried instead of fixing the groups for the whole process.
+    public init(backend: KeychainBackend, groups probe: KeychainGroupProbe) {
+        self.backend = backend
+        self.groups = {
+            let shared = probe.sharedGroup, own = probe.privateGroup
+            return (shared, own == shared ? nil : own)
+        }
+    }
+
+    private var sharedGroup: String? { groups().shared }
+    private var privateGroup: String? { groups().private }
 
     /// True once a shared-group write failed and the store switched to no access group.
     public var isUsingFallback: Bool { lock.withLock { sharedGroup.map(unavailable.contains) ?? false } }
@@ -89,7 +102,11 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
 
     public func write(_ data: Data, for key: StoreKey) throws {
         if let group = group(for: key) {
-            if upsert(key, data, group) == KeychainStatus.success { return }
+            let status = upsert(key, data, group)
+            if status == KeychainStatus.success { return }
+            guard status == KeychainStatus.missingEntitlement else {
+                throw StorageError(operation: "write \(key.rawValue)", status: status)
+            }
             lock.withLock { _ = unavailable.insert(group) }
         }
         let status = upsert(key, data, nil)
@@ -121,6 +138,9 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
 
     /// Private copy first; the shared copy goes only once the private one reads back the same.
     /// A private copy already there is newer (this build writes nowhere else), so it is kept.
+    /// A failed read-back deletes nothing: the private copy may already be a newer value
+    /// written meanwhile, and a leftover copy of the old value is harmless (the next run
+    /// compares against it and finishes the move).
     private func move(_ key: StoreKey, _ legacyData: Data) -> Bool {
         guard let privateGroup = usable(privateGroup), let sharedGroup else { return false }
         let existing = backend.copy(service: key.service, account: StoreKey.account, accessGroup: privateGroup)
@@ -138,12 +158,7 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
             return false
         }
         let back = backend.copy(service: key.service, account: StoreKey.account, accessGroup: privateGroup)
-        guard back.status == KeychainStatus.success, back.data == expected else {
-            if existing.status == KeychainStatus.itemNotFound {
-                _ = backend.delete(service: key.service, account: StoreKey.account, accessGroup: privateGroup)
-            }
-            return false
-        }
+        guard back.status == KeychainStatus.success, back.data == expected else { return false }
         return backend.delete(service: key.service, account: StoreKey.account, accessGroup: sharedGroup) == KeychainStatus.success
     }
 

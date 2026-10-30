@@ -1,5 +1,6 @@
 import XCTest
 import Core
+import os
 
 /// SecItem backend with the device's access-group rules (no host Keychain):
 /// - every item lives in exactly one group;
@@ -270,7 +271,8 @@ final class KeychainStoreTests: XCTestCase {
             XCTAssertEqual(kc.items[key(.showerBinding, app)], binding)
             XCTAssertNil(kc.items[key(.showerBinding, group)])
         }
-        // Read-back fails: the private copy is withdrawn, the shared one kept.
+        // Read-back fails: the shared copy is kept and nothing is deleted from the private group
+        // (it may hold a newer value by then); the next run finishes the move.
         do {
             let kc = appKeychain()
             kc.items[key(.laundryAccount, group)] = account
@@ -278,7 +280,7 @@ final class KeychainStoreTests: XCTestCase {
             kc.afterCall = { [unowned kc] call in if call == "add \(FakeKeychain.app)" { kc.failing["copy \(FakeKeychain.app)"] = -25308 } }
             XCTAssertEqual(store.migratePrivateItems(), [.laundryAccount])
             XCTAssertEqual(kc.items[key(.laundryAccount, group)], account)
-            XCTAssertNil(kc.items[key(.laundryAccount, app)])
+            XCTAssertFalse(kc.calls.contains("delete \(FakeKeychain.app)"))
             kc.afterCall = nil
             kc.failing = [:]
             XCTAssertEqual(store.migratePrivateItems(), [])
@@ -301,6 +303,62 @@ final class KeychainStoreTests: XCTestCase {
             XCTAssertNil(kc.items[key(.showerSession, group)])
             XCTAssertEqual(kc.items[key(.showerSession, app)], Data("newer".utf8))
         }
+    }
+
+    /// A value written while the move was reading back is never deleted by the move.
+    func testMoveNeverDeletesANewerPrivateValue() throws {
+        let kc = appKeychain()
+        kc.items[key(.laundryAccount, group)] = Data("old".utf8)
+        let store = appStore(kc)
+        let newer = key(.laundryAccount, app)
+        kc.afterCall = { [unowned kc] call in
+            if call == "add \(FakeKeychain.app)" { kc.items[newer] = Data("newer".utf8) }
+        }
+        XCTAssertEqual(store.migratePrivateItems(), [.laundryAccount])
+        kc.afterCall = nil
+        XCTAssertEqual(kc.items[key(.laundryAccount, app)], Data("newer".utf8))
+        XCTAssertEqual(try store.read(.laundryAccount), Data("newer".utf8))
+    }
+
+    /// Only a missing entitlement turns a group off; a locked device (or any other failure)
+    /// fails this write and the next write tries the group again.
+    func testOtherWriteFailuresThrowAndKeepTheGroup() throws {
+        let kc = appKeychain()
+        let store = appStore(kc)
+        kc.failing["add \(app)"] = -25308
+        XCTAssertThrowsError(try store.write(Data("x".utf8), for: .showerBinding)) {
+            XCTAssertEqual(($0 as? StorageError)?.status, -25308)
+        }
+        XCTAssertFalse(kc.calls.contains("add -"), "no write outside the private group")
+        kc.failing = [:]
+        try store.write(Data("y".utf8), for: .showerBinding)
+        XCTAssertEqual(kc.items[key(.showerBinding, app)], Data("y".utf8))
+        kc.failing["add \(group)"] = -25308
+        XCTAssertThrowsError(try store.write(Data("s".utf8), for: .sharedSnapshot))
+        XCTAssertFalse(store.isUsingFallback)
+        kc.failing = [:]
+        try store.write(Data("s".utf8), for: .sharedSnapshot)
+        XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("s".utf8))
+    }
+
+    /// A probe that fails (before the first unlock) is not remembered: the next use probes
+    /// again, and once it answers the store writes shared items where the widget reads them.
+    func testFailedGroupProbeIsRetried() throws {
+        let answers = ProbeScript([nil, app])
+        let probe = KeychainGroupProbe { answers.next() }
+        XCTAssertNil(probe.defaultGroup)
+        XCTAssertEqual(probe.sharedGroup, group)
+        XCTAssertEqual(probe.privateGroup, app)
+        XCTAssertEqual(answers.calls, 2)
+        _ = probe.defaultGroup
+        XCTAssertEqual(answers.calls, 2, "a found group is kept")
+
+        let kc = appKeychain()
+        let late = ProbeScript([nil, app])
+        let store = KeychainSecureStore(backend: kc, groups: KeychainGroupProbe { late.next() })
+        XCTAssertNil(try store.read(.sharedSnapshot))
+        try store.write(Data("s".utf8), for: .sharedSnapshot)
+        XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("s".utf8))
     }
 
     /// Sign-out and unbinding remove every copy, old or new.
@@ -389,4 +447,17 @@ final class Counter: @unchecked Sendable {
     private var n = 0
     func bump() { lock.withLock { n += 1 } }
     var value: Int { lock.withLock { n } }
+}
+
+/// Scripted probe answers (nil = probe failed).
+final class ProbeScript: Sendable {
+    private let state: OSAllocatedUnfairLock<(answers: [String?], calls: Int)>
+    init(_ answers: [String?]) { state = OSAllocatedUnfairLock(initialState: (answers, 0)) }
+    var calls: Int { state.withLock { $0.calls } }
+    func next() -> String? {
+        state.withLock {
+            $0.calls += 1
+            return $0.answers.count > 1 ? $0.answers.removeFirst() : $0.answers.first ?? nil
+        }
+    }
 }
