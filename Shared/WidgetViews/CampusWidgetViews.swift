@@ -122,7 +122,9 @@ struct CampusWidgetFace: View {
     // MARK: Never signed in, first read
 
     private var never: some View {
-        let size: CGFloat = medium ? 44 : 28
+        // The droplet fills 44 of the glyph's 64-pt box across: medium draws it 44 pt wide;
+        // small keeps its 28-pt box.
+        let size: CGFloat = medium ? 64 : 28
         return VStack(alignment:.leading, spacing:10) {
             // The droplet body starts 10/64 into its box: pull it back so it sits on the 16pt margin like the text.
             MascotGlyph(size:size, color:P.accent).padding(.leading, -size * 10 / 64)
