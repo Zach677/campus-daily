@@ -222,23 +222,40 @@ final class AppResetTests: XCTestCase {
         XCTAssertEqual(steps, ["signOut", "resync"])
     }
 
-    /// After a reset stopped behind the sign-out, a running shower keeps its Live Activity and
-    /// 「还没结束洗澡？」; a finished one loses them; laundry is never touched.
+    /// After a reset stopped behind the sign-out, the lock screen and 「还没结束洗澡？」 follow
+    /// the record as on any change: water that may run keeps 结束并结算 and the reminder, an end
+    /// still settling stays as settling, a failed one shows 「不确定」 for 15 minutes, nothing
+    /// left ends it; laundry is never touched.
     func testTheResyncKeepsARunningShowersLockScreenAndReminder() {
-        let start = Date(timeIntervalSince1970: 1_793_000_000)
-        let running = AppReset.Resync(shower: ShowerState(phase: .running, startedAt: start))
+        let start = Date(timeIntervalSince1970: 1_793_000_000), now = start.addingTimeInterval(600)
+        let running = AppReset.Resync(shower: ShowerState(phase: .running, startedAt: start), now: now)
         XCTAssertEqual(running.showerReminderStart, start)
-        XCTAssertTrue(running.keepsShowerActivity)
-        let pending = AppReset.Resync(shower: ShowerState(phase: .writePending, startedAt: start))
+        XCTAssertEqual(running.showerActivity, .show(startedAt: start, writeUnconfirmed: false))
+        let pending = AppReset.Resync(shower: ShowerState(phase: .writePending, startedAt: start), now: now)
         XCTAssertEqual(pending.showerReminderStart, start, "water may run while the write is unconfirmed")
-        XCTAssertTrue(pending.keepsShowerActivity)
-        let settling = AppReset.Resync(shower: ShowerState(phase: .settling, startedAt: start))
+        XCTAssertEqual(pending.showerActivity, .show(startedAt: start, writeUnconfirmed: true))
+        let settling = AppReset.Resync(shower: ShowerState(phase: .settling, startedAt: start), now: now)
         XCTAssertNil(settling.showerReminderStart)
-        XCTAssertTrue(settling.keepsShowerActivity, "the end is still on the lock screen")
-        let idle = AppReset.Resync(shower: .idle)
+        XCTAssertEqual(settling.showerActivity, .settling(startedAt: start), "the end is still on the lock screen")
+        let failed = AppReset.Resync(shower: ShowerState(phase: .failed, startedAt: start,
+                                                         failure: ShowerFailure(reason: .settleUncertain, needsReview: true)), now: now)
+        XCTAssertNil(failed.showerReminderStart)
+        XCTAssertEqual(failed.showerActivity, .unconfirmed(startedAt: start, dismissAfter: 15 * 60))
+        XCTAssertTrue(failed.showerActivity.keepsActivity)
+        let idle = AppReset.Resync(shower: .idle, now: now)
         XCTAssertNil(idle.showerReminderStart)
-        XCTAssertFalse(idle.keepsShowerActivity)
+        XCTAssertEqual(idle.showerActivity, .end)
+        XCTAssertFalse(idle.showerActivity.keepsActivity)
         XCTAssertTrue(idle.leavesLaundry && running.leavesLaundry)
+    }
+
+    /// A settled shower shows its minutes and the receipt's amount only, then goes.
+    func testASettledShowerShowsTheReceiptThenGoes() {
+        let start = Date(timeIntervalSince1970: 1_793_000_000)
+        let done = ShowerState(phase: .done, startedAt: start, endedAt: start.addingTimeInterval(8 * 60 + 40))
+        XCTAssertEqual(ShowerActivityAction(done, now: start.addingTimeInterval(3600)),
+                       .settled(startedAt: start, minutes: 9, amountYuan: nil, dismissAfter: 4))
+        XCTAssertEqual(ShowerActivityAction(ShowerState(phase: .authorizing, startedAt: start), now: start), .leave)
     }
 
     /// A marker that can't be written: the reset does not start at all.

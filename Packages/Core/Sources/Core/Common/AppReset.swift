@@ -57,14 +57,14 @@ public enum AppReset {
     public struct Resync: Sendable, Equatable {
         /// 「还没结束洗澡？」 is (re)scheduled from this start; nil removes it.
         public var showerReminderStart: Date?
-        /// The shower Live Activity stays (water may run, or the end is still settling).
-        public var keepsShowerActivity: Bool
+        /// What the shower Live Activity does: the same as for any record change.
+        public var showerActivity: ShowerActivityAction
         /// Laundry reminders and its Live Activity are left as they are.
         public let leavesLaundry = true
 
-        public init(shower: ShowerState) {
+        public init(shower: ShowerState, now: Date) {
             showerReminderStart = shower.mayBeFlowing ? shower.startedAt : nil
-            keepsShowerActivity = [.writePending, .running, .closing, .settling].contains(shower.phase)
+            showerActivity = ShowerActivityAction(shower, now: now)
         }
     }
 
