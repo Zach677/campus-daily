@@ -14,7 +14,7 @@ enum SchoolLoginText {
         switch error as? SchoolLoginFailure {
         case .wrongCredentials?: return wrong
         case .cannotLoginDirectly?: return cannotDirect
-        case .offline?: return ServiceError.offline.userMessage
+        case .offline?, .noAnswer?: return ServiceError.offline.userMessage
         case nil: return AppErrorText.text(error)
         }
     }

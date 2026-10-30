@@ -19,19 +19,41 @@ public struct PortalToken: Sendable, Equatable, Codable, CustomStringConvertible
 public struct SchoolAccount: Sendable, Equatable, Codable, CustomStringConvertible, CustomDebugStringConvertible {
     public var account: String
     public var password: String?
+    /// The saved password was refused (or the login hit something else): automatic sign-in
+    /// stops until the user signs in or enters the password again.
     public var paused: Bool
-    public init(account: String, password: String? = nil, paused: Bool = false) {
-        self.account = account; self.password = password; self.paused = paused
+    /// When an automatic login sent the password and heard nothing back. The school may have
+    /// counted it, so automatic logins wait `holdAfterNoAnswer` from then.
+    public var unansweredAt: Date?
+
+    /// How long automatic logins wait after one that got no answer (30 failures lock the account).
+    public static let holdAfterNoAnswer: TimeInterval = 6 * 3600
+
+    public init(account: String, password: String? = nil, paused: Bool = false, unansweredAt: Date? = nil) {
+        self.account = account; self.password = password; self.paused = paused; self.unansweredAt = unansweredAt
     }
     /// The saved password, unless automatic sign-in is paused.
     public var usablePassword: String? { paused ? nil : password.flatMap { $0.isEmpty ? nil : $0 } }
+    /// The saved password for an automatic login at `now`: none while paused or while holding
+    /// off after a login that got no answer.
+    public func automaticPassword(at now: Date) -> String? {
+        if let unansweredAt, now < unansweredAt.addingTimeInterval(Self.holdAfterNoAnswer) { return nil }
+        return usablePassword
+    }
+    /// Automatic sign-in is held off right now after a login with no answer.
+    public func isHolding(at now: Date) -> Bool {
+        guard password != nil, !paused, let unansweredAt else { return false }
+        return now < unansweredAt.addingTimeInterval(Self.holdAfterNoAnswer)
+    }
     /// For display: first two and last two characters, the rest hidden.
     public var masked: String {
         let chars = Array(account)
         guard chars.count > 4 else { return String(repeating: "•", count: max(chars.count, 1)) }
         return String(chars.prefix(2)) + String(repeating: "•", count: chars.count - 4) + String(chars.suffix(2))
     }
-    public var description: String { "SchoolAccount(<redacted>, password: \(password == nil ? "none" : "saved"), paused: \(paused))" }
+    public var description: String {
+        "SchoolAccount(<redacted>, password: \(password == nil ? "none" : "saved"), paused: \(paused), unanswered: \(unansweredAt != nil))"
+    }
     public var debugDescription: String { description }
 }
 

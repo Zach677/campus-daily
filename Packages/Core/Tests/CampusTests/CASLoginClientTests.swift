@@ -163,6 +163,19 @@ final class CASLoginClientTests: XCTestCase {
         XCTAssertEqual(failure(result), .offline)
     }
 
+    /// Once the password is posted, a lost answer is not "offline": the school may have counted it.
+    func testNoAnswerToThePostIsReportedAsSuch() async throws {
+        let (_, pem) = try CASFake.keyPair()
+        for code in [URLError.Code.timedOut, .networkConnectionLost, .notConnectedToInternet] {
+            let server = StubServer()
+            CASFake.serveForm(server, pem: pem)
+            server.fail("POST", CASFake.loginURL, with: code)
+            do { _ = try await CASLoginClient(http: server.makeClient()).login(account: "a", password: "b", visitorID: CASFake.visitor); XCTFail() }
+            catch { XCTAssertEqual(error as? SchoolLoginFailure, .noAnswer, "\(code)") }
+            XCTAssertEqual(server.requests(path: "/cas/login").filter { $0.method == "POST" }.count, 1)
+        }
+    }
+
     func testTicketClaimsAndErrorParsing() {
         XCTAssertEqual(CASTicketClaims.portalToken(fromTicket: CASFake.ticket)?.value, CASFake.idToken)
         XCTAssertNil(CASTicketClaims.portalToken(fromTicket: CASFake.jwt("{\"sub\":\"99\"}")))

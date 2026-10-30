@@ -150,6 +150,34 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertEqual(try h.vault.account()?.paused, false)
     }
 
+    /// A posted password with no answer is never sent again by a refresh for the next hours;
+    /// after that one more automatic try is allowed.
+    func testNoAnswerHoldsAutomaticLoginsOff() async throws {
+        let login = FakePasswordLogin(.failure(.noAnswer), .success(Self.freshToken))
+        let h = harness(login)
+        try h.signedIn()
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 3)
+        let first = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(first.outcome, .failed(.offline))
+        let held = try XCTUnwrap(try h.vault.account())
+        XCTAssertFalse(held.paused)
+        XCTAssertEqual(held.unansweredAt, h.clock.now)
+        XCTAssertTrue(held.isHolding(at: h.clock.now))
+
+        h.clock.advance(5 * 3600)
+        let second = await h.refresher().refresh(inBackground: false)
+        XCTAssertEqual(second.outcome, .needsLogin(.sessionExpired(.ecykt)))
+        XCTAssertEqual(login.calls.count, 1, "not sent again while holding off")
+
+        h.clock.advance(3600 + 1)
+        try serveExchange(h, token: "AFTER-HOLD")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        let third = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(third.outcome, .ok)
+        XCTAssertEqual(login.calls.count, 2)
+    }
+
     func testSignOutAndWebSignInDropTheSavedPassword() async throws {
         let h = harness(FakePasswordLogin())
         try h.signedIn()

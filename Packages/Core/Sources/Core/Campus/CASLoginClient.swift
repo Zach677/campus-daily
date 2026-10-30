@@ -9,8 +9,11 @@ public enum SchoolLoginFailure: Error, Sendable, Equatable {
     /// Anything else the school put in the way (captcha, lock, extra verification, a page we
     /// don't recognise). The user signs in on the school's own web page instead.
     case cannotLoginDirectly
-    /// The request never got an answer.
+    /// No network before the password was sent: the school saw nothing.
     case offline
+    /// The password was sent and no answer came back (timeout, lost connection, cancelled).
+    /// The school may have counted it as an attempt, so automatic logins hold off for a while.
+    case noAnswer
 }
 
 /// Account/password sign-in, for tests and the session (the real one is `CASLoginClient`).
@@ -60,7 +63,7 @@ public struct CASLoginClient: SchoolPasswordLogin {
         let post = try await send(HTTPRequest(service: .cas, method: .post, url: loginURL, headers: [
             "Content-Type": "application/x-www-form-urlencoded", "Accept": "text/html",
             "Origin": "https://" + SchoolEndpoints.casHost,
-        ], body: Data(body.utf8), bodyLimit: HTTPRequest.largeBodyLimit, logName: "casLoginSubmit"), jar: &jar)
+        ], body: Data(body.utf8), bodyLimit: HTTPRequest.largeBodyLimit, logName: "casLoginSubmit"), jar: &jar, carriesPassword: true)
 
         switch post.status {
         case 302, 303:
@@ -80,12 +83,14 @@ public struct CASLoginClient: SchoolPasswordLogin {
     }
 
     /// One request with this login's cookies; transport failures become `offline` or
-    /// `cannotLoginDirectly`, never a retry.
-    private func send(_ request: HTTPRequest, jar: inout CASCookieJar) async throws -> HTTPResponse {
+    /// `cannotLoginDirectly`, never a retry. Once the password may have left the phone
+    /// (`carriesPassword`), any failure to hear back, cancellation included, is `noAnswer`.
+    private func send(_ request: HTTPRequest, jar: inout CASCookieJar, carriesPassword: Bool = false) async throws -> HTTPResponse {
         var r = request
         if let cookie = jar.header { r.headers["Cookie"] = cookie }
         let response: HTTPResponse
         do { response = try await http.send(r) }
+        catch where carriesPassword { throw SchoolLoginFailure.noAnswer }
         catch is CancellationError { throw CancellationError() }
         catch let e as ServiceError {
             switch e {

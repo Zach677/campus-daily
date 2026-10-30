@@ -243,9 +243,10 @@ public actor SchoolSession {
     private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable }
 
     /// The last step of the refresh: one login with the saved password. Anything but success
-    /// or no network pauses the password, so a wrong or blocked login is never repeated.
+    /// or no network pauses the password, so a wrong or blocked login is never repeated. A login
+    /// that was sent but got no answer holds automatic logins off for a few hours instead.
     private func signInWithSavedPassword(previous: EcyktSession, since started: Int) async -> PasswordStep {
-        guard let saved = (try? vault.account()) ?? nil, let password = saved.usablePassword else { return .unavailable }
+        guard let saved = (try? vault.account()) ?? nil, let password = saved.automaticPassword(at: now()) else { return .unavailable }
         do {
             let token = try await passwordLoginOnce(account: saved.account, password: password)
             let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)
@@ -254,6 +255,14 @@ public actor SchoolSession {
             try? vault.savePortalToken(token)
             return .signedIn(found)
         } catch SchoolLoginFailure.offline {
+            return .offline
+        } catch SchoolLoginFailure.noAnswer {
+            // The school may have counted this one: no automatic login for a while.
+            if started == signOutGeneration, var held = (try? vault.account()) ?? nil,
+               held.account == saved.account, held.password == saved.password {
+                held.unansweredAt = now()
+                try? vault.saveAccount(held)
+            }
             return .offline
         } catch let e as ServiceError where e == .offline || e == .timedOut {
             // The password was accepted; only the steps after it lost the network.
