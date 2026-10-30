@@ -68,7 +68,7 @@ extension HomeView {
     }
 
     func showerKind(_ data: HomeData) -> HomeShowerButton.Kind? {
-        guard data.signedIn else { return .signIn }
+        if data.shower.asksForSchoolSignIn(signedIn:data.signedIn) { return .signIn }
         switch data.shower {
         case .unconfigured, .unavailable: return nil
         case .idle:
