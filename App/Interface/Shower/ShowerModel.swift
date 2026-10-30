@@ -190,7 +190,7 @@ enum ShowerProfileFiles {
         rebuildEngine()
     }
 
-    /// The school login changed to another person (B2): the binding came from the previous
+    /// The school login changed to another person: the binding came from the previous
     /// person's school identity. Removed when nothing could be open; with a session in flight
     /// it stays (so the close can still be sent) but no new start is allowed until reviewed.
     /// Returns whether there was a binding to set up again.

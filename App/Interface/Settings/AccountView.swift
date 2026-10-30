@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// Copy for 学校账号 while automatic sign-in is paused (Camo flow-copy 「第二段审查 B3」).
+/// Copy for 学校账号, including the paused automatic sign-in.
 enum AccountText {
     static let signedIn = "已登录"
     static let paused = "自动登录已暂停"
@@ -24,7 +24,7 @@ enum AccountText {
     }
 }
 
-/// 学校账号 detail (design §5, §11): account, status, 保存密码 (and 重新输入密码 while paused),
+/// 学校账号 detail: account, status, 保存密码 (and 重新输入密码 while paused),
 /// re-login, sign out.
 struct AccountView: View {
     var preview: HomeData? = nil
@@ -35,7 +35,7 @@ struct AccountView: View {
     @State private var typedPassword = ""
     @State private var saving = false
     @State private var saveIssue: String?
-    /// The typed account isn't the signed-in one: nothing saved, nobody switched (B2).
+    /// The typed account isn't the signed-in one: nothing saved, nobody switched.
     @State private var differentAccount = false
     /// 重新输入密码 (only while automatic sign-in is paused).
     @State private var askReenter = false
@@ -118,7 +118,7 @@ struct AccountView: View {
                 }.listRowBackground(Theme.group)
             }
             Section {
-                // Account and password first, the school's web page as the fallback (B3).
+                // Account and password first, the school's web page as the fallback.
                 Button { relogin = true } label: {
                     ChevronRow(title:signedIn ? "重新登录学校账号" : "登录学校账号")
                 }

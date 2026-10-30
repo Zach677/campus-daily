@@ -38,7 +38,7 @@ struct CampusRechargeView: View {
             .navigationTitle(kind.title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement:.topBarTrailing) { Button("重试") { revision = UUID() }.disabled(loading) } }
             .task(id:revision) { await prepare() }
-            // Account and password first, the school's web page as the fallback (B3).
+            // Account and password first, the school's web page as the fallback.
             .sheet(isPresented:$login) { SchoolReloginSheet { revision = UUID() } }
     }
     private func prepare() async {

@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// 「重新登录学校账号」 from Settings and the top-up page (design §11, B3): the first-run login
+/// 「重新登录学校账号」 from Settings and the top-up page: the first-run login
 /// form in a full-height sheet, account and password first, the school's web page as the
 /// fallback. No mascot, no page dots.
 struct SchoolReloginSheet: View {

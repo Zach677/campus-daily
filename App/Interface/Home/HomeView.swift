@@ -184,7 +184,7 @@ struct HomeView: View {
                 return
             }
             if url.host == "demo", url.lastPathComponent.hasPrefix("account-switched") {
-                // B2 alert over the home demo; 「-water」 adds the hot-water line and button.
+                // Account-switch alert over the home demo; 「-water」 adds the hot-water line and button.
                 onboarding = nil; settings = false; path = []
                 demo = HomeDemo.normal.content().0
                 campus.switchNotice = AccountSwitchNotice(hotWaterCleared:url.lastPathComponent.hasSuffix("-water"))

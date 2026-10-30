@@ -421,7 +421,7 @@ struct OnboardingView: View {
         }
     }
 
-    /// The school's own page (with the R2 loading cover); nothing to save on that path.
+    /// The school's own page (behind the loading cover); nothing to save on that path.
     private func openWebLogin() {
         if preview != nil { advance(); return }
         loginFocus = nil

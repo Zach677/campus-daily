@@ -1,16 +1,16 @@
 import SwiftUI
 import Core
 
-/// Copy for the school login (Camo campus-r3-flow-copy).
+/// Copy for the school login.
 enum SchoolLoginText {
     static let wrong = "账号或密码不对，再试一次。"
     static let cannotDirect = "这次没法直接登录，换学校网页登录试试。"
     static let webLogin = "用学校网页登录"
     static let saveTitle = "保存密码，让小组件自动刷新"
     static let saveNote = "密码只存在这台 iPhone 的钥匙串里，不会上传。不保存的话，过几个小时小组件就要打开 App 才能更新。"
-    /// B3: under the web-login link in the re-login sheet, when a password is saved.
+    /// Under the web-login link in the re-login sheet, when a password is saved.
     static let webDropsPassword = "用学校网页登录的话，存的密码会删掉。"
-    /// B2: saving a password for an account other than the signed-in one (alert title + message).
+    /// Saving a password for an account other than the signed-in one (alert title + message).
     static let differentAccountTitle = "这不是现在登录的账号，没保存。"
     static let differentAccountMessage = "要换账号，先退出登录。"
 
@@ -48,7 +48,7 @@ enum SchoolLoginState: Equatable {
 
 enum SchoolLoginField: Hashable { case account, password }
 
-/// Account / password rows, the error line and the save-password check (design §3.1).
+/// Account / password rows, the error line and the save-password check.
 struct SchoolLoginForm: View {
     @Binding var account: String
     @Binding var password: String
@@ -143,7 +143,7 @@ struct SchoolLoginForm: View {
     }
 }
 
-/// A round check in front of the label; the whole row toggles (design §3.1).
+/// A round check in front of the label; the whole row toggles.
 struct CheckToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {

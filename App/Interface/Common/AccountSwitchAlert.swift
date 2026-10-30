@@ -1,13 +1,12 @@
 import SwiftUI
 
-/// After a login turned out to be a different person (B2): the old school data, and maybe the
+/// After a login turned out to be a different person: the old school data, and maybe the
 /// hot-water binding, were cleared. Shown once, by the top-most screen.
 struct AccountSwitchNotice: Equatable, Identifiable {
     let id = UUID()
     /// The hot-water binding was the previous person's and was removed.
     var hotWaterCleared: Bool
 
-    // Copy: Camo campus-r3-flow-copy 「第二段审查 B2」.
     static let title = "换了账号，上一个账号的宿舍和电表已经清掉。"
     static let hotWater = "热水要重新设置。"
     static let openHotWater = "去设置热水"
