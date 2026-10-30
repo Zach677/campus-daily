@@ -17,11 +17,18 @@ struct CampusRechargeView: View {
     @State private var loading = false
     @State private var login = false
     @State private var revision = UUID()
+    /// DEBUG demo: show the state of a web view that can't enforce its allow-list.
+    var demoBlocked = false
+    /// Without the navigation allow-list the page would load nothing; say so instead of a blank page.
+    private var pageBlocked: Bool { demoBlocked || !WebNavigationPolicy.isEnforced(by:CampusRechargeBrowser.Coordinator.self) }
+    static let blockedText = "充值页现在打不开，过会儿再试。急用的话，先去学校官网充值。"
     var body: some View {
         VStack(spacing:0) {
             Text("学校官方充值页面 · 付款前核对账户、宿舍和金额")
                 .font(.footnote).foregroundStyle(.secondary).padding(12)
-            if let context {
+            if pageBlocked {
+                WebPageUnavailable(text:Self.blockedText) { revision = UUID() }
+            } else if let context {
                 CampusRechargeBrowser(context:context) { issue = "学校登录过期了，重新登录一下。" }
                     .id(revision)
             } else if loading {
@@ -30,7 +37,7 @@ struct CampusRechargeView: View {
                 ContentUnavailableView("暂时无法打开充值",systemImage:"person.crop.circle",
                     description:Text(issue ?? "先登录学校账号。"))
             }
-            if let issue {
+            if let issue, !pageBlocked {
                 Text(issue).font(.footnote).foregroundStyle(.orange).padding(.horizontal)
                 Button("重新登录学校账号") { login = true }.buttonStyle(.borderedProminent).padding()
             }
@@ -120,5 +127,29 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
             else if let url = action.request.url { ShowerDiagnosticReport.record(RechargeNavigation.blockedEvent(url)) }
             return nil
         }
+    }
+}
+
+/// A web page that can't be shown: centred icon, one sentence, 「再试一次」.
+struct WebPageUnavailable: View {
+    let text: String
+    let retry: () -> Void
+    var body: some View {
+        VStack(spacing:14) {
+            Image(systemName:"exclamationmark.circle").font(.system(size:28)).foregroundStyle(Theme.ink2)
+                .accessibilityHidden(true)
+            Text(text).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
+                .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
+            Button(action:retry) {
+                Text("再试一次").scaledFont(17, .semibold, relativeTo:.headline).foregroundStyle(Theme.pillInk)
+                    .padding(.horizontal,32).frame(minHeight:52)
+                    .background(Theme.pill, in:Capsule())
+            }
+            .buttonStyle(PressScaleStyle())
+            .padding(.top,10)
+            .accessibilityIdentifier("webPageRetry")
+        }
+        .padding(.horizontal,40)
+        .frame(maxWidth:.infinity, maxHeight:.infinity)
     }
 }

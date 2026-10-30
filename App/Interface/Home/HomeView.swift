@@ -31,6 +31,8 @@ struct HomeView: View {
     @State private var widgetPreview: WidgetPreview.Page?
     /// campusdaily://demo/login-loading: the sign-in sheet's opening state, nothing loaded.
     @State private var loginDemo = false
+    /// campusdaily://demo/recharge-blocked: the top-up page when its web view can't be allowed to load.
+    @State private var rechargeBlockedDemo = false
     #endif
 
     private func openOnboarding() {
@@ -181,6 +183,14 @@ struct HomeView: View {
                 // Fresh push so the page's @State starts from this demo.
                 path = []
                 Task { try? await Task.sleep(for:.milliseconds(350)); path = [.laundry] }
+                return
+            }
+            if url.host == "demo", url.lastPathComponent == "recharge-blocked" {
+                onboarding = nil; settings = false
+                demo = HomeDemo.normal.content().0
+                rechargeBlockedDemo = true
+                path = []
+                Task { try? await Task.sleep(for:.milliseconds(350)); path = [.card] }
                 return
             }
             if url.host == "demo", url.lastPathComponent.hasPrefix("account-switched") {
@@ -447,7 +457,7 @@ struct HomeView: View {
         switch route {
         case .power: if campus.powerConfigured { CampusRechargeView(kind:.power) } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
-        case .card: CampusRechargeView(kind:.card)
+        case .card: CampusRechargeView(kind:.card, demoBlocked:rechargeBlockedDemo)
         // Not set up yet: hot water is bound by choosing the dorm.
         case .water: if water.configured { ShowerDetail() } else { CampusOnboardingView() }
         case .laundry:

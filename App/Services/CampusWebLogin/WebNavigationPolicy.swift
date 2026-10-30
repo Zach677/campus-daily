@@ -10,4 +10,6 @@ enum WebNavigationPolicy {
 
     /// True when WebKit will ask `delegate` before each navigation.
     static func isEnforced(by delegate: NSObject) -> Bool { delegate.responds(to:selector) }
+    /// The same, asked before any web view exists.
+    static func isEnforced(by type: NSObject.Type) -> Bool { type.instancesRespond(to:selector) }
 }

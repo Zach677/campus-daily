@@ -96,9 +96,12 @@ struct PowerChoice: Identifiable, Equatable {
     /// The official ecykt page finished signing in: adopt its `elecampus_state`, and keep the
     /// dorm address the portal page showed (read by the same sign-in).
     func adoptWebState(_ login: CampusWebLogin) async throws {
+        let started = signOutGeneration
         let summary = try await session.adoptWebState(login.state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
         if summary.switchedAccount { await previousPersonCleared() }
         await refresher.noteChange()
+        // Signed out (or reset) while that ran: the dorm must not be written back.
+        guard started == signOutGeneration else { return }
         let raw = login.dormAddress.trimmingCharacters(in:.whitespacesAndNewlines)
         if !raw.isEmpty {
             var stored = (try? AppEnvironment.schoolVault.profile()) ?? nil ?? SchoolProfile()

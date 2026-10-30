@@ -96,8 +96,11 @@ extension ShowerEngineTests {
     /// A binding stored with a lower-case machine id remembers (and forgets) its controller
     /// the same way as an upper-case one.
     func testLowerCaseMachineIdStillRemembersTheController() async throws {
-        let lower = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "aabbccdd", roomId: "R1", roomLabel: "99栋 991")
+        // init upper-cases the id; a binding saved by an older build kept it as given.
+        var lower = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "AABBCCDD", roomId: "R1", roomLabel: "99栋 991")
+        lower.machineId = "aabbccdd"
         try vault.saveBinding(lower)
+        XCTAssertEqual(try vault.binding()?.machineId, "aabbccdd", "the test really stores a lower-case id")
         let e = try engine()
         transport.script(.frame(FakeFrames.identity("AABBCCDD")), .fail(.timedOut))
         gateway.scriptAuthorize(.ok(ShowerAuthorization(machineID: "AABBCCDD", payload: auth.payload, authorizationID: "001122FF")))
