@@ -557,8 +557,11 @@ public actor SchoolSession {
         guard still.account == saved.account else { return .retryLater }
         guard (try? vault.savePortalToken(stamped(token))) != nil else { return .retryLater }
         // A sign-out in the other process can land between the read above and the write: read
-        // the account once more, and take the token back out if it has gone.
+        // the account once more, and take the token back out if it has gone. A new sign-in there
+        // writes its token before its account, so a token that is no longer this one is theirs
+        // and stays.
         if accountGone {
+            guard ((try? vault.portalToken()) ?? nil)?.value == token.value else { return .retryLater }
             try? vault.savePortalToken(nil)
             return .signedOut
         }

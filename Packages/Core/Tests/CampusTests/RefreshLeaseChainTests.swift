@@ -198,6 +198,28 @@ final class SignOutWhileStoringTheTokenTests: XCTestCase {
     }
 }
 
+/// The other process signed out and is signing in again: its new portal token is stored, its
+/// account not yet. This refresh sees no account, but the token there is not the one it
+/// stored, so it is left alone.
+final class SignInWhileStoringTheTokenTests: XCTestCase {
+    func testATokenFromANewSignInIsKept() async throws {
+        let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+        let h = try RefreshLeaseChainTests().passwordHarness(login)
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+        h.server.serve(try T.eCardWithTicket())
+        h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
+        let store = h.store, vault = h.vault
+        store.onNextWrite(to: .schoolPortal) {
+            for key: StoreKey in [.schoolPassword, .schoolEcykt, .schoolProfile, .schoolDevice] { try? store.delete(key) }
+            try? vault.savePortalToken(PortalToken("NEW-SIGN-IN-991"))
+        }
+        let report = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
+        XCTAssertEqual(report.outcome, .interrupted)
+        XCTAssertEqual(try h.vault.portalToken()?.value, "NEW-SIGN-IN-991")
+        XCTAssertTrue(h.server.requests(path: "/csalogintoken/450010").isEmpty, "no exchange with someone else's sign-in")
+    }
+}
+
 /// The other process signs out (lease, school items, empty snapshot) after this read renewed
 /// the lease but before it saved: the snapshot it saves is cleared again.
 final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
