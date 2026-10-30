@@ -194,6 +194,34 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertNil(try h.vault.account(), "the web page never says whose password it was")
     }
 
+    func testAutoLoginStatusForEveryState() {
+        let t = Date(timeIntervalSince1970: 1_793_300_000)
+        XCTAssertEqual(SchoolAccount(account: "a").autoLogin(at: t), .off)
+        XCTAssertEqual(SchoolAccount(account: "a", password: "").autoLogin(at: t), .off)
+        XCTAssertEqual(SchoolAccount(account: "a", password: "p").autoLogin(at: t), .on)
+        XCTAssertEqual(SchoolAccount(account: "a", password: "p", paused: true).autoLogin(at: t), .pausedRefused)
+        XCTAssertEqual(SchoolAccount(account: "a", password: "p", paused: true, unansweredAt: t).autoLogin(at: t), .pausedRefused)
+        let held = SchoolAccount(account: "a", password: "p", unansweredAt: t)
+        XCTAssertEqual(held.autoLogin(at: t), .pausedNoAnswer)
+        XCTAssertEqual(held.autoLogin(at: t.addingTimeInterval(SchoolAccount.holdAfterNoAnswer - 1)), .pausedNoAnswer)
+        XCTAssertEqual(held.autoLogin(at: t.addingTimeInterval(SchoolAccount.holdAfterNoAnswer)), .on, "resumes by itself")
+        XCTAssertEqual(SchoolAccount(account: "a", unansweredAt: t).autoLogin(at: t), .off)
+    }
+
+    /// 重新输入密码: a checked password lifts both kinds of pause.
+    func testEnteringThePasswordAgainEndsThePause() async throws {
+        for stored in [SchoolAccount(account: "99100991", password: "old", paused: true),
+                       SchoolAccount(account: "99100991", password: "old", unansweredAt: Date(timeIntervalSince1970: 1_793_300_000))] {
+            let h = harness(FakePasswordLogin(.success(Self.freshToken)))
+            try h.signedIn()
+            try h.vault.saveAccount(stored)
+            try await h.session().savePassword("synthetic-pw-991")
+            let account = try XCTUnwrap(try h.vault.account())
+            XCTAssertEqual(account.autoLogin(at: h.clock.now), .on)
+            XCTAssertEqual(account.usablePassword, "synthetic-pw-991")
+        }
+    }
+
     func testAccountIsMaskedAndNeverPrinted() {
         let a = SchoolAccount(account: "99100991", password: "synthetic-pw-991")
         XCTAssertEqual(a.masked, "99••••91")

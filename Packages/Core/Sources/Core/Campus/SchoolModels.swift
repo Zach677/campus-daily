@@ -45,6 +45,25 @@ public struct SchoolAccount: Sendable, Equatable, Codable, CustomStringConvertib
         guard password != nil, !paused, let unansweredAt else { return false }
         return now < unansweredAt.addingTimeInterval(Self.holdAfterNoAnswer)
     }
+    /// What Settings › 学校账号 shows about automatic sign-in.
+    public enum AutoLogin: Sendable, Equatable {
+        /// No saved password.
+        case off
+        /// The saved password is used when the card session runs out.
+        case on
+        /// The saved password was refused (or the login hit something else); the user has to
+        /// enter it again.
+        case pausedRefused
+        /// A login got no answer; automatic logins resume by themselves after the hold.
+        case pausedNoAnswer
+    }
+
+    public func autoLogin(at now: Date) -> AutoLogin {
+        guard let password, !password.isEmpty else { return .off }
+        if paused { return .pausedRefused }
+        return isHolding(at: now) ? .pausedNoAnswer : .on
+    }
+
     /// For display: first two and last two characters, the rest hidden.
     public var masked: String {
         let chars = Array(account)
