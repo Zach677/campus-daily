@@ -95,13 +95,13 @@ struct WaterDetail: View {
                 }
                 if water.mayResolveManually {
                     // Way out of a record that can't close by itself; only after the user checked the official record.
-                    Button("我已在官方记录核对，标记为已处理") { confirmResolve = true }
+                    Button("我在学校记录里核对过了") { confirmResolve = true }
                         .font(.subheadline).frame(minHeight:44).accessibilityIdentifier("resolveWaterManually")
-                        .confirmationDialog("确认已在官方记录核对过？", isPresented:$confirmResolve, titleVisibility:.visible) {
-                            Button("标记为已处理") { try? water.resolveManually() }
+                        .confirmationDialog("这次洗澡核对过了吗？", isPresented:$confirmResolve, titleVisibility:.visible) {
+                            Button("核对过了") { try? water.resolveManually() }
                             Button("取消", role:.cancel) {}
                         } message: {
-                            Text("本 App 不会再结算这条记录。只有在学校热水记录里确认过这次用水后再标记。")
+                            Text("标记以后，校日常不会再结算这一次。先在学校的热水记录里找到这次洗澡，再点核对过了。")
                         }
                 }
                 if !water.configured {
@@ -133,7 +133,7 @@ struct WaterDetail: View {
         if water.stage == .settled, let cost = water.lastCost {
             Text(cost,format:.currency(code:"CNY")).font(.title2.weight(.semibold)).monospacedDigit().accessibilityIdentifier("settlementCost")
         } else if water.stage == .settled, water.resolvedManually {
-            Text("已手动标记，未在本 App 结算").font(.subheadline).foregroundStyle(.secondary)
+            Text("以学校记录为准").font(.subheadline).foregroundStyle(.secondary)
         } else if water.stage == .settled {
             Text(water.hasReceipt ? "金额未返回" : "旧记录未保存金额").font(.subheadline).foregroundStyle(.secondary)
         } else { Text("结算后显示").font(.subheadline) }
@@ -145,7 +145,7 @@ struct WaterDetail: View {
         if water.problem { return "本次待核对" }
         if !water.configured { return "尚未配置热水" }
         if water.stage == .active { return "热水已授权" }
-        if water.stage == .settled { return water.resolvedManually ? "已标记为已处理" : "结算完成" }
+        if water.stage == .settled { return water.resolvedManually ? "已手动核对" : "结算完成" }
         if water.stage != nil { return "当前记录待核对" }
         return "准备洗澡"
     }

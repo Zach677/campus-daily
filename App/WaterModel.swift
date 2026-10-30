@@ -52,7 +52,7 @@ import WaterCore
     var mayStart: Bool { configured && !platformMissing && !schoolClosed && !reviewingIdentity && !residenceReviewRequired && config?.access == nil && controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
     var mayFinish: Bool { configured && !busy && stage?.mayClose == true && controller?.storageBlocked == false }
     var mayImport: Bool { controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
-    /// Offer the manual 「已处理」 action only where the record can't move on by itself:
+    /// Offer the manual 「核对过了」 action only where the record can't move on by itself:
     /// any unresolved stage that can't be finished, or a finishable one whose device reported idle.
     var mayResolveManually: Bool {
         guard controller != nil, !busy, controller?.storageBlocked == false, let stage, stage != .settled else { return false }
@@ -176,7 +176,7 @@ import WaterCore
         Reminders.shared.syncShower(started:stage?.mayClose == true ? sessionStarted : nil)
         if residenceReviewRequired && (stage == nil || stage == .settled) {
             status = "学校那边的宿舍变了，重新选一下水控。";problem = true
-        } else if resolvedManually, stage == .settled { status = "已在官方记录核对，标记为已处理" }
+        } else if resolvedManually, stage == .settled { status = "上次洗澡已手动核对" }
         else if let stage { status = stage.label }
         else if configured { status = config?.access?.isCurrent == false ? "学校登录过期了，重新登录一下。" : "准备好了，靠近水控就能开始洗。" }
     }
