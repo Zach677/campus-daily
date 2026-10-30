@@ -410,6 +410,31 @@ final class SchoolElectricityTests: XCTestCase {
         XCTAssertEqual(try h.vault.profile()?.meter, binding)
     }
 
+    /// Five same-named rooms: more than are read one by one. Even though the first reports the
+    /// meter, no room is trusted (an unread one might too): the binding stays campus-wide.
+    func testMoreSameNamedRoomsThanAreReadBindsTheCampus() async throws {
+        let h = Harness()
+        try h.signedIn()
+        h.server.serve(try Self.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+        let service = "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service"
+        func level(_ parent: String, _ children: [(String, String)]) {
+            let rows = children.map { #"{\"buildingName\":\"\#($0.0)\",\"buildingID\":\"\#($0.1)\"}"# }.joined(separator: ",")
+            h.server.respond("POST", service, bodyMatch: ["server": "/api/getBuildingInfo", "buildingID": parent],
+                             body: Data(#"{"code":0,"msg":"获取成功","data":"[\#(rows)]"}"#.utf8))
+        }
+        level("991001002", [("99栋", "991001002000109")])
+        level("991001002000109", [("1楼", "991001002000109000001")])
+        level("991001002000109000001", (1...5).map { ("991", "99100100200010900000100\($0)") })
+        h.server.respond("POST", service, bodyMatch: ["server": "/api/getMeterStatus", "buildingID": "991001002000109000001001"],
+                         body: Data(#"{"code":0,"msg":"获取成功","data":"[{\"comAddress\":\"000000000991\",\"piplineName\":\"99栋991\",\"leftMoney\":\"12.00\"}]"}"#.utf8))
+        try Self.serveTree(h)
+        let result = try await h.session().resolveElectricity()
+        guard case .matched(let binding, _) = result else { return XCTFail("\(result)") }
+        XCTAssertFalse(binding.nodeIsRoom)
+        XCTAssertEqual(binding.nodeID, "991001")
+        XCTAssertEqual(binding.comAddress, "000000000991")
+    }
+
     /// Two same-name rows with one comAddress: nothing tells them apart, so the manual picker.
     func testSameNamedMetersWithOneAddressGoToThePicker() async throws {
         let h = Harness()

@@ -107,6 +107,8 @@ public actor SchoolSession {
     let recordsTimeout: TimeInterval
     /// Upper bound on directory calls when locating the room node.
     static let maxDirectoryCalls = 40
+    /// Same-name rooms read one by one for a meter match; more and the binding stays campus-wide.
+    static let maxRoomPaths = 4
     /// Room meter reads spent placing same-name candidates.
     static let maxCandidateRooms = 8
 
@@ -708,11 +710,12 @@ public actor SchoolSession {
     /// Walks campus → (apartment) → building → floor → room with name filters. Returns the
     /// room-level row whose meter has `comAddress`, with its path. When more than one room
     /// reports that meter, none is trusted (nil): the campus-wide read by `comAddress` is
-    /// still exact, a guessed room might bill the wrong dorm.
+    /// still exact, a guessed room might bill the wrong dorm. More than `maxRoomPaths` same-name
+    /// rooms are not all read, so none is trusted either.
     func locateRoomNode(_ s: EcyktSession, campus: PowerNode, address: DormAddress, comAddress: String) async throws -> MeterCandidate? {
-        guard let paths = try await roomPaths(s, campus: campus, address: address) else { return nil }
+        guard let paths = try await roomPaths(s, campus: campus, address: address), paths.count <= Self.maxRoomPaths else { return nil }
         var found: MeterCandidate?
-        for path in paths.prefix(4) {
+        for path in paths {
             guard let room = path.last else { continue }
             let meters = try await ecykt.meters(s, nodeID: room.id)
             guard let m = meters.first(where: { $0.comAddress == comAddress }) else { continue }
