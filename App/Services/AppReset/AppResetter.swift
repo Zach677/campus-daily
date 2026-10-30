@@ -10,11 +10,13 @@ import Core
     @Published private(set) var completed = 0
     @Published private(set) var running = false
 
-    /// Not while a shower runs or its settlement still needs checking, nor with an unfinished
-    /// laundry order.
+    /// Not while a shower runs or its settlement still needs checking, with an unfinished
+    /// laundry order, while a record can't be read, or while a controller check runs.
     static func lock(water: ShowerModel, laundry: LaundryModel) -> AppReset.Lock? {
-        if water.busy { return .showering }
-        return AppReset.lock(shower:water.state, laundry:laundry.checkout?.phase, laundryBusy:laundry.checkoutBusy)
+        if water.busy && !water.storageBlocked && !laundry.storageBlocked { return .showering }
+        return AppReset.lock(shower:water.state, laundry:laundry.checkout?.phase, laundryBusy:laundry.checkoutBusy,
+                             recordsUnreadable:water.storageBlocked || laundry.storageBlocked,
+                             checkingController:water.inspecting)
     }
 
     /// Files the app wrote (the imported hot-water file and diagnostics, the laundry and Bluetooth
@@ -22,27 +24,35 @@ import Core
     static var files: [URL] {
         let support = FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask)[0]
         return ["Water", "LaundryCache", "WaterSession"].map { support.appendingPathComponent($0, isDirectory:true) }
+            + [ShowerDiagnosticReport.exportFolder]
     }
 
-    func reset(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async throws {
-        guard !running, Self.lock(water:water, laundry:laundry) == nil else { return }
+    /// The order is `AppReset.run`: lock, sign out, lock again, clear, reload. Returns the lock
+    /// that stopped it (nil = reset done).
+    @discardableResult
+    func reset(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async throws -> AppReset.Lock? {
+        guard !running else { return nil }
         running = true
         defer { running = false }
-        await campus.signOutForReset()
-        var failure: Error?
-        do {
-            try AppReset.clear(store:AppEnvironment.store, preferences:.standard,
-                               preferencesDomain:Bundle.main.bundleIdentifier ?? "", files:Self.files)
-        } catch {
-            failure = error
-        }
-        campus.reload()
-        await water.reloadAfterReset()
-        laundry.reloadAfterReset()
-        Reminders.shared.clearAfterReset()
-        WidgetCenter.shared.reloadAllTimelines()
-        if let failure { throw failure }
-        completed += 1
+        let stopped = try await AppReset.run(
+            lock: { Self.lock(water:water, laundry:laundry) },
+            signOut: { await campus.signOutForReset() },
+            clear: {
+                // The in-memory diagnostics first: the next event would write them all back.
+                ShowerDiagnosticReport.clearMemory()
+                try AppReset.clear(store:AppEnvironment.store, preferences:.standard,
+                                   preferencesDomain:Bundle.main.bundleIdentifier ?? "", files:Self.files)
+            },
+            reload: {
+                campus.reload()
+                await water.reloadAfterReset()
+                laundry.reloadAfterReset()
+                Reminders.shared.clearAfterReset()
+                ShowerActivityController.shared.endAll()
+                WidgetCenter.shared.reloadAllTimelines()
+            })
+        if stopped == nil { completed += 1 }
+        return stopped
     }
 
     #if DEBUG

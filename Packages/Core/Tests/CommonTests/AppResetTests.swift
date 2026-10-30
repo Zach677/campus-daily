@@ -89,4 +89,52 @@ final class AppResetTests: XCTestCase {
                        .unsettled)
         XCTAssertEqual(AppReset.lock(shower: ShowerState(phase: .running, stateReviewRequired: true)), .unsettled)
     }
+
+    func testUnreadableRecordsAndAControllerCheckLockReset() {
+        XCTAssertEqual(AppReset.lock(shower: .idle, recordsUnreadable: true), .recordsUnreadable)
+        XCTAssertEqual(AppReset.lock(shower: ShowerState(phase: .running), recordsUnreadable: true), .recordsUnreadable)
+        XCTAssertEqual(AppReset.lock(shower: .idle, checkingController: true), .checkingController)
+        XCTAssertEqual(AppReset.lock(shower: ShowerState(phase: .running), checkingController: true), .showering)
+        XCTAssertNil(AppReset.lock(shower: .idle, recordsUnreadable: false, checkingController: false))
+    }
+
+    /// lock → sign out → lock again → clear → reload.
+    @MainActor func testResetRunsItsStepsInOrder() async throws {
+        var steps: [String] = []
+        let stopped = try await AppReset.run(lock: { steps.append("lock"); return nil },
+                                             signOut: { steps.append("signOut") },
+                                             clear: { steps.append("clear") },
+                                             reload: { steps.append("reload") })
+        XCTAssertNil(stopped)
+        XCTAssertEqual(steps, ["lock", "signOut", "lock", "clear", "reload"])
+    }
+
+    @MainActor func testALockFirstDoesNothing() async throws {
+        var steps: [String] = []
+        let stopped = try await AppReset.run(lock: { .laundry }, signOut: { steps.append("signOut") },
+                                             clear: { steps.append("clear") }, reload: { steps.append("reload") })
+        XCTAssertEqual(stopped, .laundry)
+        XCTAssertEqual(steps, [])
+    }
+
+    /// A shower started while sign-out waited: nothing is cleared.
+    @MainActor func testALockAfterSignOutStopsBeforeClearing() async throws {
+        var steps: [String] = []
+        var showering = false
+        let stopped = try await AppReset.run(lock: { showering ? .showering : nil },
+                                             signOut: { steps.append("signOut"); showering = true },
+                                             clear: { steps.append("clear") }, reload: { steps.append("reload") })
+        XCTAssertEqual(stopped, .showering)
+        XCTAssertEqual(steps, ["signOut", "reload"])
+    }
+
+    @MainActor func testAFailedClearStillReloadsAndReports() async {
+        var reloaded = false
+        do {
+            _ = try await AppReset.run(lock: { nil }, signOut: {}, clear: { throw AppReset.Failure(items: ["x"]) },
+                                       reload: { reloaded = true })
+            XCTFail("expected the failure")
+        } catch { XCTAssertEqual(error as? AppReset.Failure, AppReset.Failure(items: ["x"])) }
+        XCTAssertTrue(reloaded)
+    }
 }

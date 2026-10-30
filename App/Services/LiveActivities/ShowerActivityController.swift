@@ -80,6 +80,14 @@ import Core
         Task { await Self.endActivity(current.id, ActivityContent(state:state, staleDate:nil), .after(date)) }
     }
 
+    /// Reset: end every hot-water activity at once, including any this controller lost track of.
+    func endAll() {
+        endNow()
+        for extra in Activity<ShowerActivityAttributes>.activities where extra.activityState == .active {
+            Task { await Self.endActivity(extra.id, nil, .immediate) }
+        }
+    }
+
     private func endNow() {
         guard let current = activity else { return }
         activity = nil

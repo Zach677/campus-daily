@@ -28,6 +28,14 @@ import Core
 
     struct Empty: Error {}
 
+    /// Where `export` puts the shared report (deleted by reset).
+    static var exportFolder: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("WaterDiagnostics", isDirectory: true)
+    }
+
+    /// Reset: forget the events held in memory too, or the next one would write them all back.
+    static func clearMemory() { entries = [] }
+
     static func export(phase: ShowerPhase, needsReview: Bool, manualSettleAttempts: Int) throws -> URL {
         guard !entries.isEmpty else { throw Empty() }
         struct Report: Encodable {
@@ -50,7 +58,7 @@ import Core
                             build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
                             deviceModel: model, systemVersion: UIDevice.current.systemVersion,
                             phase: phase, needsReview: needsReview, manualSettleAttempts: manualSettleAttempts, events: entries)
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("WaterDiagnostics", isDirectory: true)
+        let folder = exportFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let file = folder.appendingPathComponent("XiaoRiChang-water-diagnostics.json")
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; encoder.dateEncodingStrategy = .iso8601

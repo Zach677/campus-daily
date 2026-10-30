@@ -2,6 +2,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Core
 
+/// Footer of 重置校日常 for the two newer lock reasons (wording to be confirmed by the copywriter).
+enum ResetLockText {
+    static let recordsUnreadable = "洗澡或洗衣记录现在读不出来，重启 App 以后再重置。"
+    static let checkingController = "正在核对水控，核对完再重置。"
+}
+
 /// Settings sheet (design §6, copy-r1 「设置」).
 struct SettingsView: View {
     /// DEBUG demo data; nil = live models.
@@ -306,6 +312,8 @@ struct AdvancedSettingsView: View {
                 case .showering?: Text("正在洗澡，结束并结算以后再重置。")
                 case .unsettled?: Text("上次洗澡还没核对，核对完再重置。")
                 case .laundry?: Text("洗衣还有一笔没处理完，处理完再重置。")
+                case .recordsUnreadable?: Text(ResetLockText.recordsUnreadable)
+                case .checkingController?: Text(ResetLockText.checkingController)
                 case nil: Text("清掉登录、宿舍和所有记录，回到刚装好的样子。")
                 }
             }
