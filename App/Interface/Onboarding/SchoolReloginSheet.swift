@@ -28,6 +28,7 @@ struct SchoolReloginSheet: View {
     /// it is the web login and always available.
     private var dimmed: Bool { state != .cannotDirect && (loggingIn || !ready) }
     private var passwordSaved: Bool { preview.map { $0.password != nil } ?? campus.passwordSaved }
+    private var savedAccount: SchoolAccount? { preview ?? campus.account }
 
     var body: some View {
         VStack(alignment:.leading, spacing:0) {
@@ -70,6 +71,10 @@ struct SchoolReloginSheet: View {
             seeded = true
             account = (preview ?? campus.account)?.account ?? ""
             savePassword = passwordSaved
+        }
+        .onChange(of:account) { old, new in
+            // Another account typed in: somebody else's password is not kept unless they tick it.
+            savePassword = SchoolAccount.savePassword(savePassword, afterEditFrom:old, to:new, saved:savedAccount)
         }
         .sheet(isPresented:$webLogin) {
             CampusLoginSheet { value in

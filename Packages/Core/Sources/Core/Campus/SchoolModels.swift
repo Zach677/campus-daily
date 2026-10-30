@@ -39,6 +39,19 @@ public struct SchoolAccount: Sendable, Equatable, Codable, CustomStringConvertib
     /// The login form's 保存密码 starts ticked when a password is saved, so signing in again
     /// keeps it; only unticking it deletes the saved one.
     public static func savesPasswordByDefault(_ saved: SchoolAccount?) -> Bool { saved?.password != nil }
+    /// The same for a form whose account field holds `typed`: ticked only while it is the saved
+    /// account, so somebody else signing in on this phone does not have their password kept.
+    public static func savesPasswordByDefault(_ saved: SchoolAccount?, typed: String) -> Bool {
+        guard let saved, savesPasswordByDefault(saved) else { return false }
+        return typed.trimmingCharacters(in: .whitespaces) == saved.account
+    }
+    /// The box after the account field changed from `old` to `new`: moving off the saved account
+    /// unticks it and moving back onto it ticks it again; any other edit keeps what the user chose.
+    public static func savePassword(_ ticked: Bool, afterEditFrom old: String, to new: String,
+                                    saved: SchoolAccount?) -> Bool {
+        let was = savesPasswordByDefault(saved, typed: old), now = savesPasswordByDefault(saved, typed: new)
+        return was == now ? ticked : now
+    }
 
     /// The saved password, unless automatic sign-in is paused.
     public var usablePassword: String? { paused ? nil : password.flatMap { $0.isEmpty ? nil : $0 } }

@@ -21,6 +21,8 @@ struct OnboardingView: View {
         var account = ""
         var password = ""
         var savePassword = false
+        /// Login step: the account saved on this phone (prefilled; 保存密码 follows it).
+        var saved: SchoolAccount?
         var loginState = SchoolLoginState.idle
         /// Controller step: checking, or what the check found.
         var waterChecking = false
@@ -35,9 +37,11 @@ struct OnboardingView: View {
     init(start: Step = .login, preview: Preview? = nil, close: @escaping () -> Void) {
         self.preview = preview; self.close = close
         _step = State(initialValue:start)
-        _account = State(initialValue:preview?.account ?? "")
+        let typed = preview?.saved?.account ?? preview?.account ?? ""
+        _account = State(initialValue:typed)
         _password = State(initialValue:preview?.password ?? "")
-        _savePassword = State(initialValue:preview?.savePassword ?? false)
+        _savePassword = State(initialValue:preview?.saved.map { SchoolAccount.savesPasswordByDefault($0, typed:typed) }
+                              ?? preview?.savePassword ?? false)
         _loginState = State(initialValue:preview?.loginState ?? .idle)
         _apartment = State(initialValue:preview?.picked)
         _waterChecked = State(initialValue:preview?.waterOutcome != nil)
@@ -64,7 +68,7 @@ struct OnboardingView: View {
     @State private var apartment: String?
     @State private var account: String
     @State private var password: String
-    /// 「保存密码，让小组件自动刷新」, off by default.
+    /// 「保存密码，让小组件自动刷新」: on by default only while the account is the saved one.
     @State private var savePassword: Bool
     @State private var loginState: SchoolLoginState
     /// 开始核对 was tapped on this step (an earlier check from Settings is not shown here).
@@ -76,6 +80,9 @@ struct OnboardingView: View {
     private var loginReady: Bool {
         !account.trimmingCharacters(in:.whitespaces).isEmpty && !password.isEmpty
     }
+
+    /// The account saved on this phone (the demo's own when previewing).
+    private var savedAccount: SchoolAccount? { preview != nil ? preview?.saved : campus.account }
 
     private var dorm: String? { preview != nil ? preview?.dorm : Theme.dorm(campus.room) }
     private var dormLocation: String? {
@@ -123,10 +130,16 @@ struct OnboardingView: View {
         }
         .sheet(isPresented:$ujing) { UjingLoginView() }
         .onAppear {
-            // A password already saved stays saved on a new sign-in unless the box is unticked.
+            // The saved account is filled in, and its saved password stays saved on a new
+            // sign-in unless the box is unticked.
             guard preview == nil else { return }
             campus.reloadAccount()
-            savePassword = campus.passwordSaved
+            if account.isEmpty { account = campus.account?.account ?? "" }
+            savePassword = SchoolAccount.savesPasswordByDefault(campus.account, typed:account)
+        }
+        .onChange(of:account) { old, new in
+            // Another account typed in: somebody else's password is not kept unless they tick it.
+            savePassword = SchoolAccount.savePassword(savePassword, afterEditFrom:old, to:new, saved:savedAccount)
         }
         .onChange(of:laundry.savedMachines.count) { old, new in
             if preview == nil, step == .washer, new > old { advance() }

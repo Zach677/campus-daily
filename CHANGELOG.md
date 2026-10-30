@@ -22,6 +22,7 @@
 - Keep a running shower's Live Activity and reminder after a reset that stopped behind the school sign-out.
 - Wait for the widget's refresh before the school web sign-in, and keep a typed password that was not sent.
 - Keep the saved password when the same person signs in with the school's web page, so the widget still signs in by itself; a different person still clears it.
+- Fill in the saved account in the first-run login, and tick 保存密码 by default only while the account typed is the saved one, so another person's password is not kept unless they tick it.
 - Let 取消 tapped while a shower starts wait for the start, and show a refusal instead of closing the page.
 
 ### Removed

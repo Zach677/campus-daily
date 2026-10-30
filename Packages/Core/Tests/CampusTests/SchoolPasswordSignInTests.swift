@@ -83,6 +83,27 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertFalse(SchoolAccount.savesPasswordByDefault(nil))
     }
 
+    /// Somebody else signing in on this phone does not have their password kept by default.
+    func testTheSaveBoxIsTickedOnlyForTheSavedAccount() {
+        let saved = SchoolAccount(account: "99100991", password: "synthetic-pw-991")
+        XCTAssertTrue(SchoolAccount.savesPasswordByDefault(saved, typed: "99100991"))
+        XCTAssertTrue(SchoolAccount.savesPasswordByDefault(saved, typed: " 99100991 "))
+        XCTAssertFalse(SchoolAccount.savesPasswordByDefault(saved, typed: "99100992"))
+        XCTAssertFalse(SchoolAccount.savesPasswordByDefault(saved, typed: ""))
+        XCTAssertFalse(SchoolAccount.savesPasswordByDefault(SchoolAccount(account: "99100991"), typed: "99100991"))
+        XCTAssertFalse(SchoolAccount.savesPasswordByDefault(nil, typed: "99100991"))
+
+        // Editing the prefilled account away unticks; back onto it ticks again.
+        XCTAssertFalse(SchoolAccount.savePassword(true, afterEditFrom: "99100991", to: "9910099", saved: saved))
+        XCTAssertTrue(SchoolAccount.savePassword(false, afterEditFrom: "9910099", to: "99100991", saved: saved))
+        // Other edits keep the user's choice.
+        XCTAssertTrue(SchoolAccount.savePassword(true, afterEditFrom: "9910099", to: "99100992", saved: saved))
+        XCTAssertFalse(SchoolAccount.savePassword(false, afterEditFrom: "9910099", to: "99100992", saved: saved))
+        XCTAssertTrue(SchoolAccount.savePassword(true, afterEditFrom: "", to: "99100992", saved: nil))
+        // Filling in the saved account starts ticked.
+        XCTAssertTrue(SchoolAccount.savePassword(false, afterEditFrom: "", to: "99100991", saved: saved))
+    }
+
     func testRefusedSignInSavesNothingAndIsNotRetried() async throws {
         for failure in [SchoolLoginFailure.wrongCredentials, .cannotLoginDirectly, .offline] {
             let login = FakePasswordLogin(.failure(failure))

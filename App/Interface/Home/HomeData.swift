@@ -374,7 +374,7 @@ enum HomeDemo: String, CaseIterable {
     }
 }
 
-/// campusdaily://demo/onboard/{1,1-filled,1-loading,1-wrong,1-fallback,2,3,3-nolocation,3-missing,3-samename,
+/// campusdaily://demo/onboard/{1,1-filled,1-saved,1-loading,1-wrong,1-fallback,2,3,3-nolocation,3-missing,3-samename,
 /// 3-samename-picked,4,4-checking,4-showering,4-unchecked,4-ok,4-miss,4-bt,4-busy,done}
 /// Synthetic account and dorm; the primary button only moves to the next step.
 enum OnboardingDemo {
@@ -406,6 +406,10 @@ enum OnboardingDemo {
             preview.password = name == "1-wrong" ? "" : "demo-password"
             preview.savePassword = name != "1-wrong"
             preview.loginState = ["1-loading":.loading, "1-wrong":.wrong, "1-fallback":.cannotDirect][name] ?? .idle
+            return (.login, preview)
+        case "1-saved":
+            // A password saved on this phone: the account is filled in and the box ticked.
+            preview.saved = SchoolAccount(account:"99100991", password:"demo-password")
             return (.login, preview)
         case "done": return (.done, preview)
         default: return (.login, preview)
