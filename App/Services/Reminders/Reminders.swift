@@ -69,6 +69,14 @@ enum ReminderKey {
         Task { await refreshAuthorization() }
     }
 
+    /// After a reset: nothing scheduled or shown is about this install's old data any more.
+    func clearAfterReset() {
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+        laundryPlan = nil; showerStart = nil
+        appPromptPending = false; prompt = nil; route = nil
+    }
+
     var effectiveStatus: UNAuthorizationStatus {
         #if DEBUG
         if let demoStatus { return demoStatus }

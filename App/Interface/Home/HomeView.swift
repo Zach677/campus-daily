@@ -20,6 +20,7 @@ struct HomeView: View {
     @State private var successTick = 0
     @State private var errorTick = 0
     @ObservedObject private var reminders = Reminders.shared
+    @ObservedObject private var resetter = AppResetter.shared
     @AppStorage("didSeeQuickSetup") private var didSeeQuickSetup = false
     /// Last laundry order whose done panel was shown (once per order).
     @AppStorage("laundryDoneShownOrder") private var laundryDoneShown = ""
@@ -34,6 +35,17 @@ struct HomeView: View {
 
     private func openOnboarding() {
         onboarding = OnboardingRequest(step:.login)
+    }
+
+    /// Reset finished: back to the first-run guide as on a fresh install, no toast.
+    private func afterReset() {
+        settings = false; path = []; panel = nil
+        #if DEBUG
+        demo = nil; laundryDemo = nil
+        #endif
+        successTick += 1
+        // Let the settings sheet go first, otherwise the cover is not presented.
+        Task { try? await Task.sleep(for:.milliseconds(600)); openOnboarding() }
     }
 
     /// Home is what the user sees: nothing pushed, no sheet, cover or panel on top, app in front.
@@ -125,6 +137,7 @@ struct HomeView: View {
         .onChange(of:water.problem) { _, problem in
             if problem, unresolvedClose { presentUnconfirmed() }
         }
+        .onChange(of:resetter.completed) { _, _ in afterReset() }
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
         // A done panel that arrived while another panel was up is shown once that one closes.
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
@@ -185,6 +198,7 @@ struct HomeView: View {
             }
             let settingsDemos: [String:UNAuthorizationStatus] = ["settings":.authorized, "settings-notif-off":.denied,
                                                                   "settings-ask":.notDetermined, "settings-password-on":.authorized,
+                                                                  "settings-reset-shower":.authorized, "settings-reset-unsure":.authorized,
                                                                   "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized]
             reminders.demoStatus = settingsDemos[url.lastPathComponent]
             guard let result = HomeDemo.handle(url) else { return }

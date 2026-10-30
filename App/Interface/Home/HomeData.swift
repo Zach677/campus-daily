@@ -75,6 +75,8 @@ struct HomeData {
     /// Settings › 学校账号 (nil after a web sign-in).
     var schoolAccount: SchoolAccount?
     var passwordSaved: Bool { schoolAccount?.password != nil }
+    /// DEBUG demo only: why Settings › 高级 › 重置校日常 is locked (the live value comes from the shower).
+    var resetLock: AppReset.Lock?
     var dorm: String?
     var powerBound = true
     var remainingKWh: Decimal?
@@ -260,6 +262,9 @@ enum HomeDemo: String, CaseIterable {
     case settingsAsk = "settings-ask"
     /// Settings › 学校账号 with the password saved (synthetic account and password).
     case settingsPassword = "settings-password-on"
+    /// Settings › 高级 › 重置校日常 locked: showering / a settlement to check.
+    case settingsResetShower = "settings-reset-shower"
+    case settingsResetUnsure = "settings-reset-unsure"
     case unconfirmedRow = "unconfirmed-row"
     /// Showering while the authorization write is unconfirmed (stage .authorizationWritePending).
     case showerUnconfirmed = "shower-unconfirmed"
@@ -295,6 +300,14 @@ enum HomeDemo: String, CaseIterable {
         ]
         switch self {
         case .normal, .settings, .settingsOff, .settingsAsk: return (data, nil)
+        case .settingsResetShower:
+            data.water = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
+            data.resetLock = .showering
+            return (data, nil)
+        case .settingsResetUnsure:
+            data.water = .unresolved("上次结算还没确认")
+            data.resetLock = .unsettled
+            return (data, nil)
         case .settingsPassword:
             data.schoolAccount = SchoolAccount(account:"99100991", password:"demo-password")
             return (data, nil)

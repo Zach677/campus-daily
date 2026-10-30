@@ -167,6 +167,16 @@ enum ShowerProfileFiles {
         }
     }
 
+    /// After a reset cleared the stores: no binding, no record, bundled profile only.
+    func reloadAfterReset() async {
+        binding = (try? AppEnvironment.showerVault.binding()) ?? nil
+        residenceReviewRequired = UserDefaults.standard.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
+        verifiedDevice = nil; inspectionStatus = nil; inspectionFoundBusy = false; message = nil
+        await reloadProfile()
+        ShowerActivityController.shared.sync(state:state)
+        Reminders.shared.syncShower(started:nil)
+    }
+
     /// Onboarding saved a binding (dorm + controller).
     func saveBinding(_ value: ShowerBinding) throws {
         guard mayImport else { throw ShowerEngineError.blocked }

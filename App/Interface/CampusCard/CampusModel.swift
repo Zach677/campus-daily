@@ -137,6 +137,16 @@ struct PowerChoice: Identifiable, Equatable {
         reload()
     }
 
+    /// Reset, before the stores are cleared: a refresh still running must not write the old
+    /// values back afterwards, and the widget snapshot is cleared first so nothing rewrites it.
+    func signOutForReset() async {
+        signOutGeneration += 1
+        try? await session.signOut()
+        try? await refresher.clear()
+        configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
+        powerChoices = []; powerMatchIssue = nil; lastRefresh = nil
+    }
+
     func signOut() {
         signOutGeneration += 1
         let session = session, refresher = refresher

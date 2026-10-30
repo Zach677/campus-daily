@@ -373,11 +373,16 @@ struct ChevronRow: View {
 }
 
 
-/// 高级: config imports, Bluetooth connection check, Shortcuts hint, version.
+/// 高级: config imports, Bluetooth connection check, Shortcuts hint, version, reset.
 struct AdvancedSettingsView: View {
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
     var preview: HomeData? = nil
     @EnvironmentObject private var water: ShowerModel
+    @EnvironmentObject private var campus: CampusModel
+    @EnvironmentObject private var laundry: LaundryModel
+    @ObservedObject private var resetter = AppResetter.shared
+    @State private var confirmReset = false
+    @State private var resetIssue: String?
     @State private var importing = false
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
@@ -389,6 +394,43 @@ struct AdvancedSettingsView: View {
     private func importRow(_ title: String) -> some View {
         Button { if preview == nil { importing = true } } label: { ChevronRow(title:title) }
     }
+    /// Why reset is not offered now (DEBUG demo data, or the live shower).
+    private var resetLock: AppReset.Lock? { preview != nil ? preview?.resetLock : AppResetter.lock(water:water) }
+
+    /// 重置校日常 (design §10): its own group at the end; locked, the footer gives the reason.
+    private var resetSection: some View {
+        let lock = resetLock
+        return Section {
+            Button("重置校日常", role:.destructive) { resetIssue = nil; confirmReset = true }
+                .frame(maxWidth:.infinity)
+                .disabled(lock != nil || resetter.running)
+                .accessibilityHint("会清掉登录、宿舍和记录")
+                .accessibilityIdentifier("resetApp")
+        } footer: {
+            VStack(alignment:.leading, spacing:6) {
+                if let resetIssue {
+                    Label(resetIssue, systemImage:"exclamationmark.circle").foregroundStyle(Theme.ink2)
+                }
+                switch lock {
+                case .showering?: Text("正在洗澡，结束并结算以后再重置。")
+                case .unsettled?: Text("上次洗澡还没核对，核对完再重置。")
+                case nil: Text("清掉登录、宿舍和所有记录，回到刚装好的样子。")
+                }
+            }
+        }.listRowBackground(Theme.group)
+    }
+
+    private func runReset() {
+        #if DEBUG
+        if preview != nil { resetter.finishDemo(); return }
+        #endif
+        guard preview == nil else { return }
+        Task {
+            do { try await resetter.reset(campus:campus, water:water, laundry:laundry) }
+            catch { resetIssue = AppErrorText.text(error) }
+        }
+    }
+
     var body: some View {
         List {
             Section {
@@ -411,12 +453,19 @@ struct AdvancedSettingsView: View {
             Section {
                 LabeledContent("版本", value:version)
             }.listRowBackground(Theme.group)
+            resetSection
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("高级").navigationBarTitleDisplayMode(.inline)
         .showerDiagnosticsExport($diagnosticsExport)
+        .alert("重置校日常？", isPresented:$confirmReset) {
+            Button("取消", role:.cancel) {}
+            Button("重置", role:.destructive) { runReset() }
+        } message: {
+            Text("会清掉学校账号和保存的密码、宿舍和电表、记住的水控、U净 登录、洗澡和洗衣记录、小组件上的数字，还有导入的热水配置。学校那边的余额和消费记录不受影响。")
+        }
         .fileImporter(isPresented:$importing, allowedContentTypes:[.json, .data]) { result in
             importIssue = nil
             do {

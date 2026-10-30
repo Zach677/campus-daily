@@ -169,6 +169,17 @@ private struct LaundryEngineHooks: LaundryHooks {
         rebuildEngine()
     }
 
+    /// After a reset cleared the stores: no U净 login, machines or order; the switch back on.
+    func reloadAfterReset() {
+        endCheck?.task.cancel(); endCheck = nil
+        schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
+        lastOrder = nil; snapshot = nil; candidate = nil; checkout = nil
+        issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil
+        account = nil
+        reloadAccount()
+        LaundryActivityController.shared.endAll()
+    }
+
     // MARK: Machines (WasherSetupView)
 
     private static func loadMachines() -> [SavedWasher] {
