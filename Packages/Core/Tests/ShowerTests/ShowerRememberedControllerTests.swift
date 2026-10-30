@@ -52,6 +52,54 @@ extension ShowerEngineTests {
         XCTAssertEqual(s.phase, .writePending)
         XCTAssertEqual(try vault.binding()?.peripheralID, "PERIPHERAL-A")
     }
+
+    /// The remembered controller answered as another machine: it is forgotten, and this start
+    /// scans once without it instead of failing on it every time.
+    func testRememberedControllerWithAnotherIdentityIsForgottenAndRescanned() async throws {
+        var remembered = binding
+        remembered.peripheralID = "PERIPHERAL-B"
+        try vault.saveBinding(remembered)
+        let e = try engine()
+        transport.script(.frame(FakeFrames.identity("99999999")), .frame(identity), .fail(.timedOut))
+        gateway.scriptAuthorize(.ok(auth))
+        let s = try await e.start(remembered)
+        XCTAssertEqual(s.phase, .writePending)
+        XCTAssertEqual(transport.connects.map(\.preferred), ["PERIPHERAL-B", nil])
+        XCTAssertEqual(s.peripheralID, "PERIPHERAL-A")
+        XCTAssertEqual(try vault.binding()?.peripheralID, "PERIPHERAL-A")
+    }
+
+    func testRescanFindingAnotherMachineFailsWithoutRememberingEither() async throws {
+        var remembered = binding
+        remembered.peripheralID = "PERIPHERAL-B"
+        try vault.saveBinding(remembered)
+        let e = try engine()
+        transport.script(.frame(FakeFrames.identity("99999999")), .frame(FakeFrames.identity("99999999")))
+        let s = try await e.start(remembered)
+        XCTAssertEqual(s.failure?.reason, .wrongDevice)
+        XCTAssertEqual(transport.connects.count, 2, "one rescan, never a loop")
+        XCTAssertNil(try vault.binding()?.peripheralID)
+        XCTAssertNil(try vault.showerState()?.peripheralID)
+    }
+
+    /// `A5` (in use) carries no identity, so the controller that sent it is never remembered.
+    func testBusyControllerIsNotRemembered() async throws {
+        try vault.saveBinding(binding)
+        let e = try engine()
+        transport.script(.frame(FakeFrames.active))
+        let s = try await e.start(binding)
+        XCTAssertEqual(s.failure?.reason, .deviceBusy)
+        XCTAssertNil(try vault.binding()?.peripheralID)
+        XCTAssertNil(try vault.showerState()?.peripheralID)
+    }
+
+    func testOnlyAnIdentityFrameVerifiesTheMachine() {
+        XCTAssertEqual(ShowerFrames.check(FakeFrames.identity(machine), machineID: machine), .verified)
+        XCTAssertEqual(ShowerFrames.check(FakeFrames.identity(machine), machineID: machine.lowercased()), .verified)
+        XCTAssertEqual(ShowerFrames.check(FakeFrames.identity("99999999"), machineID: machine), .otherMachine)
+        XCTAssertEqual(ShowerFrames.check(FakeFrames.active, machineID: machine), .busy)
+        XCTAssertEqual(ShowerFrames.check(Data([0x01]), machineID: machine), .unreadable)
+    }
 }
 
 extension ShowerReducerTests {

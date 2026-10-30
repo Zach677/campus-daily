@@ -269,15 +269,26 @@ enum ShowerProfileFiles {
         do {
             let nearby = try await bluetooth.inspect(bleName:bleName, remembered:binding.peripheralID)
             guard nearby > 0 else { inspectionStatus = Self.deviceText(.notFound); return }
-            let id = try await bluetooth.connect(bleName:bleName, machineID:binding.machineId, required:nil, preferred:binding.peripheralID)
-            let frame = try await bluetooth.exchange(ShowerFrames.probeCommand)
-            await bluetooth.disconnect()
-            guard let identity = ShowerFrames.identity(frame) ?? (ShowerFrames.isActive(frame) ? binding.machineId : nil) else {
-                inspectionStatus = Self.deviceText(.malformedFrame); return
+            var preferred = binding.peripheralID
+            var id: String, check: ShowerFrames.IdentityCheck
+            while true {
+                id = try await bluetooth.connect(bleName:bleName, machineID:binding.machineId, required:nil, preferred:preferred)
+                let frame = try await bluetooth.exchange(ShowerFrames.probeCommand)
+                await bluetooth.disconnect()
+                check = ShowerFrames.check(frame, machineID:binding.machineId)
+                // The remembered controller answered as another machine: forget it, scan once without it.
+                guard check == .otherMachine, let remembered = preferred, id == remembered else { break }
+                forgetRemembered(remembered, for:binding)
+                preferred = nil
             }
-            guard identity == binding.machineId.uppercased() else { inspectionStatus = "附近的水控不是你宿舍的那台。"; return }
-            verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:identity, rssi:nil, nearbyCount:nearby, verifiedAt:Date())
-            rememberVerified(id, for:binding)
+            switch check {
+            case .unreadable: inspectionStatus = Self.deviceText(.malformedFrame); return
+            case .otherMachine: inspectionStatus = "附近的水控不是你宿舍的那台。"; return
+            case .verified, .busy: break
+            }
+            verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:binding.machineId.uppercased(), rssi:nil, nearbyCount:nearby, verifiedAt:Date())
+            // An in-use controller (A5) does not say which machine it is: never remember it.
+            if check == .verified { rememberVerified(id, for:binding) }
             inspectionStatus = "找到了你宿舍的水控。"
         } catch {
             await bluetooth.disconnect()
@@ -290,6 +301,14 @@ enum ShowerProfileFiles {
         guard checked.peripheralID != id, var stored = (try? AppEnvironment.showerVault.binding()) ?? nil,
               stored.machineId == checked.machineId else { return }
         stored.peripheralID = id
+        guard (try? AppEnvironment.showerVault.saveBinding(stored)) != nil else { return }
+        binding = stored
+    }
+
+    private func forgetRemembered(_ id: String, for checked: ShowerBinding) {
+        guard var stored = (try? AppEnvironment.showerVault.binding()) ?? nil,
+              stored.machineId == checked.machineId, stored.peripheralID == id else { return }
+        stored.peripheralID = nil
         guard (try? AppEnvironment.showerVault.saveBinding(stored)) != nil else { return }
         binding = stored
     }

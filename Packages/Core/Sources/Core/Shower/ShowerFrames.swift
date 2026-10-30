@@ -52,6 +52,17 @@ public enum ShowerFrames {
         return .unreadable
     }
 
+    /// What a read-only probe proves about `machineID`. Only an idle identity frame (`55`)
+    /// carrying that id proves the controller is this machine's; `A5` (in use) proves nothing.
+    public enum IdentityCheck: Sendable, Equatable { case verified, busy, otherMachine, unreadable }
+    public static func check(_ frame: Data, machineID: String) -> IdentityCheck {
+        switch classify(frame) {
+        case .idle(let id): return id == machineID.uppercased() ? .verified : .otherMachine
+        case .active: return .busy
+        case .unreadable: return .unreadable
+        }
+    }
+
     /// Which command a write is, for diagnostics (never the bytes themselves).
     public enum Command: String, Sendable { case probe, authorization, close, other }
     public static func command(_ data: Data) -> Command {

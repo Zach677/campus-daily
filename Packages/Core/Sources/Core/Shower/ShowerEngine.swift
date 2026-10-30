@@ -288,6 +288,13 @@ public actor ShowerEngine {
             await transport.disconnect()
             return nil
 
+        case .forgetPeripheral(let id):
+            if var b = try? vault.binding(), b.machineId.uppercased() == state.machineID, b.peripheralID == id {
+                b.peripheralID = nil
+                try? vault.saveBinding(b)
+            }
+            return nil
+
         case .scheduleReminder:
             await hooks?.scheduleUnsettledReminder(after: TimeInterval(configuration.reminderMinutes * 60))
             return nil

@@ -192,6 +192,8 @@ public enum ShowerEffect: Sendable, Equatable {
     /// POST settle with the consumption frame → `.settled`/`.settleFailed`. Never emitted automatically twice.
     case settle(frame: Data)
     case releaseDevice
+    /// Drop `peripheralID` from the saved binding: it answered with another machine's identity.
+    case forgetPeripheral(String)
     case scheduleReminder
     case cancelReminder
     case diagnostic(String)
@@ -215,7 +217,7 @@ public enum ShowerReducer {
         case (_, .start(let machine, let preferred, let at)) where state.canStart:
             // Keep the controller remembered for this machine, so a failed connect does not
             // forget it and the next start can still try it before scanning.
-            let remembered = state.machineID == machine.uppercased() ? state.peripheralID : nil
+            let remembered = preferred ?? (state.machineID == machine.uppercased() ? state.peripheralID : nil)
             let n = ShowerState(phase: .authorizing, machineID: machine.uppercased(), peripheralID: remembered, startedAt: at,
                                 lastReceipt: state.phase == .done ? state.receipt : state.lastReceipt)
             return (n, [.connectAndProbe(machineID: machine.uppercased(), preferred: preferred)])
@@ -227,6 +229,12 @@ public enum ShowerReducer {
                 s.peripheralID = peripheral
                 s.authorizeSent = true
                 return (s, [.authorize(frame: probe)])
+            case .idle where state.peripheralID != nil && peripheral == state.peripheralID:
+                // The remembered controller answered as another machine (it was never this one,
+                // or the dorm's controller was replaced): forget it and scan once without it.
+                s.peripheralID = nil
+                return (s, [.forgetPeripheral(peripheral), .releaseDevice,
+                            .connectAndProbe(machineID: state.machineID ?? "", preferred: nil)])
             case .idle:
                 return (failed(s, .wrongDevice, review: false), [.releaseDevice])
             case .active:

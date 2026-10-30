@@ -42,7 +42,8 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
     public func connect(bleName: String, machineID: String, required: String?, preferred: String?) async throws -> String {
         let result: Result<String, ShowerDeviceError> = lock.withLock {
             _connects.append(Connect(required: required, preferred: preferred))
-            return _connectResults.isEmpty ? .success(required ?? defaultPeripheral) : _connectResults.removeFirst()
+            // Like the real transport: the required, else the preferred peripheral is the one reached.
+            return _connectResults.isEmpty ? .success(required ?? preferred ?? defaultPeripheral) : _connectResults.removeFirst()
         }
         return try result.get()
     }
