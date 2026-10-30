@@ -20,6 +20,9 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var snapshot: HomeSnapshot = .empty
     @Published private(set) var profile: SchoolProfile?
     @Published private(set) var issue: String?
+    /// Several refreshes in a row ended without storing their numbers (the Keychain refusing
+    /// writes): the home update line says so.
+    @Published private(set) var notSaving = false
     @Published private(set) var matchingPower = false
     @Published private(set) var powerChoices: [PowerChoice] = []
     @Published private(set) var powerMatchIssue: String?
@@ -39,7 +42,6 @@ struct PowerChoice: Identifiable, Equatable {
     private var refreshesRunning = 0
     /// Refreshes the Keychain interrupted one after another (writes refused).
     private var interruptions = InterruptionStreak()
-    static let keepsInterrupting = "数字没存上，有一阵没更新了。重启一下手机再试。"
     /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.
     private var signOutGeneration = 0
     private let session = AppEnvironment.school
@@ -102,9 +104,9 @@ struct PowerChoice: Identifiable, Equatable {
         // nothing to report, the numbers stay, and the next refresh is not held off. The same when
         // this read lost the lease (back from a long suspension, say): nothing failed. Several
         // interruptions in a row are the Keychain refusing writes: that is shown.
-        let stuck = interruptions.record(report.outcome)
+        notSaving = interruptions.record(report.outcome)
         guard report.outcome != .interrupted, report.outcome != .leaseLost else {
-            issue = stuck ? Self.keepsInterrupting : nil
+            issue = nil
             return
         }
         lastRefresh = Date()

@@ -69,6 +69,8 @@ struct HomeData {
     var lines = ReminderLines()
     /// A school refresh is running (this process).
     var refreshing = false
+    /// Refreshes keep ending without storing their numbers.
+    var notSaving = false
     var shower = Shower.idle
     /// The last start failed (shown under the shower button instead of the last shower).
     var showerIssue: String?
@@ -97,7 +99,7 @@ struct HomeData {
     }
     var updateLine: HomeUpdateLine {
         HomeUpdateLine.of(snapshot, signedIn:signedIn, meterBound:powerBound, refreshing:refreshing,
-                          loginHeld:schoolAccount?.isHolding(at:Date()) ?? false)
+                          loginHeld:schoolAccount?.isHolding(at:Date()) ?? false, notSaving:notSaving)
     }
     /// Newest first, at most four; card records only while signed in (the snapshot is empty otherwise).
     var recents: [RecentItem] {
@@ -118,6 +120,7 @@ extension HomeData {
         snapshot = campus.snapshot
         powerBound = campus.powerConfigured
         refreshing = campus.loading
+        notSaving = campus.notSaving
         lines = ReminderKey.lines
 
         let state = model.state
@@ -222,6 +225,8 @@ enum HomeDemo: String, CaseIterable {
     case updating = "home-updating"
     case failed = "home-fail"
     case noRecords = "home-notx"
+    /// The update line when reads keep ending without storing their numbers.
+    case notSaving = "home-notsaving"
 
     static func handle(_ url: URL) -> (HomeData, SettlementResult?)?? {
         guard url.scheme == "campusdaily", url.host == "demo" else { return nil }
@@ -259,6 +264,9 @@ enum HomeDemo: String, CaseIterable {
             return (data, nil)
         case .noRecords:
             data.snapshot.activity = Tile()
+            return (data, nil)
+        case .notSaving:
+            data.notSaving = true
             return (data, nil)
         case .settingsResetShower:
             data.shower = .showering(now.addingTimeInterval(-(8 * 60 + 42)))

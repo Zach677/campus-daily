@@ -106,6 +106,9 @@ public enum HomeUpdateLine: Sendable, Equatable {
     case failed(lastGood: Date?)
     /// 「登录过期了，点这里重新登录 · 数字是 10:32 的」: pulling again can't help, signing in can.
     case expired(lastGood: Date?)
+    /// 「一直没更新上，重开 App 试试 · 数字是 10:32 的」: reads keep ending without the new
+    /// numbers being stored (`InterruptionStreak`), so they only grow older.
+    case notSaving(lastGood: Date?)
 
     /// Where tapping the expired line goes.
     public enum SignInTarget: Sendable, Equatable {
@@ -129,8 +132,11 @@ public enum HomeUpdateLine: Sendable, Equatable {
     /// A login that has run out says so instead, except while automatic sign-in holds off after
     /// a password login that got no answer (`loginHeld`): that one resumes by itself, so it is
     /// still the plain failed line.
+    ///
+    /// Reads that keep failing to store their numbers (`notSaving`) leave no error on the tiles;
+    /// they show their own line, after an expired login or a failed read.
     public static func of(_ snapshot: HomeSnapshot, signedIn: Bool, meterBound: Bool, refreshing: Bool,
-                          loginHeld: Bool = false) -> HomeUpdateLine {
+                          loginHeld: Bool = false, notSaving: Bool = false) -> HomeUpdateLine {
         guard signedIn else { return .hidden }
         if refreshing { return .refreshing }
         var times = [snapshot.card.fetchedAt]
@@ -138,6 +144,7 @@ public enum HomeUpdateLine: Sendable, Equatable {
         let lastGood = times.compactMap { $0 }.min()
         if snapshot.needsLogin, !loginHeld { return .expired(lastGood: lastGood) }
         if snapshot.card.error != nil || (meterBound && snapshot.power.error != nil) { return .failed(lastGood: lastGood) }
+        if notSaving { return .notSaving(lastGood: lastGood) }
         guard let lastGood else { return .hidden }
         return .updated(lastGood)
     }
@@ -160,6 +167,8 @@ public enum HomeUpdateLine: Sendable, Equatable {
         case .failed(nil): return "没更新上，下拉再试"
         case .expired(let date?): return "登录过期了，点这里重新登录 · 数字是 " + UpdateTimeText.stamp(date, now: now, calendar: calendar) + " 的"
         case .expired(nil): return "登录过期了，点这里重新登录"
+        case .notSaving(let date?): return "一直没更新上，重开 App 试试 · 数字是 " + UpdateTimeText.stamp(date, now: now, calendar: calendar) + " 的"
+        case .notSaving(nil): return "一直没更新上，重开 App 试试"
         }
     }
 }

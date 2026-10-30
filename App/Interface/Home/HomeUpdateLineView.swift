@@ -1,7 +1,8 @@
 import SwiftUI
 import Core
 
-/// 「10:32 更新」, 「正在更新…」 or, after a failed read, 「没更新上，下拉再试 · 数字是 10:32 的」;
+/// 「10:32 更新」, 「正在更新…」 or, after a failed read, 「没更新上，下拉再试 · 数字是 10:32 的」
+/// (reads that keep not storing their numbers: 「一直没更新上，重开 App 试试 · …」);
 /// an expired login says 「登录过期了，点这里重新登录 · …」 and opens the sign-in on tap.
 struct HomeUpdateLineView: View {
     let line: HomeUpdateLine
@@ -22,7 +23,7 @@ struct HomeUpdateLineView: View {
             .accessibilityElement(children:.combine)
         case .updated:
             Text(text).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-        case .failed:
+        case .failed, .notSaving:
             problem(text)
         case .expired:
             Button(action:signIn) { problem(text).contentShape(Rectangle()) }

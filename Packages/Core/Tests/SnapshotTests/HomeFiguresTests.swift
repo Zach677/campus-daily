@@ -159,6 +159,33 @@ final class HomeFiguresTests: XCTestCase {
         XCTAssertEqual(line.text(now: now, calendar: calendar), "没更新上，下拉再试")
     }
 
+    /// Reads that keep ending without storing their numbers leave the tiles without an error;
+    /// the line says so instead of 「8:10 更新」, with the date when it is not today.
+    func testNumbersNotSavingSayToReopenTheApp() {
+        let s = snapshot(readAt: date(10, 30, 8, 10))
+        let line = HomeUpdateLine.of(s, signedIn: true, meterBound: true, refreshing: false, notSaving: true)
+        XCTAssertEqual(line, .notSaving(lastGood: date(10, 30, 8, 10)))
+        XCTAssertEqual(line.text(now: now, calendar: calendar), "一直没更新上，重开 App 试试 · 数字是 8:10 的")
+        let older = HomeUpdateLine.of(snapshot(readAt: date(10, 29, 22, 10)), signedIn: true, meterBound: true,
+                                      refreshing: false, notSaving: true)
+        XCTAssertEqual(older.text(now: now, calendar: calendar), "一直没更新上，重开 App 试试 · 数字是 昨天 22:10 的")
+        XCTAssertEqual(HomeUpdateLine.of(HomeSnapshot(), signedIn: true, meterBound: true, refreshing: false, notSaving: true)
+            .text(now: now, calendar: calendar), "一直没更新上，重开 App 试试")
+    }
+
+    /// Refreshing, a signed-out home, an expired login and a failed read all come first.
+    func testNotSavingGivesWayToOtherLines() {
+        var s = snapshot(readAt: date(10, 30, 8, 10))
+        XCTAssertEqual(HomeUpdateLine.of(s, signedIn: true, meterBound: true, refreshing: true, notSaving: true), .refreshing)
+        XCTAssertEqual(HomeUpdateLine.of(s, signedIn: false, meterBound: true, refreshing: false, notSaving: true), .hidden)
+        s.card.fail(.offline, at: now)
+        XCTAssertEqual(HomeUpdateLine.of(s, signedIn: true, meterBound: true, refreshing: false, notSaving: true),
+                       .failed(lastGood: date(10, 30, 8, 10)))
+        let expired = SchoolSnapshotReducer.reduce(snapshot(readAt: date(10, 30, 8, 10)), .sessionExpired(.sessionExpired(.ecykt), at: now))
+        XCTAssertEqual(HomeUpdateLine.of(expired, signedIn: true, meterBound: true, refreshing: false, notSaving: true),
+                       .expired(lastGood: date(10, 30, 8, 10)))
+    }
+
     func testRefreshingWinsAndSignedOutHides() {
         var s = snapshot()
         s.card.fail(.offline, at: now)
