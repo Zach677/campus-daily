@@ -41,6 +41,8 @@ import WaterCore
             end(.init(startedAt:session.startedAt, phase:.unconfirmed), after:Date().addingTimeInterval(15 * 60))
         case .settled:
             guard activity != nil else { return }
+            // Closed by hand after checking the official record: no duration or amount to show.
+            if session.resolvedManually == true { return endNow() }
             let ended = session.endedAt ?? Date()
             let minutes = max(1, Int((ended.timeIntervalSince(session.startedAt) / 60).rounded()))
             // amountYuan comes only from the server receipt; nil means "not reported", never an estimate.

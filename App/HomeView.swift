@@ -113,7 +113,7 @@ struct HomeView: View {
             if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
         }
         .onChange(of:water.stage) { old, value in
-            guard old != nil, old != .settled, value == .settled else { return }
+            guard old != nil, old != .settled, value == .settled, !water.resolvedManually else { return }
             presentSettled()
             Task { await campus.refresh(force:true) }
         }

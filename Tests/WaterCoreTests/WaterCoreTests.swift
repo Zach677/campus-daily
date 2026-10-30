@@ -54,9 +54,16 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
         if failLoading { throw WaterError.storage }
         return value
     }
+    var canClear = true
+    var onSave: ((WaterSession) -> Void)?
     func save(_ session: WaterSession) throws {
         if session.stage == failSavingStage { throw WaterError.storage }
         value = session; stages.append(session.stage)
+        onSave?(session)
+    }
+    func clear() throws {
+        guard canClear else { throw WaterError.storage }
+        value = nil
     }
 }
 
@@ -253,6 +260,191 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
         #expect(c.session?.stage == .settled && c.session?.receipt?.amountYuan == nil)
         #expect(p.settlements == 1)
         await #expect(throws: WaterError.noSession) { try await c.finish(config:config) }
+    }
+}
+
+/// Item 1 (P0 lockout): roll back only when nothing could have been charged; otherwise keep the record
+/// until the user resolves it deliberately.
+@Suite @MainActor struct RecoveryTests {
+    @MainActor final class TaskBox { var task: Task<Void, Error>? }
+
+    @Test func definiteRefusalLeavesNoRecord() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        p.authFailure = WaterProviderRefusal()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws: WaterError.provider) { try await c.start(config:config) }
+        #expect(s.value == nil && c.session == nil && !c.storageBlocked)
+        #expect(t.writes.count == 1 && p.authorizations == 1)
+        p.authFailure = nil
+        t.replies = [.success(frame), .success(ack)]
+        try await c.start(config:config)
+        #expect(c.session?.stage == .active && p.authorizations == 2)
+    }
+    @Test func definiteRefusalRestoresPreviousSettledRecord() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        var previous = WaterSession(stage:.settled,machineID:config.machineID,peripheralID:"previous-device")
+        previous.receipt = SettlementReceipt(payFen:12); previous.endedAt = Date()
+        s.value = previous
+        p.authFailure = WaterProviderRefusal()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws: WaterError.provider) { try await c.start(config:config) }
+        #expect(s.value == previous && c.session == previous)
+    }
+    @Test func refusalKeepsRecordWhenStoreCannotRollBack() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        s.canClear = false
+        p.authFailure = WaterProviderRefusal()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws: WaterError.provider) { try await c.start(config:config) }
+        #expect(s.value?.stage == .authorizationPending && c.session?.stage == .authorizationPending)
+        await #expect(throws: WaterError.unresolved) { try await c.start(config:config) }
+    }
+    @Test func unclassifiedProviderFailureStaysUnresolved() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        p.authFailure = WaterError.provider
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws: WaterError.provider) { try await c.start(config:config) }
+        #expect(s.value?.stage == .authorizationPending)
+        await #expect(throws: WaterError.unresolved) { try await c.start(config:config) }
+    }
+    @Test func networkUncertainAuthorizationStaysUnresolved() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        p.authFailure = WaterError.networkUncertain
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws: WaterError.networkUncertain) { try await c.start(config:config) }
+        #expect(s.value?.stage == .authorizationPending && c.session?.stage == .authorizationPending)
+    }
+    @Test func cancelBeforeAuthorizationRequestLeavesNoRecord() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        let box = TaskBox()
+        s.onSave = { if $0.stage == .authorizationPending { box.task?.cancel() } }
+        box.task = Task { try await c.start(config:config) }
+        await #expect(throws: CancellationError.self) { try await box.task!.value }
+        #expect(p.authorizations == 0 && s.stages == [.authorizationPending])
+        #expect(s.value == nil && c.session == nil)
+    }
+    @Test func cancelAfterAuthorizationIssuedStaysUnresolved() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        let box = TaskBox()
+        s.onSave = { if $0.stage == .authorizationIssued { box.task?.cancel() } }
+        box.task = Task { try await c.start(config:config) }
+        await #expect(throws: CancellationError.self) { try await box.task!.value }
+        #expect(p.authorizations == 1 && s.value?.stage == .authorizationIssued)
+    }
+    @Test func idleDeviceAfterUnconfirmedWriteRollsBack() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        t.replies = [.success(frame), .failure(WaterError.timedOut)]
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws: WaterError.timedOut) { try await c.start(config:config) }
+        #expect(s.value?.stage == .authorizationWritePending)
+        t.replies = [.success(frame)]
+        await #expect(throws: WaterError.notActive) { try await c.finish(config:config) }
+        #expect(s.value == nil && c.session == nil && p.settlements == 0)
+        #expect(t.writes.last == Data([0xAA]))
+        t.replies = [.success(frame), .success(ack)]
+        try await c.start(config:config)
+        #expect(c.session?.stage == .active)
+    }
+    @Test func unreadableReplyAfterUnconfirmedWriteStaysUnresolved() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        t.replies = [.success(frame), .failure(WaterError.timedOut)]
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws: WaterError.timedOut) { try await c.start(config:config) }
+        t.replies = [.success(Data([0x00]))]
+        await #expect(throws: WaterError.notActive) { try await c.finish(config:config) }
+        #expect(s.value?.stage == .authorizationWritePending)
+        t.replies = [.success(Data([0x55,0,0,0,0] + [UInt8](repeating:0,count:15)))]
+        await #expect(throws: WaterError.notActive) { try await c.finish(config:config) }
+        #expect(s.value?.stage == .authorizationWritePending)
+    }
+    @Test func idleDeviceDuringActiveSessionStaysUnresolvedUntilManualResolve() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        try await c.start(config:config)
+        t.replies = [.success(frame)]
+        await #expect(throws: WaterError.notActive) { try await c.finish(config:config) }
+        #expect(s.value?.stage == .active)
+        try c.resolveManually()
+        #expect(s.value?.stage == .settled && s.value?.resolvedManually == true)
+        t.replies = [.success(frame), .success(ack)]
+        try await c.start(config:config)
+        #expect(c.session?.stage == .active && c.session?.resolvedManually == nil)
+    }
+    @Test func settlementRefusalStaysUnresolvedAndReportsProvider() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        try await c.start(config:config)
+        t.replies = [.success(Data([0xA5])), .success(frame)]
+        p.settleFailure = WaterProviderRefusal()
+        await #expect(throws: WaterError.provider) { try await c.finish(config:config) }
+        #expect(s.value?.stage == .settlementPending && s.value?.consumption == frame)
+    }
+    @Test(arguments: [SessionStage.authorizationPending, .authorizationIssued, .authorizationWritePending,
+                      .active, .closeWritePending, .settlementPending])
+    func manualResolveUnlocksEveryUnresolvedStage(stage: SessionStage) async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        var stuck = WaterSession(stage:stage,machineID:config.machineID,peripheralID:"owned-device")
+        stuck.authorizationID = "001122FF"
+        s.value = stuck
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws: WaterError.unresolved) { try await c.identify(config:config) }
+        try c.resolveManually()
+        #expect(s.value?.stage == .settled && s.value?.resolvedManually == true)
+        #expect(s.value?.receipt == nil && s.value?.endedAt == nil && s.value?.authorizationID == "001122FF")
+        #expect(t.connections == 0 && p.authorizations == 0 && p.settlements == 0)
+        await #expect(throws: WaterError.noSession) { try await c.finish(config:config) }
+        try await c.start(config:config)
+        #expect(c.session?.stage == .active)
+    }
+    @Test func manualResolveNeedsAnOpenRecord() throws {
+        let s = Store()
+        let c = try WaterController(transport:Transport(),provider:Provider(),store:s)
+        #expect(throws: WaterError.noSession) { try c.resolveManually() }
+        s.value = WaterSession(stage:.settled,machineID:config.machineID,peripheralID:"owned-device")
+        let settled = try WaterController(transport:Transport(),provider:Provider(),store:s)
+        #expect(throws: WaterError.noSession) { try settled.resolveManually() }
+        #expect(s.value?.resolvedManually == nil)
+    }
+    @Test func manualResolveWaitsForRunningOperation() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        p.pauseAuthorization = true
+        let c = try WaterController(transport:t,provider:p,store:s)
+        let first = Task { try await c.start(config:config) }
+        while p.resumeAuthorization == nil { await Task.yield() }
+        #expect(throws: WaterError.busy) { try c.resolveManually() }
+        p.resumeAuthorization?.resume()
+        try await first.value
+        #expect(c.session?.stage == .active && c.session?.resolvedManually == nil)
+    }
+    @Test func manualResolveRefusedWhenStorageBlocked() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        s.failSavingStage = .authorizationWritePending
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws: WaterError.storage) { try await c.start(config:config) }
+        #expect(throws: WaterError.storage) { try c.resolveManually() }
+        #expect(s.value?.stage == .authorizationIssued)
+    }
+}
+
+@Suite struct SessionCodingTests {
+    @Test func sessionSavedByEarlierVersionStillDecodes() throws {
+        let old = #"{"stage":"settled","machineID":"11223344","peripheralID":"owned-device","authorizationID":"001122FF","consumption":"VREiM0Q=","startedAt":700000000,"endedAt":700000600,"receipt":{"payFen":9}}"#
+        let value = try JSONDecoder().decode(WaterSession.self, from: Data(old.utf8))
+        #expect(value.stage == .settled && value.resolvedManually == nil)
+        #expect(value.receipt?.payFen == 9 && value.consumption == Data([0x55,0x11,0x22,0x33,0x44]))
+        #expect(value.endedAt == Date(timeIntervalSinceReferenceDate:700000600))
+        let pending = #"{"stage":"closeWritePending","machineID":"11223344","peripheralID":"owned-device","authorizationID":"001122FF","startedAt":700000000}"#
+        #expect(try JSONDecoder().decode(WaterSession.self, from: Data(pending.utf8)).stage == .closeWritePending)
+    }
+    @Test func manualFlagRoundTripsAndIsOmittedWhenUnset() throws {
+        var value = WaterSession(stage:.active,machineID:"11223344",peripheralID:"owned-device")
+        let plain = try JSONEncoder().encode(value)
+        #expect(String(decoding:plain, as:UTF8.self).contains("resolvedManually") == false)
+        value.stage = .settled; value.resolvedManually = true
+        let decoded = try JSONDecoder().decode(WaterSession.self, from: JSONEncoder().encode(value))
+        #expect(decoded == value && decoded.resolvedManually == true)
     }
 }
 
