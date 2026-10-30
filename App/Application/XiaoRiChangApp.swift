@@ -6,6 +6,8 @@ import Core
     @StateObject private var campus = CampusModel.shared
     @StateObject private var laundry = LaundryModel()
     init() {
+        // Before any model reads: older builds kept private items where the widget can read them.
+        SharedKeychain.migratePrivateItems()
         // FinishShowerLiveIntent (Live Activity button) runs in this process.
         ShowerActivityBridge.finish = { try await ShowerModel.shared.run(start:false) }
         // Notification delegate must be set before launch finishes, so a tapped banner is routed.

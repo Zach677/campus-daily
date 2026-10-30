@@ -27,11 +27,10 @@ public enum StoreKey: String, Sendable, CaseIterable {
         self == .schoolPortal ? .whenUnlockedThisDeviceOnly : .afterFirstUnlockThisDeviceOnly
     }
 
-    /// Written with the keychain access group so the widget extension can read them: the
-    /// snapshot and reminder lines it shows, and the school card session and dorm/meter profile
-    /// it needs to read the balance and meter by itself. The portal token (used only for the
-    /// foreground re-exchange), hot-water and laundry items are not pinned to the group and the
-    /// widget never reads them.
+    /// Written to the shared access group so the widget extension can read them: the snapshot and
+    /// reminder lines it shows, and the school card session and dorm/meter profile it will need to
+    /// read the balance and meter by itself. Everything else (portal token, hot-water and laundry
+    /// items) lives only in the app's private group, which the widget is not entitled to.
     public var isShared: Bool {
         switch self {
         case .sharedSnapshot, .sharedReminderLines, .schoolEcykt, .schoolProfile: return true

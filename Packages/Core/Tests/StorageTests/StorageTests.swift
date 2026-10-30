@@ -1,30 +1,52 @@
 import XCTest
 import Core
 
-/// Scripted SecItem backend (no host Keychain).
+/// SecItem backend with the device's access-group rules (no host Keychain):
+/// - every item lives in exactly one group;
+/// - add without a group lands in the first group of the entitlement list;
+/// - copy without a group searches every entitled group (in entitlement order); update and
+///   delete without a group touch every match;
+/// - a group not in the entitlement list answers `errSecMissingEntitlement`.
 final class FakeKeychain: KeychainBackend, @unchecked Sendable {
-    struct Key: Hashable { var service: String; var group: String? }
+    struct Key: Hashable { var service: String; var group: String }
     private let lock = NSLock()
+    /// This process's `keychain-access-groups`, team prefix resolved. First = default group.
+    var entitlements: [String]
     var items: [Key: Data] = [:]
     var accessibility: [Key: StoreKey.Accessibility] = [:]
-    var groupStatus: Int32 = KeychainStatus.success
     var readStatus: Int32? = nil
-    var calls: [String] = []
+    /// Forced status per call, e.g. `"add <group>"` or `"delete <group>"`.
+    var failing: [String: Int32] = [:]
+    var calls: [String] = [] { didSet { if let call = calls.last { afterCall?(call) } } }
+    /// Runs inside each call after it is recorded, e.g. to make a later step fail.
+    var afterCall: ((String) -> Void)?
+
+    static let shared = "TEAMID1234.com.beamjason.xiaorichang.shared"
+    static let app = "TEAMID1234.com.beamjason.xiaorichang"
+
+    init(entitlements: [String] = [FakeKeychain.shared]) { self.entitlements = entitlements }
+
+    private func groups(_ g: String?) -> [String]? {
+        guard let g else { return entitlements }
+        return entitlements.contains(g) ? [g] : nil
+    }
 
     func copy(service: String, account: String, accessGroup: String?) -> (status: Int32, data: Data?) {
         lock.withLock {
             calls.append("copy \(accessGroup ?? "-")")
             if let readStatus { return (readStatus, nil) }
-            if accessGroup != nil, groupStatus != KeychainStatus.success { return (groupStatus, nil) }
-            guard let d = items[Key(service: service, group: accessGroup)] else { return (KeychainStatus.itemNotFound, nil) }
-            return (KeychainStatus.success, d)
+            if let forced = failing["copy \(accessGroup ?? "-")"] { return (forced, nil) }
+            guard let gs = groups(accessGroup) else { return (KeychainStatus.missingEntitlement, nil) }
+            for g in gs { if let d = items[Key(service: service, group: g)] { return (KeychainStatus.success, d) } }
+            return (KeychainStatus.itemNotFound, nil)
         }
     }
     func add(service: String, account: String, accessGroup: String?, accessibility a: StoreKey.Accessibility, data: Data) -> Int32 {
         lock.withLock {
             calls.append("add \(accessGroup ?? "-")")
-            if accessGroup != nil, groupStatus != KeychainStatus.success { return groupStatus }
-            let k = Key(service: service, group: accessGroup)
+            if let forced = failing["add \(accessGroup ?? "-")"] { return forced }
+            guard let g = groups(accessGroup)?.first else { return KeychainStatus.missingEntitlement }
+            let k = Key(service: service, group: g)
             if items[k] != nil { return KeychainStatus.duplicateItem }
             items[k] = data; accessibility[k] = a
             return KeychainStatus.success
@@ -33,16 +55,40 @@ final class FakeKeychain: KeychainBackend, @unchecked Sendable {
     func update(service: String, account: String, accessGroup: String?, accessibility a: StoreKey.Accessibility, data: Data) -> Int32 {
         lock.withLock {
             calls.append("update \(accessGroup ?? "-")")
-            items[Key(service: service, group: accessGroup)] = data
+            if let forced = failing["update \(accessGroup ?? "-")"] { return forced }
+            guard let gs = groups(accessGroup) else { return KeychainStatus.missingEntitlement }
+            let keys = gs.map { Key(service: service, group: $0) }.filter { items[$0] != nil }
+            guard !keys.isEmpty else { return KeychainStatus.itemNotFound }
+            for k in keys { items[k] = data; accessibility[k] = a }
             return KeychainStatus.success
         }
     }
     func delete(service: String, account: String, accessGroup: String?) -> Int32 {
         lock.withLock {
             calls.append("delete \(accessGroup ?? "-")")
-            return items.removeValue(forKey: Key(service: service, group: accessGroup)) == nil ? KeychainStatus.itemNotFound : KeychainStatus.success
+            if let forced = failing["delete \(accessGroup ?? "-")"] { return forced }
+            guard let gs = groups(accessGroup) else { return KeychainStatus.missingEntitlement }
+            let removed = gs.compactMap { items.removeValue(forKey: Key(service: service, group: $0)) }
+            return removed.isEmpty ? KeychainStatus.itemNotFound : KeychainStatus.success
         }
     }
+}
+
+/// Another process's view of the same keychain, with its own entitlements.
+final class FakeKeychainView: KeychainBackend, @unchecked Sendable {
+    let base: FakeKeychain
+    let entitlements: [String]
+    init(_ base: FakeKeychain, entitlements: [String]) { self.base = base; self.entitlements = entitlements }
+    private func with<T>(_ body: () -> T) -> T {
+        let saved = base.entitlements
+        base.entitlements = entitlements
+        defer { base.entitlements = saved }
+        return body()
+    }
+    func copy(service: String, account: String, accessGroup: String?) -> (status: Int32, data: Data?) { with { base.copy(service: service, account: account, accessGroup: accessGroup) } }
+    func add(service: String, account: String, accessGroup: String?, accessibility: StoreKey.Accessibility, data: Data) -> Int32 { with { base.add(service: service, account: account, accessGroup: accessGroup, accessibility: accessibility, data: data) } }
+    func update(service: String, account: String, accessGroup: String?, accessibility: StoreKey.Accessibility, data: Data) -> Int32 { with { base.update(service: service, account: account, accessGroup: accessGroup, accessibility: accessibility, data: data) } }
+    func delete(service: String, account: String, accessGroup: String?) -> Int32 { with { base.delete(service: service, account: account, accessGroup: accessGroup) } }
 }
 
 final class KeychainStoreTests: XCTestCase {
@@ -67,14 +113,22 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(PreferenceKey.showerNeedsResidenceReview, "xrc.water.needsResidenceReview")
     }
 
-    func testSharedItemsUseAccessGroupPortalTokenNever() throws {
-        let kc = FakeKeychain()
-        let store = KeychainSecureStore(backend: kc, accessGroup: group)
+    let app = FakeKeychain.app
+
+    /// The app process: private group first, then shared.
+    func appKeychain() -> FakeKeychain { FakeKeychain(entitlements: [FakeKeychain.app, FakeKeychain.shared]) }
+    func appStore(_ kc: FakeKeychain) -> KeychainSecureStore { KeychainSecureStore(backend: kc, accessGroup: group, privateGroup: app) }
+    func key(_ k: StoreKey, _ g: String) -> FakeKeychain.Key { .init(service: k.service, group: g) }
+
+    func testSharedItemsUseAccessGroupCredentialsNever() throws {
+        let kc = appKeychain()
+        let store = appStore(kc)
         try store.write(Data("s".utf8), for: .sharedSnapshot)
         try store.write(Data("c".utf8), for: .schoolPortal)
-        XCTAssertEqual(kc.items[.init(service: StoreKey.sharedSnapshot.service, group: group)], Data("s".utf8))
-        XCTAssertEqual(kc.items[.init(service: StoreKey.schoolPortal.service, group: nil)], Data("c".utf8))
-        XCTAssertEqual(kc.accessibility[.init(service: StoreKey.schoolPortal.service, group: nil)], .whenUnlockedThisDeviceOnly)
+        XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("s".utf8))
+        XCTAssertEqual(kc.items[key(.schoolPortal, app)], Data("c".utf8))
+        XCTAssertNil(kc.items[key(.schoolPortal, group)])
+        XCTAssertEqual(kc.accessibility[key(.schoolPortal, app)], .whenUnlockedThisDeviceOnly)
         XCTAssertFalse(store.isUsingFallback)
         XCTAssertEqual(try store.read(.sharedSnapshot), Data("s".utf8))
         // Overwrite goes through update.
@@ -82,15 +136,33 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(try store.read(.sharedSnapshot), Data("s2".utf8))
     }
 
+    /// Hot-water and laundry items never enter the group the widget can read, through the
+    /// vaults that write them.
+    func testShowerAndLaundryItemsNeverEnterTheSharedGroup() throws {
+        let never: [StoreKey] = [.schoolPortal, .showerBinding, .showerSession, .laundryAccount, .laundryCheckout]
+        for k in never { XCTAssertFalse(k.isShared, k.rawValue) }
+        let kc = appKeychain()
+        let store = appStore(kc)
+        for k in never { try store.write(Data(k.rawValue.utf8), for: k) }
+        for k in never {
+            XCTAssertNil(kc.items[key(k, group)], k.rawValue)
+            XCTAssertEqual(kc.items[key(k, app)], Data(k.rawValue.utf8), k.rawValue)
+        }
+        // The widget process (shared group only) cannot see them.
+        let widget = KeychainSecureStore(backend: FakeKeychainView(kc, entitlements: [group]), accessGroup: group)
+        for k in never { XCTAssertNil(try widget.read(k), k.rawValue) }
+    }
+
     /// Re-signed IPA without the keychain-access-groups entitlement: fall back to no group.
     func testFallsBackWhenGroupWriteFails() throws {
-        let kc = FakeKeychain()
-        kc.groupStatus = KeychainStatus.missingEntitlement
-        let store = KeychainSecureStore(backend: kc, accessGroup: group)
+        let kc = FakeKeychain(entitlements: ["TEAMID1234.com.example.resigned"])
+        let store = appStore(kc)
         try store.write(Data("s".utf8), for: .sharedSnapshot)
         XCTAssertTrue(store.isUsingFallback)
-        XCTAssertEqual(kc.items[.init(service: StoreKey.sharedSnapshot.service, group: nil)], Data("s".utf8))
+        XCTAssertEqual(kc.items[key(.sharedSnapshot, "TEAMID1234.com.example.resigned")], Data("s".utf8))
         XCTAssertEqual(try store.read(.sharedSnapshot), Data("s".utf8))
+        try store.write(Data("w".utf8), for: .showerBinding)
+        XCTAssertEqual(try store.read(.showerBinding), Data("w".utf8))
         // Later writes skip the group entirely.
         kc.calls = []
         try store.write(Data("t".utf8), for: .sharedReminderLines)
@@ -101,46 +173,156 @@ final class KeychainStoreTests: XCTestCase {
 
     /// The widget reads the school session and profile through the same access group.
     func testSchoolSessionAndProfileUseTheSharedGroup() throws {
-        let kc = FakeKeychain()
-        let store = KeychainSecureStore(backend: kc, accessGroup: group)
-        let vault = StoredSchoolVault(store: store)
+        let kc = appKeychain()
+        let vault = StoredSchoolVault(store: appStore(kc))
         try vault.saveEcyktSession(EcyktSession(token: "t", syscustid: "s"))
         try vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: "示例校区9栋9号1层199房")))
         try vault.savePortalToken(PortalToken("p"))
-        XCTAssertNotNil(kc.items[.init(service: StoreKey.schoolEcykt.service, group: group)])
-        XCTAssertNotNil(kc.items[.init(service: StoreKey.schoolProfile.service, group: group)])
-        XCTAssertEqual(kc.accessibility[.init(service: StoreKey.schoolEcykt.service, group: group)], .afterFirstUnlockThisDeviceOnly,
+        XCTAssertNotNil(kc.items[key(.schoolEcykt, group)])
+        XCTAssertNotNil(kc.items[key(.schoolProfile, group)])
+        XCTAssertEqual(kc.accessibility[key(.schoolEcykt, group)], .afterFirstUnlockThisDeviceOnly,
                        "background and widget reads work while the phone is locked")
-        XCTAssertNil(kc.items[.init(service: StoreKey.schoolPortal.service, group: group)])
-        for key in [StoreKey.showerBinding, .showerSession, .laundryAccount, .laundryCheckout] { XCTAssertFalse(key.isShared, key.rawValue) }
-        // A second store in the same group (the widget process) reads the same session.
-        let widget = StoredSchoolVault(store: KeychainSecureStore(backend: kc, accessGroup: group))
+        XCTAssertNil(kc.items[key(.schoolPortal, group)])
+        // The widget process (shared group only) reads the same session.
+        let widget = StoredSchoolVault(store: KeychainSecureStore(backend: FakeKeychainView(kc, entitlements: [group]), accessGroup: group))
         XCTAssertEqual(try widget.ecyktSession()?.syscustid, "s")
     }
 
     /// An item the app wrote before it was pinned to the group (default group) is still read.
     func testSchoolSessionWrittenWithoutGroupStillReads() throws {
-        let kc = FakeKeychain()
-        kc.items[.init(service: StoreKey.schoolEcykt.service, group: nil)] = try JSONEncoder().encode(EcyktSession(token: "t", syscustid: "old"))
-        let vault = StoredSchoolVault(store: KeychainSecureStore(backend: kc, accessGroup: group))
+        let kc = FakeKeychain(entitlements: ["TEAMID1234.com.example.resigned"])
+        kc.items[key(.schoolEcykt, "TEAMID1234.com.example.resigned")] = try JSONEncoder().encode(EcyktSession(token: "t", syscustid: "old"))
+        let vault = StoredSchoolVault(store: appStore(kc))
         XCTAssertEqual(try vault.ecyktSession()?.syscustid, "old")
     }
 
-    /// The group the store uses is the one both entitlements files list.
+    /// The fake follows the device: a write without a group lands in the first entitlement group.
+    func testFakeWritesWithoutGroupLandInTheFirstGroup() throws {
+        let kc = appKeychain()
+        let store = KeychainSecureStore(backend: kc, accessGroup: nil)
+        try store.write(Data("x".utf8), for: .showerBinding)
+        XCTAssertEqual(kc.items[key(.showerBinding, app)], Data("x".utf8))
+        XCTAssertNil(kc.items[key(.showerBinding, group)])
+    }
+
+    /// Items an older build wrote into the shared group (then the only one) move to the private
+    /// group; the binding and sessions stay readable throughout.
+    func testMigrationMovesPrivateItemsOutOfTheSharedGroup() throws {
+        let kc = appKeychain()
+        let moved: [StoreKey] = [.schoolPortal, .showerBinding, .showerSession, .laundryAccount, .laundryCheckout]
+        for k in moved + [.schoolEcykt, .sharedSnapshot] { kc.items[key(k, group)] = Data(k.rawValue.utf8) }
+        let store = appStore(kc)
+        XCTAssertEqual(store.migratePrivateItems(), [])
+        for k in moved {
+            XCTAssertNil(kc.items[key(k, group)], k.rawValue)
+            XCTAssertEqual(kc.items[key(k, app)], Data(k.rawValue.utf8), k.rawValue)
+            XCTAssertEqual(kc.accessibility[key(k, app)], k.accessibility, k.rawValue)
+            XCTAssertEqual(try store.read(k), Data(k.rawValue.utf8), k.rawValue)
+        }
+        // Shared items stay where the widget reads them.
+        XCTAssertEqual(kc.items[key(.schoolEcykt, group)], Data("school.ecykt".utf8))
+        XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("shared.snapshot".utf8))
+        XCTAssertNil(kc.items[key(.schoolEcykt, app)])
+        // Nothing left: a second run touches nothing.
+        kc.calls = []
+        XCTAssertEqual(store.migratePrivateItems(), [])
+        XCTAssertFalse(kc.calls.contains { $0.hasPrefix("add") || $0.hasPrefix("delete") })
+    }
+
+    /// A read finds the old copy and moves it on the way.
+    func testReadMovesAnOldSharedCopy() throws {
+        let kc = appKeychain()
+        let binding = Data("binding".utf8)
+        kc.items[key(.showerBinding, group)] = binding
+        let store = appStore(kc)
+        XCTAssertEqual(try store.read(.showerBinding), binding)
+        XCTAssertEqual(kc.items[key(.showerBinding, app)], binding)
+        XCTAssertNil(kc.items[key(.showerBinding, group)])
+    }
+
+    /// Any failed step keeps the shared copy, so the user stays signed in and bound; the next
+    /// launch finishes the move.
+    func testMigrationFailureKeepsTheOriginalAndRetries() throws {
+        let binding = Data("binding".utf8), account = Data("account".utf8)
+        // Write to the private group fails.
+        do {
+            let kc = appKeychain()
+            kc.items[key(.showerBinding, group)] = binding
+            kc.failing["add \(app)"] = -25308
+            let store = appStore(kc)
+            XCTAssertEqual(store.migratePrivateItems(), [.showerBinding])
+            XCTAssertEqual(kc.items[key(.showerBinding, group)], binding)
+            XCTAssertNil(kc.items[key(.showerBinding, app)])
+            XCTAssertEqual(try store.read(.showerBinding), binding)
+            kc.failing = [:]
+            XCTAssertEqual(store.migratePrivateItems(), [])
+            XCTAssertEqual(kc.items[key(.showerBinding, app)], binding)
+            XCTAssertNil(kc.items[key(.showerBinding, group)])
+        }
+        // Read-back fails: the private copy is withdrawn, the shared one kept.
+        do {
+            let kc = appKeychain()
+            kc.items[key(.laundryAccount, group)] = account
+            let store = appStore(kc)
+            kc.afterCall = { [unowned kc] call in if call == "add \(FakeKeychain.app)" { kc.failing["copy \(FakeKeychain.app)"] = -25308 } }
+            XCTAssertEqual(store.migratePrivateItems(), [.laundryAccount])
+            XCTAssertEqual(kc.items[key(.laundryAccount, group)], account)
+            XCTAssertNil(kc.items[key(.laundryAccount, app)])
+            kc.afterCall = nil
+            kc.failing = [:]
+            XCTAssertEqual(store.migratePrivateItems(), [])
+            XCTAssertEqual(try store.read(.laundryAccount), account)
+        }
+        // Delete of the shared copy fails mid-way: both copies remain, the private one is read,
+        // and the next run deletes the leftover without touching the private copy.
+        do {
+            let kc = appKeychain()
+            kc.items[key(.showerSession, group)] = binding
+            kc.failing["delete \(group)"] = -25308
+            let store = appStore(kc)
+            XCTAssertEqual(store.migratePrivateItems(), [.showerSession])
+            XCTAssertEqual(kc.items[key(.showerSession, group)], binding)
+            XCTAssertEqual(kc.items[key(.showerSession, app)], binding)
+            try store.write(Data("newer".utf8), for: .showerSession)
+            XCTAssertEqual(try store.read(.showerSession), Data("newer".utf8))
+            kc.failing = [:]
+            XCTAssertEqual(store.migratePrivateItems(), [])
+            XCTAssertNil(kc.items[key(.showerSession, group)])
+            XCTAssertEqual(kc.items[key(.showerSession, app)], Data("newer".utf8))
+        }
+    }
+
+    /// Sign-out and unbinding remove every copy, old or new.
+    func testDeleteRemovesBothCopies() throws {
+        let kc = appKeychain()
+        kc.items[key(.showerBinding, group)] = Data("old".utf8)
+        kc.items[key(.showerBinding, app)] = Data("new".utf8)
+        try appStore(kc).delete(.showerBinding)
+        XCTAssertTrue(kc.items.isEmpty)
+    }
+
+    /// The group the store uses is the one both entitlements files list; the app lists its
+    /// private group first so writes without a group never land where the widget reads.
     func testAccessGroupMatchesBothEntitlements() throws {
         XCTAssertEqual(SharedKeychain.groupIdentifier, "com.beamjason.xiaorichang.shared")
+        XCTAssertEqual(SharedKeychain.privateGroupIdentifier, "com.beamjason.xiaorichang")
         XCTAssertEqual(SharedKeychain.accessGroup(teamPrefixedFrom: "TEAMID1234.com.beamjason.xiaorichang"), group)
         XCTAssertEqual(SharedKeychain.accessGroup(teamPrefixedFrom: "TEAMID1234.com.beamjason.xiaorichang.shared"), group)
         XCTAssertNil(SharedKeychain.accessGroup(teamPrefixedFrom: "nodot"))
         XCTAssertNil(SharedKeychain.accessGroup(teamPrefixedFrom: ".leadingdot"))
+        XCTAssertEqual(SharedKeychain.privateGroup(defaultGroup: app), app)
+        XCTAssertNil(SharedKeychain.privateGroup(defaultGroup: group), "the widget has no private group")
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        for path in ["App/Resources/App.entitlements", "Widget/Widget.entitlements"] {
+        func groups(_ path: String) throws -> [String] {
             let data = try Data(contentsOf: root.appendingPathComponent(path))
             let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any], path)
-            let groups = try XCTUnwrap(plist["keychain-access-groups"] as? [String], path)
-            XCTAssertEqual(groups, ["$(AppIdentifierPrefix)" + SharedKeychain.groupIdentifier], path)
+            return try XCTUnwrap(plist["keychain-access-groups"] as? [String], path)
         }
+        XCTAssertEqual(try groups("App/Resources/App.entitlements"),
+                       ["$(AppIdentifierPrefix)" + SharedKeychain.privateGroupIdentifier,
+                        "$(AppIdentifierPrefix)" + SharedKeychain.groupIdentifier])
+        XCTAssertEqual(try groups("Widget/Widget.entitlements"), ["$(AppIdentifierPrefix)" + SharedKeychain.groupIdentifier])
     }
 
     func testReadErrorsThrow() {

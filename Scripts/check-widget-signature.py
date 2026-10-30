@@ -19,9 +19,14 @@ def entitlements(bundle):
     return plistlib.loads(r.stdout)
 a, w = entitlements(app), entitlements(widget)
 ag, wg = a.get('keychain-access-groups', []), w.get('keychain-access-groups', [])
-if not ag or not wg or ag[0] != wg[0] or '*' in ag[0]:
-    p.error('Main app and widget must have the same explicit first keychain access group')
+SHARED = '.com.beamjason.xiaorichang.shared'
+if any('*' in g for g in ag + wg):
+    p.error('Keychain access groups must be explicit')
+if not wg or not wg[0].endswith(SHARED) or wg[0] not in ag:
+    p.error('The widget must list the shared keychain group first, and the main app must list it too')
+if ag[0] == wg[0]:
+    p.error('The main app must list its private keychain group first, before the shared group')
 for bundle in [app,widget]:
     if 'CampusKeychainGroup' in plistlib.loads((bundle/'Info.plist').read_bytes()):
         p.error('Stale build-time keychain group found in Info.plist')
-print('Signed main app and widget share the same default keychain group.')
+print('Signed main app and widget share the keychain group; app-only items stay in the app group.')

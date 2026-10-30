@@ -19,37 +19,64 @@ public enum KeychainStatus {
     public static let missingEntitlement: Int32 = -34018 // errSecMissingEntitlement
 }
 
-/// Keychain store with the shared access group for widget-visible items.
+/// Keychain store with two access groups: the shared group the widget can read, for keys whose
+/// `isShared` is true, and the app's private group for everything else.
 ///
-/// Re-signed IPAs may lose the `keychain-access-groups` entitlement. When a write with the
-/// access group fails, the store falls back to **no access group** (the app's default group)
-/// and remembers that for later reads/writes; the widget then simply has no data, and the app
-/// keeps working.
+/// Re-signed IPAs may lose the `keychain-access-groups` entitlement. When a write with a group
+/// fails, the store falls back to **no access group** (the default group) for that group and
+/// remembers it for later reads/writes; the widget then simply has no data, and the app keeps
+/// working.
+///
+/// Builds before the private group existed wrote every item into the shared group (then the only
+/// one). A private item still found there is moved: written to the private group, read back,
+/// and only then deleted from the shared group. Any failed step leaves the shared copy as it was,
+/// so nobody is signed out; the move is retried on the next read or `migratePrivateItems()`.
 public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
     // @unchecked: mutable state guarded by `lock`.
     private let backend: KeychainBackend
-    private let accessGroup: String?
+    private let sharedGroup: String?
+    private let privateGroup: String?
     private let lock = NSLock()
-    private var groupUnavailable = false
+    private var unavailable: Set<String> = []
 
     /// `accessGroup`: the resolved `<TeamPrefix>.com.beamjason.xiaorichang.shared`, or nil.
-    public init(backend: KeychainBackend, accessGroup: String?) {
+    /// `privateGroup`: the resolved app-only group, or nil (the widget, or unknown): private items
+    /// then use the default group.
+    public init(backend: KeychainBackend, accessGroup: String?, privateGroup: String? = nil) {
         self.backend = backend
-        self.accessGroup = accessGroup
+        self.sharedGroup = accessGroup
+        self.privateGroup = privateGroup == accessGroup ? nil : privateGroup
     }
 
-    /// True once a group write failed and the store switched to no access group.
-    public var isUsingFallback: Bool { lock.withLock { groupUnavailable } }
+    /// True once a shared-group write failed and the store switched to no access group.
+    public var isUsingFallback: Bool { lock.withLock { sharedGroup.map(unavailable.contains) ?? false } }
+
+    private func usable(_ group: String?) -> String? {
+        guard let group else { return nil }
+        return lock.withLock { unavailable.contains(group) } ? nil : group
+    }
 
     private func group(for key: StoreKey) -> String? {
-        guard key.isShared, let accessGroup else { return nil }
-        return lock.withLock { groupUnavailable } ? nil : accessGroup
+        usable(key.isShared ? sharedGroup : privateGroup)
+    }
+
+    /// The shared group, when a private key may still have a copy there from an older build.
+    private func legacyGroup(for key: StoreKey) -> String? {
+        guard !key.isShared, let privateGroup, usable(privateGroup) != nil else { return nil }
+        return sharedGroup
     }
 
     public func read(_ key: StoreKey) throws -> Data? {
         let group = group(for: key)
         var r = backend.copy(service: key.service, account: StoreKey.account, accessGroup: group)
         if group != nil, r.status == KeychainStatus.itemNotFound || r.status == KeychainStatus.missingEntitlement {
+            if let legacy = legacyGroup(for: key) {
+                let old = backend.copy(service: key.service, account: StoreKey.account, accessGroup: legacy)
+                if old.status == KeychainStatus.success, let data = old.data {
+                    _ = move(key, data)
+                    return data
+                }
+            }
             // An earlier fallback write may have stored it without the group.
             r = backend.copy(service: key.service, account: StoreKey.account, accessGroup: nil)
         }
@@ -63,7 +90,7 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
     public func write(_ data: Data, for key: StoreKey) throws {
         if let group = group(for: key) {
             if upsert(key, data, group) == KeychainStatus.success { return }
-            lock.withLock { groupUnavailable = true }
+            lock.withLock { _ = unavailable.insert(group) }
         }
         let status = upsert(key, data, nil)
         guard status == KeychainStatus.success else { throw StorageError(operation: "write \(key.rawValue)", status: status) }
@@ -71,12 +98,53 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
 
     public func delete(_ key: StoreKey) throws {
         var statuses = [backend.delete(service: key.service, account: StoreKey.account, accessGroup: nil)]
-        if key.isShared, let accessGroup {
-            statuses.append(backend.delete(service: key.service, account: StoreKey.account, accessGroup: accessGroup))
+        for group in [sharedGroup, privateGroup].compactMap({ $0 }) {
+            statuses.append(backend.delete(service: key.service, account: StoreKey.account, accessGroup: group))
         }
         if let bad = statuses.first(where: { $0 != KeychainStatus.success && $0 != KeychainStatus.itemNotFound && $0 != KeychainStatus.missingEntitlement }) {
             throw StorageError(operation: "delete \(key.rawValue)", status: bad)
         }
+    }
+
+    /// Moves every private item still in the shared group into the private group. Returns the
+    /// keys that are still in the shared group (a step failed; retried next time).
+    @discardableResult
+    public func migratePrivateItems() -> [StoreKey] {
+        StoreKey.allCases.filter { key in
+            guard let legacy = legacyGroup(for: key) else { return false }
+            let old = backend.copy(service: key.service, account: StoreKey.account, accessGroup: legacy)
+            if old.status == KeychainStatus.itemNotFound { return false }
+            guard old.status == KeychainStatus.success, let data = old.data else { return true }
+            return !move(key, data)
+        }
+    }
+
+    /// Private copy first; the shared copy goes only once the private one reads back the same.
+    /// A private copy already there is newer (this build writes nowhere else), so it is kept.
+    private func move(_ key: StoreKey, _ legacyData: Data) -> Bool {
+        guard let privateGroup = usable(privateGroup), let sharedGroup else { return false }
+        let existing = backend.copy(service: key.service, account: StoreKey.account, accessGroup: privateGroup)
+        let expected: Data
+        switch existing.status {
+        case KeychainStatus.success:
+            guard let data = existing.data else { return false }
+            expected = data
+        case KeychainStatus.itemNotFound:
+            let added = backend.add(service: key.service, account: StoreKey.account, accessGroup: privateGroup,
+                                    accessibility: key.accessibility, data: legacyData)
+            guard added == KeychainStatus.success else { return false }
+            expected = legacyData
+        default:
+            return false
+        }
+        let back = backend.copy(service: key.service, account: StoreKey.account, accessGroup: privateGroup)
+        guard back.status == KeychainStatus.success, back.data == expected else {
+            if existing.status == KeychainStatus.itemNotFound {
+                _ = backend.delete(service: key.service, account: StoreKey.account, accessGroup: privateGroup)
+            }
+            return false
+        }
+        return backend.delete(service: key.service, account: StoreKey.account, accessGroup: sharedGroup) == KeychainStatus.success
     }
 
     private func upsert(_ key: StoreKey, _ data: Data, _ group: String?) -> Int32 {
