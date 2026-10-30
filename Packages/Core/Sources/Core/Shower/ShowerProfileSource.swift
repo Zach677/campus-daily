@@ -18,7 +18,7 @@ public struct ShowerPlatformProfile: Sendable, Equatable, Codable, CustomStringC
 }
 
 /// Where the platform profile comes from:
-/// - `bundled`: staged into the app bundle at build time (`tools/stage_platform_profile.py`);
+/// - `bundled`: staged into the app bundle at build time (`Scripts/stage-water-profile.py`);
 /// - `imported`: a `.waterconfig` file the user imported.
 public enum ShowerProfileSource: Sendable, Equatable, Codable {
     case bundled

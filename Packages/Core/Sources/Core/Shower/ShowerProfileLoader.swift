@@ -1,6 +1,6 @@
 import Foundation
 
-/// `.waterconfig` import (and the bundled profile staged by `tools/stage_platform_profile.py`):
+/// `.waterconfig` import (and the bundled profile staged by `Scripts/stage-water-profile.py`):
 /// exactly `{secret, sid, bleName, typeID, version}`. Any other key is refused so a file can
 /// never silently carry another student's account, room or controller. Same file on iOS and Android.
 public enum ShowerConfigFile {

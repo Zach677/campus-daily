@@ -8,7 +8,10 @@ import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
-from stage_platform_profile import validate_profile
+import importlib.util
+_spec = importlib.util.spec_from_file_location('stage_water_profile', Path(__file__).resolve().parent / 'stage-water-profile.py')
+_module = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_module)
+validate_profile = _module.validate_profile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--app', required=True, type=Path)
@@ -35,7 +38,7 @@ for bundle in [app, widget]:
     if 'CampusKeychainGroup' in metadata:
         parser.error('Build-time keychain group must not be frozen into an unsigned IPA')
 version, build = info['CFBundleShortVersionString'], info['CFBundleVersion']
-name = f'CampusDaily-{version}-build{build}-unsigned.ipa'
+name = f'XiaoRiChang-{version}-build{build}-unsigned.ipa'
 output = args.output.resolve()
 output.mkdir(parents=True, exist_ok=True)
 ipa = output / name

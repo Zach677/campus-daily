@@ -1,6 +1,11 @@
+import importlib.util
 import json
 import unittest
-from stage_platform_profile import validate_profile
+from pathlib import Path
+
+_spec = importlib.util.spec_from_file_location('stage_water_profile', Path(__file__).resolve().parents[1] / 'stage-water-profile.py')
+_module = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_module)
+validate_profile = _module.validate_profile
 
 
 class PlatformBuildProfileTests(unittest.TestCase):

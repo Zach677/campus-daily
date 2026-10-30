@@ -49,11 +49,11 @@ settlement, U净 login, saved washers, reservation, Alipay SDK/checkout handoff,
 server order refresh/countdown and unpaid cancellation. First-time water setup uses the bundled platform-only profile and the user's own school login. No self-hosted access service or manual import is required. Shared platform parameters in the APK are extractable; no personal identity or controller is bundled. Android launcher widgets are not
 included. alpha22 is confirmed on one vivo device; Huawei nova 10, Samsung Galaxy S24 Ultra and full hot-water transactions remain unverified.
 
-See [migration design, sources and acceptance notes](../../docs/android-migration.md).
+See [migration design, sources and acceptance notes](../docs/android-migration.md).
 Build from the repository root using JDK 21:
 
 ```sh
-bash tools/build-android.sh -PcampusWaterProfile="$PWD/private/distribution/WaterPlatformProfile.json"
+bash Android/build-android.sh -PcampusWaterProfile="$PWD/private/distribution/WaterPlatformProfile.json"
 ```
 
 The supplied local JSON must contain only secret, sid, bleName, typeID and version. The build validates and stages it into generated assets; it must not contain personal account or controller fields.

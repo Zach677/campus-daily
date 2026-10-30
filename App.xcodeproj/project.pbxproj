@@ -321,7 +321,7 @@
 			);
 			inputPaths = (
 				"$(CAMPUS_WATER_PROFILE_PATH)",
-				"$(SRCROOT)/tools/stage_platform_profile.py",
+				"$(SRCROOT)/Scripts/stage-water-profile.py",
 			);
 			name = "Stage shared water platform";
 			outputFileListPaths = (
@@ -331,7 +331,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "P=\"$CAMPUS_WATER_PROFILE_PATH\"\nif [ -z \"$P\" ] && [ -f \"$SRCROOT/private/distribution/WaterPlatformProfile.json\" ]; then P=\"$SRCROOT/private/distribution/WaterPlatformProfile.json\"; fi\nif [ -z \"$P\" ] && [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  echo \"warning: no water platform profile; hot water will not connect. Run python3 tools/fetch_platform_profile.py\"\n  exit 0\nfi\npython3 \"$SRCROOT/tools/stage_platform_profile.py\" --profile \"$P\" --output \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/CampusWaterPlatform.json\"\n";
+			shellScript = "P=\"$CAMPUS_WATER_PROFILE_PATH\"\nif [ -z \"$P\" ] && [ -f \"$SRCROOT/private/distribution/WaterPlatformProfile.json\" ]; then P=\"$SRCROOT/private/distribution/WaterPlatformProfile.json\"; fi\nif [ -z \"$P\" ] && [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  echo \"warning: no water platform profile; hot water will not connect. Run python3 Scripts/stage-water-profile.py fetch\"\n  exit 0\nfi\npython3 \"$SRCROOT/Scripts/stage-water-profile.py\" stage --profile \"$P\" --output \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/CampusWaterPlatform.json\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

@@ -6,8 +6,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val repositoryRoot=rootProject.file("..")
 val sharedAutomationRoot=providers.gradleProperty("campusSharedAssetsDir")
-    .orElse(rootProject.file("../../Shared").absolutePath)
+    .orElse(repositoryRoot.resolve("App/Services/CampusWebLogin").absolutePath)
+val stageWaterProfileScript=repositoryRoot.resolve("Scripts/stage-water-profile.py")
 val syncCampusAutomation=tasks.register<Copy>("syncCampusAutomation") {
     from(sharedAutomationRoot){include("CampusLoginAutomation.js")}
     into(layout.buildDirectory.dir("generated/campusAutomationAssets"))
@@ -17,11 +19,11 @@ val waterProfilePath=providers.gradleProperty("campusWaterProfile")
 val waterAssets=layout.buildDirectory.dir("generated/waterPlatformAssets")
 val stageWaterPlatform=tasks.register<Exec>("stageWaterPlatform") {
     inputs.file(waterProfilePath)
-    inputs.file(sharedAutomationRoot.map{File(it).parentFile.resolve("tools/stage_platform_profile.py")})
+    inputs.file(stageWaterProfileScript)
     outputs.file(waterAssets.map{it.file("CampusWaterPlatform.json")})
     doFirst {
         require(waterProfilePath.isPresent){"Set campusWaterProfile to your local platform-only JSON file"}
-        commandLine("python3",File(sharedAutomationRoot.get()).parentFile.resolve("tools/stage_platform_profile.py").absolutePath,
+        commandLine("python3",stageWaterProfileScript.absolutePath,"stage",
             "--profile",waterProfilePath.get(),"--output",waterAssets.get().file("CampusWaterPlatform.json").asFile.absolutePath)
     }
 }
