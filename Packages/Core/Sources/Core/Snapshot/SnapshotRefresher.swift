@@ -22,15 +22,20 @@ public struct RefreshReport: Sendable, Equatable {
 
 /// The only writer of the home snapshot the app and the widget read.
 ///
-/// Reads the school data, reduces it into the stored snapshot and saves it. A failed read keeps
-/// the last good values and records the failure next to them.
+/// Reads the school data, reduces it into the stored snapshot and saves it. Refreshes are
+/// single-flight: a caller that arrives while one is running awaits that same refresh and gets
+/// its report, so a pull-to-refresh during a foreground or background read still ends with the
+/// fresh values (or the recorded failure). A failed read keeps the last good values.
 public actor SnapshotRefresher {
     let school: SchoolReader
     let store: SnapshotStoring
     let now: @Sendable () -> Date
 
+    private var inFlight: Task<RefreshReport, Never>?
     /// Bumped by `clear()` so a refresh that was running during sign-out does not write back.
     private var generation = 0
+    /// Callers that joined a running refresh (for tests).
+    private(set) var joinedCount = 0
 
     public init(school: SchoolReader, store: SnapshotStoring, now: @escaping @Sendable () -> Date = Date.init) {
         self.school = school; self.store = store; self.now = now
@@ -41,13 +46,23 @@ public actor SnapshotRefresher {
         ((try? store.loadSnapshot()) ?? nil) ?? .empty
     }
 
+    /// Runs a refresh, or joins the one already running.
     public func refresh(inBackground: Bool) async -> RefreshReport {
-        await run(inBackground: inBackground)
+        if let inFlight {
+            joinedCount += 1
+            return await inFlight.value
+        }
+        let task = Task { await self.run(inBackground: inBackground) }
+        inFlight = task
+        let report = await task.value
+        if inFlight == task { inFlight = nil }
+        return report
     }
 
     /// Signed out: the shared snapshot goes back to empty. A refresh still running is dropped.
     public func clear() throws {
         generation += 1
+        inFlight = nil
         try store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
     }
 

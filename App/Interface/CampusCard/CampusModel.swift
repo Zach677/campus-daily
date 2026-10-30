@@ -25,6 +25,7 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var powerChoices: [PowerChoice] = []
     @Published private(set) var powerMatchIssue: String?
     private var lastRefresh: Date?
+    private var refreshesRunning = 0
     private let session = AppEnvironment.school
     private let refresher = AppEnvironment.refresher
 
@@ -49,11 +50,13 @@ struct PowerChoice: Identifiable, Equatable {
 
     // MARK: Refresh
 
-    /// Foreground refresh; `force` skips the 60 s throttle.
+    /// Foreground refresh; `force` skips the 60 s throttle. While a refresh is running, a second
+    /// call (pull-to-refresh, foreground, background task) waits for it and shows its result.
     func refresh(force: Bool = false, inBackground: Bool = false) async {
-        guard configured, !loading else { return }
-        if !force, let lastRefresh, Date().timeIntervalSince(lastRefresh) < 60 { return }
-        loading = true; defer { loading = false }
+        guard configured else { return }
+        if !force, refreshesRunning == 0, let lastRefresh, Date().timeIntervalSince(lastRefresh) < 60 { return }
+        refreshesRunning += 1; loading = true
+        defer { refreshesRunning -= 1; loading = refreshesRunning > 0 }
         let report = await refresher.refresh(inBackground:inBackground)
         snapshot = report.snapshot
         lastRefresh = Date()
