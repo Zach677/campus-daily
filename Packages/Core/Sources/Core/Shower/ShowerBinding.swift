@@ -45,6 +45,14 @@ public struct ShowerBinding: Sendable, Equatable, Codable, CustomStringConvertib
         self.peripheralID = peripheralID
     }
     public var description: String { "WaterBinding(<redacted>, room: \(roomLabel))" }
+
+    /// Whether a new binding may be saved now. Not while a shower is open or waiting to be
+    /// settled (`mayChange` false: `blocked`), and not while a controller check runs (`busy`):
+    /// that check is for the old binding, and its answer would then be shown for the new one.
+    public static func checkMayReplace(mayChange: Bool, checking: Bool) throws {
+        guard mayChange else { throw ShowerEngineError.blocked }
+        guard !checking else { throw ShowerEngineError.busy }
+    }
 }
 
 // MARK: - Authorize / settle results

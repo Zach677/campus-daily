@@ -204,9 +204,9 @@ enum ShowerProfileFiles {
         Reminders.shared.syncShower(started:nil)
     }
 
-    /// Onboarding saved a binding (dorm + controller).
+    /// Onboarding saved a binding (dorm + controller). Refused while a controller check runs.
     func saveBinding(_ value: ShowerBinding) throws {
-        guard mayImport else { throw ShowerEngineError.blocked }
+        try ShowerBinding.checkMayReplace(mayChange:mayImport, checking:inspecting)
         var value = value
         // Re-binding the same machine keeps the controller already verified for it.
         if value.peripheralID == nil, let old = binding, old.machineId == value.machineId { value.peripheralID = old.peripheralID }

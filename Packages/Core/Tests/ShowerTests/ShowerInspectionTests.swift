@@ -63,4 +63,18 @@ final class ShowerInspectionTests: XCTestCase {
         let (outcome, _) = try await run(garbled)
         XCTAssertEqual(outcome, .unreadable)
     }
+
+    /// A new binding saved while the old one is being checked would show that check's answer.
+    func testANewBindingWaitsForTheCheckAndTheShower() {
+        XCTAssertNoThrow(try ShowerBinding.checkMayReplace(mayChange: true, checking: false))
+        XCTAssertThrowsError(try ShowerBinding.checkMayReplace(mayChange: true, checking: true)) {
+            XCTAssertEqual($0 as? ShowerEngineError, .busy)
+        }
+        XCTAssertThrowsError(try ShowerBinding.checkMayReplace(mayChange: false, checking: false)) {
+            XCTAssertEqual($0 as? ShowerEngineError, .blocked)
+        }
+        XCTAssertThrowsError(try ShowerBinding.checkMayReplace(mayChange: false, checking: true)) {
+            XCTAssertEqual($0 as? ShowerEngineError, .blocked)
+        }
+    }
 }
