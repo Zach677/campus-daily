@@ -208,7 +208,9 @@ public actor ShowerEngine {
                 if let follow = await perform(effect) { queue.append(follow) }
             }
         }
-        if state.phase == .running { rememberPeripheral() }
+        // The controller answered with this machine's identity before authorize: remember it,
+        // also when the authorization write was not acknowledged.
+        if state.phase == .running || state.phase == .writePending { rememberPeripheral() }
         return state
     }
 

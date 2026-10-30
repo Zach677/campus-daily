@@ -168,6 +168,9 @@ enum ShowerProfileFiles {
     /// Onboarding saved a binding (dorm + controller).
     func saveBinding(_ value: ShowerBinding) throws {
         guard mayImport else { throw ShowerEngineError.blocked }
+        var value = value
+        // Re-binding the same machine keeps the controller already verified for it.
+        if value.peripheralID == nil, let old = binding, old.machineId == value.machineId { value.peripheralID = old.peripheralID }
         try AppEnvironment.waterVault.saveBinding(value)
         binding = value
         verifiedDevice = nil
@@ -210,6 +213,11 @@ enum ShowerProfileFiles {
         do {
             let result = start ? try await engine.start(binding) : try await engine.finish(binding)
             apply(result)
+            // The engine saves the verified controller into the stored binding; pick it up so the
+            // next start goes to it directly instead of after a relaunch.
+            if start, let stored = (try? AppEnvironment.waterVault.binding()) ?? nil, stored.machineId == binding.machineId {
+                self.binding = stored
+            }
             message = Self.noticeText(result.notice)
             if result.phase == .failed { throw ShowerEngineError.notAllowed }
             if !start, result.phase != .done { throw ShowerEngineError.notAllowed }
@@ -269,11 +277,21 @@ enum ShowerProfileFiles {
             }
             guard identity == binding.machineId.uppercased() else { inspectionStatus = "附近的水控不是你宿舍的那台。"; return }
             verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:identity, rssi:nil, nearbyCount:nearby, verifiedAt:Date())
+            rememberVerified(id, for:binding)
             inspectionStatus = "找到了你宿舍的水控。"
         } catch {
             await bluetooth.disconnect()
             inspectionStatus = Self.deviceText((error as? ShowerDeviceError) ?? .disconnected)
         }
+    }
+
+    /// The check proved this controller's identity: remember it for the next start.
+    private func rememberVerified(_ id: String, for checked: ShowerBinding) {
+        guard checked.peripheralID != id, var stored = (try? AppEnvironment.waterVault.binding()) ?? nil,
+              stored.machineId == checked.machineId else { return }
+        stored.peripheralID = id
+        guard (try? AppEnvironment.waterVault.saveBinding(stored)) != nil else { return }
+        binding = stored
     }
 
     func exportDiagnostics() throws -> URL {

@@ -213,14 +213,18 @@ public enum ShowerReducer {
 
         // MARK: start
         case (_, .start(let machine, let preferred, let at)) where state.canStart:
-            let n = ShowerState(phase: .authorizing, machineID: machine.uppercased(), peripheralID: nil, startedAt: at,
+            // Keep the controller remembered for this machine, so a failed connect does not
+            // forget it and the next start can still try it before scanning.
+            let remembered = state.machineID == machine.uppercased() ? state.peripheralID : nil
+            let n = ShowerState(phase: .authorizing, machineID: machine.uppercased(), peripheralID: remembered, startedAt: at,
                                 lastReceipt: state.phase == .done ? state.receipt : state.lastReceipt)
             return (n, [.connectAndProbe(machineID: machine.uppercased(), preferred: preferred)])
 
         case (.authorizing, .connected(let peripheral, let probe)) where !state.authorizeSent:
-            s.peripheralID = peripheral
+            // Only a controller that answered with this machine's identity is remembered.
             switch ShowerFrames.classify(probe) {
             case .idle(let id) where id == state.machineID:
+                s.peripheralID = peripheral
                 s.authorizeSent = true
                 return (s, [.authorize(frame: probe)])
             case .idle:

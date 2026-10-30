@@ -1,0 +1,67 @@
+import XCTest
+import Foundation
+import Core
+import CoreTestSupport
+
+/// The remembered controller survives failed connects and wrong devices, so the next start can
+/// go straight to it instead of scanning again.
+extension ShowerEngineTests {
+    func testFailedConnectKeepsTheRememberedController() async throws {
+        try vault.saveBinding(binding)
+        try vault.saveShowerState(ShowerState(phase: .idle, machineID: machine, peripheralID: "PERIPHERAL-B"))
+        let e = try engine()
+        transport.scriptConnect(.failure(.timedOut))
+        let failed = try await e.start(binding)
+        XCTAssertEqual(failed.failure?.reason, .deviceUnavailable)
+        XCTAssertEqual(try vault.showerState()?.peripheralID, "PERIPHERAL-B", "the persisted idle state still knows the controller")
+
+        transport.scriptConnect(.failure(.timedOut))
+        _ = try await e.start(binding)
+        XCTAssertEqual(transport.connects.map(\.preferred), ["PERIPHERAL-B", "PERIPHERAL-B"])
+    }
+
+    func testAnotherMachinesControllerIsNotPreferred() async throws {
+        let other = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "99999999", roomId: "R1", roomLabel: "9栋 199")
+        try vault.saveBinding(other)
+        try vault.saveShowerState(ShowerState(phase: .idle, machineID: machine, peripheralID: "PERIPHERAL-B"))
+        let e = try engine()
+        transport.scriptConnect(.failure(.notFound))
+        _ = try await e.start(other)
+        XCTAssertEqual(transport.connects.map(\.preferred), [nil])
+        XCTAssertNil(try vault.showerState()?.peripheralID)
+    }
+
+    func testWrongDeviceIsNotRemembered() async throws {
+        try vault.saveBinding(binding)
+        let e = try engine()
+        transport.scriptConnect(.success("PERIPHERAL-X"))
+        transport.script(.frame(FakeFrames.identity("99999999")))
+        let failed = try await e.start(binding)
+        XCTAssertEqual(failed.failure?.reason, .wrongDevice)
+        XCTAssertNil(try vault.showerState()?.peripheralID)
+        XCTAssertNil(try vault.binding()?.peripheralID)
+    }
+
+    /// The controller proved its identity before authorize; an unacknowledged write still counts.
+    func testUnacknowledgedWriteStillRemembersTheController() async throws {
+        try vault.saveBinding(binding)
+        let e = try engine()
+        transport.script(.frame(identity), .fail(.timedOut))
+        gateway.scriptAuthorize(.ok(auth))
+        let s = try await e.start(binding)
+        XCTAssertEqual(s.phase, .writePending)
+        XCTAssertEqual(try vault.binding()?.peripheralID, "PERIPHERAL-A")
+    }
+}
+
+extension ShowerReducerTests {
+    func testStartKeepsTheSameMachinesController() {
+        let idle = ShowerState(phase: .idle, machineID: machine, peripheralID: "P")
+        XCTAssertEqual(reduce(idle, .start(machineID: machine, preferredPeripheral: nil, at: t0)).0.peripheralID, "P")
+        XCTAssertNil(reduce(idle, .start(machineID: "99999999", preferredPeripheral: nil, at: t0)).0.peripheralID)
+        let wrong = reduce(reduce(idle, .start(machineID: machine, preferredPeripheral: "P", at: t0)).0,
+                           .connected(peripheralID: "Q", probe: FakeFrames.identity("99999999"))).0
+        XCTAssertEqual(wrong.peripheralID, "P", "a controller with another identity never replaces the remembered one")
+        XCTAssertEqual(wrong.persistable.peripheralID, "P")
+    }
+}
