@@ -21,7 +21,17 @@ struct CampusWidgetModel: Sendable {
     /// The user's reminder lines (Settings › 提醒), shared through the keychain; default 10 度 / 20 元.
     var lines = ReminderLines()
 
+    /// The face is drawn as grey bars (`redacted`): the gallery's sample, or no readable data yet.
+    var placeholder = false
+
     static let never = CampusWidgetModel(state:.never)
+    /// Sample shapes only, always drawn redacted: no number on it is anyone's, and none is shown.
+    static let placeholderFace: CampusWidgetModel = {
+        var model = CampusWidgetModel(state:.fresh, remainingKWh:Decimal(string:"42.6"), balance:Decimal(string:"86.50"),
+                                      yesterdayKWh:Decimal(string:"5.1"), powerBalance:Decimal(string:"23.40"), updated:Date())
+        model.placeholder = true
+        return model
+    }()
 
     init(state: WidgetFreshness, remainingKWh: Decimal? = nil, balance: Decimal? = nil, yesterdayKWh: Decimal? = nil,
          powerBalance: Decimal? = nil, updated: Date? = nil, now: Date = Date()) {
@@ -63,6 +73,7 @@ struct CampusWidgetModel: Sendable {
     var url: URL { tap.url }
 
     func accessibilityLabel(medium: Bool) -> String {
+        if placeholder { return "校日常" }
         switch state {
         case .never: return "登录后显示余额和电量，打开 App，登录学校账号"
         case .expired: return "登录过期了，打开 App 重新登录"

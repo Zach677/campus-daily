@@ -4,9 +4,6 @@ import Core
 
 struct CampusEntry: TimelineEntry { let date: Date; let model: CampusWidgetModel }
 struct CampusTimeline: TimelineProvider {
-    /// Widget gallery / redacted placeholder: sample numbers, not anyone's data.
-    static let sample = CampusWidgetModel(state:.fresh, remainingKWh:Decimal(string:"42.6"), balance:Decimal(string:"86.50"),
-                                          yesterdayKWh:Decimal(string:"5.1"), powerBalance:Decimal(string:"23.40"), updated:Date())
     /// The widget's own school read: the same stack as the app (card session → portal token →
     /// saved password once → needs login), writing the same shared snapshot, one process at a
     /// time through the lease. Built once per widget process.
@@ -31,16 +28,17 @@ struct CampusTimeline: TimelineProvider {
         return model
     }
 
-    func placeholder(in context: Context) -> CampusEntry { CampusEntry(date:Date(), model:Self.sample) }
-    /// Transient (gallery, first add): the stored snapshot, no network.
+    func placeholder(in context: Context) -> CampusEntry { CampusEntry(date:Date(), model:.placeholderFace) }
+    /// Transient (gallery, first add): the stored snapshot, no network. Unreadable with nothing
+    /// drawn before: grey bars, never sample numbers passed off as fresh.
     func getSnapshot(in context: Context, completion: @escaping (CampusEntry) -> Void) {
         let now = Date()
         guard let stored = Self.stored() else {
-            completion(Self.last.entry ?? CampusEntry(date:now, model:Self.sample))
+            completion(Self.last.redrawn(at:now) ?? CampusEntry(date:now, model:.placeholderFace))
             return
         }
         let model = Self.model(stored.snapshot, account:stored.account, at:now)
-        completion(CampusEntry(date:now, model:context.isPreview && model.state == .never ? Self.sample : model))
+        completion(CampusEntry(date:now, model:context.isPreview && model.state == .never ? .placeholderFace : model))
     }
     /// Reads the school data (unless the app just did), then draws; again in 30 minutes. When the
     /// numbers turn stale before then by time alone, a second entry switches at that moment.
@@ -50,13 +48,14 @@ struct CampusTimeline: TimelineProvider {
             let now = Date()
             // Locked since a restart, or the Keychain refused: not "signed out". Keep what was
             // drawn (no entries = the face stays) and ask again soon.
-            guard Self.stored() != nil else {
+            guard let stored = Self.stored() else {
                 let retry = now.addingTimeInterval(WidgetStoredData.unreadableRetry)
-                done.call(Timeline(entries:Self.last.entry.map { [$0] } ?? [], policy:.after(retry)))
+                done.call(Timeline(entries:Self.last.redrawn(at:now).map { [$0] } ?? [], policy:.after(retry)))
                 return
             }
             let snapshot = await WidgetRefresh.run(Self.school.refresher, now:now, deadline:Self.readDeadline)
-            let account = Self.stored()?.account
+            // The account read above: a second read failing here would draw "no saved password".
+            let account = stored.account
             let next = now.addingTimeInterval(Self.interval)
             var entries = [CampusEntry(date:now, model:Self.model(snapshot, account:account, at:now))]
             if let staleAt = WidgetStatus.staleAt(snapshot:snapshot, account:account, now:now), staleAt < next {
@@ -97,6 +96,7 @@ struct CampusWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
     var body: some View {
         CampusWidgetFace(model:entry.model, medium:family == .systemMedium)
+            .redacted(reason:entry.model.placeholder ? .placeholder : [])
             .privacySensitive()
             .containerBackground(CampusWidgetPalette.group, for:.widget)
             .widgetURL(entry.model.url)
