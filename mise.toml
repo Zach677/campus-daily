@@ -63,7 +63,7 @@ run = [
 ]
 
 [tasks.privacy-check]
-description = "Both privacy checks (pattern scan + private/leakcheck.txt value scan)"
+description = "Both privacy checks on staged files (pattern scan + value scan of $LEAKCHECK_FILE; fails if the list is missing)"
 run = "sh Scripts/privacy-check.sh"
 
 [tasks.check-widget-signature]
