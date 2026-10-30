@@ -101,6 +101,11 @@ public actor ShowerEngine {
     private var binding: ShowerBinding?
     private let resetMarker: ResetMarker?
     private var observers: [UUID: AsyncStream<ShowerState>.Continuation] = [:]
+    /// 取消 was accepted for the running start: its authorize request never leaves.
+    private var startCancelled = false
+    /// The running start's authorize request has left: from here a cancel could leave an
+    /// authorization nobody knows about, so none is accepted.
+    private var authorizeLeft = false
 
     /// Restores the persisted session (relaunch rules in `ShowerReducer.restore`).
     /// `resetMarker`: while a reset runs, `start` is refused (`AppReset.InProgress`).
@@ -142,7 +147,18 @@ public actor ShowerEngine {
         try resetMarker?.checkStart(at: now())
         guard state.canStart else { throw ShowerEngineError.blocked }
         let preferred = b.peripheralID ?? (state.machineID == b.machineId.uppercased() ? state.peripheralID : nil)
+        startCancelled = false; authorizeLeft = false
         return try await run(b, .start(machineID: b.machineId, preferredPeripheral: preferred, at: now()))
+    }
+
+    /// 取消 while connecting. True: the start stops before its authorize request leaves (nothing
+    /// issued) and ends as a connect failure that leaves no record; the caller may then cancel
+    /// its task to cut the Bluetooth connect short. False once the request has left (or there
+    /// is no start running): the start goes on and ends as it would have.
+    public func cancelStart() -> Bool {
+        guard busy, state.phase == .authorizing, !authorizeLeft else { return false }
+        startCancelled = true
+        return true
     }
 
     /// 结束: probe (`A5` required), close, settle once.
@@ -259,7 +275,8 @@ public actor ShowerEngine {
             }
 
         case .authorize(let frame):
-            guard let b = binding, !Task.isCancelled else { return .cancelledBeforeSend }
+            guard let b = binding, !Task.isCancelled, !startCancelled else { return .cancelledBeforeSend }
+            authorizeLeft = true
             do { return .authorized(try await gateway.authorize(b, frame: frame)) }
             catch let e as ServiceError { return .authorizeFailed(e) }
             catch { return .authorizeFailed(.uncertain(.lxt6)) }

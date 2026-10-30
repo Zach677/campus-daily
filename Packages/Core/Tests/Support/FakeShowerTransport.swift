@@ -10,6 +10,8 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
         case fail(ShowerDeviceError)
         /// Suspends until the calling task is cancelled.
         case hang
+        /// The frame, once `gate` yields (or finishes).
+        case after(AsyncStream<Void>, Data)
     }
 
     public struct Connect: Sendable, Equatable {
@@ -60,6 +62,9 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
         case .hang:
             while !Task.isCancelled { try? await Task.sleep(nanoseconds: 5_000_000) }
             throw ShowerDeviceError.interrupted
+        case .after(let gate, let f):
+            for await _ in gate { break }
+            return f
         }
     }
 

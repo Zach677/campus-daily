@@ -162,6 +162,68 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(phases, [.idle, .authorizing, .authorizing, .writePending, .running])
     }
 
+    // MARK: Cancel while connecting
+
+    func waitUntil(_ condition: @escaping () async -> Bool) async {
+        for _ in 0..<400 where !(await condition()) { try? await Task.sleep(nanoseconds: 5_000_000) }
+    }
+
+    /// 取消 during the Bluetooth connect: the task is cut short, nothing reaches the platform and
+    /// no record is left.
+    func testACancelDuringTheConnectSendsNothing() async throws {
+        let e = try engine()
+        transport.script(.hang)
+        let b = binding
+        let task = Task { try? await e.start(b) }
+        await waitUntil { [transport] in transport!.writes.count == 1 }
+        let accepted = await e.cancelStart()
+        XCTAssertTrue(accepted)
+        task.cancel()
+        _ = await task.value
+        let s = await e.state
+        XCTAssertEqual(s.phase, .failed)
+        XCTAssertEqual(s.failure?.needsReview, false)
+        XCTAssertTrue(gateway.authorizeFrames.isEmpty)
+        XCTAssertEqual(try vault.showerState()?.phase ?? .idle, .idle, "no record left")
+        XCTAssertTrue(s.canStart)
+    }
+
+    /// 取消 accepted after the controller answered but before the authorize request: the request
+    /// never leaves, even with the task left running.
+    func testAnAcceptedCancelKeepsTheAuthorizeRequestBack() async throws {
+        let e = try engine()
+        let (gate, open) = AsyncStream.makeStream(of: Void.self)
+        transport.script(.after(gate, identity))
+        let b = binding
+        let task = Task { try? await e.start(b) }
+        await waitUntil { [transport] in transport!.writes.count == 1 }
+        let accepted = await e.cancelStart()
+        XCTAssertTrue(accepted)
+        open.yield(); open.finish()
+        _ = await task.value
+        let s = await e.state
+        XCTAssertEqual(s.failure?.reason, .deviceUnavailable)
+        XCTAssertEqual(s.failure?.needsReview, false)
+        XCTAssertTrue(gateway.authorizeFrames.isEmpty)
+    }
+
+    /// Once the authorize request has left, a cancel is refused: the start goes on, and after
+    /// it has finished there is nothing to cancel either.
+    func testACancelAfterTheAuthorizeRequestLeftIsRefused() async throws {
+        let e = try engine()
+        transport.script(.frame(identity))
+        gateway.scriptAuthorize(.hang)
+        let b = binding
+        let task = Task { try? await e.start(b) }
+        await waitUntil { [gateway] in gateway!.authorizeFrames.count == 1 }
+        let accepted = await e.cancelStart()
+        XCTAssertFalse(accepted)
+        task.cancel()
+        _ = await task.value
+        let refusedWhenIdle = await e.cancelStart()
+        XCTAssertFalse(refusedWhenIdle)
+    }
+
     // MARK: Refusal / uncertainty
 
     /// While a reset runs, a start (the in-app button and the 开始洗澡 shortcut both come here)
