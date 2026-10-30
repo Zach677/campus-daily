@@ -1,0 +1,139 @@
+import Foundation
+
+/// One of the two big numbers on the home screen (校园卡, 电量): the value, whether it is low
+/// (red), and the small line under it. Pure; the home screen and its tests share it.
+public struct HomeFigure: Sendable, Equatable {
+    public enum Night: Sendable, Equatable { case tonight, tomorrow }
+    public enum Subline: Sendable, Equatable {
+        /// 「昨天花了 ¥12.00」
+        case spent(Money)
+        /// 「昨天没花钱」
+        case spentNothing
+        /// 「够用约 9 天」
+        case lastsDays(Int)
+        /// 「只够到今晚」/「只够到明晚」
+        case lastsUntil(Night)
+        /// 「登录后显示」
+        case afterSignIn
+
+        public var text: String {
+            switch self {
+            case .spent(let money): return "昨天花了 " + money.description
+            case .spentNothing: return "昨天没花钱"
+            case .lastsDays(let days): return "够用约 \(days) 天"
+            case .lastsUntil(.tonight): return "只够到今晚"
+            case .lastsUntil(.tomorrow): return "只够到明晚"
+            case .afterSignIn: return "登录后显示"
+            }
+        }
+    }
+
+    /// Nil shows 「—」.
+    public var value: Decimal?
+    /// The number and the subline turn red. Never true without a value.
+    public var low: Bool
+    /// Nil hides the line (no gap is left).
+    public var subline: Subline?
+
+    public init(value: Decimal?, low: Bool, subline: Subline?) {
+        self.value = value; self.low = low; self.subline = subline
+    }
+}
+
+/// The rules behind the two home numbers.
+public enum HomeFigures {
+    /// 校园卡: low under the user's card line; the subline is yesterday's spending, hidden
+    /// whenever the records can't tell.
+    public static func card(_ snapshot: HomeSnapshot, signedIn: Bool, lines: ReminderLines, now: Date,
+                            calendar: Calendar = SchoolCalendar.shanghai) -> HomeFigure {
+        guard signedIn else { return HomeFigure(value: nil, low: false, subline: .afterSignIn) }
+        let value = snapshot.card.value?.yuan
+        let spent = CardSpending.yesterday(snapshot.activity, now: now, calendar: calendar)
+        let subline: HomeFigure.Subline? = spent.map { $0 == .zero ? .spentNothing : .spent($0) }
+        return HomeFigure(value: value, low: value.map { $0 < lines.card } ?? false, subline: subline)
+    }
+
+    /// 电量: low under the user's power line or when the estimate is a day or less. The estimate
+    /// (remaining ÷ the previous day's use, counted from the reading) needs a previous day's use
+    /// above zero; without it the subline is hidden.
+    public static func power(_ snapshot: HomeSnapshot, signedIn: Bool, lines: ReminderLines, now: Date,
+                             calendar: Calendar = .current) -> HomeFigure {
+        guard signedIn else { return HomeFigure(value: nil, low: false, subline: .afterSignIn) }
+        guard let meter = snapshot.power.value, let remaining = meter.remainingKWh else {
+            return HomeFigure(value: nil, low: false, subline: nil)
+        }
+        let estimate = self.estimate(remaining: remaining, dailyUse: meter.dailyUseKWh,
+                                     readAt: snapshot.power.fetchedAt ?? now, now: now, calendar: calendar)
+        let low = remaining < lines.power || (estimate.map { $0.days <= 1 } ?? false)
+        var subline: HomeFigure.Subline?
+        if let estimate {
+            if low, let night = estimate.night { subline = .lastsUntil(night) }
+            else { subline = .lastsDays(estimate.days) }
+        }
+        return HomeFigure(value: remaining, low: low, subline: subline)
+    }
+
+    /// Whole days left (rounded down) and, when the estimated end falls today or tomorrow by
+    /// `now`, which night. An end already past reads as tonight.
+    static func estimate(remaining: Decimal, dailyUse: Decimal?, readAt: Date, now: Date,
+                         calendar: Calendar) -> (days: Int, night: HomeFigure.Night?)? {
+        guard let dailyUse, dailyUse > 0, remaining >= 0 else { return nil }
+        let daysLeft = NSDecimalNumber(decimal: remaining / dailyUse).doubleValue
+        guard daysLeft.isFinite else { return nil }
+        let end = readAt.addingTimeInterval(daysLeft * 86_400)
+        let today = calendar.startOfDay(for: now)
+        var night: HomeFigure.Night?
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today),
+           let after = calendar.date(byAdding: .day, value: 2, to: today) {
+            if end < tomorrow { night = .tonight } else if end < after { night = .tomorrow }
+        }
+        return (Int(daysLeft.rounded(.down)), night)
+    }
+}
+
+/// The line under the two numbers.
+public enum HomeUpdateLine: Sendable, Equatable {
+    /// Signed out: no line.
+    case hidden
+    /// 「正在更新…」 with a spinner.
+    case refreshing
+    /// 「10:32 更新」
+    case updated(Date)
+    /// 「没更新上，下拉再试 · 数字是 10:32 的」; the date is nil when nothing was ever read.
+    case failed(lastGood: Date?)
+
+    /// Refreshing wins. Otherwise a failed read of the balance or of the bound meter (kept as
+    /// the tile's error until a later read succeeds, so a refresh that stopped without reading
+    /// changes nothing) shows the failed line. The time is the older of the shown numbers', so
+    /// it never claims a number is fresher than it is (a number never read shows 「—」 and has
+    /// no time). Nothing read and nothing failed yet (just signed in): no line.
+    public static func of(_ snapshot: HomeSnapshot, signedIn: Bool, meterBound: Bool, refreshing: Bool) -> HomeUpdateLine {
+        guard signedIn else { return .hidden }
+        if refreshing { return .refreshing }
+        var times = [snapshot.card.fetchedAt]
+        if meterBound { times.append(snapshot.power.fetchedAt) }
+        let lastGood = times.compactMap { $0 }.min()
+        if snapshot.card.error != nil || (meterBound && snapshot.power.error != nil) { return .failed(lastGood: lastGood) }
+        guard let lastGood else { return .hidden }
+        return .updated(lastGood)
+    }
+
+    /// Today 「10:32」, yesterday 「昨天 10:32」, earlier 「10月26日」.
+    public static func stamp(_ date: Date, now: Date, calendar: Calendar) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return UpdateTimeText.clock(date, calendar: calendar) }
+        if UpdateTimeText.isYesterday(date, now: now, calendar: calendar) {
+            return "昨天 " + UpdateTimeText.clock(date, calendar: calendar)
+        }
+        return UpdateTimeText.monthDay(date, calendar: calendar)
+    }
+
+    public func text(now: Date, calendar: Calendar) -> String? {
+        switch self {
+        case .hidden: return nil
+        case .refreshing: return "正在更新…"
+        case .updated(let date): return Self.stamp(date, now: now, calendar: calendar) + " 更新"
+        case .failed(let date?): return "没更新上，下拉再试 · 数字是 " + Self.stamp(date, now: now, calendar: calendar) + " 的"
+        case .failed(nil): return "没更新上，下拉再试"
+        }
+    }
+}
