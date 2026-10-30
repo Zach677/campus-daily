@@ -41,10 +41,8 @@ struct CampusRechargeView: View {
             .task(id:revision) { await prepare() }
             .sheet(isPresented:$login) {
                 CampusLoginSheet { value in
-                    Task {
-                        do { try await campus.adoptWebState(value); revision = UUID() }
-                        catch { issue = "这次没登录上，再试一次。" }
-                    }
+                    do { try await campus.adoptWebState(value); await campus.refresh(force:true); revision = UUID() }
+                    catch { issue = "这次没登录上，再试一次。" }
                 }
             }
     }

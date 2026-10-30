@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import DailyCore
+import DailyStore
 
 /// Settings sheet (design §6, copy-r1 「设置」).
 struct SettingsView: View {
@@ -20,6 +21,20 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
 
     private var data: HomeData { preview ?? HomeData(campus:campus, water:water, laundry:laundry) }
+    /// DEBUG demo: the switch flips locally (seeded from the demo data).
+    @State private var previewLaundry: Bool?
+
+    /// 「学校洗衣机」 switch.
+    var laundryOn: Bool { preview != nil ? (previewLaundry ?? preview?.laundryEnabled ?? true) : laundry.schoolEnabled }
+    private var laundryLocked: Bool { preview?.laundryLocked ?? laundry.schoolSwitchLocked }
+    private var laundrySwitch: Binding<Bool> {
+        Binding(get:{ laundryOn }, set:{ on in
+            // Default List insert/delete animation for 「常用洗衣机」 and 「洗衣洗好时」.
+            withAnimation {
+                if preview != nil { previewLaundry = on } else { laundry.setSchoolEnabled(on) }
+            }
+        })
+    }
 
     var body: some View {
         let data = data
@@ -33,7 +48,7 @@ struct SettingsView: View {
                         SettingsRow(emoji:"🏠", title:"宿舍", value:data.dorm ?? "去设置")
                     }
                 }.listRowBackground(Theme.group)
-                Section("设备") {
+                Section {
                     if data.water == .unconfigured {
                         // Hot water is set up by choosing the dorm (controller binding), not by a file.
                         NavigationLink { CampusOnboardingView() } label: {
@@ -44,13 +59,27 @@ struct SettingsView: View {
                             SettingsRow(emoji:"🚿", title:"热水", value:"已导入")
                         }
                     }
-                    NavigationLink { WasherSetupView() } label: {
-                        SettingsRow(emoji:"🧺", title:"常用洗衣机",
-                                    value:data.laundryBound ? (data.laundryMachine.map { "\($0) 号机" } ?? "已绑定") : "去设置")
+                    Toggle(isOn:laundrySwitch) {
+                        SettingsRow(emoji:"🧺", title:SchoolLaundryPreference.title)
+                    }
+                    .tint(.green)
+                    .disabled(laundryLocked)
+                    .accessibilityIdentifier("schoolLaundrySwitch")
+                    if laundryOn {
+                        NavigationLink { WasherSetupView() } label: {
+                            // No icon: the title lines up with 「学校洗衣机」 above.
+                            SettingsRow(emoji:"🧺", title:"常用洗衣机", hidesEmoji:true,
+                                        value:data.laundryBound ? (data.laundryMachine.map { "\($0) 号机" } ?? "已绑定") : "去设置")
+                        }
                     }
                     NavigationLink { CampusPowerSetupView() } label: {
                         SettingsRow(emoji:"⚡", title:"电表", value:data.powerBound ? "已绑定" : "去绑定")
                     }
+                } header: {
+                    Text("设备")
+                } footer: {
+                    Text(SchoolLaundryPreference.footer(isOn:laundryOn, locked:laundryLocked))
+                        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                 }.listRowBackground(Theme.group)
                 reminderSection
                 Section {
@@ -108,9 +137,12 @@ extension SettingsView {
                 } label: { Text("洗完没结算").foregroundStyle(Theme.ink) }
                 .pickerStyle(.navigationLink)
             }
-            Toggle(isOn:off ? .constant(false) : $laundryAlert) {
-                Text("洗衣洗好时").foregroundStyle(off ? Theme.ink2 : Theme.ink)
-            }.disabled(off)
+            if laundryOn {
+                // Hidden with 学校洗衣机 off; its value is kept.
+                Toggle(isOn:off ? .constant(false) : $laundryAlert) {
+                    Text("洗衣洗好时").foregroundStyle(off ? Theme.ink2 : Theme.ink)
+                }.disabled(off)
+            }
             if off {
                 actionRow("去系统设置打开通知") {
                     if let url = URL(string:UIApplication.openNotificationSettingsURLString) { openURL(url) }
@@ -180,11 +212,13 @@ extension SettingsView {
 struct SettingsRow: View {
     let emoji: String
     let title: String
+    /// Keeps the emoji's space but doesn't draw it (a sub-row aligned with the row above).
+    var hidesEmoji = false
     var value: String? = nil
     @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         HStack(spacing:12) {
-            Text(emoji).scaledFont(17).frame(minWidth:24).fixedSize().accessibilityHidden(true)
+            Text(emoji).scaledFont(17).frame(minWidth:24).fixedSize().opacity(hidesEmoji ? 0 : 1).accessibilityHidden(true)
             if typeSize.isAccessibilitySize {
                 // Large text: value goes under the title instead of being truncated.
                 VStack(alignment:.leading, spacing:2) {

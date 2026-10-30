@@ -1,5 +1,6 @@
 import SwiftUI
 import DailyCore
+import DailyStore
 
 /// First-run guide (design §7, copy-r1 「首次引导」). Presented as a full-screen cover.
 struct OnboardingView: View {
@@ -66,16 +67,15 @@ struct OnboardingView: View {
         .typesettingLanguage(Theme.typesetting)
         .sheet(isPresented:$login) {
             CampusLoginSheet { value in
-                Task {
-                    do {
-                        try await campus.adoptWebState(value)
-                        issue = nil
-                        Task { await campus.refresh(force:true) }
-                        campus.matchPowerAutomatically()
-                        // Only from the login step: a repeated delivery must not skip the dorm step.
-                        if step == .login { advance() }
-                    } catch { issue = "这次没登录上，再试一次。" }
-                }
+                do {
+                    try await campus.adoptWebState(value)
+                    issue = nil
+                    // The sheet shows 「正在读电量…」 until the card and meter are read.
+                    await campus.refresh(force:true)
+                    campus.matchPowerAutomatically()
+                    // Only from the login step: a repeated delivery must not skip the dorm step.
+                    if step == .login { advance() }
+                } catch { issue = "这次没登录上，再试一次。" }
             }
         }
         .sheet(isPresented:$ujing) { UjingLoginView() }
@@ -144,7 +144,8 @@ struct OnboardingView: View {
         switch step {
         case .login: return Text("你好，\n先登录") + accent("学校账号") + Text("。")
         case .dorm: return Text("你住在") + accent("哪一间") + question
-        case .washer: return Text("常用的") + accent("洗衣机") + Text("是哪台") + question
+        // 学校洗衣机 question (laundry-optional spec §1): same page, 「洗衣机」 in the accent colour.
+        case .washer: return Text("宿舍用学校的") + accent("洗衣机") + Text("吗") + question
         case .done: return Text("好了，\n") + accent("都准备好了") + Text("。")
         }
     }
@@ -153,7 +154,7 @@ struct OnboardingView: View {
         switch step {
         case .login: return "在学校官方网页登录，登录后这些会自己出现："
         case .dorm: return dorm.map { "已经从学校账号读到：\($0)。不对就改一下。" } ?? "没读到你的宿舍，手动选一下。"
-        case .washer: return "先登录 U净，再扫机身上的码，以后一按就能付款。"
+        case .washer: return SchoolLaundryPreference.Onboarding.subtitle
         case .done: return nil
         }
     }
@@ -270,6 +271,25 @@ struct OnboardingView: View {
                         .scaledFont(17, .medium).foregroundStyle(Theme.ink2)
                         .frame(minHeight:44).padding(.top,4)
                 }
+                if step == .washer {
+                    VStack(spacing:0) {
+                        Button(action:skipLaundry) {
+                            Text(SchoolLaundryPreference.Onboarding.no)
+                                .scaledFont(17, .medium, relativeTo:.body).foregroundStyle(Theme.ink)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                                .frame(maxWidth:.infinity, minHeight:50)
+                                // Spec: 6% black light / secondary fill dark — that's Theme.fill (Theme.group is white).
+                                .background(Theme.fill, in:RoundedRectangle(cornerRadius:25, style:.continuous))
+                        }
+                        .buttonStyle(PressScaleStyle())
+                        .accessibilityLabel(SchoolLaundryPreference.Onboarding.no)
+                        Text(SchoolLaundryPreference.Onboarding.note)
+                            .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                            .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
+                            .padding(.top,10)
+                    }
+                    .padding(.top,12)
+                }
                 if step == .login {
                     Label("密码只交给学校，不经过我们", systemImage:"lock.fill")
                         .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
@@ -288,7 +308,7 @@ struct OnboardingView: View {
         switch step {
         case .login: return "去学校网页登录"
         case .dorm: return bindingWater ? "正在找宿舍的水控…" : dorm != nil ? "就是这间" : "选宿舍"
-        case .washer: return laundryConnected ? "扫码绑定" : "登录 U净"
+        case .washer: return SchoolLaundryPreference.Onboarding.yes
         case .done: return "开始用"
         }
     }
@@ -306,8 +326,10 @@ struct OnboardingView: View {
                 bindWaterThenAdvance()
             } else if dorm != nil { bindWaterThenAdvance() } else { openDormPicker() }
         case .washer:
-            if preview != nil { advance() }
-            else if laundryConnected { washer = true }
+            // 用，接着设置: the U净 login / scan flow as before.
+            if preview != nil { advance(); return }
+            laundry.setSchoolEnabled(true)
+            if laundryConnected { washer = true }
             else { ujing = true }
         case .done: close()
         }
@@ -327,6 +349,12 @@ struct OnboardingView: View {
             case .needsChoice: bindTried = true; openDormPicker()
             }
         }
+    }
+
+    /// 不用: laundry hidden everywhere (changeable in 设置); first-run setup ends here.
+    private func skipLaundry() {
+        if preview == nil { laundry.setSchoolEnabled(false) }
+        close()
     }
 
     private func openDormPicker() {

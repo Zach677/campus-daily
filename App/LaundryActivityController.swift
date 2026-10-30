@@ -72,6 +72,14 @@ import DailyCore
         Task { await current.end(ActivityContent(state:state, staleDate:now), dismissalPolicy:.after(now.addingTimeInterval(5 * 60))) }
     }
 
+    /// 学校洗衣机 switched off: end any laundry activity at once.
+    func endAll() {
+        endNow()
+        for extra in Activity<LaundryActivityAttributes>.activities where extra.activityState == .active {
+            Task { await extra.end(nil, dismissalPolicy:.immediate) }
+        }
+    }
+
     private func endNow() {
         guard let current = activity else { return }
         activity = nil

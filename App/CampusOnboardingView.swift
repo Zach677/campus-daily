@@ -17,7 +17,9 @@ struct CampusWebLogin {
     @Published var issue: String?
     @Published var reading = false
     @Published var status = "填写学校学工号和密码，登录后自动同步校园卡。"
-    @Published var connecting = false
+    /// Hidden-page phases and their stage line (DailyCore, unit-tested).
+    @Published var progress = CampusLoginProgress()
+    @Published var now = Date()
     var portalDormAddress = ""
     @Published var connected: CampusWebLogin?
     @Published var stalled = false
@@ -39,6 +41,8 @@ struct CampusWebLogin {
 
 private struct OfficialCampusBrowser: UIViewRepresentable {
     @ObservedObject var state: CampusBrowserState
+    /// DEBUG demo: nothing is loaded (loading-state screenshots).
+    var loads = true
     func makeCoordinator() -> Coordinator { Coordinator(state) }
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -52,11 +56,11 @@ private struct OfficialCampusBrowser: UIViewRepresentable {
         }
         var login = URLComponents(string:"https://cas.gdbtu.edu.cn/cas/login")!
         login.queryItems = [URLQueryItem(name:"service",value:"https://portal.gdbtu.edu.cn/?path=https%3A%2F%2Fportal.gdbtu.edu.cn%2Fmain.html%23%2FStudent")]
-        view.load(URLRequest(url:login.url!))
+        if loads { view.load(URLRequest(url:login.url!)) }
         return view
     }
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        let concealed = state.connecting && !state.stalled
+        let concealed = state.progress.concealed && !state.stalled
         uiView.alpha = concealed ? 0 : 1
         uiView.isUserInteractionEnabled = !concealed
         uiView.accessibilityElementsHidden = concealed
@@ -85,6 +89,7 @@ private struct OfficialCampusBrowser: UIViewRepresentable {
                            let result = try JSONSerialization.jsonObject(with:bytes) as? [String:Any],
                            let stage = result["stage"] as? String {
                             if Task.isCancelled { return }
+                            self.state.progress.probed(automation:stage, formVisible:result["form"] as? Bool == true)
                             switch stage {
                             case "portal-profile":
                                 if webView.url?.host == "portal.gdbtu.edu.cn", let address = result["dormAddress"] as? String,
@@ -95,11 +100,7 @@ private struct OfficialCampusBrowser: UIViewRepresentable {
                                     _ = try? await webView.evaluateJavaScript("window.__campusDormAcknowledged=" + quoted)
                                 }
                             case "login": self.state.status = "填写学校学工号和密码，登录后自动同步校园卡。"
-                            case "waiting-profile": self.state.status = "正在读取学校登记宿舍…"
-                            case "opening-wallet", "waiting-portal": self.state.status = "正在进入一卡通…"
-                            case "waiting-wallet": self.state.status = "正在连接校园卡…"
                             case "wallet-ready":
-                                self.state.status = "正在同步校园卡…"
                                 if let config = try? await self.state.read(), !Task.isCancelled { self.state.connected = config; return }
                             case "unsupported-entry", "unsupported-origin":
                                 self.state.stalled = true; self.state.status = "自动连接尚未完成，可重试或使用备用方式"
@@ -115,7 +116,7 @@ private struct OfficialCampusBrowser: UIViewRepresentable {
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             stop()
             if webView.url?.host == "cas.gdbtu.edu.cn" {state.portalDormAddress = ""}
-            state.connecting = ["portal.gdbtu.edu.cn","ecykt.gdbtu.edu.cn"].contains(webView.url?.host ?? "")
+            state.progress.pageStarted(host:webView.url?.host)
         }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { connect(webView) }
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy)->Void) {
@@ -137,7 +138,7 @@ private struct OfficialCampusBrowser: UIViewRepresentable {
             return nil
         }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            if (error as? URLError)?.code != .cancelled { state.issue = "学校网页没打开，检查一下网络再试。" }
+            if (error as? URLError)?.code != .cancelled { state.issue = "学校网页没打开，检查一下网络再试。"; state.progress.failed() }
         }
     }
 }
@@ -148,22 +149,53 @@ struct CampusLoginSheet: View {
     @State private var manual = false
     /// The automatic read and the manual 读取 button can both produce a login: deliver it once.
     @State private var delivered = false
-    let receive: (CampusWebLogin) -> Void
+    /// Adopts the login and reads the card and meter; the sheet shows 「正在读电量…」 meanwhile and
+    /// closes when it returns (or after `readLimit`, leaving the read running).
+    let receive: (CampusWebLogin) async -> Void
+    /// DEBUG demo: keep the opening state (no page is loaded).
+    var holdOpening = false
+    private static let readLimit: Duration = .seconds(20)
     private func deliver(_ config: CampusWebLogin) {
         guard !delivered else { return }
         delivered = true
-        receive(config); dismiss()
+        browser.progress.delivered()
+        // Not cancelled by the time limit: a slow read finishes after the sheet has closed.
+        Task { await receive(config); close() }
+        Task { try? await Task.sleep(for:Self.readLimit); close() }
+    }
+    @State private var closed = false
+    private func close() {
+        guard !closed else { return }
+        closed = true; dismiss()
     }
     var body: some View {
         NavigationStack {
             VStack(spacing:0) {
-                Text(browser.status)
-                    .font(.footnote).foregroundStyle(.secondary).padding(12)
+                if !hidden {
+                    Text(browser.status)
+                        .font(.footnote).foregroundStyle(.secondary).padding(12)
+                }
                 ZStack {
-                    OfficialCampusBrowser(state:browser)
-                    if browser.connecting && !browser.stalled {
-                        VStack(spacing:16) {ProgressView();Text("正在连接校园卡…").font(.subheadline).foregroundStyle(.secondary)}
-                            .frame(maxWidth:.infinity,maxHeight:.infinity).background(NativeTheme.background)
+                    OfficialCampusBrowser(state:browser, loads:!holdOpening)
+                    if hidden {
+                        VStack(spacing:16) {
+                            ProgressView()
+                            VStack(spacing:6) {
+                                Text(browser.progress.text ?? CampusLoginProgress.openingText)
+                                    .font(.subheadline).foregroundStyle(Theme.ink)
+                                    .accessibilityIdentifier("campusLoginStage")
+                                // Space kept from the start so the spinner doesn't move when it appears.
+                                let slow = browser.progress.slowNote(now:browser.now)
+                                Text(slow ?? CampusLoginProgress.slowText).font(.footnote).foregroundStyle(.secondary)
+                                    .opacity(slow == nil ? 0 : 1)
+                                    .accessibilityHidden(slow == nil)
+                            }
+                            .multilineTextAlignment(.center)
+                            .animation(.easeInOut(duration:0.2), value:browser.progress.slowNote(now:browser.now))
+                        }
+                        .padding(.horizontal,32).padding(.bottom,60)
+                        .frame(maxWidth:.infinity,maxHeight:.infinity).background(NativeTheme.background)
+                        .accessibilityElement(children:.combine)
                     }
                 }
                 if let issue = browser.issue { Text(issue).font(.footnote).foregroundStyle(.orange).padding(10) }
@@ -173,14 +205,24 @@ struct CampusLoginSheet: View {
                 if manual { Button {
                     Task { do { let config = try await browser.read(); deliver(config) }
                         catch { browser.issue = "登录信息没读到，再试一次。" } }
-                } label: { Text(browser.reading ? "正在读取…" : "从当前一卡通页面读取").frame(maxWidth:.infinity,minHeight:44) }
-                    .buttonStyle(.borderedProminent).padding().disabled(browser.reading).accessibilityIdentifier("readCampusLogin")
+                } label: { Text(browser.reading ? "正在读取…" : "从当前页面读取").frame(maxWidth:.infinity,minHeight:44) }
+                    .buttonStyle(.borderedProminent).padding().disabled(browser.reading || delivered).accessibilityIdentifier("readCampusLogin")
                 }
             }.background(NativeTheme.background).navigationTitle("连接校园卡").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() } } }
                 .onReceive(browser.$connected.compactMap { $0 }) { config in deliver(config) }
+                .task {
+                    // One clock for the 8 s slow line and the opening fallback.
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for:.seconds(1))
+                        browser.now = Date()
+                        if !holdOpening { browser.progress.tick(now:browser.now) }
+                    }
+                }
         }
     }
+    /// Spinner instead of the page (a stalled automation shows the page and its buttons).
+    private var hidden: Bool { browser.progress.concealed && !browser.stalled }
 }
 
 struct CampusOnboardingView: View {
@@ -266,15 +308,13 @@ struct CampusOnboardingView: View {
                 } catch {flow.issue = "没导入成功。选热水平台给的配置文件，别用别人的完整配置。"}
             }
             .sheet(isPresented:$login) { CampusLoginSheet { value in
-                Task {
-                    do {
-                        try await campus.adoptWebState(value)
-                        flow.reset()
-                        Task { await campus.refresh(force:true) }
-                        campus.matchPowerAutomatically()
-                        await flow.prepare(campus:campus,water:water)
-                    } catch { flow.issue = "这次没登录上，再试一次。" }
-                }
+                do {
+                    try await campus.adoptWebState(value)
+                    flow.reset()
+                    await campus.refresh(force:true)
+                    campus.matchPowerAutomatically()
+                    Task { await flow.prepare(campus:campus,water:water) }
+                } catch { flow.issue = "这次没登录上，再试一次。" }
             } }
             .task {
                 if campus.configured {

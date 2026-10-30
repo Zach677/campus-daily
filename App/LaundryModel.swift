@@ -37,6 +37,9 @@ private struct LaundryEngineHooks: LaundryHooks {
     @Published private(set) var candidate: WasherSnapshot?
     @Published private(set) var storageBlocked = false
     @Published private(set) var selectedMachineID: String?
+    /// 「学校洗衣机」 (Settings / first-run question). Off: laundry hidden everywhere, no reads,
+    /// no Live Activity, no reminder; the U净 login and saved machines stay.
+    @Published private(set) var schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
     @Published private(set) var lastOrder: LaundryLastOrder? = {
         UserDefaults.standard.data(forKey:LaundryModel.lastOrderKey).flatMap { try? JSONDecoder().decode(LaundryLastOrder.self, from:$0) }
     }()
@@ -54,9 +57,26 @@ private struct LaundryEngineHooks: LaundryHooks {
     init() {
         reloadAccount()
         // Live Activity + reminder follow every change of the order or machine reading.
-        activitySync = $checkout.combineLatest($snapshot, $configured)
+        activitySync = $checkout.combineLatest($snapshot, $configured, $schoolEnabled)
             .debounce(for:.milliseconds(50), scheduler:RunLoop.main)
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.syncActivity() } }
+    }
+
+    // MARK: 学校洗衣机
+
+    /// Same rule for the switch everywhere: off only once no order is unfinished.
+    var schoolSwitchLocked: Bool {
+        SchoolLaundryPreference.switchLocked(isOn:schoolEnabled, checkout:checkout?.phase, busy:checkoutBusy)
+    }
+
+    /// No confirmation; turning on restores the saved login and machines at once.
+    func setSchoolEnabled(_ on: Bool) {
+        guard on != schoolEnabled else { return }
+        if !on, !SchoolLaundryPreference.mayTurnOff(checkout:checkout?.phase, busy:checkoutBusy) { return }
+        SchoolLaundryPreference(storage:UserDefaults.standard).set(on)
+        schoolEnabled = on
+        if on { Task { await refresh(force:true) } } else { snapshot = nil; issue = nil; lastAttempt = nil }
+        syncActivity()
     }
 
     // MARK: Account + engine
@@ -205,7 +225,7 @@ private struct LaundryEngineHooks: LaundryHooks {
     /// Machine state (scan + programs). Throttled to once a minute unless forced.
     func refresh(force: Bool = false) async {
         syncActivity()
-        guard configured, let machine = selectedMachine, !loading else { return }
+        guard schoolEnabled, configured, let machine = selectedMachine, !loading else { return }
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < 60 { return }
         loading = true; issue = nil; lastAttempt = Date()
         defer { loading = false }
@@ -295,7 +315,9 @@ private struct LaundryEngineHooks: LaundryHooks {
     /// While the order runs, schedules one read-only order re-read a minute after the expected end so a
     /// finished wash is noticed even when the laundry page is closed.
     func syncActivity() {
-        let facts = LaundryFacts(model:self)
+        // Off: nothing on the lock screen and no laundry reminder (empty facts end / cancel them).
+        let facts = schoolEnabled ? LaundryFacts(model:self) : LaundryFacts()
+        if !schoolEnabled { LaundryActivityController.shared.endAll() }
         LaundryActivityController.shared.sync(facts:facts)
         Reminders.shared.syncLaundry(facts:facts)
         var end: Date?

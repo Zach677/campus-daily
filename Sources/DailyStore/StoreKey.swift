@@ -61,4 +61,6 @@ public enum PreferenceKey {
     public static func reminder(_ name: String) -> String { prefix + "reminder." + name }
     public static let laundryAckFailedOrder = prefix + "laundry.ackFailedOrder"
     public static let waterNeedsResidenceReview = prefix + "water.needsResidenceReview"
+    /// Bool, absent = on (`SchoolLaundryPreference`).
+    public static let schoolLaundry = prefix + "laundry.school"
 }

@@ -28,6 +28,8 @@ struct HomeView: View {
     @State private var laundryDemo: LaundryDemo?
     @State private var activityPreview: LaundryActivityPreview.Kind?
     @State private var widgetPreview: WidgetPreview.Page?
+    /// campusdaily://demo/login-loading: the sign-in sheet's opening state, nothing loaded.
+    @State private var loginDemo = false
     #endif
 
     private func openOnboarding() {
@@ -99,6 +101,9 @@ struct HomeView: View {
         .fullScreenCover(item:$activityPreview) { kind in
             LaundryActivityPreview(kind:kind).onTapGesture { activityPreview = nil }.onOpenURL { handleDemo($0) }
         }
+        .sheet(isPresented:$loginDemo) {
+            CampusLoginSheet(receive:{ _ in }, holdOpening:true)
+        }
         .fullScreenCover(item:$widgetPreview) { page in
             WidgetPreview(page:page.number).onTapGesture { widgetPreview = nil }.onOpenURL { handleDemo($0) }
         }
@@ -143,6 +148,12 @@ struct HomeView: View {
             if let kind = LaundryActivityPreview.handle(url) { activityPreview = kind; return }
             activityPreview = nil
             if LaundryActivityController.handleDemo(url) { return }
+            if url.host == "demo", url.lastPathComponent == "login-loading" {
+                onboarding = nil; settings = false; path = []
+                demo = HomeDemo.normal.content().0
+                Task { try? await Task.sleep(for:.milliseconds(400)); loginDemo = true }
+                return
+            }
             if let onboard = OnboardingDemo.handle(url) {
                 settings = false; path = []
                 onboarding = OnboardingRequest(step:onboard.0, preview:onboard.1)
@@ -173,7 +184,8 @@ struct HomeView: View {
                 return
             }
             let settingsDemos: [String:UNAuthorizationStatus] = ["settings":.authorized, "settings-notif-off":.denied,
-                                                                  "settings-ask":.notDetermined]
+                                                                  "settings-ask":.notDetermined,
+                                                                  "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized]
             reminders.demoStatus = settingsDemos[url.lastPathComponent]
             guard let result = HomeDemo.handle(url) else { return }
             onboarding = nil; settings = false; path = []; laundryDemo = nil
@@ -213,7 +225,7 @@ struct HomeView: View {
                 .padding(.top,heroGap).padding(.horizontal,24).padding(.bottom,6)
             if !data.signedIn {
                 HomeSectionHeader(text:"登录后会出现").padding(.top,24)
-                signedOutRows
+                signedOutRows(data)
             } else {
                 statusRows(data).padding(.top,24)
                 if !data.recents.isEmpty {
@@ -289,14 +301,17 @@ struct HomeView: View {
             rowLink(.card, label:cardLabel(data)) { cardRow(data) }
             RowSeparator()
             rowLink(.water, label:waterLabel(data)) { waterRow(data) }
-            RowSeparator()
-            rowLink(data.laundryBound ? .laundry : .washerSetup, label:laundryLabel(data)) { laundryRow(data) }
+            if data.laundryEnabled {
+                RowSeparator()
+                rowLink(data.laundryBound ? .laundry : .washerSetup, label:laundryLabel(data)) { laundryRow(data) }
+            }
         }
     }
 
-    private var signedOutRows: some View {
-        VStack(spacing:0) {
-            ForEach(Array([("⚡","电量"),("💳","校园卡"),("🚿","热水"),("🧺","洗衣")].enumerated()), id:\.offset) { index, row in
+    private func signedOutRows(_ data: HomeData) -> some View {
+        let rows = [("⚡","电量"),("💳","校园卡"),("🚿","热水")] + (data.laundryEnabled ? [("🧺","洗衣")] : [])
+        return VStack(spacing:0) {
+            ForEach(Array(rows.enumerated()), id:\.offset) { index, row in
                 if index > 0 { RowSeparator() }
                 StatusRow(emoji:row.0, title:row.1, subtitle:"登录后显示", value:.dash, dimmed:true)
                     .accessibilityElement(children:.ignore)
@@ -440,7 +455,7 @@ struct HomeView: View {
         guard data.signedIn else { return .signIn }
         let water = waterPillKind(data)
         // Laundry 待核对 takes the dock only when the shower is idle (shower 待核对 wins).
-        if data.laundryBound, data.laundry == .unresolved, water == nil || water == .start { return .laundryReview }
+        if data.laundryEnabled, data.laundryBound, data.laundry == .unresolved, water == nil || water == .start { return .laundryReview }
         return water
     }
 
@@ -457,7 +472,8 @@ struct HomeView: View {
 
     private func dock(_ data: HomeData) -> some View {
         let kind = pillKind(data)
-        let showsRound = data.signedIn && kind != .finish && kind != .settling
+        // The scan button only leads to the washer: gone with 学校洗衣机 off (the pill fills the row).
+        let showsRound = data.laundryEnabled && data.signedIn && kind != .finish && kind != .settling
         return HStack(spacing:12) {
             if let kind { pill(kind, data:data) }
             else { Spacer(minLength:0) }

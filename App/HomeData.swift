@@ -90,6 +90,10 @@ struct HomeData {
     var showerUnconfirmed = false
     var lastShowerMinutes: Int?
     var lastShowerCost: Decimal?
+    /// 「学校洗衣机」 on. Off: no laundry row, recent, scan button or done panel.
+    var laundryEnabled = true
+    /// The 学校洗衣机 switch can't be turned off yet (an order is unfinished).
+    var laundryLocked = false
     var laundryBound = false
     var laundryMachine: String?
     var laundry = Laundry.unknown
@@ -193,12 +197,14 @@ extension HomeData {
                                   date:end, detail:nil, amount:model.lastCost))
         }
 
+        laundryEnabled = laundry.schoolEnabled
+        laundryLocked = laundry.schoolSwitchLocked
         laundryBound = laundry.configured
         if let device = laundry.snapshot { laundryMachine = device.deviceNo }
         let facts = LaundryFacts(model:laundry)
         self.laundry = Self.laundryRow(facts, now:now)
-        laundryDone = Self.laundryDone(facts, now:now)
-        if let record = laundry.checkout, record.inFlight, let created = record.createdAt {
+        laundryDone = laundryEnabled ? Self.laundryDone(facts, now:now) : nil
+        if laundryEnabled, let record = laundry.checkout, record.inFlight, let created = record.createdAt {
             recents.append(Recent(id:"laundry-\(record.orderId ?? created.description)", emoji:"🧺",
                                   title:"洗衣 · " + record.programName, date:created,
                                   detail:record.draft.map { "\($0.machineName) 号机" }, amount:facts.amount))
@@ -242,6 +248,10 @@ enum SettlementResult: Equatable {
 
 enum HomeDemo: String, CaseIterable {
     case normal, low, empty, shower, settled, unconfirmed, off, settings
+    /// 学校洗衣机 off: home without laundry / settings with the switch off / switch locked by an order.
+    case laundryOff = "home-laundry-off"
+    case settingsLaundryOff = "settings-laundry-off"
+    case settingsLaundryLocked = "settings-laundry-locked"
     case settingsOff = "settings-notif-off"
     case settingsAsk = "settings-ask"
     case unconfirmedRow = "unconfirmed-row"
@@ -278,6 +288,14 @@ enum HomeDemo: String, CaseIterable {
         ]
         switch self {
         case .normal, .settings, .settingsOff, .settingsAsk: return (data, nil)
+        case .laundryOff, .settingsLaundryOff:
+            data.laundryEnabled = false
+            data.recents.removeAll { $0.emoji == "🧺" }
+            return (data, nil)
+        case .settingsLaundryLocked:
+            data.laundryLocked = true
+            data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
+            return (data, nil)
         case .laundryRun:
             data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
             return (data, nil)
