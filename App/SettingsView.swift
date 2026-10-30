@@ -54,7 +54,7 @@ struct SettingsView: View {
                 }.listRowBackground(Theme.group)
                 reminderSection
                 Section {
-                    NavigationLink { AdvancedSettingsView() } label: {
+                    NavigationLink { AdvancedSettingsView(preview:preview) } label: {
                         SettingsRow(emoji:"🛠️", title:"高级")
                     }
                 } footer: {
@@ -265,7 +265,13 @@ private struct ChevronRow: View {
 
 /// 高级: config imports, Bluetooth connection check, Shortcuts hint, version.
 struct AdvancedSettingsView: View {
+    /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
+    var preview: HomeData? = nil
     @EnvironmentObject private var water: WaterModel
+    /// Same source as the main page's 「热水」 row: a dorm controller is bound (HomeData.water != .unconfigured).
+    private var waterConfigured: Bool { preview.map { $0.water != .unconfigured } ?? water.configured }
+    /// 检查水控状态 only means something while a session may be running.
+    private var mayReview: Bool { preview.map { $0.water.showering != nil } ?? water.mayFinish }
     @State private var importing = false
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
@@ -277,36 +283,36 @@ struct AdvancedSettingsView: View {
         (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + "）· 测试版"
     }
     private func importRow(_ title: String) -> some View {
-        Button { importing = true } label: { ChevronRow(title:title) }
+        Button { if preview == nil { importing = true } } label: { ChevronRow(title:title) }
     }
     var body: some View {
         List {
             Section {
-                importRow("导入热水配置").disabled(!water.mayImport)
+                importRow("导入热水配置").disabled(preview == nil && !water.mayImport)
             } header: { Text("导入配置") } footer: {
                 VStack(alignment:.leading, spacing:6) {
                     if let importIssue {
                         Label(importIssue, systemImage:"exclamationmark.circle").foregroundStyle(Theme.ink2)
                             .accessibilityIdentifier("importIssue")
                     }
-                    Text("通常无需导入文件。有没结算的记录时，别卸载 App，也别换配置。操作未确认时，先核对现场及官方记录。")
+                    Text("一般不用导入。有没结算的记录时，别卸载 App，也别换配置。")
                 }
             }.listRowBackground(Theme.group)
             Section {
-                if water.configured {
-                    Button { Task { await water.inspectBluetooth() } } label: {
+                if waterConfigured {
+                    Button { if preview == nil { Task { await water.inspectBluetooth() } } } label: {
                         Label(water.inspecting ? "正在核对…" : "扫描并核对本宿舍水控", systemImage:"antenna.radiowaves.left.and.right")
-                    }.disabled(!water.mayImport).accessibilityIdentifier("inspectWaterBluetooth")
+                    }.disabled(preview == nil && !water.mayImport).accessibilityIdentifier("inspectWaterBluetooth")
                     if let message = water.inspectionStatus {
                         Text(message).font(.subheadline).foregroundStyle(Theme.ink2).accessibilityIdentifier("waterInspectionStatus")
                     }
                     if let device = water.verifiedDevice {
-                        LabeledContent("设备名称", value:device.name)
+                        LabeledContent("水控名称", value:device.name)
                         LabeledContent("水控编号", value:device.machineID).accessibilityIdentifier("verifiedWaterMachine")
                         if let rssi = device.rssi { LabeledContent("本次信号", value:"\(rssi) dBm") }
                         VStack(alignment:.leading, spacing:4) {
-                            Text("设备标识 " + String(device.id.prefix(8)) + "…")
-                            Text("发现 \(device.nearbyCount) 台同名设备，已按宿舍水控编号匹配。")
+                            Text("水控标识 " + String(device.id.prefix(8)) + "…")
+                            Text("发现 \(device.nearbyCount) 台同名水控，已按宿舍水控编号匹配。")
                             Text("核对于 " + device.verifiedAt.formatted(date:.omitted, time:.standard))
                         }.font(.caption).foregroundStyle(Theme.ink2)
                     }
@@ -314,11 +320,11 @@ struct AdvancedSettingsView: View {
                     Text("导入热水配置后可以检查").foregroundStyle(Theme.ink2)
                 }
             } header: { Text("连接检查") } footer: {
-                Text("只读取设备编号，不会出水。核对后会断开，开始洗澡时再连接。")
+                Text("只读水控编号，不会开水。读完就断开，洗澡时再连。")
             }.listRowBackground(Theme.group)
             Section {
-                Button { Task { await water.reviewCurrentSession() } } label: { ChevronRow(title:"检查水控状态") }
-                    .disabled(!water.mayFinish).accessibilityIdentifier("reviewWaterSession")
+                Button { if preview == nil { Task { await water.reviewCurrentSession() } } } label: { ChevronRow(title:"检查水控状态") }
+                    .disabled(!mayReview).accessibilityIdentifier("reviewWaterSession")
                 Button {
                     do { diagnosticURL = try water.exportDiagnostics(); sharingDiagnostics = true }
                     catch { diagnosticFailed = true }
@@ -326,13 +332,13 @@ struct AdvancedSettingsView: View {
             } header: { Text("热水排查") } footer: {
                 VStack(alignment:.leading, spacing:6) {
                     Text("只看状态，不会开水，也不会结算。")
-                    Text("诊断文件包含版本、操作时间和设备回复类型，不含账号、密钥或设备编号。仅记录更新后的操作。")
+                    Text("诊断文件里有版本、操作时间和水控的回应，没有账号、密钥和水控编号。只记这次更新以后的操作。")
                 }
             }.listRowBackground(Theme.group)
             Section {
                 Link(destination:URL(string:"shortcuts://")!) { ChevronRow(title:"快捷指令") }
             } footer: {
-                Text("在“快捷指令” App 里搜“校日常”，就能把“开始洗澡”和“结束并结算”加到主屏幕或操作按钮上。")
+                Text("在「快捷指令」App 里搜「校日常」，就能把「开始洗澡」和「结束并结算」加到主屏幕或操作按钮上。")
             }.listRowBackground(Theme.group)
             Section {
                 LabeledContent("版本", value:version)

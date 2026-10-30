@@ -108,7 +108,7 @@ private struct WasherCamera: UIViewControllerRepresentable {
         scanner.delegate = context.coordinator
         DispatchQueue.main.async {
             do { try scanner.startScanning() }
-            catch { failed("相机用不了。允许校日常使用相机，或者从照片识别。") }
+            catch { failed("相机用不了。去设置里允许校日常用相机，或者从照片识别。") }
         }
         return scanner
     }

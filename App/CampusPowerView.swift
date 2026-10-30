@@ -30,7 +30,7 @@ struct CampusPowerSetupView: View {
                         guard let building = path.last else { return }
                         Task {
                             do { try await campus.chooseMeter(nodeID:building.id, meter:meter, nodeIsRoom:true); dismiss() }
-                            catch { issue = "还没保存上，稍后再试。" }
+                            catch { issue = "没保存上，再试一次。" }
                         }
                     } label: {
                         VStack(alignment:.leading,spacing:8) {

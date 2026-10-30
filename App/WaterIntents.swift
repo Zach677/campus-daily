@@ -2,12 +2,12 @@ import AppIntents
 
 struct StartShowerIntent: AppIntent {
     static var title: LocalizedStringResource = "开始洗澡"
-    static var description = IntentDescription("连接你的水控并申请本次授权，随后按设备出水键。")
+    static var description = IntentDescription("连接你的水控并申请本次授权，然后按水控上的出水键。")
     static var openAppWhenRun = true
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         try await WaterModel.shared.run(start: true)
-        return .result(dialog: "水控已确认，按设备出水键开水。")
+        return .result(dialog: "水控连上了，按出水键开水。")
     }
 }
 
@@ -20,9 +20,9 @@ struct FinishShowerIntent: AppIntent {
         try await WaterModel.shared.run(start: false)
         if let amount = WaterModel.shared.lastCost {
             let text = amount.formatted(.currency(code:"CNY").locale(Locale(identifier:"zh_CN")))
-            return .result(dialog: "已结算，本次费用 \(text)。看一眼现场水停了没。")
+            return .result(dialog: "已结算，这次\(text)。看一眼水停了没。")
         }
-        return .result(dialog: "已结算。看一眼现场水停了没。")
+        return .result(dialog: "已结算。看一眼水停了没。")
     }
 }
 

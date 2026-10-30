@@ -100,7 +100,7 @@ struct WaterDetail: View {
                     NavigationLink("设置校园账号与宿舍") { CampusOnboardingView() }.frame(minHeight:44)
                 }
                 if water.configured {
-                    NavigationLink("连接检查与设备信息") { AdvancedSettingsView() }.font(.subheadline).frame(minHeight:44)
+                    NavigationLink("连接检查与水控信息") { AdvancedSettingsView() }.font(.subheadline).frame(minHeight:44)
                 }
             }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
         }.background(NativeTheme.background)
@@ -125,12 +125,12 @@ struct WaterDetail: View {
         if water.state.phase == .done, let cost = water.lastCost {
             Text(cost,format:.currency(code:"CNY")).font(.title2.weight(.semibold)).monospacedDigit().accessibilityIdentifier("settlementCost")
         } else if water.state.phase == .done {
-            Text("金额未返回").font(.subheadline).foregroundStyle(.secondary)
+            Text("没拿到金额").font(.subheadline).foregroundStyle(.secondary)
         } else { Text("结算后显示").font(.subheadline) }
     }
     private var closing: Bool { water.state.canFinish }
     private var headline: String {
-        if water.inspecting { return "正在核对设备" }
+        if water.inspecting { return "正在核对水控" }
         if water.busy { return "正在处理" }
         if water.problem { return "本次待核对" }
         if !water.configured { return "尚未配置热水" }

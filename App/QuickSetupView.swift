@@ -24,7 +24,7 @@ struct QuickSetupView: View {
                     }.accessibilityIdentifier("quickSetupCampus")
                     Divider().padding(.leading,54)
                     NavigationLink { CampusOnboardingView() } label: {
-                        row("选择宿舍与水控",detail:water.configured ? campus.room : "选择楼栋房间，确认自己的设备",done:water.configured,symbol:"building.2")
+                        row("选择宿舍与水控",detail:water.configured ? campus.room : "选择楼栋房间，确认自己的水控",done:water.configured,symbol:"building.2")
                     }.accessibilityIdentifier("quickSetupWater")
                     Divider().padding(.leading,54)
                     NavigationLink { WasherSetupView() } label: {

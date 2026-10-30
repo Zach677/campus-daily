@@ -19,7 +19,7 @@ import DailyStore
         UserDefaults.standard.set(Date().addingTimeInterval(60).timeIntervalSince1970,forKey:cooldownKey(mobile))
         busy = true; issue = nil; sent = false; defer { busy = false }
         do { try await laundry.requestSMS(mobile:mobile); sent = true }
-        catch { issue = (error as? ServiceError)?.userMessage ?? "验证码请求未确认，稍后再试。" }
+        catch { issue = (error as? ServiceError)?.userMessage ?? "验证码可能没发出去，过一会儿再试。" }
     }
     func login(_ mobile: String, code: String, laundry: LaundryModel) async -> Bool {
         guard !busy else { return false }
