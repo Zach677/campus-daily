@@ -36,16 +36,21 @@ private struct AccountSwitchAlert: ViewModifier {
         content
             .onAppear { hosts.add(id, blocks:openHotWater == nil) }
             .onDisappear { hosts.remove(id) }
-            .alert(AccountSwitchNotice.title, isPresented:presented, presenting:campus.switchNotice) { notice in
-                if notice.hotWaterCleared, let openHotWater {
-                    // No .defaultAction: on iOS 27 it becomes a blue fill that the accent tint can't read on.
-                    Button(AccountSwitchNotice.openHotWater) { campus.switchNotice = nil; openHotWater() }
-                    Button("好", role:.cancel) { campus.switchNotice = nil }
-                } else {
-                    Button("好") { campus.switchNotice = nil }
-                }
-            } message: { notice in
-                if notice.hotWaterCleared { Text(AccountSwitchNotice.hotWater) }
+            .background {
+                // The system tint: on iOS 27 an alert fills its main button with the default
+                // blue, and accent-coloured text on it can't be read.
+                Color.clear
+                    .alert(AccountSwitchNotice.title, isPresented:presented, presenting:campus.switchNotice) { notice in
+                        if notice.hotWaterCleared, let openHotWater {
+                            Button(AccountSwitchNotice.openHotWater) { campus.switchNotice = nil; openHotWater() }
+                            Button("好", role:.cancel) { campus.switchNotice = nil }
+                        } else {
+                            Button("好") { campus.switchNotice = nil }
+                        }
+                    } message: { notice in
+                        if notice.hotWaterCleared { Text(AccountSwitchNotice.hotWater) }
+                    }
+                    .tint(nil)
             }
     }
 

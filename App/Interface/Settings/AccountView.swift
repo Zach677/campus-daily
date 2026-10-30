@@ -141,33 +141,37 @@ struct AccountView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("学校账号").navigationBarTitleDisplayMode(.inline)
-        // Signed in on the web page: no account known, so the alert asks for both.
-        .alert(account == nil ? "输入学校账号和密码" : "输入学校账号的密码", isPresented:$askPassword) {
-            // Signed in on the web page: the account was never told to us, so ask for it too.
-            if account == nil {
-                TextField("账号", text:$typedAccount)
-                    .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
-            }
-            SecureField("密码", text:$typedPassword).textContentType(.password)
-            Button("取消", role:.cancel) { typedPassword = "" }
-            Button("保存") { save() }
-        } message: {
-            Text("密码只存在这台 iPhone 的钥匙串里。")
-        }
-        .alert(AccountText.reenterTitle, isPresented:$askReenter) {
-            SecureField("密码", text:$typedPassword).textContentType(.password)
-            Button("取消", role:.cancel) { typedPassword = "" }
-            // No .defaultAction: on iOS 27 it becomes a blue fill that the accent tint can't read on.
-            Button("保存") { save() }
-        } message: {
-            Text(AccountText.keychainNote + "\n账号 " + (account?.masked ?? ""))
+        .background {
+            // The system tint: on iOS 27 an alert fills its main button with the default blue,
+            // and accent-coloured text on it can't be read.
+            Color.clear
+                .alert(account == nil ? "输入学校账号和密码" : "输入学校账号的密码", isPresented:$askPassword) {
+                    // Signed in on the web page: the account was never told to us, so ask for it too.
+                    if account == nil {
+                        TextField("账号", text:$typedAccount)
+                            .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    }
+                    SecureField("密码", text:$typedPassword).textContentType(.password)
+                    Button("取消", role:.cancel) { typedPassword = "" }
+                    Button("保存") { save() }
+                } message: {
+                    Text("密码只存在这台 iPhone 的钥匙串里。")
+                }
+                .alert(AccountText.reenterTitle, isPresented:$askReenter) {
+                    SecureField("密码", text:$typedPassword).textContentType(.password)
+                    Button("取消", role:.cancel) { typedPassword = "" }
+                    Button("保存") { save() }
+                } message: {
+                    Text(AccountText.keychainNote + "\n账号 " + (account?.masked ?? ""))
+                }
+                .alert(SchoolLoginText.differentAccountTitle, isPresented:$differentAccount) {
+                    Button("好", role:.cancel) {}
+                } message: {
+                    Text(SchoolLoginText.differentAccountMessage)
+                }
+                .tint(nil)
         }
         .sheet(isPresented:$relogin) { SchoolReloginSheet(preview:preview.map { _ in account ?? SchoolAccount(account:"") }) }
-        .alert(SchoolLoginText.differentAccountTitle, isPresented:$differentAccount) {
-            Button("好", role:.cancel) {}
-        } message: {
-            Text(SchoolLoginText.differentAccountMessage)
-        }
         .confirmationDialog("退出学校账号？", isPresented:$confirmSignOut, titleVisibility:.visible) {
             // DEBUG demo data: the dialog shows, nothing is signed out.
             Button("退出登录", role:.destructive) { if preview == nil { campus.signOut() } }
@@ -183,7 +187,11 @@ struct AccountView: View {
         let askedAccount = account == nil
         typedPassword = ""
         guard !password.isEmpty else { return }
-        if preview != nil { previewSaved = true; return }
+        if preview != nil {
+            // DEBUG demo of the web-login case: any account but the demo one is someone else.
+            if askedAccount, !name.isEmpty, name != "99100991" { differentAccount = true } else { previewSaved = true }
+            return
+        }
         saving = true
         Task {
             defer { saving = false }

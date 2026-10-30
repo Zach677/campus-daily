@@ -207,6 +207,7 @@ struct HomeView: View {
             let settingsDemos: [String:UNAuthorizationStatus] = ["settings":.authorized, "settings-notif-off":.denied,
                                                                   "settings-ask":.notDetermined, "settings-password-on":.authorized,
                                                                   "settings-paused":.authorized, "settings-paused-noanswer":.authorized,
+                                                                  "settings-web-login":.authorized,
                                                                   "settings-reset-shower":.authorized, "settings-reset-unsure":.authorized,
                                                                   "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized]
             reminders.demoStatus = settingsDemos[url.lastPathComponent]
