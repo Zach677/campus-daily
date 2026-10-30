@@ -196,9 +196,10 @@ public actor SnapshotRefresher {
             return RefreshReport(outcome: outcome, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
         }
         let stored = latest()
-        // Lost the lease meanwhile (taken over after it ran out, or removed by a sign-out in the
-        // other process), or the other process already wrote a newer reading: write nothing.
-        guard lease?.holds() ?? true, !Self.isOlder(reading, than: stored) else {
+        // Lost the lease meanwhile (it ran out, whether or not another process took it, or a
+        // sign-out in the other process removed it), or the other process already wrote a newer
+        // reading: write nothing. A lease that ran out is not this read's failure to record.
+        guard lease?.renew() ?? true, !Self.isOlder(reading, than: stored) else {
             return RefreshReport(outcome: reading.outcome, snapshot: stored, reexchanged: reading.reexchanged, snapshotSaved: false)
         }
         let snapshot = Self.apply(reading, to: stored)

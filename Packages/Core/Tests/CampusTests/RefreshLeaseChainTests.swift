@@ -173,3 +173,23 @@ final class SignOutDuringOtherProcessLoginTests: XCTestCase {
 
     func testCredentialsAreReadAgainBeforeWritingEvenWithTheLease() async throws { try await run(revokingLease: false) }
 }
+
+/// The lease ran out by itself (nobody took it) while the read was stopped: the "timed out"
+/// that read reports is not written into the snapshot.
+final class ExpiredLeaseWriteTests: XCTestCase {
+    func testALeaseThatRanOutWritesNothing() async throws {
+        let h = Harness()
+        try h.signedIn(portal: true)
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken")
+        let clock = h.clock
+        h.server.gate { r in
+            guard r.url.path.hasSuffix("/getSysBindCustInfo") else { return }
+            clock.advance(RefreshLease.defaultDuration + 1)
+        }
+        let report = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
+        XCTAssertEqual(report.outcome, .failed(.timedOut))
+        XCTAssertFalse(report.snapshotSaved)
+        XCTAssertNil(try h.snapshots.loadSnapshot())
+        XCTAssertTrue(h.server.requests(path: "/getMyECard").isEmpty, "nothing minted without the lease")
+    }
+}
