@@ -150,10 +150,15 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var cancelling: Bool
     /// 结束并结算 was tapped and the engine has not returned yet.
     public var ending: Bool
+    /// 取消 came before the engine took up the start: it is sent once the start runs.
+    public var cancelWaiting: Bool
+    /// The engine refused this start's cancel: 取消 stays off until the next start.
+    public var cancelRefused: Bool
 
     /// After a relaunch the page starts closed; the home button shows where the record stands.
     public init(record: ShowerState, presented: Bool = false) {
         self.record = record; self.presented = presented; starting = false; cancelling = false; ending = false
+        cancelWaiting = false; cancelRefused = false
     }
 
     /// What the page shows. A start just tapped shows 连接 at once, before the record moves
@@ -168,7 +173,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
 
     /// Swipe-down closes the page only while water runs (as 收起 does).
     public var mayCollapse: Bool { page?.phase == .running }
-    public var mayCancel: Bool { page?.phase == .connecting && !cancelling }
+    public var mayCancel: Bool { page?.phase == .connecting && !cancelling && !cancelRefused }
     public var mayEnd: Bool { page?.phase == .running && record.canFinish && !ending }
 
     public static func reduce(_ flow: ShowerPageFlow, _ event: ShowerPageEvent) -> (ShowerPageFlow, [ShowerPageEffect]) {
@@ -181,11 +186,16 @@ public struct ShowerPageFlow: Sendable, Equatable {
                 return (f, [])
             }
             f.presented = true; f.starting = true; f.cancelling = false; f.ending = false
+            f.cancelWaiting = false; f.cancelRefused = false
             // A finished record is cleared by the start itself.
             return (f, [.start])
 
         case .startReturned:
             f.starting = false
+            if flow.cancelWaiting {
+                // The start was refused before it ran: there is nothing left to cancel.
+                f.cancelWaiting = false; f.cancelling = false
+            }
             if f.presented, f.page == nil { f.presented = false }
             return (f, [])
 
@@ -195,6 +205,11 @@ public struct ShowerPageFlow: Sendable, Equatable {
 
         case .record(let next):
             f.record = next
+            if flow.cancelWaiting {
+                guard next.phase == .authorizing else { return (f, []) }
+                f.cancelWaiting = false
+                return (f, [.cancelStart])
+            }
             if flow.cancelling, next.phase != .authorizing {
                 f.cancelling = false
                 if next.phase == .failed, next.failure?.needsReview == false {
@@ -215,10 +230,12 @@ public struct ShowerPageFlow: Sendable, Equatable {
         case .cancelTapped:
             guard flow.mayCancel else { return (flow, []) }
             f.cancelling = true
+            // Tapped before the engine took up the start: the engine would see no start to stop.
+            guard flow.record.phase == .authorizing else { f.cancelWaiting = true; return (f, []) }
             return (f, [.cancelStart])
 
         case .cancelRefused:
-            f.cancelling = false
+            f.cancelling = false; f.cancelRefused = true
             return (f, [])
 
         case .endTapped:
@@ -232,7 +249,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
 
         case .retryTapped:
             guard flow.page?.phase == .connectFailed, flow.record.canStart, !flow.starting else { return (flow, []) }
-            f.starting = true
+            f.starting = true; f.cancelRefused = false
             return (f, [.start])
 
         case .collapseTapped:

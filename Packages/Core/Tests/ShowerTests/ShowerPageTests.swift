@@ -125,12 +125,35 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertFalse(flow.presented)
     }
 
+    /// 取消 right after 开始洗澡, before the engine took up the start: it waits for the start
+    /// to run and is sent then, instead of being refused.
+    func testACancelBeforeTheStartRunsIsSentOnceItRuns() {
+        var flow = ShowerPageFlow(record: ShowerState(phase: .done, startedAt: t0))
+        _ = reduce(&flow, .startTapped)
+        XCTAssertTrue(flow.mayCancel)
+        XCTAssertEqual(reduce(&flow, .cancelTapped), [])
+        XCTAssertFalse(flow.mayCancel)
+        XCTAssertEqual(reduce(&flow, .record(.idle)), [])
+        XCTAssertEqual(reduce(&flow, .record(ShowerState(phase: .authorizing, startedAt: t0))), [.cancelStart])
+        let effects = reduce(&flow, .record(failed(.deviceUnavailable, review: false)))
+        XCTAssertEqual(effects, [.dismissRecord])
+        XCTAssertFalse(flow.presented)
+
+        // The start was refused before it ran: the waiting cancel is dropped.
+        var refused = ShowerPageFlow(record: .idle)
+        _ = reduce(&refused, .startTapped)
+        _ = reduce(&refused, .cancelTapped)
+        _ = reduce(&refused, .startReturned)
+        XCTAssertFalse(refused.cancelling)
+        XCTAssertFalse(refused.cancelWaiting)
+    }
+
     /// The authorize request had left: the cancel is refused and the page follows the start.
     func testARefusedCancelFollowsTheStart() {
         var flow = ShowerPageFlow(record: ShowerState(phase: .authorizing, startedAt: t0), presented: true)
         _ = reduce(&flow, .cancelTapped)
         _ = reduce(&flow, .cancelRefused)
-        XCTAssertTrue(flow.mayCancel)
+        XCTAssertFalse(flow.mayCancel, "取消 can't be tapped again for nothing")
         _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0)))
         XCTAssertEqual(flow.page?.phase, .running)
         XCTAssertTrue(flow.presented)
