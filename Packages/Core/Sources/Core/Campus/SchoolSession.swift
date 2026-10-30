@@ -370,7 +370,8 @@ public actor SchoolSession {
                        mayMint: @Sendable () async -> Bool) async -> Renewal {
         var lastError = e
         var triedPortal = false
-        if let portalToken = (try? vault.portalToken()) ?? nil, portalToken.expiresAt.map({ $0 > now() }) ?? true {
+        let seenPortalToken = (try? vault.portalToken()) ?? nil
+        if let portalToken = seenPortalToken, portalToken.expiresAt.map({ $0 > now() }) ?? true {
             triedPortal = true
             do {
                 let fresh = try await exchangeSession(portalToken: portalToken, userAgent: stored.userAgent, previous: stored)
@@ -385,7 +386,8 @@ public actor SchoolSession {
                 return .stopped(SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true))
             }
         }
-        switch await signInWithSavedPassword(previous: stored, since: started, mayMint: mayMint) {
+        switch await signInWithSavedPassword(previous: stored, seenPortalToken: seenPortalToken?.value,
+                                             since: started, mayMint: mayMint) {
         case .signedIn(let found): return .renewed(found)
         case .offline: return .stopped(SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: triedPortal))
         case .retryLater: return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: triedPortal))
@@ -445,6 +447,15 @@ public actor SchoolSession {
         return t
     }
 
+    /// The stored card session and portal token are still the ones a refresh started from
+    /// (a read that fails counts as changed: nothing is sent on a guess).
+    private func credentialsUnchanged(previous: EcyktSession, seenPortalToken: String?) -> Bool {
+        let session: EcyktSession?, portal: PortalToken?
+        do { session = try vault.ecyktSession(); portal = try vault.portalToken() } catch { return false }
+        guard let session, session.token == previous.token, session.syscustid == previous.syscustid else { return false }
+        return portal?.value == seenPortalToken
+    }
+
     private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable, retryLater, lostLease, signedOut }
 
     /// The last step of the refresh: one login with the saved password. Anything but success
@@ -455,7 +466,11 @@ public actor SchoolSession {
     /// is known: the hold is written before the password goes out and lifted once an answer (or
     /// a failure before sending) comes back; the portal token is saved as soon as the login
     /// returns it, before the exchange that follows.
-    private func signInWithSavedPassword(previous: EcyktSession, since started: Int,
+    ///
+    /// `previous` and `seenPortalToken` are the credentials this refresh found dead. If the
+    /// other process stored new ones meanwhile (its own password login was accepted), nothing
+    /// is sent: the next refresh uses them.
+    private func signInWithSavedPassword(previous: EcyktSession, seenPortalToken: String?, since started: Int,
                                          mayMint: @Sendable () async -> Bool) async -> PasswordStep {
         guard let saved = (try? vault.account()) ?? nil, let password = saved.automaticPassword(at: now()) else { return .unavailable }
         // Not moved to the shared group yet: like no network, nothing is paused or held.
@@ -465,6 +480,10 @@ public actor SchoolSession {
         }
         // The portal exchange may have taken most of the lease: confirm it before the password goes out.
         guard await mayMint() else { return .lostLease }
+        guard credentialsUnchanged(previous: previous, seenPortalToken: seenPortalToken) else {
+            diagnostic("school.passwordLogin skipped reason=credentialsChanged")
+            return .retryLater
+        }
         let sentAt = now()
         // Not written: signed out only when the account is really gone. Changed meanwhile (保存密码,
         // 重新输入密码) or a write that failed leave the user signed in, with nothing to report;

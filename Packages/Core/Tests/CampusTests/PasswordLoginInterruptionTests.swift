@@ -137,3 +137,65 @@ final class PasswordLoginLostLeaseTests: XCTestCase {
         XCTAssertEqual(try h.vault.ecyktSession()?.token, "AFTER-PASSWORD")
     }
 }
+
+/// Counts password logins.
+final class CountingPasswordLogin: SchoolPasswordLogin, @unchecked Sendable {
+    // @unchecked: `calls` is only touched by the logins of one refresh at a time, read after it returned.
+    private(set) var calls = 0
+    func login(account: String, password: String, visitorID: String) async throws -> PortalToken {
+        calls += 1
+        return SchoolPasswordSignInTests.freshToken
+    }
+}
+
+final class PasswordLoginAfterOtherSignInTests: XCTestCase {
+    /// While this process exchanges its old portal token, the other one's password login is
+    /// accepted: it stores a new portal token and card session and lifts its hold. This one's
+    /// exchange then fails as expired; it does not send the password a second time.
+    func testNewCredentialsStoredDuringTheExchangeSendNoPassword() async throws {
+        var h = Harness()
+        let login = CountingPasswordLogin()
+        h.passwordLogin = login
+        try h.signedIn()
+        try h.vault.savePortalToken(PortalToken("OLD"))
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+        h.server.serve(try FixtureLoader.load("portal/getMyInfo-badtoken").withURLPath("/portal-api/v2/personalData/getMyECard"))
+        let vault = h.vault
+        let renewed = { var s = T.session(); s.token = "OTHER-PROCESS"; return s }()
+        h.server.gate { r in
+            guard r.url.path.hasSuffix("/getMyECard") else { return }
+            // The other process, meanwhile: its password login was accepted.
+            try? vault.savePortalToken(PortalToken("NEW"))
+            try? vault.saveEcyktSession(renewed)
+            try? vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        }
+        let report = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(login.calls, 0, "no second password login")
+        XCTAssertEqual(report.outcome, .interrupted)
+        XCTAssertEqual(try h.vault.ecyktSession()?.token, "OTHER-PROCESS", "the other process's session stays")
+        XCTAssertEqual(try h.vault.portalToken()?.value, "NEW")
+        let account = try XCTUnwrap(try h.vault.account())
+        XCTAssertNil(account.unansweredAt)
+        XCTAssertFalse(account.paused)
+    }
+
+    /// Nothing changed meanwhile: the password goes out once, as before.
+    func testUnchangedCredentialsStillSendThePasswordOnce() async throws {
+        var h = Harness()
+        let login = CountingPasswordLogin()
+        h.passwordLogin = login
+        try h.signedIn()
+        try h.vault.savePortalToken(PortalToken("OLD"))
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+        h.server.serve(try FixtureLoader.load("portal/getMyInfo-badtoken").withURLPath("/portal-api/v2/personalData/getMyECard"), times: 1)
+        h.server.serve(try T.eCardWithTicket())
+        h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        _ = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(login.calls, 1)
+        XCTAssertEqual(try h.vault.ecyktSession()?.token, "AFTER-PASSWORD")
+    }
+}
