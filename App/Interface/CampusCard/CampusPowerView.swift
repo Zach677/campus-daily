@@ -80,9 +80,11 @@ struct AutomaticPowerSection: View {
                 else if !campus.powerChoices.isEmpty {
                     LocationChoiceList(kind:.meter, choices:campus.powerChoices.map(\.choice), selection:$selection)
                     Button("就是这间") {
-                        if let candidate = campus.powerChoices.first(where:{ $0.id == selection }) { campus.choosePower(candidate) }
+                        if let candidate = campus.powerChoices.first(where:{ $0.id == selection }) {
+                            Task { await campus.choosePower(candidate) }
+                        } else { selection = nil }
                     }
-                    .disabled(selection == nil)
+                    .disabled(selection == nil || campus.matchingPower)
                     .accessibilityIdentifier("powerApartmentConfirm")
                 } else if campus.powerConfigured {Label("电表已保存",systemImage:"checkmark.circle").foregroundStyle(Theme.ink2)}
                 if let issue = campus.powerMatchIssue {
@@ -90,6 +92,8 @@ struct AutomaticPowerSection: View {
                     Button("再找一次电表") {campus.matchPowerAutomatically()}
                 }
             }
+            // A new list: an earlier pick may no longer be in it.
+            .onChange(of:campus.powerChoices) { _, _ in selection = nil }
         }
     }
 }

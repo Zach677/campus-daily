@@ -226,19 +226,23 @@ struct PowerChoice: Identifiable, Equatable {
         }
     }
 
-    func choosePower(_ choice: PowerChoice) {
-        guard !matchingPower else { return }
+    /// Binds one same-name choice. True once it is saved; false (the reason in
+    /// `powerMatchIssue`, the choices kept) when it could not be.
+    @discardableResult func choosePower(_ choice: PowerChoice) async -> Bool {
+        guard !matchingPower else { return false }
         matchingPower = true
-        Task {
-            defer { matchingPower = false }
-            do {
-                try await session.chooseMatchedMeter(choice.candidate)
-                await refresher.noteChange()
-                powerChoices = []; powerMatchIssue = nil
-                profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
-                await refresh(force:true)
-            } catch { powerMatchIssue = AppErrorText.text(error) }
+        defer { matchingPower = false }
+        do {
+            try await session.chooseMatchedMeter(choice.candidate)
+        } catch {
+            powerMatchIssue = AppErrorText.text(error)
+            return false
         }
+        await refresher.noteChange()
+        powerChoices = []; powerMatchIssue = nil
+        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
+        Task { await refresh(force:true) }
+        return true
     }
 
     /// Manual picker.

@@ -193,6 +193,8 @@ struct OnboardingView: View {
             if !campus.powerChoices.isEmpty {
                 LocationChoiceList(kind:.meter, choices:campus.powerChoices.map(\.choice), selection:$apartment)
                     .disabled(campus.matchingPower)
+                    // A new list: an earlier pick may no longer be in it.
+                    .onChange(of:campus.powerChoices) { _, _ in apartment = nil }
             }
             if let issue = campus.powerMatchIssue {
                 Text(issue).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
@@ -247,7 +249,7 @@ struct OnboardingView: View {
                     .contentTransition(reduceMotion ? .opacity : .interpolate)
             }
             .buttonStyle(PressScaleStyle())
-            .disabled(primaryDimmed || bindingWater)
+            .disabled(primaryDimmed || bindingWater || choosingApartment && campus.matchingPower)
             .accessibilityIdentifier("onboardingPrimary")
             .accessibilityLabel(primaryTitle)
             // Fixed slot below the pill so the pill doesn't jump between steps.
@@ -325,8 +327,11 @@ struct OnboardingView: View {
         case .dorm:
             if choosingApartment {
                 guard let apartment else { return }
-                if let candidate = campus.powerChoices.first(where:{ $0.id == apartment }) { campus.choosePower(candidate) }
-                bindWaterThenAdvance()
+                if preview != nil { bindWaterThenAdvance(); return }
+                // Only on once the meter is saved: a pick that is gone from the list, or a save
+                // that failed (said on this page), stays here.
+                guard let candidate = campus.powerChoices.first(where:{ $0.id == apartment }) else { self.apartment = nil; return }
+                Task { if await campus.choosePower(candidate) { bindWaterThenAdvance() } }
             } else if dorm != nil { bindWaterThenAdvance() } else { openDormPicker() }
         case .washer:
             // 用，接着设置: the U净 login / scan flow as before.
