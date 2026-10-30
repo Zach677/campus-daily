@@ -176,6 +176,28 @@ final class SignOutDuringOtherProcessLoginTests: XCTestCase {
     func testCredentialsAreReadAgainBeforeWritingEvenWithTheLease() async throws { try await run(revokingLease: false) }
 }
 
+/// The other process signs out in the moment between this one reading the account and storing
+/// the portal token the password brought back: the token is taken back out.
+final class SignOutWhileStoringTheTokenTests: XCTestCase {
+    func testATokenStoredAfterTheAccountWentIsRemoved() async throws {
+        let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+        let h = try RefreshLeaseChainTests().passwordHarness(login)
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+        h.server.serve(try T.eCardWithTicket())
+        h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
+        let store = h.store
+        store.onNextWrite(to: .schoolPortal) {
+            for key: StoreKey in [.schoolPassword, .schoolEcykt, .schoolProfile, .schoolDevice] { try? store.delete(key) }
+        }
+        let report = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
+        XCTAssertEqual(report.outcome, .notSignedIn)
+        XCTAssertNil(try h.vault.portalToken())
+        XCTAssertNil(try h.vault.ecyktSession())
+        XCTAssertNil(try h.vault.loginDeviceID())
+        XCTAssertTrue(h.server.requests(path: "/csalogintoken/450010").isEmpty, "no exchange after the sign-out")
+    }
+}
+
 /// The lease ran out by itself (nobody took it) while the read was stopped: the "timed out"
 /// that read reports is not written into the snapshot.
 final class ExpiredLeaseWriteTests: XCTestCase {

@@ -546,6 +546,12 @@ public actor SchoolSession {
         guard let still = (try? vault.account()) ?? nil else { return accountGone ? .signedOut : .retryLater }
         guard still.account == saved.account else { return .retryLater }
         guard (try? vault.savePortalToken(stamped(token))) != nil else { return .retryLater }
+        // A sign-out in the other process can land between the read above and the write: read
+        // the account once more, and take the token back out if it has gone.
+        if accountGone {
+            try? vault.savePortalToken(nil)
+            return .signedOut
+        }
         liftHold(saved, sentAt: sentAt, since: started)
         do {
             guard await mayMint() else { return .lostLease }
