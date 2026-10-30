@@ -4,7 +4,8 @@ import os
 #endif
 
 /// The school read the refresher drives (`SchoolSession` in the app and the widget, fakes in
-/// tests). `mayMint` is asked before a new card session is minted.
+/// tests). `mayMint` is asked before every step that mints a card session, sends the saved
+/// password or writes a credential back; false = stop there.
 public protocol SchoolReader: Sendable {
     func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading
 }
@@ -50,6 +51,8 @@ public actor SnapshotRefresher {
     let lease: RefreshLease?
     let leaseWait: TimeInterval
     let sleep: @Sendable (TimeInterval) async -> Void
+    /// How often the lease is renewed while a read runs.
+    let renewInterval: TimeInterval
 
     private struct Run {
         let id: Int
@@ -74,8 +77,10 @@ public actor SnapshotRefresher {
     /// Times come from the school reading (`checkedAt`, `readAt`), so the refresher needs no clock.
     public init(school: SchoolReader, store: SnapshotStoring, lease: RefreshLease? = nil, leaseWait: TimeInterval = 15,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
+                renewInterval: TimeInterval = RefreshLease.renewInterval,
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
         self.school = school; self.store = store; self.lease = lease; self.leaseWait = leaseWait; self.sleep = sleep
+        self.renewInterval = renewInterval
         self.diagnostic = diagnostic
     }
 
@@ -175,6 +180,10 @@ public actor SnapshotRefresher {
         }
         defer { lease?.release() }
         let lease = self.lease
+        // Kept alive for the whole read: a slow chain must not let the other process take over
+        // halfway and mint or log in a second time.
+        let heartbeat = lease.map { Self.keepAlive($0, every: renewInterval) }
+        defer { heartbeat?.cancel() }
         let reading = await school.refresh(inBackground: inBackground, mayMint: { lease?.renew() ?? true })
         // Signed out meanwhile, or nobody wants this read any more: write nothing.
         guard started == generation, !Task.isCancelled else {
@@ -194,6 +203,16 @@ public actor SnapshotRefresher {
             diagnostic(Self.saveFailedEvent(error))
         }
         return RefreshReport(outcome: reading.outcome, snapshot: snapshot, reexchanged: reading.reexchanged, snapshotSaved: saved)
+    }
+
+    /// Renews `lease` every `interval` until cancelled or lost.
+    private static func keepAlive(_ lease: RefreshLease, every interval: TimeInterval) -> Task<Void, Never> {
+        Task.detached {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(max(0.01, interval) * 1_000_000_000))
+                guard !Task.isCancelled, lease.renew() else { return }
+            }
+        }
     }
 
     /// A reading checked before the stored snapshot was: the other process wrote a newer one.

@@ -29,7 +29,7 @@ final class RefreshLeaseTests: XCTestCase {
     func testStaleLeaseExpires() {
         let app = lease("app-1"), widget = lease("widget-1")
         XCTAssertTrue(app.acquire())
-        clock.advance(59)
+        clock.advance(RefreshLease.defaultDuration - 1)
         XCTAssertFalse(widget.acquire())
         clock.advance(1)
         XCTAssertTrue(widget.acquire())

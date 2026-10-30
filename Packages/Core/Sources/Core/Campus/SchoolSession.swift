@@ -283,9 +283,10 @@ public actor SchoolSession {
     /// any refusal pauses it until the user signs in again). Then balance + meter in parallel.
     /// Never calls `loginBySysId`.
     ///
-    /// Two processes share the stored session. `mayMint` is asked before minting a new one (the
-    /// refresher renews its cross-process lease there; false = another process took over, so this
-    /// read stops without touching anything). With the lease held, a session another process
+    /// Two processes share the stored session. `mayMint` is asked before each step that mints a
+    /// session (portal exchange), sends the saved password, or writes a credential back (the
+    /// refresher renews its cross-process lease there; false = another process took over or a
+    /// sign-out removed the lease, so this read stops without touching anything more). With the lease held, a session another process
     /// stored meanwhile is used instead of minting. The session is written back only while the
     /// stored one is still the one this read started from: a sign-out or a newer session from
     /// the other process is never overwritten.
@@ -311,7 +312,7 @@ public actor SchoolSession {
                 base = current
                 live = found
             } else {
-                switch await renew(stored, firstError: e, since: started) {
+                switch await renew(stored, firstError: e, since: started, mayMint: mayMint) {
                 case .renewed(let found): reexchanged = true; live = found
                 case .stopped(let reading): return reading
                 }
@@ -327,8 +328,9 @@ public actor SchoolSession {
         let checkedAt = now()
         var alive = live.1
         alive.lastAliveAt = checkedAt
-        switch writeBack(alive, over: base) {
+        switch await writeBack(alive, over: base, mayMint: mayMint) {
         case .signedOut: return SchoolReading(outcome: .notSignedIn, checkedAt: now())
+        case .lostLease: return SchoolReading(outcome: .failed(.timedOut), checkedAt: now(), reexchanged: reexchanged)
         case .written, .kept: break
         }
         let session = alive
@@ -345,7 +347,8 @@ public actor SchoolSession {
     private enum Renewal { case renewed((BoundCard, EcyktSession)), stopped(SchoolReading) }
 
     /// The card session is dead: the portal token, else the saved password, once each.
-    private func renew(_ stored: EcyktSession, firstError e: ServiceError, since started: Int) async -> Renewal {
+    private func renew(_ stored: EcyktSession, firstError e: ServiceError, since started: Int,
+                       mayMint: @Sendable () async -> Bool) async -> Renewal {
         var lastError = e
         var triedPortal = false
         if let portalToken = (try? vault.portalToken()) ?? nil, portalToken.expiresAt.map({ $0 > now() }) ?? true {
@@ -363,23 +366,27 @@ public actor SchoolSession {
                 return .stopped(SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true))
             }
         }
-        switch await signInWithSavedPassword(previous: stored, since: started) {
+        switch await signInWithSavedPassword(previous: stored, since: started, mayMint: mayMint) {
         case .signedIn(let found): return .renewed(found)
         case .offline: return .stopped(SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: triedPortal))
         case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: triedPortal))
+        case .lostLease: return .stopped(SchoolReading(outcome: .failed(.timedOut), checkedAt: now(), reexchanged: triedPortal))
         }
     }
 
-    private enum WriteBack { case written, kept, signedOut }
+    private enum WriteBack { case written, kept, signedOut, lostLease }
 
     /// Writes the live session back (latest ciphertexts, `lastAliveAt`) only while the stored
     /// session is still `base`. Signed out in another process: nothing is written. A newer
     /// session stored by the other process stays; this read used a live one all the same.
-    private func writeBack(_ session: EcyktSession, over base: EcyktSession) -> WriteBack {
+    /// Written only while the lease is still held.
+    private func writeBack(_ session: EcyktSession, over base: EcyktSession,
+                           mayMint: @Sendable () async -> Bool) async -> WriteBack {
         let current: EcyktSession?
         do { current = try vault.ecyktSession() } catch { return .kept }
         guard let current else { return .signedOut }
         guard current.token == base.token else { return .kept }
+        guard await mayMint() else { return .lostLease }
         try? vault.saveEcyktSession(session)
         return .written
     }
@@ -415,18 +422,23 @@ public actor SchoolSession {
         return t
     }
 
-    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable }
+    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable, lostLease }
 
     /// The last step of the refresh: one login with the saved password. Anything but success
     /// or no network pauses the password, so a wrong or blocked login is never repeated. A login
     /// that was sent but got no answer holds automatic logins off for a few hours instead.
-    private func signInWithSavedPassword(previous: EcyktSession, since started: Int) async -> PasswordStep {
+    private func signInWithSavedPassword(previous: EcyktSession, since started: Int,
+                                         mayMint: @Sendable () async -> Bool) async -> PasswordStep {
         guard let saved = (try? vault.account()) ?? nil, let password = saved.automaticPassword(at: now()) else { return .unavailable }
+        // The portal exchange may have taken most of the lease: confirm it before the password goes out.
+        guard await mayMint() else { return .lostLease }
         do {
             let token = try await passwordLoginOnce(account: saved.account, password: password)
+            guard await mayMint() else { return .lostLease }
             let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)
             let found = try await liveCard(fresh)
             guard started == signOutGeneration else { return .unavailable }
+            guard await mayMint() else { return .lostLease }
             try? vault.savePortalToken(stamped(token))
             return .signedIn(found)
         } catch SchoolLoginFailure.offline {

@@ -251,9 +251,13 @@ through `RefreshLease`, the shared item `shared.refreshLease` = `{owner, expires
 - taken with an atomic create (`SecItemAdd` fails with `errSecDuplicateItem` while one exists), so
   only one process reads the school (and may mint) at a time; the other waits up to 15 s and then
   reads, by which time the session is fresh, or gives up and shows the stored snapshot;
-- 60 s long, renewed before minting; a holder that died leaves it to run out, and the next process
-  deletes the stale one (only if it is still the one it saw) and creates its own;
-- a read that lost the lease (it ran out and was taken, or a sign-out removed it) writes nothing;
+- 180 s long (longer than the slowest chain: liveness, portal exchange, one password login and the
+  exchange after it, each up to 20 s, plus the reads), renewed every 20 s while the read runs and
+  checked again (renewed) before each step that mints, sends the saved password, saves the new
+  portal token or writes the session back; a holder that died leaves it to run out, and the next
+  process deletes the stale one (only if it is still the one it saw) and creates its own;
+- a read that lost the lease (it ran out and was taken, or a sign-out removed it) stops at the next
+  of those steps and writes nothing;
 - snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
   dropped, and a "nobody signed in" reading leaves an emptied snapshot empty.
 Residual: the Keychain has no compare-and-delete, so two processes that both find the same lease

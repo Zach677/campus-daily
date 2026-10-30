@@ -17,7 +17,11 @@ public struct RefreshLease: Sendable {
     let now: @Sendable () -> Date
     public let duration: TimeInterval
 
-    public static let defaultDuration: TimeInterval = 60
+    /// Longer than the slowest refresh chain: liveness, portal exchange, one password login and
+    /// the exchange after it, each up to 20 s on a slow network, plus the reads (60–180 s).
+    public static let defaultDuration: TimeInterval = 180
+    /// The holder pushes the expiry forward this often while its read runs.
+    public static let renewInterval: TimeInterval = 20
 
     public init(store: SecureStore, owner: String, duration: TimeInterval = RefreshLease.defaultDuration,
                 now: @escaping @Sendable () -> Date = Date.init) {
@@ -45,7 +49,8 @@ public struct RefreshLease: Sendable {
     }
 
     /// Still ours and not run out: push the expiry forward. False = lost (it ran out and another
-    /// process took it): stop before minting anything.
+    /// process took it, or a sign-out removed it): stop before minting, logging in or writing a
+    /// credential.
     public func renew() -> Bool {
         guard let holder = try? read(), holder.owner == owner, holder.expiresAt > now() else { return false }
         let data = (try? JSONEncoder().encode(Record(owner: owner, expiresAt: now().addingTimeInterval(duration)))) ?? Data()
