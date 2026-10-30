@@ -99,7 +99,9 @@ struct OnboardingView: View {
                     campus.matchPowerAutomatically()
                     // Only from the login step: a repeated delivery must not skip the dorm step.
                     if step == .login { advance() }
-                } catch { issue = "这次没登录上，再试一次。" }
+                } catch {
+                    issue = error as? SchoolLoginFailure == .busy ? SchoolLoginText.busy : "这次没登录上，再试一次。"
+                }
             }
         }
         .sheet(isPresented:$ujing) { UjingLoginView() }

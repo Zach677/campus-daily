@@ -128,7 +128,11 @@ struct PowerChoice: Identifiable, Equatable {
     /// dorm address the portal page showed (read by the same sign-in).
     func adoptWebState(_ login: CampusWebLogin) async throws {
         let started = signOutGeneration
-        let summary = try await session.adoptWebState(login.state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
+        let session = session, state = login.state
+        // Under the lease like the password sign-in: never beside the widget's own login.
+        let summary = try await refresher.holdingLease {
+            try await session.adoptWebState(state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
+        }
         if summary.switchedAccount { await previousPersonCleared() }
         await refresher.noteChange()
         // Signed out (or reset) while that ran: the dorm must not be written back.

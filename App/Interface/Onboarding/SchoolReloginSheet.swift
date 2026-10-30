@@ -78,7 +78,9 @@ struct SchoolReloginSheet: View {
                     await campus.refresh(force:true)
                     await signedIn()
                     dismiss()
-                } catch { state = .failed("这次没登录上，再试一次。") }
+                } catch {
+                    state = .failed(error as? SchoolLoginFailure == .busy ? SchoolLoginText.busy : "这次没登录上，再试一次。")
+                }
             }
         }
         // An account-switch alert waits until this sheet has closed.

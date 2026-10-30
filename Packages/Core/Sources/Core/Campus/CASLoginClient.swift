@@ -20,6 +20,15 @@ public enum SchoolLoginFailure: Error, Sendable, Equatable {
     /// The other process (the widget) is in the middle of a school refresh, which may log in
     /// itself: nothing was sent. Try again in a moment.
     case busy
+
+    /// The password the user typed stays in the field: nothing said it was wrong (it was not
+    /// sent, or no answer came back), so it can be tried again as it is.
+    public var keepsTypedPassword: Bool {
+        switch self {
+        case .busy, .offline, .noAnswer: return true
+        case .wrongCredentials, .cannotLoginDirectly, .differentAccount: return false
+        }
+    }
 }
 
 /// Account/password sign-in, for tests and the session (the real one is `CASLoginClient`).

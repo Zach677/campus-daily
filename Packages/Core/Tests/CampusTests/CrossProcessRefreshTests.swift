@@ -346,6 +346,35 @@ final class LoginUnderLeaseTests: XCTestCase {
         XCTAssertNil(try h.store.read(.sharedRefreshLease))
     }
 
+    /// The school's web page signed in while the widget reads: the adoption waits for the lease
+    /// like a password login and, still held, stores nothing.
+    func testAWebSignInWhileTheOtherProcessReadsStoresNothing() async throws {
+        let h = Harness()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        XCTAssertTrue(RefreshLease(store: h.store, owner: "widget-1", now: h.clock.function).acquire())
+        let app = refresher(h, owner: "app-1", wait: 3)
+        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"]).encoded()
+        let session = h.session()
+        do {
+            _ = try await app.holdingLease { try await session.adoptWebState(state, portalToken: nil) }
+            XCTFail("the lease is held")
+        } catch {
+            XCTAssertEqual(error as? SchoolLoginFailure, .busy)
+        }
+        XCTAssertNil(try h.vault.ecyktSession())
+        XCTAssertTrue(h.server.requests.isEmpty, "nothing read for the web state")
+    }
+
+    /// Only an answer that the password is wrong (or can't be used here) clears what was typed.
+    func testATypedPasswordStaysUnlessTheSchoolTurnedItDown() {
+        XCTAssertTrue(SchoolLoginFailure.busy.keepsTypedPassword)
+        XCTAssertTrue(SchoolLoginFailure.offline.keepsTypedPassword)
+        XCTAssertTrue(SchoolLoginFailure.noAnswer.keepsTypedPassword)
+        XCTAssertFalse(SchoolLoginFailure.wrongCredentials.keepsTypedPassword)
+        XCTAssertFalse(SchoolLoginFailure.cannotLoginDirectly.keepsTypedPassword)
+        XCTAssertFalse(SchoolLoginFailure.differentAccount.keepsTypedPassword)
+    }
+
     /// The app's own refresh holds the lease under the app's owner: the login still waits for it.
     func testALoginWaitsForTheAppsOwnRead() async throws {
         let h = Harness()

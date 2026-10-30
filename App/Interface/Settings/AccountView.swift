@@ -40,6 +40,8 @@ struct AccountView: View {
     @State private var askPassword = false
     @State private var typedAccount = ""
     @State private var typedPassword = ""
+    /// The last save was not sent (or got no answer): the next alert opens with what was typed.
+    @State private var keepTyped = false
     @State private var saving = false
     @State private var saveIssue: String?
     /// The typed account isn't the signed-in one: nothing saved, nobody switched.
@@ -66,7 +68,8 @@ struct AccountView: View {
         Binding(get:{ passwordSaved || askPassword || saving }, set:{ on in
             saveIssue = nil
             if on {
-                typedAccount = ""; typedPassword = ""
+                if !keepTyped { typedAccount = ""; typedPassword = "" }
+                keepTyped = false
                 askPassword = true
             } else if preview != nil {
                 previewSaved = false
@@ -104,7 +107,7 @@ struct AccountView: View {
                     .accessibilityIdentifier("savePasswordSwitch")
                     if paused {
                         Button {
-                            saveIssue = nil; typedPassword = ""; askReenter = true
+                            saveIssue = nil; if !keepTyped { typedPassword = "" }; keepTyped = false; askReenter = true
                         } label: {
                             Text(AccountText.reenter).scaledFont(16, .medium).foregroundStyle(Theme.accentText)
                                 .frame(maxWidth:.infinity, alignment:.leading).contentShape(Rectangle())
@@ -159,14 +162,14 @@ struct AccountView: View {
                             .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
                     }
                     SecureField("密码", text:$typedPassword).textContentType(.password)
-                    Button("取消", role:.cancel) { typedPassword = "" }
+                    Button("取消", role:.cancel) { typedPassword = ""; keepTyped = false }
                     Button("保存") { save() }
                 } message: {
                     Text("密码只存在这台 iPhone 的钥匙串里。")
                 }
                 .alert(AccountText.reenterTitle, isPresented:$askReenter) {
                     SecureField("密码", text:$typedPassword).textContentType(.password)
-                    Button("取消", role:.cancel) { typedPassword = "" }
+                    Button("取消", role:.cancel) { typedPassword = ""; keepTyped = false }
                     Button("保存") { save() }
                 } message: {
                     Text(AccountText.keychainNote + "\n账号 " + (account?.masked ?? ""))
@@ -215,6 +218,10 @@ struct AccountView: View {
                 differentAccount = true
             } catch {
                 saveIssue = SchoolLoginText.text(error)
+                // Not sent (正在更新) or no answer: what was typed is there for the next try.
+                if (error as? SchoolLoginFailure)?.keepsTypedPassword == true {
+                    typedPassword = password; typedAccount = name; keepTyped = true
+                }
             }
         }
     }
