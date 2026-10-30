@@ -184,6 +184,36 @@ public actor SnapshotRefresher {
         if current?.id == id { current = nil }
     }
 
+    /// A login from the app's form or Settings (password login, saving a password) under the
+    /// lease, so it can't run beside the other process's automatic login. Waits up to
+    /// `leaseWait` for a read in either process; still held then, nothing is sent and
+    /// `SchoolLoginFailure.busy` is thrown. The lease is kept alive while `body` runs and given
+    /// back after it. Without a lease (tests, previews) `body` just runs.
+    public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable () async throws -> T) async throws -> T {
+        guard let shared = lease else { return try await body() }
+        // Its own owner: the lease this process's refresh holds is not "ours" to reuse here.
+        let lease = RefreshLease(store: shared.store, owner: shared.owner + "-login", duration: shared.duration,
+                                 now: shared.now)
+        var waited: TimeInterval = 0
+        while !lease.acquire() {
+            guard waited < leaseWait else { throw SchoolLoginFailure.busy }
+            try Task.checkCancellation()
+            await sleep(1)
+            waited += 1
+        }
+        let heartbeat = Self.keepAlive(lease, every: renewInterval)
+        do {
+            let value = try await body()
+            heartbeat.cancel(); await heartbeat.value
+            lease.release()
+            return value
+        } catch {
+            heartbeat.cancel(); await heartbeat.value
+            lease.release()
+            throw error
+        }
+    }
+
     /// Takes the lease, waiting up to `leaseWait` while the other process holds it.
     private func acquireLease(_ lease: RefreshLease) async -> Bool {
         var waited: TimeInterval = 0

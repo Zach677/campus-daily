@@ -296,3 +296,66 @@ final class WriteBackComparisonTests: XCTestCase {
         XCTAssertEqual(try h.vault.ecyktSession(), rotated, "not overwritten with the older ciphertext")
     }
 }
+
+/// A login from the form or Settings takes the lease like a refresh, so it never runs beside
+/// the other process's automatic login.
+final class LoginUnderLeaseTests: XCTestCase {
+    func refresher(_ h: Harness, owner: String, wait: TimeInterval) -> SnapshotRefresher {
+        SnapshotRefresher(school: h.session(), store: h.snapshots,
+                          lease: RefreshLease(store: h.store, owner: owner, now: h.clock.function),
+                          leaseWait: wait, sleep: { _ in try? await Task.sleep(nanoseconds: 1_000_000) })
+    }
+
+    func testALoginWhileTheOtherProcessReadsSendsNothing() async throws {
+        let h = Harness()
+        XCTAssertTrue(RefreshLease(store: h.store, owner: "widget-1", now: h.clock.function).acquire())
+        let app = refresher(h, owner: "app-1", wait: 3)
+        let ran = Lines()
+        do {
+            _ = try await app.holdingLease { ran.append("login") }
+            XCTFail("the lease is held")
+        } catch {
+            XCTAssertEqual(error as? SchoolLoginFailure, .busy)
+        }
+        XCTAssertEqual(ran.all, [])
+        XCTAssertEqual(try RefreshLease(store: h.store, owner: "x").read()?.owner, "widget-1", "the widget keeps it")
+    }
+
+    func testALoginHoldsTheLeaseAndGivesItBack() async throws {
+        let h = Harness()
+        let app = refresher(h, owner: "app-1", wait: 3)
+        let widget = RefreshLease(store: h.store, owner: "widget-1", now: h.clock.function)
+        let value = try await app.holdingLease { () -> Int in
+            XCTAssertFalse(widget.acquire(), "the widget can't read during the login")
+            return 7
+        }
+        XCTAssertEqual(value, 7)
+        XCTAssertNil(try h.store.read(.sharedRefreshLease))
+        XCTAssertTrue(widget.acquire())
+    }
+
+    func testAFailedLoginGivesTheLeaseBack() async throws {
+        let h = Harness()
+        let app = refresher(h, owner: "app-1", wait: 3)
+        do {
+            _ = try await app.holdingLease { () -> Int in throw SchoolLoginFailure.wrongCredentials }
+            XCTFail("rethrown")
+        } catch {
+            XCTAssertEqual(error as? SchoolLoginFailure, .wrongCredentials)
+        }
+        XCTAssertNil(try h.store.read(.sharedRefreshLease))
+    }
+
+    /// The app's own refresh holds the lease under the app's owner: the login still waits for it.
+    func testALoginWaitsForTheAppsOwnRead() async throws {
+        let h = Harness()
+        let app = refresher(h, owner: "app-1", wait: 3)
+        XCTAssertTrue(RefreshLease(store: h.store, owner: "app-1", now: h.clock.function).acquire())
+        do {
+            _ = try await app.holdingLease { 1 }
+            XCTFail("the read holds the lease")
+        } catch {
+            XCTAssertEqual(error as? SchoolLoginFailure, .busy)
+        }
+    }
+}

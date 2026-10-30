@@ -139,7 +139,10 @@ struct PowerChoice: Identifiable, Equatable {
     /// The app's own login form. Throws `SchoolLoginFailure` for the login itself (shown on the
     /// form), or a service / storage error for the steps after it.
     func signIn(account: String, password: String, savePassword: Bool) async throws {
-        let summary = try await session.signIn(account:account, password:password, savePassword:savePassword)
+        let session = session
+        let summary = try await refresher.holdingLease {
+            try await session.signIn(account:account, password:password, savePassword:savePassword)
+        }
         if summary.switchedAccount { await previousPersonCleared() }
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
@@ -165,7 +168,8 @@ struct PowerChoice: Identifiable, Equatable {
     func savePassword(_ password: String, account typed: String?) async throws {
         let known = account?.account
         guard let name = known ?? typed, !name.isEmpty else { throw SchoolLoginFailure.wrongCredentials }
-        try await session.savePassword(password, account:name)
+        let session = session
+        try await refresher.holdingLease { try await session.savePassword(password, account:name) }
         reload()
         if known == nil { await refresh(force:true) }
     }

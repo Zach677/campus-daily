@@ -17,6 +17,9 @@ public enum SchoolLoginFailure: Error, Sendable, Equatable {
     /// Saving a password for an account other than the signed-in one: nothing was saved and
     /// nobody was switched (signing out comes first).
     case differentAccount
+    /// The other process (the widget) is in the middle of a school refresh, which may log in
+    /// itself: nothing was sent. Try again in a moment.
+    case busy
 }
 
 /// Account/password sign-in, for tests and the session (the real one is `CASLoginClient`).
