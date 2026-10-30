@@ -72,7 +72,12 @@ struct SettingsView: View {
                         else { SettingsRow(emoji:"🏠", title:"宿舍", value:data.dorm ?? "去设置") }
                     }
                 }.listRowBackground(Theme.group)
+                // 电表, 热水, 学校洗衣机, 常用洗衣机; the 学校洗衣机 footnote stays under the group.
                 Section {
+                    NavigationLink { CampusPowerSetupView() } label: {
+                        if data.powerBound, let location = data.meterLocation { SettingsRow(emoji:"⚡", title:"电表", detail:location) }
+                        else { SettingsRow(emoji:"⚡", title:"电表", value:data.powerBound ? "已绑定" : "去绑定") }
+                    }
                     if data.shower == .unconfigured {
                         // Hot water is set up by choosing the dorm (controller binding), not by a file.
                         NavigationLink { CampusOnboardingView() } label: {
@@ -95,10 +100,6 @@ struct SettingsView: View {
                             SettingsRow(emoji:"🧺", title:"常用洗衣机", hidesEmoji:true,
                                         value:data.laundryBound ? (data.laundryMachine.map { "\($0) 号机" } ?? "已绑定") : "去设置")
                         }
-                    }
-                    NavigationLink { CampusPowerSetupView() } label: {
-                        if data.powerBound, let location = data.meterLocation { SettingsRow(emoji:"⚡", title:"电表", detail:location) }
-                        else { SettingsRow(emoji:"⚡", title:"电表", value:data.powerBound ? "已绑定" : "去绑定") }
                     }
                 } header: {
                     Text("设备")
