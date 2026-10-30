@@ -268,7 +268,9 @@ The state drawn (fresh / stale / expired / never) is `WidgetStatus.freshness(sna
 now)` in Core, from the stored `fetchedAt`, `needsLogin` and whether a password is saved; when
 the numbers will turn stale by time alone before the next timeline, a second entry switches at
 that second (`WidgetStatus.staleAt`). Tap: expired / never → `campusdaily://login` (the login
-step), else `campusdaily://home`. Red is only for low electricity.
+step), else `campusdaily://home`. Red is only for low electricity. The footer time
+(`UpdateTimeText` in Core) is relative to the entry's date: 「22:10 更新」, 「昨天 22:10 更新」,
+「10月29日 22:10 更新」, so an old reading never looks like today's.
 
 **Electricity resolution.** The power tree contains apartment levels that the dorm address lacks,
 so do not walk it level by level. Onboarding: call `meters(nodeID: <campus node>)` once (≈2.3k

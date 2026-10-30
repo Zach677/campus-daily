@@ -27,12 +27,4 @@ enum CampusFormat {
         let parts = calendar.dateComponents([.month,.day], from:date)
         return "\(parts.month ?? 0)月\(parts.day ?? 0)日更新"
     }
-    /// The time alone, for the stale widget footer: 「8:10」/「昨天 22:10」/「10月26日」.
-    static func stamp(_ date: Date) -> String { stamp(date, now:Date()) }
-    static func stamp(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
-        if calendar.isDate(date, inSameDayAs:now) { return clock(date) }
-        if calendar.isDateInYesterday(date) { return "昨天 " + clock(date) }
-        let parts = calendar.dateComponents([.month,.day], from:date)
-        return "\(parts.month ?? 0)月\(parts.day ?? 0)日"
-    }
 }

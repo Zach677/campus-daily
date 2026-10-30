@@ -15,15 +15,18 @@ struct CampusWidgetModel: Sendable {
     var powerBalance: Decimal?
     /// The last successful update (the stored `fetchedAt`).
     var updated: Date?
+    /// When this face is drawn (the timeline entry's date): the footer says 「昨天」 or the date
+    /// relative to it.
+    var now = Date()
     /// The user's reminder lines (Settings › 提醒), shared through the keychain; default 10 度 / 20 元.
     var lines = ReminderLines()
 
     static let never = CampusWidgetModel(state:.never)
 
     init(state: WidgetFreshness, remainingKWh: Decimal? = nil, balance: Decimal? = nil, yesterdayKWh: Decimal? = nil,
-         powerBalance: Decimal? = nil, updated: Date? = nil) {
+         powerBalance: Decimal? = nil, updated: Date? = nil, now: Date = Date()) {
         self.state = state; self.remainingKWh = remainingKWh; self.balance = balance
-        self.yesterdayKWh = yesterdayKWh; self.powerBalance = powerBalance; self.updated = updated
+        self.yesterdayKWh = yesterdayKWh; self.powerBalance = powerBalance; self.updated = updated; self.now = now
     }
 
     /// A failed read keeps the last numbers and their time (the snapshot keeps them).
@@ -33,8 +36,13 @@ struct CampusWidgetModel: Sendable {
         let meter = snapshot.power.value
         self.init(state:state, remainingKWh:meter?.remainingKWh, balance:snapshot.card.value?.yuan,
                   yesterdayKWh:meter?.dailyUseKWh, powerBalance:meter?.leftMoney?.yuan,
-                  updated:WidgetStatus.lastUpdated(snapshot))
+                  updated:WidgetStatus.lastUpdated(snapshot), now:now)
     }
+
+    /// 「22:10 更新」/「昨天 22:10 更新」/「10月29日 22:10 更新」.
+    var updatedText: String? { updated.map { UpdateTimeText.widgetUpdated($0, now:now, calendar:.current) } }
+    /// The time before 「 · 打开 App 更新」 on the stale face.
+    var staleStamp: String? { updated.map { UpdateTimeText.stamp($0, now:now, calendar:.current) } }
 
     /// Signed in but no number read yet (and not expired): 「打开校日常⏎刷新一下」.
     var waitingForFirstRead: Bool {
@@ -58,7 +66,7 @@ struct CampusWidgetModel: Sendable {
         if let remainingKWh { parts.append("宿舍电量 \(CampusFormat.kwh(remainingKWh)) 度") }
         if let balance { parts.append("校园卡余额 \(CampusFormat.plainYuan(balance)) 元") }
         if medium, let powerBalance { parts.append("电费余额 \(CampusFormat.plainYuan(powerBalance)) 元") }
-        if let updated { parts.append(CampusFormat.updated(updated)) }
+        if let updatedText { parts.append(updatedText) }
         if state == .stale { parts.append("打开 App 更新") }
         return parts.joined(separator:"，")
     }
@@ -214,7 +222,7 @@ struct CampusWidgetFace: View {
             .widgetAccentable()
     }
 
-    /// fresh: 「10:32 更新」 ink2; stale: 「8:10 · 打开 App 更新」 (time ink3, action accentText);
+    /// fresh: 「10:32 更新」 ink2; stale: 「昨天 8:10 · 打开 App 更新」 (time ink3, action accentText);
     /// expired (medium): 「登录过期了 · 打开校日常重新登录」.
     @ViewBuilder private var footer: some View {
         switch model.state {
@@ -223,12 +231,12 @@ struct CampusWidgetFace: View {
             let tail = Text(" · 打开校日常重新登录").foregroundStyle(P.ink2)
             Text("\(lead)\(tail)").font(.system(size:11)).lineLimit(1).minimumScaleFactor(0.8)
         case .stale:
-            let time = Text((model.updated.map { CampusFormat.stamp($0) } ?? "") + (model.updated == nil ? "" : " · ")).foregroundStyle(P.ink3)
+            let time = Text(model.staleStamp.map { $0 + " · " } ?? "").foregroundStyle(P.ink3)
             let action = Text("打开 App 更新").fontWeight(.semibold).foregroundStyle(P.accentText)
             Text("\(time)\(action)").font(.system(size:11)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
         case .fresh, .never:
-            if let updated = model.updated {
-                Text(CampusFormat.updated(updated)).font(.system(size:11)).monospacedDigit().foregroundStyle(P.ink2).lineLimit(1)
+            if let updated = model.updatedText {
+                Text(updated).font(.system(size:11)).monospacedDigit().foregroundStyle(P.ink2).lineLimit(1)
             }
         }
     }
