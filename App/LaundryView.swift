@@ -1,5 +1,5 @@
 import SwiftUI
-import WaterCore
+import DailyCore
 
 /// Laundry page (design r2 §1): hero sentence + hairline lists + bottom dock, same skeleton as home.
 /// All ordering/payment safety lives in `LaundryModel` / `LaundryCheckoutController`; this view only
@@ -67,9 +67,9 @@ struct LaundryDetail: View {
             await laundry.refresh(); await laundry.refreshOrder()
         }
         // Unpaid reservation: re-read once the server's auto-cancel countdown passes (unchanged behaviour).
-        .task(id:facts.record?.orderUpdatedAt) {
-            guard !isDemo, let record = facts.record, record.stage != .completed, let order = record.order,
-                  order.status.text == "10", let seconds = order.countDown, seconds > 0 else { return }
+        .task(id:facts.record?.orderReadAt) {
+            guard !isDemo, let record = facts.record, record.inFlight, let order = record.order,
+                  order.status.code == "10", let seconds = order.countDown, seconds > 0 else { return }
             do { try await Task.sleep(for:.seconds(seconds + 1)) } catch { return }
             await laundry.refreshOrder()
         }
@@ -221,7 +221,7 @@ struct LaundryDetail: View {
         case .check:
             if let record = facts.record {
                 HomeSectionHeader(text:"最近").padding(.top,30)
-                RecentRow(item:.init(id:"laundry-check", emoji:"🧺", title:"洗衣 · " + record.programName, date:record.createdAt,
+                RecentRow(item:.init(id:"laundry-check", emoji:"🧺", title:"洗衣 · " + record.programName, date:record.createdAt ?? Date(),
                                      detail:facts.machine.map(LaundryFormat.machine), amount:nil),
                           accentWord:"待核对")
             }
@@ -230,10 +230,10 @@ struct LaundryDetail: View {
         }
     }
 
-    private func selected(_ facts: LaundryFacts) -> LaundryProgram? {
+    private func selected(_ facts: LaundryFacts) -> WasherProgram? {
         guard let programs = facts.snapshot?.programs else { return nil }
         if let selectedId, let match = programs.first(where:{ $0.id == selectedId }) { return match }
-        if let device = facts.snapshot?.deviceId {
+        if let device = facts.snapshot?.deviceID {
             let last = UserDefaults.standard.integer(forKey:Self.lastProgramKey(device))
             if let match = programs.first(where:{ $0.id == last }) { return match }
         }
@@ -293,14 +293,14 @@ struct LaundryDetail: View {
             EmptyView()
         case .idle, .done:
             let program = selected(facts)
-            let title = "下单" + (program.map { " · " + Theme.yuan($0.price) } ?? "")
+            let title = "下单" + (program.map { " · " + Theme.yuan($0.price.yuan) } ?? "")
             DockBar {
                 Button { order() } label: {
                     DockPillLabel(title:title, style:preparing ? .busy : (facts.mayCreate && program != nil ? .primary : .disabled))
                 }
                 .buttonStyle(PressScaleStyle())
                 .disabled(!facts.mayCreate || preparing || program == nil)
-                .accessibilityLabel(program.map { "下单，" + LaundryFormat.spokenYuan($0.price) } ?? "下单")
+                .accessibilityLabel(program.map { "下单，" + LaundryFormat.spokenYuan($0.price.yuan) } ?? "下单")
                 .accessibilityIdentifier("reviewLaundryOrder")
             }
         case .unpaid(let payable):
@@ -400,7 +400,7 @@ struct LaundryDetail: View {
             let machine = facts.snapshot.map { LaundryFormat.machine($0.deviceNo) }
             let line = [machine, program.map(LaundryFormat.program) ?? programLine(facts)].compactMap { $0 }.joined(separator:" · ")
             LaundryPaySheet(title:newOrder ? "下单并去支付宝付款？" : "去支付宝付款？", line:line,
-                            amount:program?.price ?? facts.amount) {
+                            amount:program?.price.yuan ?? facts.amount) {
                 sheet = nil
                 if newOrder, let program { submit(program) } else { payExisting() }
             }
@@ -412,11 +412,11 @@ struct LaundryDetail: View {
         }
     }
 
-    private func submit(_ program: LaundryProgram) {
+    private func submit(_ program: WasherProgram) {
         #if DEBUG
         if demo != nil { runDemoBusy(); return }
         #endif
-        if let device = laundry.snapshot?.deviceId { UserDefaults.standard.set(program.id, forKey:Self.lastProgramKey(device)) }
+        if let device = laundry.snapshot?.deviceID { UserDefaults.standard.set(program.id, forKey:Self.lastProgramKey(device)) }
         submitting = true
         Task { await laundry.createAndPay(program); submitting = false }
     }
@@ -456,7 +456,7 @@ struct LaundryDetail: View {
 
 enum LaundrySheet: Identifiable, Equatable {
     /// `program` for a new order; nil to pay the existing unpaid order.
-    case confirm(program: LaundryProgram?, newOrder: Bool)
+    case confirm(program: WasherProgram?, newOrder: Bool)
     case cancel
     var id: String {
         switch self {
@@ -471,7 +471,7 @@ enum LaundrySheet: Identifiable, Equatable {
 
 /// 「选程序」 row (r2 §1.4): selection mark · 「标准洗 · 45 分钟」 · price.
 struct LaundryProgramRow: View {
-    let program: LaundryProgram
+    let program: WasherProgram
     let selected: Bool
     let action: () -> Void
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -493,7 +493,7 @@ struct LaundryProgramRow: View {
         }
         .buttonStyle(RowPressStyle())
         .accessibilityElement(children:.ignore)
-        .accessibilityLabel("\(program.workModelName)，\(program.time) 分钟，\(LaundryFormat.spokenYuan(program.price))")
+        .accessibilityLabel("\(program.workModelName)，\(program.time) 分钟，\(LaundryFormat.spokenYuan(program.price.yuan))")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : [.isButton])
     }
     private var mark: some View {
@@ -517,7 +517,7 @@ struct LaundryProgramRow: View {
         }.fixedSize(horizontal:false, vertical:true)
     }
     private var price: some View {
-        Text(Theme.yuan(program.price)).scaledFont(20, .semibold, design:.rounded, relativeTo:.title3)
+        Text(Theme.yuan(program.price.yuan)).scaledFont(20, .semibold, design:.rounded, relativeTo:.title3)
             .monospacedDigit().foregroundStyle(Theme.ink).lineLimit(1)
     }
     /// Camo's single-spin note (the machine's own description text is not decoded).
@@ -680,16 +680,16 @@ struct LaundryDemo {
             demo.facts.busy = true; demo.facts.mayCreate = false; demo.facts.progress = "正在打开支付宝…"
         case .unpaid, .cancel:
             demo.facts.snapshot = snapshot(status:11, active:"demo1")
-            demo.facts.record = record(stage:"created", status:"10", paid:false, remain:nil, created:now.addingTimeInterval(-60), now:now)
+            demo.facts.record = record(stage:.created, status:"10", paid:false, remain:nil, created:now.addingTimeInterval(-60), now:now)
             demo.facts.mayCreate = false; demo.facts.mayCancel = true
             if kind == .cancel { demo.sheet = .cancel }
         case .run:
             demo.facts.snapshot = snapshot(status:1, active:"demo1")
-            demo.facts.record = record(stage:"created", status:"40", paid:true, remain:18 * 60 - 30,
+            demo.facts.record = record(stage:.active, status:"40", paid:true, remain:18 * 60 - 30,
                                        created:now.addingTimeInterval(-27 * 60), now:now)
             demo.facts.mayCreate = false
         case .check:
-            demo.facts.record = record(stage:"creating", status:nil, paid:false, remain:nil, created:now.addingTimeInterval(-12 * 60), now:now)
+            demo.facts.record = record(stage:.creating, status:nil, paid:false, remain:nil, created:now.addingTimeInterval(-12 * 60), now:now)
             demo.facts.mayCreate = false
         case .inuse: demo.facts.snapshot = snapshot(status:1); demo.facts.mayCreate = false
         case .offline: demo.facts.snapshot = snapshot(status:8); demo.facts.mayCreate = false
@@ -697,40 +697,39 @@ struct LaundryDemo {
         case .disabled: demo.facts.snapshot = snapshot(status:9); demo.facts.mayCreate = false
         case .empty: demo.facts = LaundryFacts()
         case .done:
-            demo.facts.record = record(stage:"completed", status:"50", paid:true, remain:nil, created:now.addingTimeInterval(-50 * 60), now:now)
+            demo.facts.record = record(stage:.none, status:"50", paid:true, remain:nil, created:now.addingTimeInterval(-50 * 60), now:now)
             demo.panel = .laundryDone(amount:Decimal(string:"4.00"), detail:"标准洗 · 45 分钟 · 3 号机")
         }
         return demo
     }
 
-    private static func decode<T: Decodable>(_ object: [String:Any]) -> T {
-        let data = try! JSONSerialization.data(withJSONObject:object)
-        return try! JSONDecoder().decode(T.self, from:data)
+    static let programs: [WasherProgram] = [(1,"标准洗",45,400),(2,"快洗",30,300),(3,"大物洗",60,500),(4,"单脱水",6,100)].map {
+        WasherProgram(id:$0.0, name:$0.1, minutes:$0.2, price:Money(fen:$0.3))
     }
 
-    static func snapshot(status: Int, active: String? = nil) -> LaundrySnapshot {
-        let programs: [[String:Any]] = [(1,"标准洗",45,400),(2,"快洗",30,300),(3,"大物洗",60,500),(4,"单脱水",6,100)].map {
-            ["workModelId":$0.0, "workModelName":$0.1, "time":$0.2, "basePrice":$0.3, "hide":0, "isPromotion":0, "promotionPrice":0]
-        }
-        var object: [String:Any] = ["deviceId":"demo-washer", "deviceNo":"3", "deviceTypeName":"波轮洗衣机", "storeName":"4 栋洗衣房",
-                                    "moduleType":7, "status":status, "createOrderEnabled":status == 0, "programs":programs,
-                                    "fetchedAt":Date().timeIntervalSinceReferenceDate, "storeId":"demo-store", "deviceTypeId":1]
-        if let active { object["activeOrderId"] = active }
-        return decode(object)
+    static func snapshot(status: Int, active: String? = nil) -> WasherSnapshot {
+        WasherSnapshot(qrCode:"demo",
+                       scan:WasherScan(deviceID:"demo-washer", moduleType:7, status:status, createOrderEnabled:status == 0, activeOrderID:active),
+                       info:WasherInfo(deviceID:"demo-washer", deviceNo:"3", typeName:"波轮洗衣机", storeName:"4 栋洗衣房",
+                                       storeID:"demo-store", deviceTypeID:1, moduleType:7, programs:programs),
+                       fetchedAt:Date())
     }
 
-    static func record(stage: String, status: String?, paid: Bool, remain: Int?, created: Date, now: Date) -> LaundryCheckoutRecord {
-        var object: [String:Any] = ["deviceId":"demo-washer", "programId":1, "programName":"标准洗", "expectedPrice":4,
-                                    "createdAt":created.timeIntervalSinceReferenceDate, "stage":stage]
+    static func record(stage: LaundryPhase, status: String?, paid: Bool, remain: Int?, created: Date, now: Date) -> LaundryCheckout {
+        let draft = LaundryDraft(deviceID:"demo-washer", qrCode:"demo", machineName:"3", program:programs[0],
+                                 request:OrderRequest(deviceID:"demo-washer", deviceTypeID:1, storeID:"demo-store", programID:1))
+        var record = LaundryCheckout(phase:stage, draft:draft, createdAt:created)
         if let status {
-            var order: [String:Any] = ["orderId":"demo1", "deviceId":"demo-washer", "status":status, "payFlag":paid ? "1" : "0",
-                                       "deviceWashModelId":1, "payPrice":4]
-            if let remain { order["remainTime"] = remain }
-            if status == "10" { order["countDown"] = 600 }
-            object["orderId"] = "demo1"; object["order"] = order
-            object["orderUpdatedAt"] = now.timeIntervalSinceReferenceDate
+            record.orderID = "demo1"
+            record.order = LaundryOrder(id:"demo1", deviceID:"demo-washer", status:LaundryOrderStatus(status), paid:paid,
+                                        remainSeconds:remain, programID:1, price:Money(fen:400),
+                                        countDown:status == "10" ? 600 : nil)
+            record.orderReadAt = now
         }
-        return decode(object)
+        if stage == .none, let status {
+            record = LaundryCheckout(lastOutcome:LaundryOutcome(orderID:"demo1", status:LaundryOrderStatus(status), at:now))
+        }
+        return record
     }
 }
 #endif

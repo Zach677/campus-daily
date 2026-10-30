@@ -1,5 +1,5 @@
 import SwiftUI
-import WaterCore
+import DailyCore
 
 /// First-run guide (design §7, copy-r1 「首次引导」). Presented as a full-screen cover.
 struct OnboardingView: View {
@@ -65,14 +65,17 @@ struct OnboardingView: View {
         .tint(Theme.accentText)
         .typesettingLanguage(Theme.typesetting)
         .sheet(isPresented:$login) {
-            CampusLoginSheet { config in
-                do {
-                    try campus.acceptLogin(config)
-                    issue = nil
-                    Task { await campus.refresh(force:true) }
-                    // Only from the login step: a repeated delivery must not skip the dorm step.
-                    if step == .login { advance() }
-                } catch { issue = "这次没登录上，再试一次。" }
+            CampusLoginSheet { value in
+                Task {
+                    do {
+                        try await campus.adoptWebState(value)
+                        issue = nil
+                        Task { await campus.refresh(force:true) }
+                        campus.matchPowerAutomatically()
+                        // Only from the login step: a repeated delivery must not skip the dorm step.
+                        if step == .login { advance() }
+                    } catch { issue = "这次没登录上，再试一次。" }
+                }
             }
         }
         .sheet(isPresented:$ujing) { UjingLoginView() }
@@ -299,7 +302,7 @@ struct OnboardingView: View {
         case .dorm:
             if choosingApartment {
                 guard let apartment else { return }
-                if let candidate = campus.powerChoices.first(where:{ $0.id == apartment }) { campus.choosePowerApartment(candidate) }
+                if let candidate = campus.powerChoices.first(where:{ $0.id == apartment }) { campus.choosePower(candidate) }
                 bindWaterThenAdvance()
             } else if dorm != nil { bindWaterThenAdvance() } else { openDormPicker() }
         case .washer:

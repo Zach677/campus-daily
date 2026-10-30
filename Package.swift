@@ -1,8 +1,7 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// New logic layer (R3): DailyCore, DailyHTTP, SchoolClient, HotWaterClient, LaundryClient, DailyStore (Swift 6 mode).
-// The old WaterCore modules stay side by side (Swift 5 mode) until R4 removes them.
+// Logic layer: DailyCore, DailyHTTP, SchoolClient, HotWaterClient, LaundryClient, DailyStore (Swift 6 mode).
 let swift6: [SwiftSetting] = [.swiftLanguageMode(.v6)]
 
 let package = Package(
@@ -15,10 +14,6 @@ let package = Package(
         .library(name: "DailyStore", targets: ["DailyStore"]),
         .library(name: "HotWaterClient", targets: ["HotWaterClient"]),
         .library(name: "LaundryClient", targets: ["LaundryClient"]),
-        // Legacy (deleted in R4)
-        .library(name: "WaterCore", targets: ["WaterCore"]),
-        .executable(name: "water-evidence-check", targets: ["WaterEvidenceCheck"]),
-        .executable(name: "campus-read-check", targets: ["CampusReadCheck"]),
     ],
     targets: [
         .target(name: "DailyCore", swiftSettings: swift6),
@@ -34,14 +29,7 @@ let package = Package(
         .testTarget(name: "SchoolClientTests", dependencies: ["DailyCore", "DailyHTTP", "SchoolClient", "DailyStore", "DailyTestSupport"], swiftSettings: swift6),
         .testTarget(name: "DailyStoreTests", dependencies: ["DailyCore", "DailyStore"], swiftSettings: swift6),
         .testTarget(name: "LaundryClientTests", dependencies: ["DailyCore", "DailyHTTP", "LaundryClient", "DailyStore", "DailyTestSupport"], swiftSettings: swift6),
-        // Also depends on the legacy WaterCore for the signing/codec golden cross-checks (drop with WaterCore in R4).
-        .testTarget(name: "HotWaterClientTests", dependencies: ["DailyCore", "DailyHTTP", "HotWaterClient", "DailyStore", "DailyTestSupport", "WaterCore"], swiftSettings: swift6),
-
-        // Legacy (deleted in R4)
-        .target(name: "WaterCore"),
-        .executableTarget(name: "WaterEvidenceCheck", dependencies: ["WaterCore"]),
-        .executableTarget(name: "CampusReadCheck", dependencies: ["WaterCore"]),
-        .testTarget(name: "WaterCoreTests", dependencies: ["WaterCore"]),
+        .testTarget(name: "HotWaterClientTests", dependencies: ["DailyCore", "DailyHTTP", "HotWaterClient", "DailyStore", "DailyTestSupport"], swiftSettings: swift6),
     ],
-    swiftLanguageModes: [.v5]
+    swiftLanguageModes: [.v6]
 )

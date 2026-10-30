@@ -14,7 +14,7 @@
 		</dict>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>CampusDaily.navigation</string>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER).navigation</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>campusdaily</string>
@@ -39,7 +39,7 @@
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.beamjason.campushotwater.refresh</string>
+		<string>com.beamjason.xiaorichang.refresh</string>
 	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>

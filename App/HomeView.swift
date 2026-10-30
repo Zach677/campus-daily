@@ -1,6 +1,6 @@
 import SwiftUI
 import UserNotifications
-import WaterCore
+import DailyCore
 
 enum HomeRoute: Hashable { case power, powerSetup, card, water, laundry, washerSetup }
 
@@ -37,7 +37,6 @@ struct HomeView: View {
     /// Home is what the user sees: nothing pushed, no sheet, cover or panel on top, app in front.
     private var homeClear: Bool {
         var clear = phase == .active && path.isEmpty && !settings && onboarding == nil && panel == nil
-            && water.deviceCandidates.isEmpty
         #if DEBUG
         clear = clear && activityPreview == nil && widgetPreview == nil
         #endif
@@ -79,7 +78,7 @@ struct HomeView: View {
                 }
                 .navigationDestination(for:HomeRoute.self) { route in destination(route) }
             }
-            .waterDevicePicker()
+            
             SettlementOverlay(result:$panel)
         }
         .sensoryFeedback(.impact(weight:.medium), trigger:startTick)
@@ -89,7 +88,7 @@ struct HomeView: View {
         .fullScreenCover(item:$onboarding, onDismiss:{ didSeeQuickSetup = true }) { request in
             // .id: a new request must reset the cover's @State (step), not reuse it.
             // Own device chooser: a sheet from the home root can't show above this cover.
-            let cover = OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id).waterDevicePicker()
+            let cover = OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id)
             #if DEBUG
             cover.onOpenURL { handleDemo($0) }
             #else
@@ -113,8 +112,8 @@ struct HomeView: View {
         .onChange(of:phase) { _, value in
             if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
         }
-        .onChange(of:water.stage) { old, value in
-            guard old != nil, old != .settled, value == .settled, !water.resolvedManually else { return }
+        .onChange(of:water.state.phase) { old, value in
+            guard old != .done, value == .done else { return }
             presentSettled()
             Task { await campus.refresh(force:true) }
         }
@@ -529,22 +528,19 @@ struct HomeView: View {
             guard water.mayStart else { path.append(.water); return }
             startTick += 1
             Task {
-                do { try await water.run(start:true, allowDeviceSelection:true) }
+                do { try await water.run(start:true) }
                 catch { errorTick += 1 }
             }
         case .finish:
             Task {
                 do { try await water.run(start:false) }
-                catch {
-                    let uncertain = (error as? WaterError).map { $0 == .provider || $0 == .networkUncertain } ?? false
-                    if uncertain || unresolvedClose { presentUnconfirmed() } else { errorTick += 1 }
-                }
+                catch { if unresolvedClose { presentUnconfirmed() } else { errorTick += 1 } }
             }
         case .starting, .settling: break
         }
     }
 
-    private var unresolvedClose: Bool { water.stage == .closeWritePending || water.stage == .settlementPending }
+    private var unresolvedClose: Bool { water.unresolvedClose }
 
     private func presentSettled() {
         var minutes: Int?

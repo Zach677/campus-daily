@@ -1,8 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import WaterCore
+import DailyCore
 
-@main struct CampusHotWaterApp: App {
+@main struct XiaoRiChangApp: App {
     @StateObject private var water = WaterModel.shared
     @StateObject private var campus = CampusModel.shared
     @StateObject private var laundry = LaundryModel()
@@ -18,17 +18,6 @@ import WaterCore
             CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry)
                 .onChange(of:campus.room,initial:true) { ShowerActivityController.shared.dorm = Theme.dorm(campus.room) ?? "" }
                 .task {
-                    #if CAMPUS_ACCESS_DIAGNOSTICS
-                    if ProcessInfo.processInfo.arguments.contains("--check-water-access") {
-                        await AccessDiagnostics.run(campus:campus)
-                        return
-                    }
-                    #endif
-                    water.importDevelopmentConfigIfPresent()
-                    campus.importDevelopmentConfigIfPresent()
-                    laundry.importDevelopmentConfigIfPresent()
-                    await water.migrateBundledDirectIfNeeded(campus:campus.onboardingLogin)
-                    await laundry.recoverDevelopmentOrderIfPresent()
                     campus.matchPowerAutomatically()
                     await campus.refresh()
                     await laundry.refresh()
@@ -37,17 +26,20 @@ import WaterCore
         }
         .onChange(of:phase) { _, value in
             if value == .background { Reminders.scheduleRefresh() }
-            if value == .active { Task { await Reminders.shared.refreshAuthorization() } }
+            if value == .active {
+                Task { await Reminders.shared.refreshAuthorization() }
+                // Back from Alipay without a callback URL (checkout links): read the order.
+                Task { await laundry.refreshOrder() }
+            }
         }
         // Background campus read: low power / card reminders (§5) and a fresh widget.
         .backgroundTask(.appRefresh(Reminders.refreshTask)) {
             Reminders.scheduleRefresh()
-            await CampusModel.shared.refresh(force:true)
+            await CampusModel.shared.refresh(force:true, inBackground:true)
         }
     }
 }
 
-/// Device chooser lives once at the home root (see `waterDevicePicker()`), so it also serves this screen.
 struct WaterDetail: View {
     @EnvironmentObject private var water: WaterModel
     @EnvironmentObject private var campus: CampusModel
@@ -98,7 +90,7 @@ struct WaterDetail: View {
                     Button("我在学校记录里核对过了") { confirmResolve = true }
                         .font(.subheadline).frame(minHeight:44).accessibilityIdentifier("resolveWaterManually")
                         .confirmationDialog("这次洗澡核对过了吗？", isPresented:$confirmResolve, titleVisibility:.visible) {
-                            Button("核对过了") { try? water.resolveManually() }
+                            Button("核对过了") { Task { await water.resolveManually() } }
                             Button("取消", role:.cancel) {}
                         } message: {
                             Text("标记以后，校日常不会再结算这一次。先在学校的热水记录里找到这次洗澡，再点核对过了。")
@@ -124,70 +116,33 @@ struct WaterDetail: View {
                     }.buttonStyle(WaterButtonStyle(primary:true,accent:NativeTheme.tint))
                         .disabled(closing ? !water.mayFinish : !water.mayStart)
                         .accessibilityIdentifier(closing ? "finishWater" : "startWater")
-                    Text(closing ? "结算完成前，请留在水控附近。" : "授权后，按水控上的出水键。")
+                    Text(closing ? "结算完成前，先别离开水控。" : "授权后，按水控上的出水键。")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.padding(.horizontal,20).padding(.top,12).padding(.bottom,12).background(NativeTheme.background)
             }
     }
     @ViewBuilder private var cost: some View {
-        if water.stage == .settled, let cost = water.lastCost {
+        if water.state.phase == .done, let cost = water.lastCost {
             Text(cost,format:.currency(code:"CNY")).font(.title2.weight(.semibold)).monospacedDigit().accessibilityIdentifier("settlementCost")
-        } else if water.stage == .settled, water.resolvedManually {
-            Text("以学校记录为准").font(.subheadline).foregroundStyle(.secondary)
-        } else if water.stage == .settled {
-            Text(water.hasReceipt ? "金额未返回" : "旧记录未保存金额").font(.subheadline).foregroundStyle(.secondary)
+        } else if water.state.phase == .done {
+            Text("金额未返回").font(.subheadline).foregroundStyle(.secondary)
         } else { Text("结算后显示").font(.subheadline) }
     }
-    private var closing: Bool { water.stage?.mayClose == true }
+    private var closing: Bool { water.state.canFinish }
     private var headline: String {
         if water.inspecting { return "正在核对设备" }
         if water.busy { return "正在处理" }
         if water.problem { return "本次待核对" }
         if !water.configured { return "尚未配置热水" }
-        if water.stage == .active { return "热水已授权" }
-        if water.stage == .settled { return water.resolvedManually ? "已手动核对" : "结算完成" }
-        if water.stage != nil { return "当前记录待核对" }
-        return "准备洗澡"
+        switch water.state.phase {
+        case .running, .writePending: return "热水已授权"
+        case .done: return "结算完成"
+        case .idle: return "准备洗澡"
+        default: return "当前记录待核对"
+        }
     }
-    private func perform(start:Bool) { Task { try? await water.run(start:start,allowDeviceSelection:true) } }
+    private func perform(start:Bool) { Task { try? await water.run(start:start) } }
 }
-
-/// Chooser for several same-named water controllers; used wherever a start can be triggered.
-private struct WaterDevicePicker: ViewModifier {
-    @EnvironmentObject private var water: WaterModel
-    @Environment(\.scenePhase) private var phase
-    func body(content: Content) -> some View {
-        content
-            .sheet(isPresented:Binding(get:{ !water.deviceCandidates.isEmpty },set:{ if !$0 { water.cancelDeviceSelection() } })) {
-                    NavigationStack {
-                        List {
-                            Section {
-                                Text("附近有多台同名水控，请靠近自己宿舍的设备后选择。信号强度仅供参考，连接后还会核对宿舍水控编号。")
-                                    .font(.subheadline).foregroundStyle(.secondary)
-                            }
-                            Section("选择水控") {
-                                ForEach(water.deviceCandidates) { device in
-                                    Button { water.chooseDevice(device.id) } label: {
-                                        HStack(spacing:12) {
-                                            Image(systemName:"antenna.radiowaves.left.and.right")
-                                            VStack(alignment:.leading,spacing:6) {
-                                                Text(device.name).font(.headline)
-                                                Text("设备标识 " + device.id).font(.caption).foregroundStyle(.secondary)
-                                                if let rssi = device.rssi { Text("信号 \(rssi) dBm").font(.caption).foregroundStyle(.secondary) }
-                                            }
-                                        }.frame(maxWidth:.infinity,minHeight:60,alignment:.leading)
-                                    }.accessibilityIdentifier("waterDevice-" + device.id)
-                                }
-                            }
-                        }.navigationTitle("选择水控设备").navigationBarTitleDisplayMode(.inline)
-                            .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { water.cancelDeviceSelection() } } }
-                    }
-                }
-            .onChange(of:phase) { _,value in if value == .background { water.cancelDeviceSelection() } }
-            .onDisappear { water.cancelDeviceSelection() }
-    }
-}
-extension View { func waterDevicePicker() -> some View { modifier(WaterDevicePicker()) } }
 
 struct WaterButtonStyle: ButtonStyle {
     let primary: Bool

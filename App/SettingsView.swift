@@ -1,6 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import WaterCore
+import DailyCore
 
 /// Settings sheet (design §6, copy-r1 「设置」).
 struct SettingsView: View {
@@ -72,7 +72,7 @@ struct SettingsView: View {
                     Button { dismiss() } label: { Text("完成").fontWeight(.semibold).foregroundStyle(Theme.accentText) }
                 }
             }
-            .waterDevicePicker()
+            
         }
         .tint(Theme.accentText)
         .presentationDetents([.large])
@@ -262,40 +262,34 @@ private struct ChevronRow: View {
     }
 }
 
-private enum ConfigImport { case water, campus, laundry }
 
 /// 高级: config imports, Bluetooth connection check, Shortcuts hint, version.
 struct AdvancedSettingsView: View {
     @EnvironmentObject private var water: WaterModel
-    @EnvironmentObject private var campus: CampusModel
-    @EnvironmentObject private var laundry: LaundryModel
     @State private var importing = false
-    @State private var importKind = ConfigImport.campus
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
     @State private var diagnosticURL: URL?
     @State private var sharingDiagnostics = false
     @State private var diagnosticFailed = false
     private var version: String {
-        (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + " (" +
-        (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + ") · 内测"
+        (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + "（" +
+        (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + "）· 测试版"
     }
-    private func importRow(_ title: String, _ kind: ConfigImport) -> some View {
-        Button { importKind = kind; importing = true } label: { ChevronRow(title:title) }
+    private func importRow(_ title: String) -> some View {
+        Button { importing = true } label: { ChevronRow(title:title) }
     }
     var body: some View {
         List {
             Section {
-                importRow("导入校园卡配置", .campus).disabled(campus.loading)
-                importRow("导入热水配置", .water).disabled(!water.mayImport)
-                importRow("导入洗衣配置", .laundry).disabled(!laundry.mayImport)
+                importRow("导入热水配置").disabled(!water.mayImport)
             } header: { Text("导入配置") } footer: {
                 VStack(alignment:.leading, spacing:6) {
                     if let importIssue {
                         Label(importIssue, systemImage:"exclamationmark.circle").foregroundStyle(Theme.ink2)
                             .accessibilityIdentifier("importIssue")
                     }
-                    Text("通常无需导入文件。有未结算记录时请勿卸载或更换配置。操作未确认时，先核对现场及官方记录。")
+                    Text("通常无需导入文件。有没结算的记录时，别卸载 App，也别换配置。操作未确认时，先核对现场及官方记录。")
                 }
             }.listRowBackground(Theme.group)
             Section {
@@ -323,7 +317,7 @@ struct AdvancedSettingsView: View {
                 Text("只读取设备编号，不会出水。核对后会断开，开始洗澡时再连接。")
             }.listRowBackground(Theme.group)
             Section {
-                Button { Task { await water.reviewCurrentSession() } } label: { ChevronRow(title:"只读检查本次水控状态") }
+                Button { Task { await water.reviewCurrentSession() } } label: { ChevronRow(title:"检查水控状态") }
                     .disabled(!water.mayFinish).accessibilityIdentifier("reviewWaterSession")
                 Button {
                     do { diagnosticURL = try water.exportDiagnostics(); sharingDiagnostics = true }
@@ -331,7 +325,7 @@ struct AdvancedSettingsView: View {
                 } label: { ChevronRow(title:"导出热水诊断") }.accessibilityIdentifier("exportWaterDiagnostics")
             } header: { Text("热水排查") } footer: {
                 VStack(alignment:.leading, spacing:6) {
-                    Text("只读检查：仅查询已保存会话的设备，不开水、不关水、不结算。")
+                    Text("只看状态，不会开水，也不会结算。")
                     Text("诊断文件包含版本、操作时间和设备回复类型，不含账号、密钥或设备编号。仅记录更新后的操作。")
                 }
             }.listRowBackground(Theme.group)
@@ -351,30 +345,16 @@ struct AdvancedSettingsView: View {
         .sheet(isPresented:$sharingDiagnostics) {
             if let diagnosticURL { WaterDiagnosticShare(url:diagnosticURL) }
         }
-        .alert("诊断文件暂未生成", isPresented:$diagnosticFailed) { Button("知道了", role:.cancel) {} }
+        .alert("还没有诊断记录，洗一次澡后再来导出。", isPresented:$diagnosticFailed) { Button("好", role:.cancel) {} }
         .fileImporter(isPresented:$importing, allowedContentTypes:[.json, .data]) { result in
             importIssue = nil
             do {
                 let url = try result.get()
-                switch importKind {
-                case .water: try water.importConfig(url)
-                case .campus: try campus.importConfig(url); Task { await campus.refresh(force:true) }
-                case .laundry: try laundry.importConfig(url); Task { await laundry.refresh(force:true) }
-                }
+                try water.importConfig(url)
             } catch {
                 if (error as? CocoaError)?.code == .userCancelled { return }
-                let fallback: String
-                switch importKind {
-                case .water: fallback = "这个文件导入不了，确认是热水配置文件再试。"
-                case .campus: fallback = "这个文件导入不了，确认是校园卡配置文件再试。"
-                case .laundry: fallback = "这个文件导入不了，确认是洗衣配置文件再试。"
-                }
-                importIssue = (error as? LocalizedError)?.errorDescription ?? fallback
-                switch importKind {
-                case .water: water.show(error)
-                case .campus: campus.importFailed(error)
-                case .laundry: laundry.importFailed()
-                }
+                importIssue = (error as? LocalizedError)?.errorDescription ?? "这个文件导入不了，确认是热水配置文件再试。"
+                water.show(error)
             }
         }
     }

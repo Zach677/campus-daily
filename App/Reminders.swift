@@ -3,27 +3,28 @@ import SwiftUI
 import UserNotifications
 import BackgroundTasks
 import WidgetKit
-import WaterCore
+import DailyCore
+import DailyStore
 
 /// Settings › 提醒 values (app UserDefaults). The two lines are mirrored to the widget via `ReminderLines`.
 enum ReminderKey {
-    static let powerLow = "reminder.powerLow"
-    static let cardLow = "reminder.cardLow"
-    static let unsettledMinutes = "reminder.unsettledMinutes"
-    static let laundryDone = "reminder.laundryDone"
-    static let powerLine = "reminder.powerLine"
-    static let cardLine = "reminder.cardLine"
+    static let powerLow = PreferenceKey.reminder("powerLow")
+    static let cardLow = PreferenceKey.reminder("cardLow")
+    static let unsettledMinutes = PreferenceKey.reminder("unsettledMinutes")
+    static let laundryDone = PreferenceKey.reminder("laundryDone")
+    static let powerLine = PreferenceKey.reminder("powerLine")
+    static let cardLine = PreferenceKey.reminder("cardLine")
     /// The pre-permission sheet has been shown (by any automatic trigger: first toggle on, first paid
     /// laundry order, first home read). Once set, it only shows again from Settings' 「打开提醒」 row.
-    static let prompted = "reminder.prompted"
+    static let prompted = PreferenceKey.reminder("prompted")
     // De-dupe for low power / card: armed again once the value is back above the line.
-    static let powerArmed = "reminder.powerArmed"
-    static let cardArmed = "reminder.cardArmed"
-    static let powerSentDay = "reminder.powerSentDay"
-    static let cardSentDay = "reminder.cardSentDay"
+    static let powerArmed = PreferenceKey.reminder("powerArmed")
+    static let cardArmed = PreferenceKey.reminder("cardArmed")
+    static let powerSentDay = PreferenceKey.reminder("powerSentDay")
+    static let cardSentDay = PreferenceKey.reminder("cardSentDay")
     // The laundry-done request currently scheduled.
-    static let laundryOrder = "reminder.laundryOrder"
-    static let laundryEnd = "reminder.laundryEnd"
+    static let laundryOrder = PreferenceKey.reminder("laundryOrder")
+    static let laundryEnd = PreferenceKey.reminder("laundryEnd")
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults:[powerLow:true, cardLow:true, unsettledMinutes:30, laundryDone:true,
@@ -39,7 +40,7 @@ enum ReminderKey {
 /// it only reads facts the models already have.
 @MainActor final class Reminders: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = Reminders()
-    nonisolated static let refreshTask = "com.beamjason.campushotwater.refresh"
+    nonisolated static let refreshTask = "com.beamjason.xiaorichang.refresh"
 
     enum PromptOrigin: String, Identifiable { case settings, app; var id: String { rawValue } }
     enum Route: Equatable { case home, laundry }
@@ -117,9 +118,9 @@ enum ReminderKey {
         appPromptPending = true
     }
     /// Trigger 3: home read both the power and the card balance successfully, so the user has seen the numbers.
-    func campusRead(_ snapshot: CampusSnapshot) {
-        guard snapshot.cardError == nil, snapshot.balance != nil,
-              snapshot.powerError == nil, snapshot.electricity != nil else { return }
+    func campusRead(_ snapshot: HomeSnapshot) {
+        guard snapshot.card.error == nil, snapshot.card.value != nil,
+              snapshot.power.error == nil, snapshot.power.value?.remainingKWh != nil else { return }
         requestAppPrompt()
     }
     /// Home is visible and clear: show the queued sheet (re-checks the real status first).
@@ -163,7 +164,7 @@ enum ReminderKey {
     }
     /// A line or a low-balance switch changed: judge the last reading again (re-arms when it is back above).
     func reevaluateCampus() {
-        if let snapshot = CampusModel.shared.snapshot { evaluateCampus(snapshot) }
+        evaluateCampus(CampusModel.shared.snapshot)
     }
     /// Re-apply scheduled reminders after a setting or the authorization changed.
     func resync() {
@@ -247,15 +248,15 @@ enum ReminderKey {
     // MARK: Low power / low card
 
     /// After each campus read (foreground, pull to refresh, background refresh). Only fresh, successful values count.
-    func evaluateCampus(_ snapshot: CampusSnapshot, now: Date = Date()) {
+    func evaluateCampus(_ snapshot: HomeSnapshot, now: Date = Date()) {
         let lines = ReminderKey.lines
-        if snapshot.powerError == nil, let meter = snapshot.electricity {
-            evaluate(kind:"power", low:meter.remainingKWh < lines.power, enabled:ReminderKey.powerLow,
+        if snapshot.power.error == nil, let meter = snapshot.power.value, let left = meter.remainingKWh {
+            evaluate(kind:"power", low:left < lines.power, enabled:ReminderKey.powerLow,
                      armed:ReminderKey.powerArmed, sentDay:ReminderKey.powerSentDay, now:now) {
                 self.make(title:"宿舍快没电了", body:Self.powerBody(meter, now:now), thread:"power", route:.home, sound:false)
             }
         }
-        if snapshot.cardError == nil, let balance = snapshot.balance {
+        if snapshot.card.error == nil, let balance = snapshot.card.value?.yuan {
             evaluate(kind:"card", low:balance < lines.card, enabled:ReminderKey.cardLow,
                      armed:ReminderKey.cardArmed, sentDay:ReminderKey.cardSentDay, now:now) {
                 self.make(title:"校园卡余额不多了", body:"只剩 \(Theme.yuan(balance))，记得充值。", thread:"card", route:.home, sound:false)
@@ -282,10 +283,11 @@ enum ReminderKey {
         return "\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)"
     }
     /// 「只剩 8.6 度，大约能用到明晚。记得充电费。」 when yesterday's use gives 今晚/明晚, else the short form.
-    static func powerBody(_ meter: CampusElectricity, now: Date = Date(), calendar: Calendar = .current) -> String {
-        let left = Theme.kwh(meter.remainingKWh)
-        if let used = meter.yesterdayKWh, used > 0 {
-            let hours = NSDecimalNumber(decimal:meter.remainingKWh / used).doubleValue * 24
+    static func powerBody(_ meter: Meter, now: Date = Date(), calendar: Calendar = .current) -> String {
+        let remaining = meter.remainingKWh ?? 0
+        let left = Theme.kwh(remaining)
+        if let used = meter.dailyUseKWh, used > 0 {
+            let hours = NSDecimalNumber(decimal:remaining / used).doubleValue * 24
             let end = now.addingTimeInterval(hours * 3600)
             let word: String? = calendar.isDate(end, inSameDayAs:now) ? "今晚"
                 : calendar.date(byAdding:.day, value:1, to:now).map { calendar.isDate(end, inSameDayAs:$0) } == true ? "明晚" : nil

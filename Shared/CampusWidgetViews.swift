@@ -1,6 +1,6 @@
 import SwiftUI
 import WidgetKit
-import WaterCore
+import DailyCore
 
 /// What the 「校日常」 widget shows (design-r2 §4). Built from the shared campus cache;
 /// compiled into the widget and the app (DEBUG preview only).
@@ -28,15 +28,15 @@ struct CampusWidgetModel {
         self.yesterdayKWh = yesterdayKWh; self.powerBalance = powerBalance; self.updated = updated
     }
 
-    /// Empty when there is no school login (「登录学校账号」) or nothing was ever read for it (「刷新一下」).
+    /// Empty when nothing is stored (signed out: 「登录学校账号」) or nothing was ever read (「刷新一下」).
     /// A failed read keeps the last numbers and their time (the snapshot keeps them).
-    init(snapshot: CampusSnapshot?, loggedIn: Bool) {
-        guard loggedIn, let snapshot, snapshot.balance != nil || snapshot.electricity != nil else {
-            self = loggedIn ? .needsRefresh : .signedOut; return
-        }
-        let stamps = [snapshot.balanceFetchedAt, snapshot.powerFetchedAt].compactMap { $0 }
-        self.init(signedIn:true, remainingKWh:snapshot.electricity?.remainingKWh, balance:snapshot.balance,
-                  yesterdayKWh:snapshot.electricity?.yesterdayKWh, powerBalance:snapshot.electricity?.balanceYuan,
+    init(snapshot: HomeSnapshot?) {
+        guard let snapshot, snapshot != .empty else { self = .signedOut; return }
+        guard snapshot.card.value != nil || snapshot.power.value != nil else { self = .needsRefresh; return }
+        let meter = snapshot.power.value
+        let stamps = [snapshot.card.fetchedAt, snapshot.power.fetchedAt].compactMap { $0 }
+        self.init(signedIn:true, remainingKWh:meter?.remainingKWh, balance:snapshot.card.value?.yuan,
+                  yesterdayKWh:meter?.dailyUseKWh, powerBalance:meter?.leftMoney?.yuan,
                   updated:stamps.max())
     }
 

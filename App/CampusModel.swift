@@ -1,340 +1,144 @@
 import Foundation
-import Combine
-import Security
-import WidgetKit
-import UIKit
-import WaterCore
+import DailyCore
+import SchoolClient
 
-private enum CampusConfigStore {
-    private static var query: [String:Any] {
-        [kSecClass as String:kSecClassGenericPassword,
-         kSecAttrService as String:"CampusHotWater.campus-config.v1",kSecAttrAccount as String:"campus-config"]
-    }
-    static func load() throws -> CampusConfig? {
-        var request = query
-        request[kSecReturnData as String] = true; request[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(request as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = result as? Data else { throw WaterError.storage }
-        let value = try JSONDecoder().decode(CampusConfig.self, from: data)
-        try value.validate()
-        return value
-    }
-    static func delete() { SecItemDelete(query as CFDictionary) }
-    static func save(_ value: CampusConfig) throws {
-        try value.validate()
-        let changes: [String:Any] = [kSecValueData as String:try JSONEncoder().encode(value),
-            kSecAttrAccessible as String:kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
-        let status = SecItemUpdate(query as CFDictionary, changes as CFDictionary)
-        if status == errSecItemNotFound {
-            var item = query; changes.forEach { item[$0.key] = $0.value }
-            guard SecItemAdd(item as CFDictionary,nil) == errSecSuccess else { throw WaterError.storage }
-        } else if status != errSecSuccess { throw WaterError.storage }
+/// One same-name meter offered when the electricity match is ambiguous.
+struct PowerChoice: Identifiable, Equatable {
+    var id: String { meter.comAddress }
+    let meter: Meter
+    var label: String {
+        var parts = [meter.name]
+        if let money = meter.leftMoney { parts.append("电费 " + Theme.yuan(money.yuan)) }
+        if let kwh = meter.remainingKWh { parts.append("剩 " + Theme.kwh(kwh) + " 度") }
+        return parts.joined(separator:" · ")
     }
 }
 
+/// UI state over `SchoolSession` (refresh, electricity resolution, sign-in/out). No school logic here.
 @MainActor final class CampusModel: ObservableObject {
-    /// One instance, so the background refresh task can reach it.
     static let shared = CampusModel()
     @Published private(set) var configured = false
     @Published private(set) var loading = false
-    @Published private(set) var snapshot: CampusSnapshot?
+    @Published private(set) var snapshot: HomeSnapshot = .empty
+    @Published private(set) var profile: SchoolProfile?
     @Published private(set) var issue: String?
     @Published private(set) var matchingPower = false
-    @Published private(set) var powerChoices: [CampusPowerCandidate] = []
+    @Published private(set) var powerChoices: [PowerChoice] = []
     @Published private(set) var powerMatchIssue: String?
-    private var powerLookup: Task<Void,Never>?
-    private var powerScope: CampusPowerMatchScope?
-    private var config: CampusConfig?
-    private var lastSuccessfulRefresh: Date?
-    private let refreshCoordinator = CampusRefreshCoordinator()
-    private let provider = CampusProvider()
-    private let cacheURL: URL
-    /// The keychain couldn't be read at launch (typically a background launch while the phone is
-    /// locked: the item is WhenUnlocked). Retried on unlock and before the next refresh.
-    private var needsReload = false
-    private var unlockObserver: NSObjectProtocol?
-    init() {
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("CampusCache",isDirectory:true)
-        cacheURL = directory.appendingPathComponent("last-good-v1.json")
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
-                attributes:[.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication])
-            var excluded = directory
-            var values = URLResourceValues(); values.isExcludedFromBackup = true
-            try excluded.setResourceValues(values)
-            #if !DEBUG
-            // Recharge diagnostics are DEBUG-only now; remove what earlier Release builds wrote.
-            try? FileManager.default.removeItem(at:directory.appendingPathComponent("recharge-diagnostics.json"))
-            #endif
-            try loadStored()
-        } catch { needsReload = true; issue = "校园配置暂时无法读取，请解锁后重新打开 App" }
-        unlockObserver = NotificationCenter.default.addObserver(forName:UIApplication.protectedDataDidBecomeAvailableNotification,
-                                                                object:nil, queue:.main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.reloadIfNeeded() }
-        }
-    }
-    private func loadStored() throws {
-        config = try CampusConfigStore.load(); configured = config != nil
-        if let config, let data = try? Data(contentsOf: cacheURL),
-           let cached = try? JSONDecoder().decode(CampusSnapshot.self, from:data),
-           cached.owner == config.cacheIdentity { snapshot = cached }
-    }
-    /// Reads the keychain again if the launch-time read failed (phone was locked).
-    func reloadIfNeeded() {
-        guard needsReload, !loading else { return }
-        do { try loadStored(); needsReload = false; issue = nil; lastSuccessfulRefresh = nil } catch {}
-    }
-    var room: String {
-        let full = snapshot?.room ?? config?.dormRoom.nonEmpty ?? "未配置"
-        if let address = PortalDormAddress.parse(full) {return address.building + " 栋 " + address.room}
-        let parts = full.components(separatedBy:" · ")
-        if parts.count == 4, parts[1].hasSuffix("栋") {
-            let building = String(parts[1].dropLast())
-            let number = parts[3]
-            if !building.isEmpty, !number.isEmpty, building.allSatisfy(\.isNumber), number.allSatisfy(\.isNumber) {
-                return building + " 栋 " + number
-            }
-        }
-        // Display only: 「2栋504」 → 「2 栋 504」 (stored values stay as the school wrote them).
-        return Theme.dorm(full) ?? full
-    }
-    var balanceText: String {
-        guard let value = snapshot?.balance else { return "—" }
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal; formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2; formatter.locale = Locale(identifier:"zh_CN")
-        return formatter.string(from:NSDecimalNumber(decimal:value)) ?? "—"
-    }
-    var freshness: String {
-        if loading { return "更新中" }
-        if let snapshot, snapshot.balance != nil { return snapshot.balanceIsStale() ? "上次余额" : "已更新" }
-        return configured ? "暂未获取" : "待配置"
-    }
-    var powerConfigured: Bool { config?.buildingID.isEmpty == false }
-    func savePowerBinding(building: String, meter: CampusElectricity) throws {
-        guard !loading, var next = config else { throw WaterError.busy }
-        cancelAutomaticPower()
-        next.buildingID = building; next.meterID = meter.id
-        try next.validate(); try CampusConfigStore.save(next)
-        config = next
-        if snapshot == nil {snapshot = CampusSnapshot(owner:next.cacheIdentity)}
-        snapshot?.owner = next.cacheIdentity
-        snapshot?.recordPower(.success(meter))
-        saveSnapshot()
-    }
-    private func saveSnapshot() {
-        // The widget refreshes on its own: keep whichever copy of each part is newer.
-        guard let snapshot = snapshot?.merged(with:CampusSharedCache.read(CampusSnapshot.self)) else { return }
-        self.snapshot = snapshot
-        do {
-            try JSONEncoder().encode(snapshot).write(to:cacheURL,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
-            try CampusSharedCache.save(snapshot)
-            WidgetCenter.shared.reloadAllTimelines()
-        }
-        catch { issue = "余额读到了，但没能存下来，小组件可能不更新。" }
-    }
-    func importConfig(_ url: URL) throws {
-        guard !loading else { throw WaterError.busy }
-        let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
-        guard let size = try url.resourceValues(forKeys:[.fileSizeKey]).fileSize, size <= 32768 else { throw CampusError.configuration }
-        let value = try JSONDecoder().decode(CampusConfig.self,from:Data(contentsOf:url))
-        try value.validate()
-        protectWaterBinding(beforeSaving:value)
-        cancelAutomaticPower()
-        try CampusConfigStore.save(value)
-        if config?.cacheIdentity != value.cacheIdentity { snapshot = nil; CampusSharedCache.clear(); WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances") }
-        config = value; configured = true; issue = nil; lastSuccessfulRefresh = nil
-    }
-    var onboardingLogin: CampusConfig? { config }
-    private func protectWaterBinding(beforeSaving value: CampusConfig) {
-        let water = WaterModel.shared
-        if PortalDormAddress.needsWaterReview(hasBinding:water.configured,previousOwner:config?.waterAccessOwner,
-                                              currentOwner:value.waterAccessOwner,oldAddress:config?.portalDormAddress ?? "",
-                                              newAddress:value.portalDormAddress) {
-            // Persist before the campus account so an interrupted login or
-            // import cannot make another account's old controller usable.
-            water.requireResidenceReview()
-        }
-    }
-    func acceptLogin(_ value: CampusConfig) throws {
-        guard !loading else { throw WaterError.busy }
-        cancelAutomaticPower()
-        var next = value
-        if let previous = config, previous.syscustid == value.syscustid, previous.areacode == value.areacode {
-            let moved = PortalDormAddress.parse(value.portalDormAddress).map { current in
-                PortalDormAddress.parse(previous.portalDormAddress).map {$0 != current} ?? false
-            } ?? false
-            if !moved {next.buildingID = previous.buildingID; next.meterID = previous.meterID; next.dormRoom = previous.dormRoom}
-            if next.portalDormAddress.isEmpty {next.portalDormAddress = previous.portalDormAddress}
-        }
-        if next.dormRoom.isEmpty, let address = PortalDormAddress.parse(next.portalDormAddress) {next.dormRoom = address.shortRoom}
-        try next.validate(); protectWaterBinding(beforeSaving:next); try CampusConfigStore.save(next)
-        if config?.cacheIdentity != next.cacheIdentity { snapshot = nil; CampusSharedCache.clear(); WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances") }
-        config = next; configured = true; issue = nil; lastSuccessfulRefresh = nil
-        matchPowerAutomatically()
-    }
-    func saveDormName(_ room: String, power: CampusPowerSuggestion? = nil, selection: [String] = []) throws {
-        guard !loading, var next = config else { throw WaterError.busy }
-        let changed = next.dormRoom != room
-        let keepPower = PortalDormAddress.parse(next.portalDormAddress)?.keepsPowerBinding(selection:selection,savedRoom:next.dormRoom,meterRoom:snapshot?.electricity?.room) == true
-        let clearPower = !keepPower && (changed || !selection.isEmpty)
-        next.dormRoom = room
-        if !keepPower {cancelAutomaticPower()}
-        if let power {next.buildingID = power.building;next.meterID = power.meter.id}
-        else if clearPower {next.buildingID = "";next.meterID = ""}
-        try next.validate(); try CampusConfigStore.save(next)
-        config = next
-        if clearPower || power != nil {snapshot?.electricity = nil; snapshot?.powerFetchedAt = nil; snapshot?.powerError = nil}
-        if let power {snapshot?.recordPower(.success(power.meter))}
-        snapshot?.owner = next.cacheIdentity
-        snapshot?.recordRoom(.success(room))
-        saveSnapshot()
-    }
-    func importDevelopmentConfigIfPresent() {
-        let root = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0]
-        let file = root.appendingPathComponent("bootstrap.campusconfig")
-        if FileManager.default.fileExists(atPath:file.path) {
-            do { try importConfig(file); try FileManager.default.removeItem(at:file) }
-            catch { issue = "这个文件导入不了，确认是校园卡配置文件再试。" }
-        }
-        let powerFile = root.appendingPathComponent("bootstrap.campuspowerbinding")
-        if let config, let data = try? Data(contentsOf:powerFile),
-           let binding = try? JSONSerialization.jsonObject(with:data) as? [String:String],
-           binding["syscustid"] == config.syscustid, binding["areacode"] == config.areacode,
-           let building = binding["buildingID"], let meter = binding["meterID"] {
-            var next = config; next.buildingID = building; next.meterID = meter
-            if (try? CampusConfigStore.save(next)) != nil {
-                self.config = next; snapshot = nil; lastSuccessfulRefresh = nil; CampusSharedCache.clear()
-                try? FileManager.default.removeItem(at:powerFile)
-            }
-        }
-        let cache = root.appendingPathComponent("bootstrap.campuscache")
-        if let config, let bytes = try? Data(contentsOf:cache),
-           let value = try? JSONDecoder().decode(CampusSnapshot.self,from:bytes),
-           value.owner == config.cacheIdentity {
-            if (snapshot?.balanceFetchedAt ?? .distantPast) < (value.balanceFetchedAt ?? .distantPast) {
-                snapshot = value; saveSnapshot()
-            }
-            try? FileManager.default.removeItem(at:cache)
-        }
-    }
-    func refresh(force: Bool = false) async {
-        reloadIfNeeded()
-        if !force, let lastSuccessfulRefresh, Date().timeIntervalSince(lastSuccessfulRefresh) < 300 { return }
-        let owner = config?.cacheIdentity
-        await refreshCoordinator.perform { [weak self] in await self?.refreshBalances() }
-        if config != nil, config?.cacheIdentity != owner { await refresh(force: true) }
-    }
-    private func refreshBalances() async {
-        guard let config, !loading else { return }
-        loading = true; lastSuccessfulRefresh = nil; issue = nil
-        defer { loading = false }
-        if let shared = CampusSharedCache.read(CampusSnapshot.self), shared.owner == config.cacheIdentity {
-            snapshot = snapshot?.owner == config.cacheIdentity ? snapshot?.merged(with:shared) : shared
-        }
-        var next = snapshot?.owner == config.cacheIdentity ? snapshot! : CampusSnapshot(owner:config.cacheIdentity)
-        do { next.recordBalance(.success(try await provider.balance(config:config))) }
-        catch is CancellationError { return }
-        catch { next.recordBalance(.failure((error as? CampusError) ?? .network)) }
-        if !config.buildingID.isEmpty {
-            // The selected meter already returns its room and remaining energy.
-            // Reuse that one response, rather than querying the same room twice.
-            do {
-                let meter = try await provider.electricity(config:config)
-                next.recordPower(.success(meter));next.recordRoom(.success(meter.room))
-            } catch is CancellationError { return }
-            catch {
-                let issue = (error as? CampusError) ?? .network
-                next.recordPower(.failure(issue));next.recordRoom(.failure(issue))
-            }
-        } else {
-            do { next.recordRoom(.success(try await provider.room(config:config))) }
-            catch is CancellationError { return }
-            catch { next.recordRoom(.failure((error as? CampusError) ?? .network)) }
-        }
-        guard self.config?.cacheIdentity == config.cacheIdentity else {return}
-        snapshot = next
-        if next.cardError == nil, next.powerError == nil, next.roomError == nil { lastSuccessfulRefresh = Date() }
-        issue = next.cardError?.message
-        if issue == nil, next.room == nil, config.dormRoom.isEmpty { issue = next.roomError?.message }
-        saveSnapshot()
-        Reminders.shared.evaluateCampus(next)
-        // First read with both numbers: home may explain reminders (shown once home is visible).
-        Reminders.shared.campusRead(next)
-    }
-    private func cancelAutomaticPower() {
-        powerLookup?.cancel(); powerLookup = nil; powerScope = nil
-        matchingPower = false; powerChoices = []; powerMatchIssue = nil
-    }
-    func matchPowerAutomatically() {
-        guard let config, config.buildingID.isEmpty,
-              let address = PortalDormAddress.parse(config.portalDormAddress), !matchingPower else {return}
-        cancelAutomaticPower()
-        let scope = CampusPowerMatchScope(config)
-        powerScope = scope; matchingPower = true
-        powerLookup = Task { @MainActor in
-            do {
-                let result = try await provider.resolvePower(config:config,address:address)
-                guard !Task.isCancelled, let current = self.config, scope.accepts(current) else {return}
-                matchingPower = false; powerChoices = result.choices
-                if let suggestion = result.suggestion {try applyAutomaticPower(suggestion,scope:scope)}
-                else if result.choices.isEmpty {powerMatchIssue = "没找到你宿舍的电表，手动选一下位置，或者等会儿再试。"}
-            } catch {
-                guard !Task.isCancelled, let current = self.config, scope.accepts(current) else {return}
-                matchingPower = false
-                powerMatchIssue = (error as? LocalizedError)?.errorDescription ?? "电表还没读到，等会儿再试。"
-            }
-        }
-    }
-    func choosePowerApartment(_ candidate: CampusPowerCandidate) {
-        guard !matchingPower, powerChoices.contains(where:{$0.id == candidate.id}),
-              let scope = powerScope, let config, scope.accepts(config),
-              let address = PortalDormAddress.parse(config.portalDormAddress) else {return}
-        matchingPower = true; powerMatchIssue = nil
-        powerLookup = Task { @MainActor in
-            do {
-                let suggestion = try await CampusPowerResolver.select(candidate,address:address,
-                    readMeters:{try await self.provider.powerMeters(config:config,building:$0)})
-                guard !Task.isCancelled, let current = self.config, scope.accepts(current) else {return}
-                matchingPower = false
-                if let suggestion {try applyAutomaticPower(suggestion,scope:scope)}
-                else {powerMatchIssue = "没找到你宿舍的电表，手动选一下位置，或者等会儿再试。"}
-            } catch {
-                guard !Task.isCancelled, let current = self.config, scope.accepts(current) else {return}
-                matchingPower = false
-                powerMatchIssue = (error as? LocalizedError)?.errorDescription ?? "电表还没读到，等会儿再试。"
-            }
-        }
-    }
-    private func applyAutomaticPower(_ power: CampusPowerSuggestion, scope: CampusPowerMatchScope) throws {
-        guard var next = config, scope.accepts(next) else {return}
-        next.buildingID = power.building; next.meterID = power.meter.id
-        try next.validate(); try CampusConfigStore.save(next)
-        config = next; lastSuccessfulRefresh = nil
-        if snapshot == nil {snapshot = CampusSnapshot(owner:next.cacheIdentity)}
-        snapshot?.owner = next.cacheIdentity; snapshot?.recordPower(.success(power.meter))
-        powerChoices = []; powerScope = nil; powerMatchIssue = nil
-        saveSnapshot()
-        // A concurrent old-binding refresh is ignored; fetch the card again
-        // under the new cache identity if it has not completed yet.
-        if snapshot?.balance == nil {Task {await refresh(force:true)}}
-    }
-    /// Sign out of the school account: removes only the campus config and balance caches.
-    /// Water sessions/config and laundry data are untouched.
-    func signOut() {
-        guard !loading else { return }
-        cancelAutomaticPower()
-        CampusConfigStore.delete()
-        try? FileManager.default.removeItem(at:cacheURL)
-        CampusSharedCache.clear()
-        WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances")
-        config = nil; configured = false; snapshot = nil; issue = nil; lastSuccessfulRefresh = nil
-    }
-    func importFailed(_ error: Error) { issue = (error as? CampusError)?.message ?? "这个文件导入不了，确认是校园卡配置文件再试。" }
-}
+    private var lastRefresh: Date?
+    private let session = AppServices.school
 
-private extension String { var nonEmpty: String? { isEmpty ? nil : self } }
+    init() { reload() }
+
+    /// Re-read the Keychain (launch, after sign-in/out).
+    func reload() {
+        configured = ((try? AppServices.schoolVault.ecyktSession()) ?? nil) != nil
+        profile = (try? AppServices.schoolVault.profile()) ?? nil
+        snapshot = ((try? AppServices.snapshots.loadSnapshot()) ?? nil) ?? .empty
+    }
+
+    var address: DormAddress? { profile?.residence?.address }
+    /// 「9 栋 199」 style label, or 「未配置」.
+    var room: String {
+        if let address { return address.building + " 栋 " + address.room }
+        return Theme.dorm(snapshot.roomLabel ?? profile?.meter?.label ?? "") ?? "未配置"
+    }
+    var powerConfigured: Bool { profile?.meter != nil }
+    var balance: Decimal? { snapshot.card.value?.yuan }
+    var meter: Meter? { snapshot.power.value }
+
+    // MARK: Refresh
+
+    /// Foreground refresh; `force` skips the 60 s throttle.
+    func refresh(force: Bool = false, inBackground: Bool = false) async {
+        guard configured, !loading else { return }
+        if !force, let lastRefresh, Date().timeIntervalSince(lastRefresh) < 60 { return }
+        loading = true; defer { loading = false }
+        let report = await session.refresh(inBackground:inBackground)
+        snapshot = report.snapshot
+        lastRefresh = Date()
+        switch report.outcome {
+        case .ok: issue = nil
+        case .needsLogin: issue = "学校登录过期了，重新登录一下。"
+        case .failed(let e): issue = e.userMessage
+        case .notSignedIn: configured = false; issue = nil
+        }
+        profile = (try? AppServices.schoolVault.profile()) ?? nil
+        Reminders.shared.evaluateCampus(snapshot)
+        if report.outcome == .ok { Reminders.shared.campusRead(snapshot) }
+    }
+
+    // MARK: Sign-in
+
+    /// The official ecykt page finished signing in: adopt its `elecampus_state`, and keep the
+    /// dorm address the portal page showed (read by the same sign-in).
+    func adoptWebState(_ login: CampusWebLogin) async throws {
+        _ = try await session.adoptWebState(login.state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
+        let raw = login.dormAddress.trimmingCharacters(in:.whitespacesAndNewlines)
+        if !raw.isEmpty {
+            var stored = (try? AppServices.schoolVault.profile()) ?? nil ?? SchoolProfile()
+            if stored.residence?.raw != raw {
+                stored.residence = PortalResidence(raw:raw)
+                stored.meter = nil
+            }
+            try AppServices.schoolVault.saveProfile(stored)
+        }
+        reload(); issue = nil; lastRefresh = nil
+        powerChoices = []; powerMatchIssue = nil
+    }
+
+    func signOut() {
+        let session = session
+        Task { try? await session.signOut() }
+        configured = false; snapshot = .empty; profile = nil; issue = nil
+        powerChoices = []; powerMatchIssue = nil
+    }
+
+    // MARK: Electricity
+
+    /// Match the dorm's meter from the portal address (once after sign-in, or 「再找一次电表」).
+    func matchPowerAutomatically() {
+        guard configured, !matchingPower, !powerConfigured else { return }
+        matchingPower = true; powerMatchIssue = nil; powerChoices = []
+        Task {
+            defer { matchingPower = false }
+            do {
+                switch try await session.resolveElectricity() {
+                case .matched: profile = (try? AppServices.schoolVault.profile()) ?? nil; await refresh(force:true)
+                case .chooseAmong(let meters): powerChoices = meters.map(PowerChoice.init)
+                case .manualPicker: powerMatchIssue = "没自动找到电表，去「绑定电表」里选一下。"
+                case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「绑定电表」里选一下。"
+                }
+            } catch { powerMatchIssue = AppErrorText.text(error) }
+        }
+    }
+
+    func choosePower(_ choice: PowerChoice) {
+        guard !matchingPower else { return }
+        matchingPower = true
+        Task {
+            defer { matchingPower = false }
+            do {
+                try await session.chooseMatchedMeter(choice.meter)
+                powerChoices = []; powerMatchIssue = nil
+                profile = (try? AppServices.schoolVault.profile()) ?? nil
+                await refresh(force:true)
+            } catch { powerMatchIssue = AppErrorText.text(error) }
+        }
+    }
+
+    /// Manual picker.
+    func directory(parent: String?) async throws -> [PowerNode] { try await session.directory(parent:parent) }
+    func meterRows(nodeID: String) async throws -> [Meter] { try await session.meterRows(nodeID:nodeID) }
+    func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool) async throws {
+        try await session.chooseMeter(nodeID:nodeID, meter:meter, nodeIsRoom:nodeIsRoom)
+        profile = (try? AppServices.schoolVault.profile()) ?? nil
+        powerChoices = []; powerMatchIssue = nil
+        await refresh(force:true)
+    }
+
+    // MARK: Recharge / hot water hand-off
+
+    func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession { try await session.rechargeSession(kind) }
+    func waterHandoff() async throws -> WaterHandoff { try await session.waterHandoff() }
+}

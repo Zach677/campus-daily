@@ -5,16 +5,16 @@ import hashlib
 import json
 
 root = Path(__file__).resolve().parents[1]
-project = root / 'CampusHotWater.xcodeproj'
+project = root / 'XiaoRiChang.xcodeproj'
 
 # Personal signing lives in private/signing.json (git-ignored), e.g.
-#   {"team": "ABCDE12345", "bundle_id": "com.example.campushotwater"}
+#   {"team": "ABCDE12345", "bundle_id": "com.example.xiaorichang"}
 # The widget gets bundle_id + ".balances". If the file is missing but the
 # existing project already carries a Team / Bundle ID picked in Xcode, those
 # are saved there first, so they survive every regeneration.
 import re
 signing_file = root / 'private/signing.json'
-DEFAULT_BUNDLE = 'com.beamjason.campushotwater'
+DEFAULT_BUNDLE = 'com.beamjason.xiaorichang'
 signing = {}
 if signing_file.exists():
     signing = json.loads(signing_file.read_text())
@@ -24,7 +24,7 @@ else:
         text = old_pbx.read_text()
         teams = re.findall(r'DEVELOPMENT_TEAM = "?([A-Z0-9]{10})"?;', text)
         ids = [i.strip('"') for i in re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);', text)]
-        apps = [i for i in ids if not i.endswith('.balances') and i != DEFAULT_BUNDLE]
+        apps = [i for i in ids if not i.endswith('.balances') and i not in (DEFAULT_BUNDLE, 'com.beamjason.campushotwater')]
         if teams:
             signing['team'] = teams[0]
         if apps:
@@ -53,12 +53,14 @@ for path in sorted((root / 'Shared').glob('*.swift')):
     ref = obj('shared-ref:'+path.name, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/{path.name}; sourceTree = "<group>";')
     refs.append(ref)
     sources.append(obj('shared-build:'+path.name, f'isa = PBXBuildFile; fileRef = {ref};'))
-product = obj('product', 'isa = PBXFileReference; explicitFileType = wrapper.application; path = CampusHotWater.app; sourceTree = BUILT_PRODUCTS_DIR;')
+product = obj('product', 'isa = PBXFileReference; explicitFileType = wrapper.application; path = XiaoRiChang.app; sourceTree = BUILT_PRODUCTS_DIR;')
 products = obj('products', f'isa = PBXGroup; children = ({product}); name = Products; sourceTree = "<group>";')
 group = obj('group', f'isa = PBXGroup; children = ({",".join(refs + [products])}); sourceTree = "<group>";')
 package = obj('package', 'isa = XCLocalSwiftPackageReference; relativePath = .;')
-dependency = obj('dependency', f'isa = XCSwiftPackageProductDependency; package = {package}; productName = WaterCore;')
-framework = obj('framework', f'isa = PBXBuildFile; productRef = {dependency};')
+APP_PRODUCTS = ['DailyCore', 'DailyHTTP', 'DailyStore', 'SchoolClient', 'HotWaterClient', 'LaundryClient']
+app_deps = [obj('dependency:'+n, f'isa = XCSwiftPackageProductDependency; package = {package}; productName = {n};') for n in APP_PRODUCTS]
+framework = ','.join(obj('framework:'+n, f'isa = PBXBuildFile; productRef = {d};') for n, d in zip(APP_PRODUCTS, app_deps))
+dependency = ','.join(app_deps)
 srcphase = obj('sources', f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(sources)}); runOnlyForDeploymentPostprocessing = 0;')
 sdkref = obj('alipay-sdk-ref', 'isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = "Vendor/AlipaySDK-15.8.30/AlipaySDK.xcframework"; sourceTree = SOURCE_ROOT;')
 sdkbuild = obj('alipay-sdk-build', f'isa = PBXBuildFile; fileRef = {sdkref};')
@@ -121,15 +123,17 @@ for folder in ['Widget','Shared']:
         ref = obj('widget-ref:'+path.name, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {folder}/{path.name}; sourceTree = SOURCE_ROOT;')
         widget_sources.append(obj('widget-build:'+path.name, f'isa = PBXBuildFile; fileRef = {ref};'))
 widget_source_phase = obj('widget-sources', f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(widget_sources)}); runOnlyForDeploymentPostprocessing = 0;')
-widget_dep = obj('widget-core-dependency', f'isa = XCSwiftPackageProductDependency; package = {package}; productName = WaterCore;')
-widget_core_build = obj('widget-core-build', f'isa = PBXBuildFile; productRef = {widget_dep};')
+WIDGET_PRODUCTS = ['DailyCore', 'DailyStore']
+widget_deps = [obj('widget-dependency:'+n, f'isa = XCSwiftPackageProductDependency; package = {package}; productName = {n};') for n in WIDGET_PRODUCTS]
+widget_core_build = ','.join(obj('widget-framework:'+n, f'isa = PBXBuildFile; productRef = {d};') for n, d in zip(WIDGET_PRODUCTS, widget_deps))
+widget_dep = ','.join(widget_deps)
 widget_framework_phase = obj('widget-frameworks', f'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({widget_core_build}); runOnlyForDeploymentPostprocessing = 0;')
 widget_font_build = obj('widget-font-build', f'isa = PBXBuildFile; fileRef = {fontref};')
 widget_resources = obj('widget-resources', f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({widget_font_build}); runOnlyForDeploymentPostprocessing = 0;')
-widget_product = obj('widget-product', 'isa = PBXFileReference; explicitFileType = wrapper.app-extension; path = CampusDailyWidget.appex; sourceTree = BUILT_PRODUCTS_DIR;')
+widget_product = obj('widget-product', 'isa = PBXFileReference; explicitFileType = wrapper.app-extension; path = XiaoRiChangWidget.appex; sourceTree = BUILT_PRODUCTS_DIR;')
 widget_configs = []
 for mode in ['Debug','Release']:
-    settings = f"""PRODUCT_NAME = CampusDailyWidget; PRODUCT_BUNDLE_IDENTIFIER = {bundle_id}.balances;
+    settings = f"""PRODUCT_NAME = XiaoRiChangWidget; PRODUCT_BUNDLE_IDENTIFIER = {bundle_id}.balances;
     CODE_SIGN_STYLE = Automatic; {team_setting} CODE_SIGN_ENTITLEMENTS = Widget/Campus.entitlements;
     GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = Widget/Info.plist;
     INFOPLIST_KEY_CFBundleDisplayName = \"校园双余额\";
@@ -141,19 +145,19 @@ for mode in ['Debug','Release']:
     """
     widget_configs.append(obj('widget-config:'+mode, f'isa = XCBuildConfiguration; name = {mode}; buildSettings = {{ {settings} }};'))
 widget_config_list = obj('widget-configs', f'isa = XCConfigurationList; buildConfigurations = ({",".join(widget_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
-widget_target = obj('widget-target', f'isa = PBXNativeTarget; buildConfigurationList = {widget_config_list}; buildPhases = ({widget_source_phase},{widget_framework_phase},{widget_resources}); buildRules = (); dependencies = (); name = CampusDailyWidget; packageProductDependencies = ({widget_dep}); productName = CampusDailyWidget; productReference = {widget_product}; productType = "com.apple.product-type.app-extension";')
+widget_target = obj('widget-target', f'isa = PBXNativeTarget; buildConfigurationList = {widget_config_list}; buildPhases = ({widget_source_phase},{widget_framework_phase},{widget_resources}); buildRules = (); dependencies = (); name = XiaoRiChangWidget; packageProductDependencies = ({widget_dep}); productName = XiaoRiChangWidget; productReference = {widget_product}; productType = "com.apple.product-type.app-extension";')
 widget_target_dep = obj('widget-target-dep', f'isa = PBXTargetDependency; target = {widget_target};')
 widget_embed_build = obj('widget-embed-build', f'isa = PBXBuildFile; fileRef = {widget_product}; settings = {{ ATTRIBUTES = (RemoveHeadersOnCopy); }};')
 widget_embed = obj('widget-embed', f'isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = ({widget_embed_build}); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0;')
-target = obj('target', f'isa = PBXNativeTarget; buildConfigurationList = {tc}; buildPhases = ({srcphase},{fwphase},{resphase},{profilephase},{widget_embed}); buildRules = (); dependencies = ({widget_target_dep}); name = CampusHotWater; packageProductDependencies = ({dependency}); productName = CampusHotWater; productReference = {product}; productType = "com.apple.product-type.application";')
+target = obj('target', f'isa = PBXNativeTarget; buildConfigurationList = {tc}; buildPhases = ({srcphase},{fwphase},{resphase},{profilephase},{widget_embed}); buildRules = (); dependencies = ({widget_target_dep}); name = XiaoRiChang; packageProductDependencies = ({dependency}); productName = XiaoRiChang; productReference = {product}; productType = "com.apple.product-type.application";')
 main = obj('project', f'isa = PBXProject; attributes = {{ LastUpgradeCheck = 2700; }}; buildConfigurationList = {pc}; compatibilityVersion = "Xcode 14.0"; developmentRegion = zh-Hans; hasScannedForEncodings = 0; knownRegions = ("zh-Hans",en,Base); mainGroup = {group}; productRefGroup = {products}; projectDirPath = ""; projectRoot = ""; packageReferences = ({package}); targets = ({target},{widget_target});')
 (project / 'project.pbxproj').write_text('// !$*UTF8*$!\n{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n' + '\n'.join(objects) + f'\n}}; rootObject = {main}; }}\n')
 schemes = project / 'xcshareddata/xcschemes'
 schemes.mkdir(parents=True, exist_ok=True)
-(schemes / 'CampusHotWater.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
+(schemes / 'XiaoRiChang.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2700" version="1.3">
-<BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="CampusHotWater.app" BlueprintName="CampusHotWater" ReferencedContainer="container:CampusHotWater.xcodeproj"/></BuildActionEntry></BuildActionEntries></BuildAction>
-<LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="CampusHotWater.app" BlueprintName="CampusHotWater" ReferencedContainer="container:CampusHotWater.xcodeproj"/></BuildableProductRunnable></LaunchAction>
+<BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="XiaoRiChang.app" BlueprintName="XiaoRiChang" ReferencedContainer="container:XiaoRiChang.xcodeproj"/></BuildActionEntry></BuildActionEntries></BuildAction>
+<LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="XiaoRiChang.app" BlueprintName="XiaoRiChang" ReferencedContainer="container:XiaoRiChang.xcodeproj"/></BuildableProductRunnable></LaunchAction>
 <ProfileAction buildConfiguration="Release"/><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/>
 </Scheme>''')
-print('Generated CampusHotWater.xcodeproj' + (f' signed as {bundle_id}, team {team}' if team else ' (no signing team: pick one in Xcode once, then run this again)'))
+print('Generated XiaoRiChang.xcodeproj' + (f' signed as {bundle_id}, team {team}' if team else ' (no signing team: pick one in Xcode once, then run this again)'))

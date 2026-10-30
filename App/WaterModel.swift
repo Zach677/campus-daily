@@ -1,306 +1,319 @@
 import Foundation
-import Combine
-import WaterCore
+import DailyCore
+import DailyHTTP
+import DailyStore
+import HotWaterClient
 
+/// Resolves the money calls at call time, so the engine survives a profile import.
+/// No gateway = a definite local refusal (nothing was sent, nothing issued).
+final class WaterGatewayBox: WaterGateway, @unchecked Sendable {
+    private let lock = NSLock()
+    private var gateway: WaterGateway?
+    var current: WaterGateway? {
+        get { lock.withLock { gateway } }
+        set { lock.withLock { gateway = newValue } }
+    }
+    func authorize(_ binding: WaterBinding, frame: Data) async throws -> WaterAuthorization {
+        guard let current else { throw ServiceError.badRequest(.lxt6) }
+        return try await current.authorize(binding, frame:frame)
+    }
+    func settle(_ binding: WaterBinding, frame: Data) async throws -> WaterReceipt {
+        guard let current else { throw ServiceError.badRequest(.lxt6) }
+        return try await current.settle(binding, frame:frame)
+    }
+}
+
+private struct WaterHooks: ShowerHooks {
+    func scheduleUnsettledReminder(after seconds: TimeInterval) async {}
+    func cancelUnsettledReminder() async {}
+    func diagnostic(_ event: String) async { await WaterDiagnosticReport.record(event) }
+}
+
+/// Where the hot-water platform profile comes from (bundled / imported `.waterconfig`).
+enum WaterProfileFiles {
+    static var importedURL: URL {
+        FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask)[0]
+            .appendingPathComponent("Water", isDirectory:true).appendingPathComponent("imported.waterconfig")
+    }
+    static let loader = WaterProfileLoader(bundled: {
+        guard let url = Bundle.main.url(forResource:"CampusWaterPlatform", withExtension:"json") else { return nil }
+        return try Data(contentsOf:url)
+    }, imported: { _ in
+        let url = WaterProfileFiles.importedURL
+        return FileManager.default.fileExists(atPath:url.path) ? try Data(contentsOf:url) : nil
+    })
+    static let sources: [WaterProfileSource] = [.imported(fileName:"imported.waterconfig"), .bundled]
+    static func localProfile() async -> WaterPlatformProfile? {
+        if case .success(.local(let profile, _)) = await WaterProfileResolver.firstUsable(sources, provider:loader) { return profile }
+        return nil
+    }
+    /// The access-service endpoint the binding was made with (onboarding saves it).
+    static var accessEndpoint: URL {
+        get { UserDefaults.standard.url(forKey:PreferenceKey.prefix + "water.accessEndpoint") ?? WaterAccessServiceClient.defaultEndpoints[0] }
+        set { UserDefaults.standard.set(newValue, forKey:PreferenceKey.prefix + "water.accessEndpoint") }
+    }
+}
+
+/// UI state over `ShowerEngine`. The engine owns the session; this class only forwards taps and
+/// mirrors its state (home, detail page, Live Activity, reminder).
 @MainActor final class WaterModel: ObservableObject {
     static let shared = WaterModel()
-    @Published private(set) var configured = false
+    @Published private(set) var state = ShowerState.idle
+    @Published private(set) var binding: WaterBinding?
+    @Published private(set) var profile: WaterPlatformProfile?
     @Published private(set) var busy = false
-    @Published private(set) var stage: SessionStage?
-    @Published private(set) var status = "导入个人配置后即可使用"
-    @Published private(set) var problem = false
-    /// The hot-water service answered that this school isn't open yet (「本校暂未开放」); cleared on the next refresh.
-    @Published private(set) var schoolClosed = false
-    @Published private(set) var lastEnded: Date?
-    /// startedAt of the current/last session (shower timer, 「上次 N 分钟」).
-    @Published private(set) var sessionStarted: Date?
-    @Published private(set) var lastCost: Decimal?
-    @Published private(set) var hasReceipt = false
-    /// The last record was closed by the user after checking the official record (no receipt).
-    @Published private(set) var resolvedManually = false
-    /// The last finish found the device not in use, so the open record can never close by itself.
-    @Published private(set) var finishFoundIdle = false
-    private var controller: WaterController?
-    private var config: WaterConfig?
-    @Published private var importedPlatform: WaterPlatformProfile?
-    @Published private var reviewingIdentity = false
-    @Published private(set) var residenceReviewRequired = UserDefaults.standard.bool(forKey:"water.needsResidenceReview")
+    /// Last action's message (nil = nothing to say).
+    @Published private(set) var message: String?
+    @Published private(set) var storageBlocked = false
+    @Published private(set) var residenceReviewRequired = UserDefaults.standard.bool(forKey:PreferenceKey.waterNeedsResidenceReview)
     @Published private(set) var verifiedDevice: VerifiedWaterDevice?
     @Published private(set) var inspectionStatus: String?
     @Published private(set) var inspecting = false
-    @Published private(set) var deviceCandidates: [WaterDeviceCandidate] = []
-    private var deviceChoice: CheckedContinuation<String, Error>?
-    private var selectionAllowed = false
+    private var engine: ShowerEngine?
+    private var observer: Task<Void, Never>?
+    private let gateway = WaterGatewayBox()
     private let bluetooth = BluetoothTransport()
-    private init() {
-        bluetooth.targetPicker = { [weak self] candidates in
-            guard let self, self.selectionAllowed else { throw WaterError.targetAmbiguous }
-            return try await self.requestDevice(candidates)
+
+    init() {
+        binding = (try? AppServices.waterVault.binding()) ?? nil
+        if let persisted = (try? AppServices.waterVault.showerState()) ?? nil { state = ShowerReducer.restore(persisted) }
+        Task { await reloadProfile() }
+    }
+
+    // MARK: Derived state (what the views read)
+
+    var configured: Bool { binding != nil }
+    var display: ShowerDisplay { ShowerDisplay(state) }
+    /// The build has no usable profile and the binding doesn't go through the access service.
+    var platformMissing: Bool { binding != nil && binding?.access == nil && profile == nil }
+    var mayStart: Bool {
+        configured && !platformMissing && !residenceReviewRequired && engine != nil && !busy && !storageBlocked && state.canStart
+    }
+    var mayFinish: Bool { configured && engine != nil && !busy && !storageBlocked && state.canFinish }
+    var mayResolveManually: Bool { engine != nil && !busy && state.canResolveManually }
+    var mayRetrySettle: Bool { engine != nil && !busy && state.canRetrySettle }
+    /// Binding / profile may change only with no session that could still be open or charged.
+    var mayImport: Bool {
+        !busy && !storageBlocked && (state.phase == .idle || state.phase == .done || (state.phase == .failed && state.failure?.needsReview == false))
+    }
+    var problem: Bool { state.failure?.needsReview == true || state.stateReviewRequired || storageBlocked }
+    /// The close was sent or the settlement is unconfirmed: money may have moved.
+    var unresolvedClose: Bool {
+        guard state.phase == .failed, let reason = state.failure?.reason else { return false }
+        return [.closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed].contains(reason)
+    }
+    var sessionStarted: Date? { state.startedAt }
+    var lastEnded: Date? { state.phase == .done ? state.endedAt : nil }
+    var lastCost: Decimal? { (state.phase == .done ? state.receipt : state.lastReceipt)?.amount?.yuan }
+    /// Line under the headline on the hot-water page.
+    var status: String {
+        if storageBlocked { return "这台手机暂时存不了热水记录，重启 App 后再试。" }
+        if let message { return message }
+        if state.stateReviewRequired { return "水控没显示在用水，校日常就没发结束。去学校的热水记录里核对一下这次洗澡。" }
+        switch state.phase {
+        case .failed: return ShowerDisplay.failureTitle(state.failure)
+        case .writePending: return ShowerDisplay.writeUnconfirmedHint
+        default: break
+        }
+        if !configured { return "选好宿舍后就能用热水。" }
+        if platformMissing { return Self.platformMissingText }
+        return ""
+    }
+    nonisolated static let platformMissingText = "这个版本没带热水配置，热水暂时用不了。"
+
+    // MARK: Setup
+
+    func reloadProfile() async {
+        profile = await WaterProfileFiles.localProfile()
+        rebuildEngine()
+    }
+
+    /// (Re)creates the engine for the current binding. Only while nothing is in flight.
+    private func rebuildEngine() {
+        guard !busy else { return }
+        observer?.cancel(); observer = nil; engine = nil
+        guard let binding else {
+            state = ((try? AppServices.waterVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle
+            return
+        }
+        let bleName: String
+        if let access = binding.access {
+            bleName = access.bleName
+            gateway.current = WaterAccessServiceClient(http:AppServices.waterAccessHTTP, endpoint:WaterProfileFiles.accessEndpoint, grant:access)
+        } else if let profile {
+            bleName = profile.bleName
+            gateway.current = LxtClient(http:AppServices.waterHTTP, profile:profile)
+        } else {
+            bleName = ""
+            gateway.current = nil
         }
         do {
-            controller = try WaterController(transport: bluetooth, provider: HTTPSWaterProvider(), store: FileSessionStore(), diagnostics: WaterDiagnosticReport.trace)
-            config = try PrivateConfigStore.load()
-            importedPlatform = try WaterPlatformStore.load()
-            configured = config != nil
-            refresh()
-        } catch { status = WaterError.storage.message; problem = true }
-    }
-    /// Direct-access dorm saved, but this build has no bundled platform profile (OnboardingError.platform):
-    /// hot water can't be used until a complete build is installed.
-    var platformMissing: Bool { config?.access != nil && !hasBundledPlatform }
-    private lazy var hasBundledPlatform: Bool = bundledPlatform != nil
-    var mayStart: Bool { configured && !platformMissing && !schoolClosed && !reviewingIdentity && !residenceReviewRequired && config?.access == nil && controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
-    var mayFinish: Bool { configured && !busy && stage?.mayClose == true && controller?.storageBlocked == false }
-    var mayImport: Bool { controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
-    /// Offer the manual 「核对过了」 action only where the record can't move on by itself:
-    /// any unresolved stage that can't be finished, or a finishable one whose device reported idle
-    /// (in this launch, or persisted by the controller as `requiresStateReview`).
-    var mayResolveManually: Bool {
-        guard controller != nil, !busy, controller?.storageBlocked == false, let stage, stage != .settled else { return false }
-        return !stage.mayClose || finishFoundIdle || controller?.session?.requiresStateReview == true
-    }
-    /// Deliberate user action: the user checked the official hot-water record. Never contacts device or server.
-    func resolveManually() throws {
-        guard mayResolveManually, let controller else { throw busy ? WaterError.busy : WaterError.noSession }
-        do { try controller.resolveManually() } catch { show(error); throw error }
-        finishFoundIdle = false; problem = false
-        refresh()
-    }
-    /// Why mayStart is false, as the error a Shortcut or Siri reports. Uses existing messages only.
-    private var startBlocker: Error {
-        if controller?.storageBlocked != false { return WaterError.storage }
-        if !configured { return WaterError.invalidConfig }
-        if platformMissing { return OnboardingError.platform }
-        if schoolClosed { return WaterAccessError(status:403, code:"transactions_not_enabled") }
-        if !(stage == nil || stage == .settled) { return WaterError.unresolved }
-        if busy { return WaterError.busy }
-        return OnboardingError.identity
-    }
-    var onboardingSeed: WaterConfig? { config }
-    var onboardingProfile: WaterPlatformProfile? {
-        if let config, config.access == nil { return WaterPlatformProfile(legacy:config) }
-        if let importedPlatform, importedPlatform.access == nil {return importedPlatform}
-        return bundledPlatform
-    }
-    private var bundledPlatform: WaterPlatformProfile? {
-        guard let url = Bundle.main.url(forResource:"CampusWaterPlatform",withExtension:"json"),
-              let bytes = try? Data(contentsOf:url) else { return nil }
-        return try? WaterPlatformProfile.parseImport(bytes)
-    }
-    func migrateBundledDirectIfNeeded(campus: CampusConfig?) async {
-        guard let old = config, old.access != nil, let campus, mayImport else {return}
-        guard let profile = bundledPlatform else {status = OnboardingError.platform.rawValue;problem = true;return}
-        busy = true
-        defer {busy = false}
-        do {
-            let who = try await DormOnboardingProvider().identity(campus:campus,seed:profile)
-            guard config == old else {throw WaterError.interrupted}
-            let next = try profile.migrateToDirect(old,owner:campus.waterAccessOwner,student:who.student,
-                school:who.school,unresolved:controller?.session.map{$0.stage != .settled} ?? false)
-            try PrivateConfigStore.save(next);config = next;configured = true;problem = false;refresh()
-        } catch {show(error)}
-    }
-    func importPlatform(_ url: URL) throws {
-        guard mayImport, !configured else {throw WaterError.unresolved}
-        let access = url.startAccessingSecurityScopedResource()
-        defer {if access {url.stopAccessingSecurityScopedResource()}}
-        guard let size = try url.resourceValues(forKeys:[.fileSizeKey]).fileSize, size <= 8192 else {throw WaterError.invalidConfig}
-        let value = try WaterPlatformProfile.parseImport(Data(contentsOf:url))
-        try WaterPlatformStore.save(value)
-        importedPlatform = value
-    }
-    func acceptDorm(_ value: WaterConfig) throws {
-        guard mayImport else { throw WaterError.unresolved }
-        try value.validate(); try PrivateConfigStore.save(value)
-        config = value; configured = true; reviewingIdentity = false; residenceReviewRequired = false
-        UserDefaults.standard.set(false,forKey:"water.needsResidenceReview")
-        problem = false; refresh()
-    }
-    func requireResidenceReview() {
-        guard configured else {return}
-        residenceReviewRequired = true
-        UserDefaults.standard.set(true,forKey:"water.needsResidenceReview")
-        refresh()
-    }
-    /// Roll back an interrupted two-part dorm save, including first setup.
-    func restoreDorm(_ previous: WaterConfig?, reviewRequired: Bool) throws {
-        do {
-            guard mayImport else {throw WaterError.unresolved}
-            if let previous {
-                try previous.validate();try PrivateConfigStore.save(previous)
-                config = previous;configured = true
-            } else {
-                try PrivateConfigStore.clear();config = nil;configured = false
+            let engine = try ShowerEngine(transport:bluetooth, gateway:gateway, vault:AppServices.waterVault,
+                                          configuration:.init(bleName:bleName,
+                                                              reminderMinutes:UserDefaults.standard.integer(forKey:ReminderKey.unsettledMinutes)),
+                                          hooks:WaterHooks())
+            self.engine = engine
+            observer = Task { [weak self] in
+                let blocked = await engine.storageBlocked
+                self?.storageBlocked = blocked
+                for await next in await engine.updates() {
+                    guard let self else { return }
+                    self.apply(next)
+                    self.storageBlocked = await engine.storageBlocked
+                }
             }
-            reviewingIdentity = false;residenceReviewRequired = reviewRequired
-            UserDefaults.standard.set(reviewRequired,forKey:"water.needsResidenceReview")
-            problem = false;refresh()
         } catch {
-            // A failed rollback must not make the partial configuration usable.
-            reviewingIdentity = true;residenceReviewRequired = true
-            UserDefaults.standard.set(true,forKey:"water.needsResidenceReview")
-            problem = true
-            status = "宿舍没存上，再核对一下学校账号和水控。"
+            storageBlocked = true
+        }
+    }
+
+    private func apply(_ next: ShowerState) {
+        let old = state
+        state = next
+        if next != old {
+            ShowerActivityController.shared.sync(state:next)
+            Reminders.shared.syncShower(started:next.mayBeFlowing ? next.startedAt : nil)
+        }
+    }
+
+    /// Onboarding saved a binding (dorm + controller).
+    func saveBinding(_ value: WaterBinding) throws {
+        guard mayImport else { throw ShowerEngineError.blocked }
+        try AppServices.waterVault.saveBinding(value)
+        binding = value
+        verifiedDevice = nil
+        if residenceReviewRequired { setResidenceReview(false) }
+        rebuildEngine()
+    }
+
+    func setResidenceReview(_ value: Bool) {
+        residenceReviewRequired = value
+        UserDefaults.standard.set(value, forKey:PreferenceKey.waterNeedsResidenceReview)
+    }
+
+    /// `.waterconfig` import (Settings › 高级). The profile is the shared platform part only.
+    func importConfig(_ url: URL) throws {
+        guard mayImport else { throw ShowerEngineError.blocked }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        let data = try Data(contentsOf:url)
+        _ = try WaterConfigFile.parse(data, source:.imported(fileName:"imported.waterconfig"))
+        let target = WaterProfileFiles.importedURL
+        try FileManager.default.createDirectory(at:target.deletingLastPathComponent(), withIntermediateDirectories:true)
+        try data.write(to:target, options:[.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        Task { await reloadProfile() }
+    }
+
+    // MARK: Actions
+
+    /// 开始洗澡 / 结束并结算 (home, detail page, Shortcuts, Live Activity).
+    func run(start: Bool) async throws {
+        guard let engine, let binding else { throw ShowerEngineError.notAllowed }
+        guard !busy else { throw ShowerEngineError.busy }
+        if start {
+            guard mayStart else { throw ShowerEngineError.blocked }
+        } else {
+            guard state.canFinish else { throw ShowerEngineError.notAllowed }
+            ShowerActivityController.shared.settling()
+        }
+        busy = true; message = nil
+        defer { busy = false }
+        do {
+            let result = start ? try await engine.start(binding) : try await engine.finish(binding)
+            apply(result)
+            message = Self.noticeText(result.notice)
+            if result.phase == .failed { throw ShowerEngineError.notAllowed }
+            if !start, result.phase != .done { throw ShowerEngineError.notAllowed }
+        } catch {
+            storageBlocked = await engine.storageBlocked
             throw error
         }
     }
-    func acceptAccess(_ access: WaterAccessSession) throws {
-        guard mayImport else {throw WaterError.unresolved}
-        try access.validate()
-        let profile = WaterPlatformProfile(access:access)
-        try WaterPlatformStore.save(profile)
-        if let old = config, old.access != nil {
-            if old.studentID == access.studentID && old.schoolID == access.schoolID {
-                let next = try profile.configuration(student:old.studentID,school:old.schoolID,machine:old.machineID)
-                try PrivateConfigStore.save(next);config = next
-            } else {
-                try PrivateConfigStore.clear();config = nil;configured = false
-            }
-        }
-        importedPlatform = profile
-    }
-    func scopeAccess(to campus: CampusConfig) throws {
-        guard mayImport else {throw WaterError.unresolved}
-        reviewingIdentity = true
-        if let access = config?.access, access.campusOwner != campus.waterAccessOwner {
-            try PrivateConfigStore.clear();config = nil;configured = false
-        }
-        if let access = importedPlatform?.access, access.campusOwner != campus.waterAccessOwner {importedPlatform = nil}
-    }
-    func confirmDirectIdentity(student: String,school: String,profile: WaterPlatformProfile) throws {
-        guard mayImport, profile.access == nil else {throw WaterError.unresolved}
-        if let old = config, old.studentID != student || old.schoolID != school {
-            try WaterPlatformStore.save(profile); importedPlatform = profile
-            try PrivateConfigStore.clear();config = nil;configured = false
-        }
-        reviewingIdentity = false
-    }
-    private func refresh() {
-        schoolClosed = false
-        stage = controller?.session?.stage
-        lastEnded = controller?.session?.endedAt
-        sessionStarted = controller?.session?.startedAt
-        lastCost = controller?.session?.receipt?.amountYuan
-        hasReceipt = controller?.session?.receipt != nil
-        resolvedManually = controller?.session?.resolvedManually == true
-        ShowerActivityController.shared.sync(session:controller?.session)
-        Reminders.shared.syncShower(started:stage?.mayClose == true ? sessionStarted : nil)
-        if controller?.session?.requiresStateReview == true, stage != .settled {
-            // Persisted by the controller when a finish found the device not in use; survives relaunch.
-            problem = true
-            status = WaterError.notActive.message + "；请核对现场及官方用水记录"
-        } else if residenceReviewRequired && (stage == nil || stage == .settled) {
-            status = "学校那边的宿舍变了，重新选一下水控。";problem = true
-        } else if resolvedManually, stage == .settled { status = "上次洗澡已手动核对" }
-        else if let stage { status = stage.label }
-        else if configured { status = config?.access?.isCurrent == false ? "学校登录过期了，重新登录一下。" : "准备好了，靠近水控就能开始洗。" }
-    }
-    func importConfig(_ url: URL) throws {
-        guard mayImport else { throw WaterError.unresolved }
-        let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
-        let data = try Data(contentsOf: url, options: .mappedIfSafe)
-        guard data.count <= 16384 else { throw WaterError.invalidConfig }
-        let value: WaterConfig
-        do { value = try JSONDecoder().decode(WaterConfig.self, from: data); try value.validate() }
-        catch { throw WaterError.invalidConfig }
-        try PrivateConfigStore.save(value)
-        config = value; configured = true; problem = false
-        refresh()
-    }
-    // Xcode development provisioning: one private file copied into this app's sandbox.
-    // Personal identities remain outside the bundle; the shared platform is a build resource.
-    func importDevelopmentConfigIfPresent() {
-        guard mayImport else { return }
-        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("bootstrap.waterconfig")
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        do { try importConfig(url); try FileManager.default.removeItem(at: url) }
-        catch { show(error) }
-    }
-    func show(_ error: Error) {
-        refresh()
-        problem = true
-        status = (error as? LocalizedError)?.errorDescription ?? "还没确认刚才的操作，先看看首页的记录。"
-        schoolClosed = (error as? WaterAccessError)?.code == "transactions_not_enabled"
-        WaterDiagnosticReport.trace.record(.operationFailed, stage: stage, error: (error as? WaterError) ?? .interrupted)
-        if (error as? WaterError) == .wrongDevice, mayImport {
-            status = "这台水控不是你宿舍的，到设置 › 高级 › 连接检查里重新选。"
-        }
-    }
-    private func requestDevice(_ candidates: [WaterDeviceCandidate]) async throws -> String {
-        try Task.checkCancellation()
-        return try await withTaskCancellationHandler(operation: {
-            try await withCheckedThrowingContinuation { continuation in
-                deviceChoice = continuation
-                deviceCandidates = candidates
-            }
-        }, onCancel: { Task { @MainActor [weak self] in self?.cancelDeviceSelection() } })
-    }
-    func chooseDevice(_ id: String) {
-        guard deviceCandidates.contains(where: { $0.id == id }) else { return }
-        let choice = deviceChoice
-        deviceChoice = nil; deviceCandidates = []
-        choice?.resume(returning:id)
-    }
-    func cancelDeviceSelection() {
-        selectionAllowed = false
-        let choice = deviceChoice
-        deviceChoice = nil; deviceCandidates = []
-        choice?.resume(throwing:WaterError.interrupted)
-    }
-    private func deviceKey(_ config: WaterConfig) -> String { "water.verifiedPeripheral." + config.machineID.uppercased() }
-    func exportDiagnostics() throws -> URL {
-        try WaterDiagnosticReport.export(stage: stage, needsReview: controller?.session?.requiresStateReview == true)
-    }
+
+    /// Read-only state probe of the session's controller (Settings › 高级 › 检查水控状态).
     func reviewCurrentSession() async {
-        guard mayFinish, let controller, let config else { return }
-        busy = true; status = "正在只读检查水控状态…"
-        defer { busy = false }
-        do {
-            _ = try await controller.review(config: config)
-            problem = false; refresh()
-        } catch { show(error) }
-    }
-    func inspectBluetooth() async {
-        guard mayImport, let config, let controller else { return }
-        busy = true; inspecting = true; selectionAllowed = true; verifiedDevice = nil
-        inspectionStatus = "正在扫描并核对宿舍设备…"
-        defer { busy = false; inspecting = false; selectionAllowed = false }
-        do {
-            let id = try await controller.identify(config:config)
-            UserDefaults.standard.set(id,forKey:deviceKey(config))
-            verifiedDevice = bluetooth.verifiedInformation(id:id,machineID:config.machineID)
-            inspectionStatus = "已匹配本宿舍水控，设备已保存"
-        } catch {
-            inspectionStatus = (error as? LocalizedError)?.errorDescription ?? "没连上水控，靠近一点再试。"
+        guard let engine, let binding, !busy, state.canFinish else { return }
+        busy = true; defer { busy = false }
+        if let result = try? await engine.review(binding) {
+            apply(result)
+            message = Self.noticeText(result.notice) ?? (result.phase == .running ? "水控显示正在用水。" : nil)
         }
     }
-    func run(start: Bool, allowDeviceSelection: Bool = false) async throws {
-        let tapped = Date()
-        guard !busy else { throw WaterError.busy }
-        guard !start || (!reviewingIdentity && !residenceReviewRequired) else {throw OnboardingError.identity}
-        guard let controller, let config else { throw WaterError.invalidConfig }
-        guard config.access == nil else {throw OnboardingError.identity}
-        // UI, Shortcuts and Siri share one start rule (mayStart), including 「本校暂未开放」.
-        if start, !mayStart { throw startBlocker }
-        busy = true; problem = false; finishFoundIdle = false; selectionAllowed = allowDeviceSelection
-        status = start ? "正在连接并申请授权…" : "正在结束并结算…"
-        defer { busy = false; selectionAllowed = false }
+
+    func resolveManually() async {
+        guard let engine, !busy else { return }
+        busy = true; defer { busy = false }
+        if let result = try? await engine.resolveManually() { apply(result); message = nil }
+    }
+
+    func requestSettleRetry() async {
+        guard let engine, !busy else { return }
+        if let result = try? await engine.requestSettleRetry() { apply(result) }
+    }
+
+    func confirmSettleRetry() async {
+        guard let engine, let binding, !busy else { return }
+        busy = true; defer { busy = false }
+        if let result = try? await engine.confirmSettleRetry(binding) { apply(result) }
+    }
+
+    func dismiss() async {
+        guard let engine, !busy else { return }
+        if let result = try? await engine.dismiss() { apply(result) }
+    }
+
+    /// Read-only: connect, ask the identity (0xAA), disconnect. Never sent during a session.
+    func inspectBluetooth() async {
+        guard let binding, mayImport, !inspecting else { return }
+        let bleName = binding.access?.bleName ?? profile?.bleName ?? ""
+        guard !bleName.isEmpty else { inspectionStatus = Self.platformMissingText; return }
+        inspecting = true; inspectionStatus = nil; verifiedDevice = nil
+        defer { inspecting = false }
         do {
-            if start {
-                try await controller.start(config:config,preferredPeripheral:UserDefaults.standard.string(forKey:deviceKey(config)),startedAt:tapped)
-                if let id = controller.session?.peripheralID { UserDefaults.standard.set(id,forKey:deviceKey(config)) }
+            let nearby = try await bluetooth.inspect(bleName:bleName, remembered:binding.peripheralID)
+            guard nearby > 0 else { inspectionStatus = Self.deviceText(.notFound); return }
+            let id = try await bluetooth.connect(bleName:bleName, machineID:binding.machineId, required:nil, preferred:binding.peripheralID)
+            let frame = try await bluetooth.exchange(WaterFrames.probeCommand)
+            await bluetooth.disconnect()
+            guard let identity = WaterFrames.identity(frame) ?? (WaterFrames.isActive(frame) ? binding.machineId : nil) else {
+                inspectionStatus = Self.deviceText(.malformedFrame); return
             }
-            else { ShowerActivityController.shared.settling(); try await controller.finish(config: config) }
-            refresh()
+            guard identity == binding.machineId.uppercased() else { inspectionStatus = "附近的水控不是你宿舍的那台。"; return }
+            verifiedDevice = VerifiedWaterDevice(id:id, name:bleName, machineID:identity, rssi:nil, nearbyCount:nearby, verifiedAt:Date())
+            inspectionStatus = "找到了你宿舍的水控。"
         } catch {
-            if (error as? WaterError) == .wrongDevice, start {
-                UserDefaults.standard.removeObject(forKey:deviceKey(config))
-            }
-            if (error as? WaterError) == .notActive, !start { finishFoundIdle = true }
-            show(error)
-            throw (error as? WaterError) ?? WaterError.interrupted
+            await bluetooth.disconnect()
+            inspectionStatus = Self.deviceText((error as? ShowerDeviceError) ?? .disconnected)
+        }
+    }
+
+    func exportDiagnostics() throws -> URL {
+        try WaterDiagnosticReport.export(phase:state.phase, needsReview:problem, manualSettleAttempts:state.manualSettleAttempts)
+    }
+
+    func show(_ error: Error) { message = AppErrorText.text(error) }
+
+    // MARK: Copy
+
+    static func noticeText(_ notice: ShowerNotice?) -> String? {
+        switch notice {
+        case nil: return nil
+        case .device(let e)?: return deviceText(e)
+        case .notActive?: return "水控没显示在用水，校日常就没发结束。去学校的热水记录里核对一下这次洗澡。"
+        case .wrongDevice?: return "附近的水控不是你宿舍的那台。"
+        case .writeUnconfirmed?: return ShowerDisplay.writeUnconfirmedHint
+        }
+    }
+
+    static func deviceText(_ e: ShowerDeviceError) -> String {
+        switch e {
+        case .bluetoothOff: return "蓝牙没开，打开后再试。"
+        case .notFound: return "附近没找到水控，靠近一点再试。"
+        case .ambiguous: return "附近有好几台同名水控，没认出你宿舍的那台。靠近一点再试。"
+        case .timedOut: return "水控没回应，靠近一点再试。"
+        case .disconnected, .interrupted: return "和水控的连接断了，再试一次。"
+        case .malformedFrame: return "水控回的内容看不懂，再试一次。"
+        case .busy: return "正在和水控通信，稍等一下。"
         }
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 import SwiftUI
-import WaterCore
+import DailyCore
 
 /// Everything the home screen shows, derived from the models (or DEBUG demo data).
 struct HomeData {
@@ -164,29 +164,29 @@ extension HomeData {
         dorm = Theme.dorm(campus.room)
         let snapshot = campus.snapshot
         powerBound = campus.powerConfigured
-        remainingKWh = snapshot?.electricity?.remainingKWh
-        yesterdayKWh = snapshot?.electricity?.yesterdayKWh
-        balance = snapshot?.balance
-        balanceUpdated = snapshot?.balanceFetchedAt
+        remainingKWh = snapshot.power.value?.remainingKWh
+        yesterdayKWh = snapshot.power.value?.dailyUseKWh
+        balance = snapshot.card.value?.yuan
+        balanceUpdated = snapshot.card.fetchedAt
         campusIssue = campus.configured ? campus.issue : nil
-        powerIssue = campus.configured && powerBound ? snapshot?.powerError?.message : nil
+        powerIssue = campus.configured && powerBound ? snapshot.power.error?.userMessage : nil
         let lines = ReminderKey.lines
         powerLowLine = lines.power; cardLowLine = lines.card
 
-        let stage = model.stage
+        let state = model.state
         if !model.configured { water = .unconfigured }
-        else if let stage, stage.mayClose, let start = model.sessionStarted { water = model.busy ? .settling(start) : .showering(start) }
-        else if model.busy && (stage == nil || stage == .settled) { water = .starting }
-        else if let stage, stage != .settled {
-            water = .unresolved(stage == .closeWritePending || stage == .settlementPending ? "上次结算还没确认" : stage.label)
+        else if state.canFinish, let start = model.sessionStarted { water = model.busy ? .settling(start) : .showering(start) }
+        else if let start = state.startedAt, state.phase == .closing || state.phase == .settling { water = .settling(start) }
+        else if state.phase == .authorizing || (model.busy && (state.phase == .idle || state.phase == .done)) { water = .starting }
+        else if state.phase == .failed, state.failure?.needsReview == true {
+            water = .unresolved(model.unresolvedClose ? "上次结算还没确认" : ShowerDisplay.failureTitle(state.failure))
         }
-        else if model.platformMissing { water = .unavailable(OnboardingError.platform.rawValue) }
-        else if model.schoolClosed, stage == nil || stage == .settled { water = .unavailable(model.status) }
+        else if model.platformMissing { water = .unavailable(WaterModel.platformMissingText) }
         else { water = .idle }
         if model.problem, water == .idle { waterIssue = model.status }
-        showerUnconfirmed = stage == .authorizationWritePending && water.showering != nil
+        showerUnconfirmed = state.phase == .writePending && water.showering != nil
         var recents: [Recent] = []
-        if stage == .settled, let start = model.sessionStarted, let end = model.lastEnded {
+        if state.phase == .done, let start = model.sessionStarted, let end = model.lastEnded {
             let minutes = max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
             lastShowerMinutes = minutes; lastShowerCost = model.lastCost
             recents.append(Recent(id:"water-\(start.timeIntervalSince1970)", emoji:"🚿", title:"热水 · \(minutes) 分钟",
@@ -198,11 +198,10 @@ extension HomeData {
         let facts = LaundryFacts(model:laundry)
         self.laundry = Self.laundryRow(facts, now:now)
         laundryDone = Self.laundryDone(facts, now:now)
-        if let record = laundry.checkout {
-            let machine = laundry.snapshot?.deviceId == record.deviceId ? laundry.snapshot?.deviceNo : nil
-            recents.append(Recent(id:"laundry-\(record.orderId ?? record.createdAt.description)", emoji:"🧺",
-                                  title:"洗衣 · " + record.programName, date:record.createdAt,
-                                  detail:machine.map { "\($0) 号机" }, amount:record.order?.payPrice ?? record.expectedPrice))
+        if let record = laundry.checkout, record.inFlight, let created = record.createdAt {
+            recents.append(Recent(id:"laundry-\(record.orderId ?? created.description)", emoji:"🧺",
+                                  title:"洗衣 · " + record.programName, date:created,
+                                  detail:record.draft.map { "\($0.machineName) 号机" }, amount:facts.amount))
         }
         self.recents = Array(recents.sorted { $0.date > $1.date }.prefix(4))
     }
@@ -316,10 +315,10 @@ enum HomeDemo: String, CaseIterable {
             return (data, nil)
         case .noPlatform:
             // Live path: WaterModel.platformMissing (direct dorm saved, no bundled platform profile).
-            data.water = .unavailable(OnboardingError.platform.rawValue)
+            data.water = .unavailable(WaterModel.platformMissingText)
             return (data, nil)
         case .notOpen:
-            data.water = .unavailable(WaterAccessError(status:403, code:"transactions_not_enabled").errorDescription ?? "")
+            data.water = .unavailable("本校暂未开放")
             return (data, nil)
         }
     }

@@ -208,6 +208,40 @@ public actor SchoolSession {
         try vault.saveProfile(profile)
     }
 
+    /// Choice among several same-name meters (`.chooseAmong`): saved against the campus node
+    /// (wide read, picked by `comAddress`).
+    public func chooseMatchedMeter(_ meter: Meter) async throws {
+        guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
+        var profile = try vault.profile() ?? SchoolProfile()
+        guard let address = profile.residence?.address else { throw ServiceError.malformed(.portal, "data.gydz") }
+        let campuses = try await ecykt.buildings(session, parent: nil).filter { address.matchesCampus($0.name) }
+        guard campuses.count == 1, let campus = campuses.first else { throw ServiceError.malformed(.ecykt, "campus") }
+        profile.meter = MeterBinding(nodeID: campus.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: false)
+        try vault.saveProfile(profile)
+    }
+
+    /// Manual picker: one level of the electricity directory (`nil` = campuses).
+    public func directory(parent: String?) async throws -> [PowerNode] {
+        guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
+        return try await ecykt.buildings(session, parent: parent)
+    }
+
+    /// Manual picker: the meters at a directory node.
+    public func meterRows(nodeID: String) async throws -> [Meter] {
+        guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
+        return try await ecykt.meters(session, nodeID: nodeID)
+    }
+
+    // MARK: Hot-water hand-off
+
+    /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only).
+    public func waterHandoff() async throws -> WaterHandoff {
+        guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
+        let (card, live) = try await liveCard(stored)
+        try? vault.saveEcyktSession(live)
+        return try await ecykt.signData(live, custid: card.custid)
+    }
+
     /// Walks campus → (apartment) → building → floor → room with name filters. Returns the
     /// room node whose meter has `comAddress`.
     func locateRoomNode(_ s: EcyktSession, campus: PowerNode, address: DormAddress, comAddress: String) async throws -> (PowerNode, Meter)? {

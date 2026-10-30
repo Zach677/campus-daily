@@ -4,12 +4,9 @@ import DailyCore
 import DailyHTTP
 import DailyTestSupport
 @testable import HotWaterClient
-import WaterCore
 
-/// Signing + BLE codec goldens. Fixed inputs; expected values were produced by the existing
-/// implementation (and an independent Python mirror of it). The `legacy*` tests also compare
-/// against the old `WaterCore` code live; they go away with WaterCore in R4, the hard-coded
-/// goldens stay.
+/// Signing + BLE codec goldens. Fixed inputs; expected values were produced by the previous
+/// implementation (and an independent Python mirror of it) and are kept as hard-coded goldens.
 enum Golden {
     static let secret = "fixture-secret ~/+"
     static let sid = "fixture-sid=1"
@@ -60,21 +57,9 @@ final class LxtSigningGoldenTests: XCTestCase {
         XCTAssertEqual(LxtSigning.signedForm(fields, secret: Golden.secret, sid: Golden.sid), Golden.operationBody)
     }
 
-    func testLegacyImplementationProducesTheSameWxcodeSignatureAndBody() throws {
-        let config = WaterConfig(secret: Golden.secret, sid: Golden.sid, studentID: "S1234567", schoolID: "20021",
-                                 machineID: "11223344", bleName: "fixture-ble", typeID: 1, version: 3)
-        let legacyCode = try WaterProtocol.wxcode(config: config, frame: Golden.frame, random: "A1B2C3")
-        XCTAssertEqual(legacyCode, Golden.operationWxcode)
-        let legacySign = WaterProtocol.signature(secret: Golden.secret, wxcode: legacyCode)
-        XCTAssertEqual(legacySign, Golden.operationSign)
-        // The old HTTPSWaterProvider body: every field through encodeForm, "&"-joined.
-        let legacyBody = [("wxcode", legacyCode), ("sign", legacySign), ("sid", Golden.sid)]
-            .map { "\($0.0)=\(WaterProtocol.encodeForm($0.1))" }.joined(separator: "&")
-        XCTAssertEqual(legacyBody, Golden.operationBody)
-        for s in ["", " ", "~", "中文 x", "a=b*_c", "%41+"] {
-            XCTAssertEqual(LxtSigning.formEncode(s), WaterProtocol.encodeForm(s), s)
-            XCTAssertEqual(LxtSigning.signature(secret: Golden.secret, wxcode: s), WaterProtocol.signature(secret: Golden.secret, wxcode: s), s)
-        }
+    func testFormEncodingGoldens() {
+        XCTAssertEqual(LxtSigning.formEncode("a=b*_c"), "a%3Db*_c")
+        XCTAssertEqual(LxtSigning.formEncode(" "), "+")
     }
 
     func testAuthorizePostBodyIsTheGoldenForm() async throws {
@@ -98,45 +83,14 @@ final class LxtSigningGoldenTests: XCTestCase {
         XCTAssertEqual(server.requests.map { $0.url.query }, [Golden.areaQuery, Golden.userMsgQuery])
         XCTAssertEqual(server.requests.map(\.method), ["GET", "GET"])
     }
-
-    @MainActor
-    func testLegacyOnboardingProviderSendsTheSameAreaQuery() async throws {
-        LegacyCapture.reset(body: try FixtureLoader.load("lxt6/areaInfo-level0").responseBody)
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [LegacyCapture.self]
-        let legacy = DormOnboardingProvider(session: URLSession(configuration: config))
-        let seed = try WaterCore.WaterPlatformProfile.parseImport(Data(#"{"secret":"fixture-secret ~/+","sid":"fixture-sid=1","bleName":"fixture-ble","typeID":1,"version":3}"#.utf8))
-        let options = try await legacy.options(parent: "20021", seed: seed)
-        XCTAssertEqual(options.count, 6)
-        XCTAssertEqual(LegacyCapture.lastURL?.query, Golden.areaQuery)
-        XCTAssertEqual(LegacyCapture.lastURL?.path, "/zk_areainfo_api/areaInfo/getAreaInfoForApplests")
-    }
-}
-
-/// Captures the URL the legacy provider builds and replays a body.
-final class LegacyCapture: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var lastURL: URL?
-    nonisolated(unsafe) static var body = Data()
-    static func reset(body: Data) { lastURL = nil; self.body = body }
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    override func startLoading() {
-        Self.lastURL = request.url
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
-                            cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Self.body)
-        client?.urlProtocolDidFinishLoading(self)
-    }
-    override func stopLoading() {}
 }
 
 final class WaterFrameGoldenTests: XCTestCase {
     func testCloseCommandGolden() throws {
         XCTAssertEqual(WaterFrames.closeCommand(authorizationID: "001122FF"), Data([0xAC, 0x55, 0x44, 0x77, 0xAA]))
         XCTAssertEqual(WaterFrames.closeCommand(authorizationID: "a1b2c3d4"), Data([0xAC, 0xF4, 0xE7, 0x96, 0x81]))
-        for id in ["001122FF", "A1B2C3D4", "a1b2c3d4", "FFFFFFFF", "00000000"] {
-            XCTAssertEqual(WaterFrames.closeCommand(authorizationID: id), try WaterProtocol.closeCommand(id), id)
-        }
+        XCTAssertEqual(WaterFrames.closeCommand(authorizationID: "FFFFFFFF"), Data([0xAC, 0xAA, 0xAA, 0xAA, 0xAA]))
+        XCTAssertEqual(WaterFrames.closeCommand(authorizationID: "00000000"), Data([0xAC, 0x55, 0x55, 0x55, 0x55]))
         for bad in ["", "0011", "001122FG", "001122FF00", " 001122F"] {
             XCTAssertNil(WaterFrames.closeCommand(authorizationID: bad), bad)
         }
@@ -144,7 +98,6 @@ final class WaterFrameGoldenTests: XCTestCase {
 
     func testIdentityGolden() throws {
         XCTAssertEqual(WaterFrames.identity(Golden.frame), "11223344")
-        XCTAssertEqual(WaterFrames.identity(Golden.frame), try WaterProtocol.identity(Golden.frame))
         XCTAssertNil(WaterFrames.identity(Data(Golden.frame.prefix(19))))
         XCTAssertNil(WaterFrames.identity(Data([0x56]) + Golden.frame.dropFirst()))
         XCTAssertEqual(WaterFrames.classify(Data([0xA5])), .active)
@@ -155,26 +108,22 @@ final class WaterFrameGoldenTests: XCTestCase {
         XCTAssertEqual(WaterFrames.command(WaterFrames.probeCommand), .probe)
         XCTAssertEqual(WaterFrames.command(Data(count: 15)), .authorization)
         XCTAssertEqual(WaterFrames.command(Data([0xAC, 0, 0, 0, 0])), .close)
-        XCTAssertEqual(WaterFrames.serviceUUID + WaterFrames.notifyUUID + WaterFrames.writeUUID,
-                       WaterProtocol.service + WaterProtocol.notify + WaterProtocol.write)
+        XCTAssertEqual(WaterFrames.serviceUUID + WaterFrames.notifyUUID + WaterFrames.writeUUID, "FFE0FFE1FFE2")
     }
 
-    func testAssemblerMatchesLegacyDecoderOnFixedChunkings() throws {
+    func testAssemblerOnFixedChunkings() throws {
         let ack = Data([0xAA] + [UInt8](repeating: 7, count: 8))
         let stream = Golden.frame + ack + Data([0xA5]) + Golden.frame
         for split in [[7], [1, 1, 1], [20, 9, 1], [3, 25], [40], [stream.count]] {
             var mine = WaterFrameAssembler()
-            var legacy = FrameDecoder()
-            var a: [Data] = [], b: [Data] = []
+            var a: [Data] = []
             var offset = 0, i = 0
             while offset < stream.count {
                 let n = min(split[i % split.count], stream.count - offset)
                 let chunk = Data(stream[stream.startIndex + offset ..< stream.startIndex + offset + n])
                 a += try mine.append(chunk)
-                b += try legacy.append(chunk)
                 offset += n; i += 1
             }
-            XCTAssertEqual(a, b, "\(split)")
             XCTAssertEqual(a, [Golden.frame, ack, Data([0xA5]), Golden.frame])
             XCTAssertFalse(mine.hasPartialFrame)
         }
@@ -197,13 +146,12 @@ final class WaterFrameGoldenTests: XCTestCase {
         XCTAssertEqual(HexCoding.upper(Data([0x0A, 0xFF])), "0AFF")
     }
 
-    func testReceiptParsingMatchesLegacy() {
+    func testReceiptParsing() {
         XCTAssertEqual(WaterReceipt.parse(pay: .int(9)).amount, Money(fen: 9))
         XCTAssertEqual(WaterReceipt.parse(pay: .string("163")).amount?.yuanText, "1.63")
         XCTAssertEqual(WaterReceipt.parse(pay: .int(0)).amount, Money.zero)
         for bad: JSONValue? in [nil, .bool(true), .int(-1), .string(""), .string("9abc"), .null, .double(0.5), .int(100_000_000_001)] {
             XCTAssertNil(WaterReceipt.parse(pay: bad).amount, "\(String(describing: bad))")
         }
-        XCTAssertEqual(SettlementReceipt.parse(["pay": 163]).payFen, 163)
     }
 }

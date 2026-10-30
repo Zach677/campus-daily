@@ -1,6 +1,6 @@
 import Foundation
 import AppIntents
-import WaterCore
+import DailyCore
 #if canImport(ActivityKit)
 import ActivityKit
 
@@ -47,7 +47,7 @@ struct FinishShowerLiveIntent: LiveActivityIntent {
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     init() {}
     @MainActor func perform() async throws -> some IntentResult {
-        guard let finish = ShowerActivityBridge.finish else { throw WaterError.interrupted }
+        guard let finish = ShowerActivityBridge.finish else { throw ShowerDeviceError.interrupted }
         try await finish()
         return .result()
     }

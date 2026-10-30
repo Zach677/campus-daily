@@ -1,33 +1,35 @@
 import SwiftUI
 import WebKit
-import WaterCore
+import DailyCore
+import SchoolClient
 
 enum CampusRechargeKind: String, Identifiable {
     case card, power
     var id: String { rawValue }
     var title: String { self == .card ? "校园卡充值" : "宿舍电费充值" }
+    var school: RechargeKind { self == .card ? .card : .electricity }
 }
 
 struct CampusRechargeView: View {
     @EnvironmentObject private var campus: CampusModel
     let kind: CampusRechargeKind
-    @State private var context: CampusWebSession?
+    @State private var context: RechargeWebSession?
     @State private var issue: String?
     @State private var loading = false
     @State private var login = false
     @State private var revision = UUID()
     var body: some View {
         VStack(spacing:0) {
-            Text("学校官方充值页面 · 请核对账户、宿舍和金额后付款")
+            Text("学校官方充值页面 · 付款前核对账户、宿舍和金额")
                 .font(.footnote).foregroundStyle(.secondary).padding(12)
             if let context {
-                CampusRechargeBrowser(context:context,power:kind == .power) { issue = "学校登录过期了，重新登录一下。" }
+                CampusRechargeBrowser(context:context) { issue = "学校登录过期了，重新登录一下。" }
                     .id(revision)
             } else if loading {
                 ProgressView("正在确认学校登录…").frame(maxWidth:.infinity,maxHeight:.infinity)
             } else {
                 ContentUnavailableView("暂时无法打开充值",systemImage:"person.crop.circle",
-                    description:Text(issue ?? "请先登录学校账号"))
+                    description:Text(issue ?? "先登录学校账号。"))
             }
             if let issue {
                 Text(issue).font(.footnote).foregroundStyle(.orange).padding(.horizontal)
@@ -39,42 +41,38 @@ struct CampusRechargeView: View {
             .task(id:revision) { await prepare() }
             .sheet(isPresented:$login) {
                 CampusLoginSheet { value in
-                    do { try campus.acceptLogin(value); revision = UUID() }
-                    catch { issue = "登录信息暂时无法保存，请稍后重试" }
+                    Task {
+                        do { try await campus.adoptWebState(value); revision = UUID() }
+                        catch { issue = "这次没登录上，再试一次。" }
+                    }
                 }
             }
     }
     private func prepare() async {
         context = nil; issue = nil; loading = true
         defer { loading = false }
-        guard let config = campus.onboardingLogin else { issue = "请先登录学校账号"; return }
+        guard campus.configured else { issue = "先登录学校账号。"; return }
         do {
-            let result = try await CampusProvider().webSession(config:config)
+            let result = try await campus.rechargeSession(kind.school)
             try Task.checkCancellation()
-            guard campus.onboardingLogin?.cacheIdentity == config.cacheIdentity,
-                  campus.onboardingLogin?.accToken == config.accToken else {
-                // The login changed while this one was loading: start again with the new one.
-                revision = UUID(); return
-            }
             context = result
         } catch is CancellationError { }
           catch {
             // Only a real expiry says 「过期」; other refusals show what the school said.
-            issue = (error as? LocalizedError)?.errorDescription ?? "学校页面暂时无法打开，请重试"
+            issue = (error as? ServiceError)?.userMessage ?? "学校页面暂时打不开，再试一次。"
         }
     }
 }
 
 private struct CampusRechargeBrowser: UIViewRepresentable {
-    let context: CampusWebSession
-    let power: Bool
+    let context: RechargeWebSession
     let expired: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(expired:expired) }
     func makeUIView(context bridge: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         // A separate recharge store prevents this context overwriting the official login browser.
         configuration.websiteDataStore = .nonPersistent()
-        configuration.userContentController.addUserScript(WKUserScript(source:context.bootstrapScript,injectionTime:.atDocumentStart,forMainFrameOnly:true))
+        configuration.userContentController.addUserScript(WKUserScript(source:context.userScript,injectionTime:.atDocumentStart,forMainFrameOnly:true))
         configuration.userContentController.add(bridge.coordinator,name:"campusRechargeExpired")
         let expiryScript = """
         (()=>{if(location.hostname!=='ecykt.gdbtu.edu.cn')return;
@@ -86,7 +84,7 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
         view.navigationDelegate = bridge.coordinator; view.uiDelegate = bridge.coordinator
         view.isInspectable = false
         if !context.userAgent.isEmpty { view.customUserAgent = context.userAgent }
-        view.load(URLRequest(url:context.rechargeURL(power:power)))
+        view.load(URLRequest(url:context.startURL))
         return view
     }
     func updateUIView(_ view: WKWebView,context: Context) {}
@@ -104,12 +102,14 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
         }
         func webView(_ webView: WKWebView,decidePolicyFor action: WKNavigationAction,decisionHandler: @escaping (WKNavigationActionPolicy)->Void) {
             guard action.targetFrame?.isMainFrame != false else { decisionHandler(.allow); return }
-            guard let url = action.request.url else { decisionHandler(.cancel); return }
-            if url.scheme == "https", ["ecykt.gdbtu.edu.cn","portal.gdbtu.edu.cn","cas.gdbtu.edu.cn"].contains(url.host ?? ""),
-               url.user == nil, url.password == nil, url.port == nil || url.port == 443 { decisionHandler(.allow); return }
-            if action.navigationType == .linkActivated, webView.url?.host == "ecykt.gdbtu.edu.cn",
-               ["alipays","alipay","weixin"].contains(url.scheme ?? "") { UIApplication.shared.open(url) }
-            decisionHandler(.cancel)
+            guard let url = action.request.url, url.user == nil, url.password == nil, url.port == nil || url.port == 443 else {
+                decisionHandler(.cancel); return
+            }
+            switch RechargeNavigation.decide(url, isUserTap:action.navigationType == .linkActivated, sourceHost:webView.url?.host) {
+            case .allow: decisionHandler(.allow)
+            case .openExternal: UIApplication.shared.open(url); decisionHandler(.cancel)
+            case .cancel: decisionHandler(.cancel)
+            }
         }
         func webView(_ webView: WKWebView,createWebViewWith configuration: WKWebViewConfiguration,for action: WKNavigationAction,windowFeatures: WKWindowFeatures) -> WKWebView? {
             if action.targetFrame == nil, action.request.url?.scheme == "https", action.request.url?.host == "ecykt.gdbtu.edu.cn" { webView.load(action.request) }

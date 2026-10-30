@@ -420,7 +420,7 @@ become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidence
 | Item | Old | New |
 |---|---|---|
 | App bundle id | `com.beamjason.campushotwater` | `com.beamjason.xiaorichang` (matches Android `applicationId`) |
-| Widget extension | `com.beamjason.campushotwater.balances` | `com.beamjason.xiaorichang.widget` |
+| Widget extension | `com.beamjason.campushotwater.balances` | `com.beamjason.xiaorichang.balances` (suffix `.balances` kept) |
 | Keychain access group | `$(AppIdentifierPrefix)com.beamjason.campushotwater` | `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared` |
 | Keychain services | `CampusHotWater.*.v1`, `CampusDaily.*.v1` | `com.beamjason.xiaorichang.<name>.v1` |
 | BG task id | `com.beamjason.campushotwater.refresh` | `com.beamjason.xiaorichang.refresh` |

@@ -1,6 +1,6 @@
 import Foundation
 import ActivityKit
-import WaterCore
+import DailyCore
 
 /// Mirrors the current laundry order into one Live Activity (design-r2 §3). Read only:
 /// it never requests anything from U净 and never changes the checkout record.
@@ -18,13 +18,15 @@ import WaterCore
 
     func sync(facts: LaundryFacts, now: Date = Date()) {
         let record = facts.record
-        let order = record?.order
         if case .running(let end) = facts.phase(now:now), let record, let id = record.orderId {
             return startOrUpdate(orderId:id, end:end, facts:facts, now:now)
         }
         guard let current = activity else { return }
-        if let record, record.orderId == current.attributes.orderId, let order {
-            switch order.status.text {
+        // While in flight the live order; once cleared, the engine's last outcome.
+        let status = record?.orderID == current.attributes.orderId ? record?.order?.status
+            : (record?.lastOutcome?.orderID == current.attributes.orderId ? record?.lastOutcome?.status : nil)
+        if let status {
+            switch status.code {
             case "50": return done()
             case "51", "52", "53": return endNow()     // timed out / failed to start / cancelled
             default: break                             // 20, or a read still pending: keep as is
@@ -49,7 +51,7 @@ import WaterCore
         guard ActivityAuthorizationInfo().areActivitiesEnabled, let record = facts.record else { return }
         // No start time in the order: derive it from the program length, else the order's creation.
         let length = facts.recordProgram.map { TimeInterval($0.time * 60) }
-        let started = length.map { end.addingTimeInterval(-$0) } ?? record.createdAt
+        let started = length.map { end.addingTimeInterval(-$0) } ?? record.createdAt ?? now
         let attributes = LaundryActivityAttributes(orderId:orderId,
                                                    machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机",
                                                    program:record.programName)
