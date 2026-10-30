@@ -304,6 +304,7 @@ struct AdvancedSettingsView: View {
     @State private var importing = false
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
+    @State private var diagnosticsExport = ShowerDiagnosticsExport()
     private var version: String {
         (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + "（" +
         (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + "）· 测试版"
@@ -324,7 +325,7 @@ struct AdvancedSettingsView: View {
                     Text("一般不用导入。有没结算的记录时，别卸载 App，也别换配置。")
                 }
             }.listRowBackground(Theme.group)
-            ShowerTroubleshootingSections(preview:preview)
+            ShowerTroubleshootingSections(preview:preview, export:$diagnosticsExport)
             Section {
                 Link(destination:URL(string:"shortcuts://")!) { ChevronRow(title:"快捷指令") }
             } footer: {
@@ -338,6 +339,7 @@ struct AdvancedSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("高级").navigationBarTitleDisplayMode(.inline)
+        .showerDiagnosticsExport($diagnosticsExport)
         .fileImporter(isPresented:$importing, allowedContentTypes:[.json, .data]) { result in
             importIssue = nil
             do {
