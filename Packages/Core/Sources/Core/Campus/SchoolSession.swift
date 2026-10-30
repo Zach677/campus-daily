@@ -355,7 +355,9 @@ public actor SchoolSession {
         } catch is CancellationError {
             return .unavailable
         } catch {
-            if started == signOutGeneration, var paused = (try? vault.account()) ?? nil, paused.account == saved.account {
+            // Only the password that was tried: one saved meanwhile (保存密码 / 重新输入密码) stays usable.
+            if started == signOutGeneration, var paused = (try? vault.account()) ?? nil,
+               paused.account == saved.account, paused.password == saved.password {
                 paused.paused = true
                 try? vault.saveAccount(paused)
             }

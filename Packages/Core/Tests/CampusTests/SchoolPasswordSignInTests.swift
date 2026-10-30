@@ -139,6 +139,25 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertEqual(login.calls.count, 1, "a refused password is never tried again by itself")
     }
 
+    /// The user saves a new password while an automatic login with the old one is refused:
+    /// the new one is not paused.
+    func testARefusalDoesNotPauseAPasswordSavedMeanwhile() async throws {
+        struct SavesThenRefuses: SchoolPasswordLogin {
+            let vault: StoredSchoolVault
+            func login(account: String, password: String, visitorID: String) async throws -> PortalToken {
+                try vault.saveAccount(SchoolAccount(account: account, password: "new-pw-992"))
+                throw SchoolLoginFailure.wrongCredentials
+            }
+        }
+        var h = Harness()
+        h.passwordLogin = SavesThenRefuses(vault: h.vault)
+        try h.signedIn()
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken")
+        _ = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991", password: "new-pw-992"))
+    }
+
     func testNoNetworkDuringThePasswordStepDoesNotPauseIt() async throws {
         let login = FakePasswordLogin(.failure(.offline))
         let h = harness(login)
