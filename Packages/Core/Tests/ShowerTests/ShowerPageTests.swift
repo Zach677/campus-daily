@@ -205,8 +205,8 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertTrue(flow.presented)
         XCTAssertFalse(flow.mayEnd)
         XCTAssertTrue(flow.mayResolve)
-        XCTAssertTrue(flow.mayCollapse)
-        for event in [ShowerPageEvent.endTapped, .startTapped, .retryTapped, .cancelTapped, .closeTapped] {
+        XCTAssertFalse(flow.mayCollapse, "no 收起 and no swipe: the check is answered on the page")
+        for event in [ShowerPageEvent.endTapped, .startTapped, .retryTapped, .cancelTapped, .closeTapped, .collapseTapped] {
             XCTAssertEqual(ShowerPageFlow.reduce(flow, event).1, [], "\(event)")
         }
         var review = flow

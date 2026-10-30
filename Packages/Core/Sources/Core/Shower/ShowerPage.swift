@@ -208,7 +208,9 @@ public struct ShowerPageFlow: Sendable, Equatable {
     }
 
     /// Swipe-down closes the page only while water runs (as 收起 does) or a check is waiting.
-    public var mayCollapse: Bool { page?.phase == .running || page?.phase == .needsCheck }
+    /// Only the running page goes down (the timer keeps going on home); a check is answered
+    /// with 去核对 or 我在学校记录里核对过了.
+    public var mayCollapse: Bool { page?.phase == .running }
     /// 我在学校记录里核对过了 on the needs-check face.
     public var mayResolve: Bool { page?.phase == .needsCheck && record.canResolveManually }
     public var mayCancel: Bool { page?.phase == .connecting && !cancelling && !cancelRefused }

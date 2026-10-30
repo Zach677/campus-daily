@@ -138,8 +138,6 @@ struct ShowerPageView: View {
             HStack {
                 if phase == .running {
                     circleButton("chevron.down", label:"收起，继续洗澡") { shower.pageEvent(.collapseTapped) }
-                } else if phase == .needsCheck {
-                    circleButton("chevron.down", label:"收起") { shower.pageEvent(.collapseTapped) }
                 } else if phase == .connectFailed {
                     circleButton("xmark", label:"关闭") { shower.pageEvent(.closeTapped) }
                 }
@@ -278,14 +276,19 @@ struct ShowerPageView: View {
                             .fixedSize(horizontal:false, vertical:true)
                     }
                     .foregroundStyle(Theme.accentText)
+                    // Lined up with the capsule's label inset, 12 pt above it.
+                    .padding(.leading,20)
                     .frame(maxWidth:.infinity, alignment:.leading)
-                    .padding(.bottom,10)
+                    .padding(.bottom,6)
                     .accessibilityElement(children:.combine)
                 }
                 capsule("结束并结算", background:Theme.accent, ink:scheme == .dark ? Color(white:0.07) : .white,
                         enabled:flow.mayEnd) { shower.pageEvent(.endTapped) }
-                Text(ShowerPageText.runningNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                    .multilineTextAlignment(.center).padding(.top,6)
+                // The end-failed line takes its place while shown.
+                if flow.endFailed == nil {
+                    Text(ShowerPageText.runningNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                        .multilineTextAlignment(.center).padding(.top,6)
+                }
             case .settling:
                 HStack(spacing:8) {
                     ProgressView().tint(Theme.ink2)
