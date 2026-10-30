@@ -259,6 +259,7 @@ public actor SnapshotRefresher {
             s = SchoolSnapshotReducer.reduce(s, .livenessOK(at: reading.checkedAt))
             let at = reading.readAt ?? reading.checkedAt
             if let b = reading.balance { s = SchoolSnapshotReducer.reduce(s, .balance(b, at: at)) }
+            if let a = reading.activity { s = SchoolSnapshotReducer.reduce(s, .activity(a, at: at)) }
             if let m = reading.meter {
                 s = SchoolSnapshotReducer.reduce(s, .meter(m, at: at))
                 s = SchoolSnapshotReducer.reduce(s, .roomLabel(reading.roomLabel))

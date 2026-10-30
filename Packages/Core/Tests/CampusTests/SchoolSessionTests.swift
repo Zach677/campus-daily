@@ -47,6 +47,7 @@ final class SchoolRefreshTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-ok")
         try h.server.serve("ecykt/electric-getMeterStatus-room", matchBody: ["server", "buildingID"])
+        try h.server.serve("ecykt/card-getRecordList-ok")
         let report = await h.refresher().refresh(inBackground: true)
         XCTAssertEqual(report.outcome, .ok)
         XCTAssertEqual(report.snapshot.card.value, Money(fen: 790))
@@ -58,6 +59,7 @@ final class SchoolRefreshTests: XCTestCase {
         let saved = try XCTUnwrap(try h.snapshots.loadSnapshot())
         XCTAssertEqual(saved.card, report.snapshot.card)
         XCTAssertEqual(saved.power.value?.leftMoney, Money(fen: 3692))
+        XCTAssertEqual(saved.activity, report.snapshot.activity)
         XCTAssertEqual(h.loginBySysIdCalls(), 0, "refresh never calls loginBySysId")
         XCTAssertTrue(h.server.unmatched.isEmpty)
         // Latest custid ciphertext from the liveness answer is kept for next time.
@@ -399,3 +401,45 @@ extension Fixture {
         return f
     }
 }
+
+/// The card's recent records are read with the balance, in the same refresh.
+final class CardActivityRefreshTests: XCTestCase {
+    func testRecordsOfThreeSchoolDaysAreStoredWithTheBalance() async throws {
+        let h = Harness()
+        try h.signedIn()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        try h.server.serve("ecykt/card-getRecordList-ok")
+        let report = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(report.outcome, .ok)
+        let activity = try XCTUnwrap(report.snapshot.activity.value)
+        XCTAssertEqual(activity.records.count, 5)
+        XCTAssertEqual(activity.records.first?.title, "蓝牙热水(中卡)(蓝牙热水(中卡))热水POS01(中卡)")
+        XCTAssertFalse(activity.complete, "36 records, 5 came back")
+        let request = try XCTUnwrap(h.server.requests(path: "/card/getRecordList").first)
+        XCTAssertEqual(request.bodyField("begin"), "20261028", "the school's day: 02:53 on the 30th")
+        XCTAssertEqual(request.bodyField("end"), "20261030")
+        XCTAssertEqual(request.bodyField("pageSize"), String(CardActivity.pageSize))
+        XCTAssertEqual(h.server.requests(path: "/card/getRecordList").count, 1)
+        XCTAssertEqual(report.snapshot.activity.fetchedAt, h.clock.now)
+        XCTAssertEqual(try h.snapshots.loadSnapshot()?.activity, report.snapshot.activity)
+        XCTAssertTrue(h.server.unmatched.isEmpty)
+    }
+
+    /// Records that can't be read leave the balance alone, and the last records stay with their time.
+    func testUnreadableRecordsDoNotStopTheBalance() async throws {
+        let h = Harness()
+        try h.signedIn()
+        let earlier = CardActivity(records: [], begin: "20261026", end: "20261028", complete: true)
+        let before = h.clock.now.addingTimeInterval(-3600)
+        try h.snapshots.saveSnapshot(HomeSnapshot(activity: Tile(value: earlier, fetchedAt: before), checkedAt: before))
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        let report = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(report.snapshot.card.value, Money(fen: 790))
+        XCTAssertEqual(report.snapshot.activity.value, earlier)
+        XCTAssertEqual(report.snapshot.activity.fetchedAt, before)
+        XCTAssertNotNil(report.snapshot.activity.error)
+    }
+}
+

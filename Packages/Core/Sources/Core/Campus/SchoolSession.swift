@@ -34,6 +34,8 @@ public struct SchoolReading: Sendable, Equatable {
     /// Room meter read; nil when no meter is bound or it was not attempted.
     /// `.success(nil)` = no meter at the saved node.
     public var meter: Result<Meter?, ServiceError>?
+    /// The card's recent records; nil when not attempted.
+    public var activity: Result<CardActivity, ServiceError>?
     public var roomLabel: String?
     /// When balance and meter answered.
     public var readAt: Date?
@@ -345,12 +347,20 @@ public actor SchoolSession {
         let session = alive
 
         let binding = ((try? vault.profile()) ?? nil)?.meter
+        let range = CardActivity.range(at: now())
         async let balanceResult = capture { try await self.ecykt.balance(session, custid: card.custid) }
         async let meterResult = readMeter(session, binding: binding)
-        let (b, m) = await (balanceResult, meterResult)
+        async let activityResult = capture {
+            let page = try await self.ecykt.cardRecords(session, custid: card.custid, begin: range.begin, end: range.end,
+                                                        page: 1, pageSize: CardActivity.pageSize)
+            return CardActivity(records: page.rows, begin: range.begin, end: range.end, complete: page.total <= page.rows.count)
+        }
+        let (b, m, a) = await (balanceResult, meterResult, activityResult)
         guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
-        return SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
-                             roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged)
+        var reading = SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
+                                    roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged)
+        reading.activity = a
+        return reading
     }
 
     private enum Renewal { case renewed((BoundCard, EcyktSession)), stopped(SchoolReading) }

@@ -29,14 +29,30 @@ public struct Tile<Value: Sendable & Codable & Equatable>: Sendable, Codable, Eq
 public struct HomeSnapshot: Sendable, Codable, Equatable {
     public var card: Tile<Money>
     public var power: Tile<Meter>
+    /// The card's recent records (最近, 昨天花了).
+    public var activity: Tile<CardActivity>
     public var roomLabel: String?
     /// The ecykt session failed the liveness check: show "需重新登录" next to old values.
     public var needsLogin: Bool
     public var checkedAt: Date?
 
-    public init(card: Tile<Money> = Tile(), power: Tile<Meter> = Tile(), roomLabel: String? = nil,
-                needsLogin: Bool = false, checkedAt: Date? = nil) {
-        self.card = card; self.power = power; self.roomLabel = roomLabel; self.needsLogin = needsLogin; self.checkedAt = checkedAt
+    public init(card: Tile<Money> = Tile(), power: Tile<Meter> = Tile(), activity: Tile<CardActivity> = Tile(),
+                roomLabel: String? = nil, needsLogin: Bool = false, checkedAt: Date? = nil) {
+        self.card = card; self.power = power; self.activity = activity; self.roomLabel = roomLabel
+        self.needsLogin = needsLogin; self.checkedAt = checkedAt
+    }
+
+    private enum CodingKeys: String, CodingKey { case card, power, activity, roomLabel, needsLogin, checkedAt }
+
+    /// A snapshot stored before the records were read has no `activity`: it reads as never read.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        card = try c.decode(Tile<Money>.self, forKey: .card)
+        power = try c.decode(Tile<Meter>.self, forKey: .power)
+        activity = try c.decodeIfPresent(Tile<CardActivity>.self, forKey: .activity) ?? Tile()
+        roomLabel = try c.decodeIfPresent(String.self, forKey: .roomLabel)
+        needsLogin = try c.decode(Bool.self, forKey: .needsLogin)
+        checkedAt = try c.decodeIfPresent(Date.self, forKey: .checkedAt)
     }
 
     public static let empty = HomeSnapshot()
@@ -53,6 +69,7 @@ public enum SchoolSnapshotEvent: Sendable, Equatable {
     case balance(Result<Money, ServiceError>, at: Date)
     /// `.success(nil)` = no meter at the saved node ("没找到电表").
     case meter(Result<Meter?, ServiceError>, at: Date)
+    case activity(Result<CardActivity, ServiceError>, at: Date)
     case roomLabel(String?)
     case signedOut
 }
@@ -71,10 +88,12 @@ public enum SchoolSnapshotReducer {
             s.checkedAt = at
             s.card.fail(e, at: at)
             s.power.fail(e, at: at)
+            s.activity.fail(e, at: at)
         case .livenessFailed(let e, let at):
             s.checkedAt = at
             s.card.fail(e, at: at)
             s.power.fail(e, at: at)
+            s.activity.fail(e, at: at)
         case .balance(.success(let m), let at):
             s.card.succeed(m, at: at)
         case .balance(.failure(let e), let at):
@@ -83,6 +102,10 @@ public enum SchoolSnapshotReducer {
             s.power.succeed(m, at: at)
         case .meter(.failure(let e), let at):
             s.power.fail(e, at: at)
+        case .activity(.success(let a), let at):
+            s.activity.succeed(a, at: at)
+        case .activity(.failure(let e), let at):
+            s.activity.fail(e, at: at)
         case .roomLabel(let label):
             s.roomLabel = label
         case .signedOut:
