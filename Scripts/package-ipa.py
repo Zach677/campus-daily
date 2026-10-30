@@ -30,9 +30,9 @@ try:
         parser.error('Bundled platform differs from the explicitly supplied local profile')
 except (ValueError, OSError):
     parser.error('A validated platform-only resource is required; personal data remains forbidden')
-widget = app / 'PlugIns' / 'CampusDailyWidget.appex'
+widget = app / 'PlugIns' / 'XiaoRiChangWidget.appex'
 if not widget.is_dir():
-    parser.error('CampusDailyWidget extension missing from public app')
+    parser.error('XiaoRiChangWidget extension missing from public app')
 for bundle in [app, widget]:
     metadata = plistlib.loads((bundle / 'Info.plist').read_bytes())
     if 'CampusKeychainGroup' in metadata:

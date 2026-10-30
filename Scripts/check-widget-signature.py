@@ -9,7 +9,7 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--app', required=True, type=Path)
 args = p.parse_args()
 app = args.app.resolve()
-widget = app / 'PlugIns/CampusDailyWidget.appex'
+widget = app / 'PlugIns/XiaoRiChangWidget.appex'
 if not widget.is_dir():
     p.error('Widget extension is missing; signing must preserve app extensions')
 def entitlements(bundle):
