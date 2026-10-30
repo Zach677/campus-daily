@@ -10,10 +10,11 @@ import Core
     @Published private(set) var completed = 0
     @Published private(set) var running = false
 
-    /// Not while a shower runs or its settlement still needs checking.
-    static func lock(water: ShowerModel) -> AppReset.Lock? {
+    /// Not while a shower runs or its settlement still needs checking, nor with an unfinished
+    /// laundry order.
+    static func lock(water: ShowerModel, laundry: LaundryModel) -> AppReset.Lock? {
         if water.busy { return .showering }
-        return AppReset.lock(shower: water.state)
+        return AppReset.lock(shower:water.state, laundry:laundry.checkout?.phase, laundryBusy:laundry.checkoutBusy)
     }
 
     /// Files the app wrote (the imported hot-water file and diagnostics, the laundry and Bluetooth
@@ -24,7 +25,7 @@ import Core
     }
 
     func reset(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async throws {
-        guard !running, Self.lock(water:water) == nil else { return }
+        guard !running, Self.lock(water:water, laundry:laundry) == nil else { return }
         running = true
         defer { running = false }
         await campus.signOutForReset()

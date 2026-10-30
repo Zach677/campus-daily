@@ -13,15 +13,20 @@ public enum AppReset {
         case showering
         /// A settlement is waiting to be checked against the school's records.
         case unsettled
+        /// A laundry order is not finished (being created, paid, running or needing attention).
+        case laundry
     }
 
-    /// Reset waits for the shower to end and its settlement to be checked: clearing in between
-    /// would lose the only record of a charge.
-    public static func lock(shower: ShowerState?) -> Lock? {
-        guard let s = shower else { return nil }
-        if s.phase == .failed, s.failure?.needsReview == true { return .unsettled }
-        if s.stateReviewRequired { return .unsettled }
-        return s.canStart ? nil : .showering
+    /// Reset waits for the shower to end and its settlement to be checked, and for any laundry
+    /// order to finish: clearing in between would lose the only record of a charge.
+    public static func lock(shower: ShowerState?, laundry: LaundryPhase? = nil, laundryBusy: Bool = false) -> Lock? {
+        if let s = shower {
+            if s.phase == .failed, s.failure?.needsReview == true { return .unsettled }
+            if s.stateReviewRequired { return .unsettled }
+            if !s.canStart { return .showering }
+        }
+        if laundryBusy || (laundry ?? LaundryPhase.none) != LaundryPhase.none { return .laundry }
+        return nil
     }
 
     /// Every Keychain item. A new `StoreKey` is cleared without being listed here.

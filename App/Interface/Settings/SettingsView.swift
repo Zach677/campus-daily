@@ -397,7 +397,7 @@ struct AdvancedSettingsView: View {
         Button { if preview == nil { importing = true } } label: { ChevronRow(title:title) }
     }
     /// Why reset is not offered now (DEBUG demo data, or the live shower).
-    private var resetLock: AppReset.Lock? { preview != nil ? preview?.resetLock : AppResetter.lock(water:water) }
+    private var resetLock: AppReset.Lock? { preview != nil ? preview?.resetLock : AppResetter.lock(water:water, laundry:laundry) }
 
     /// 重置校日常 (design §10): its own group at the end; locked, the footer gives the reason.
     private var resetSection: some View {
@@ -416,6 +416,7 @@ struct AdvancedSettingsView: View {
                 switch lock {
                 case .showering?: Text("正在洗澡，结束并结算以后再重置。")
                 case .unsettled?: Text("上次洗澡还没核对，核对完再重置。")
+                case .laundry?: Text("洗衣还有一笔没处理完，处理完再重置。")
                 case nil: Text("清掉登录、宿舍和所有记录，回到刚装好的样子。")
                 }
             }

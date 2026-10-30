@@ -265,6 +265,7 @@ enum HomeDemo: String, CaseIterable {
     /// Settings › 高级 › 重置校日常 locked: showering / a settlement to check.
     case settingsResetShower = "settings-reset-shower"
     case settingsResetUnsure = "settings-reset-unsure"
+    case settingsResetLaundry = "settings-reset-laundry"
     case unconfirmedRow = "unconfirmed-row"
     /// Showering while the authorization write is unconfirmed (stage .authorizationWritePending).
     case showerUnconfirmed = "shower-unconfirmed"
@@ -307,6 +308,9 @@ enum HomeDemo: String, CaseIterable {
         case .settingsResetUnsure:
             data.water = .unresolved("上次结算还没确认")
             data.resetLock = .unsettled
+            return (data, nil)
+        case .settingsResetLaundry:
+            data.resetLock = .laundry
             return (data, nil)
         case .settingsPassword:
             data.schoolAccount = SchoolAccount(account:"99100991", password:"demo-password")

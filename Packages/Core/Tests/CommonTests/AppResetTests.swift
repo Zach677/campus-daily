@@ -66,6 +66,17 @@ final class AppResetTests: XCTestCase {
         for key in StoreKey.allCases where key != .schoolPassword { XCTAssertNil(try store.read(key), key.rawValue) }
     }
 
+    /// An unfinished laundry order locks reset too; the shower reasons come first.
+    func testResetWaitsForAnUnfinishedLaundryOrder() {
+        XCTAssertNil(AppReset.lock(shower: .idle, laundry: LaundryPhase.none))
+        XCTAssertNil(AppReset.lock(shower: nil, laundry: nil))
+        for phase in LaundryPhase.allCases where phase != .none {
+            XCTAssertEqual(AppReset.lock(shower: .idle, laundry: phase), .laundry, "\(phase)")
+        }
+        XCTAssertEqual(AppReset.lock(shower: nil, laundry: LaundryPhase.none, laundryBusy: true), .laundry)
+        XCTAssertEqual(AppReset.lock(shower: ShowerState(phase: .running), laundry: .active), .showering)
+    }
+
     func testResetWaitsForTheShowerAndItsSettlement() {
         XCTAssertNil(AppReset.lock(shower: nil))
         XCTAssertNil(AppReset.lock(shower: .idle))
