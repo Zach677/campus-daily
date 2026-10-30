@@ -238,7 +238,8 @@ public actor ShowerEngine {
     }
 
     private func rememberPeripheral() {
-        guard let id = state.peripheralID, var b = try? vault.binding(), b.machineId == state.machineID, b.peripheralID != id else { return }
+        guard let id = state.peripheralID, var b = try? vault.binding(), b.machineId.uppercased() == state.machineID,
+              b.peripheralID != id else { return }
         b.peripheralID = id
         try? vault.saveBinding(b)
     }

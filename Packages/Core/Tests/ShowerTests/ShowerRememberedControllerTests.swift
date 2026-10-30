@@ -93,6 +93,19 @@ extension ShowerEngineTests {
         XCTAssertNil(try vault.showerState()?.peripheralID)
     }
 
+    /// A binding stored with a lower-case machine id remembers (and forgets) its controller
+    /// the same way as an upper-case one.
+    func testLowerCaseMachineIdStillRemembersTheController() async throws {
+        let lower = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "99aabbcc", roomId: "R1", roomLabel: "99栋 991")
+        try vault.saveBinding(lower)
+        let e = try engine()
+        transport.script(.frame(FakeFrames.identity("99AABBCC")), .fail(.timedOut))
+        gateway.scriptAuthorize(.ok(ShowerAuthorization(machineID: "99AABBCC", payload: auth.payload, authorizationID: "001122FF")))
+        let s = try await e.start(lower)
+        XCTAssertEqual(s.phase, .writePending)
+        XCTAssertEqual(try vault.binding()?.peripheralID, "PERIPHERAL-A")
+    }
+
     func testOnlyAnIdentityFrameVerifiesTheMachine() {
         XCTAssertEqual(ShowerFrames.check(FakeFrames.identity(machine), machineID: machine), .verified)
         XCTAssertEqual(ShowerFrames.check(FakeFrames.identity(machine), machineID: machine.lowercased()), .verified)
