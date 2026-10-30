@@ -78,6 +78,10 @@ struct HomeData {
     var yesterdayKWh: Decimal?
     var balance: Decimal?
     var balanceUpdated: Date?
+    /// Last campus refresh problem (e.g. login expired); the balance shown is then the old one.
+    var campusIssue: String?
+    /// Last power read failed; the kWh shown (if any) is the previous reading.
+    var powerIssue: String?
     var cardLowLine: Decimal = 20
     var powerLowLine: Decimal = 10
     var water = Water.idle
@@ -164,6 +168,8 @@ extension HomeData {
         yesterdayKWh = snapshot?.electricity?.yesterdayKWh
         balance = snapshot?.balance
         balanceUpdated = snapshot?.balanceFetchedAt
+        campusIssue = campus.configured ? campus.issue : nil
+        powerIssue = campus.configured && powerBound ? snapshot?.powerError?.message : nil
         let lines = ReminderKey.lines
         powerLowLine = lines.power; cardLowLine = lines.card
 
@@ -203,8 +209,8 @@ extension HomeData {
 }
 
 extension HomeData {
-    static func laundryRow(_ facts: LaundryFacts, now: Date = Date(), acknowledgedFailure: String? = nil) -> Laundry {
-        switch facts.phase(now:now, acknowledgedFailure:acknowledgedFailure) {
+    static func laundryRow(_ facts: LaundryFacts, now: Date = Date()) -> Laundry {
+        switch facts.phase(now:now) {
         case .empty, .unknown: return .unknown
         case .idle: return .idle
         case .inUse: return .inUse

@@ -24,7 +24,7 @@ final class CampusWebSessionTests: XCTestCase {
     }
     func testAnotherCardOwnerIsRejected() throws {
         XCTAssertThrowsError(try CampusWebSession.create(config:config(),login:["syscustid":"student-test","isbind":1],cards:[["custid":"card-test","syscustid":"another"]])) {
-            XCTAssertEqual($0 as? CampusError,.expired)
+            XCTAssertEqual($0 as? CampusError,.accountMismatch)
         }
     }
     func testConfiguredCardIsSelectedInsteadOfFirstReturnedCard() throws {

@@ -122,6 +122,8 @@ struct HomeView: View {
             if problem, unresolvedClose { presentUnconfirmed() }
         }
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
+        // A done panel that arrived while another panel was up is shown once that one closes.
+        .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
         .modifier(ReminderHooks(settings:$settings, path:$path, homeClear:homeClear))
         .onOpenURL { url in
             // Widget tap (campusdaily://home): back to the home screen.
@@ -314,27 +316,27 @@ struct HomeView: View {
 
     private func powerRow(_ data: HomeData) -> some View {
         let value: RowValue = data.remainingKWh.map { .number(Theme.kwh($0), unit:"度", low:data.powerLow) } ?? .dash
-        return StatusRow(emoji:"⚡", title:"电量", subtitle:data.powerSubtitle, subtitleLow:data.powerLow, value:value)
+        return StatusRow(emoji:"⚡", title:"电量", subtitle:data.powerIssue ?? data.powerSubtitle, subtitleLow:data.powerIssue == nil && data.powerLow, value:value)
             .animation(Theme.spring, value:data.remainingKWh)
     }
     private func powerLabel(_ data: HomeData) -> String {
-        guard let kwh = data.remainingKWh else { return "电量，未读取" }
-        return ["电量", Theme.kwh(kwh) + " 度", data.powerSubtitle.isEmpty ? nil : data.powerSubtitle].compactMap { $0 }.joined(separator:"，")
+        guard let kwh = data.remainingKWh else { return ["电量，未读取", data.powerIssue].compactMap { $0 }.joined(separator:"，") }
+        return ["电量", Theme.kwh(kwh) + " 度", data.powerIssue ?? (data.powerSubtitle.isEmpty ? nil : data.powerSubtitle)].compactMap { $0 }.joined(separator:"，")
     }
 
     private func cardRow(_ data: HomeData) -> some View {
         let value: RowValue = data.balance.map { .number(Theme.yuan($0), unit:nil, low:data.cardLow) } ?? .dash
-        return StatusRow(emoji:"💳", title:"校园卡", subtitle:data.balanceUpdated.map { Theme.updated($0) } ?? "", value:value)
+        return StatusRow(emoji:"💳", title:"校园卡", subtitle:data.campusIssue ?? data.balanceUpdated.map { Theme.updated($0) } ?? "", value:value)
             .animation(Theme.spring, value:data.balance)
     }
     private func cardLabel(_ data: HomeData) -> String {
-        guard let balance = data.balance else { return "校园卡余额，未读取" }
-        return "校园卡余额，" + Theme.yuan(balance).dropFirst() + " 元"
+        guard let balance = data.balance else { return ["校园卡余额，未读取", data.campusIssue].compactMap { $0 }.joined(separator:"，") }
+        return "校园卡余额，" + Theme.yuan(balance).dropFirst() + " 元" + (data.campusIssue.map { "，" + $0 } ?? "")
     }
 
     private func waterSubtitle(_ data: HomeData) -> String {
         switch data.water {
-        case .unconfigured: return "先在设置里导入热水配置"
+        case .unconfigured: return "先在设置里选好宿舍"
         case .unavailable(let reason): return reason
         case .showering, .settling: return "正在洗澡"
         case .unresolved(let label): return label
@@ -408,7 +410,8 @@ struct HomeView: View {
         case .power: if campus.powerConfigured { CampusRechargeView(kind:.power) } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
         case .card: CampusRechargeView(kind:.card)
-        case .water: WaterDetail()
+        // Not set up yet: hot water is bound by choosing the dorm.
+        case .water: if water.configured { WaterDetail() } else { CampusOnboardingView() }
         case .laundry:
             #if DEBUG
             LaundryDetail(demo:laundryDemo)

@@ -263,6 +263,22 @@ public struct LaundryCheckoutRecord: Codable, Sendable {
     public var order: LaundryOrder?
     public var orderUpdatedAt: Date? = nil
     public var credentialIdentity: String? = nil
+    /// When payment arguments were last requested (nil in records saved by older builds).
+    public var paymentRequestedAt: Date? = nil
+    /// Seconds after a payment request before an unpaid re-read may offer paying again:
+    /// Alipay's result can take a moment to reach U净, so an immediate "unpaid" is not trusted.
+    public static let paymentSettleDelay: TimeInterval = 60
+    /// A payment request that went nowhere (network failure, Alipay not opened, user backed out)
+    /// can be retried, with a new explicit confirmation, once a fresh order read taken at least
+    /// `paymentSettleDelay` after the request still shows it unpaid at the expected price.
+    public func mayRetryPayment(now: Date = Date()) -> Bool {
+        guard stage == .paymentRequested, let order, let read = orderUpdatedAt,
+              ["10","17"].contains(order.status.text), order.payFlag?.text == "0",
+              let amount = order.payPrice, amount >= 0, amount <= expectedPrice else { return false }
+        let requested = paymentRequestedAt ?? createdAt
+        return read.timeIntervalSince(requested) >= Self.paymentSettleDelay
+            && now.timeIntervalSince(read) >= 0 && now.timeIntervalSince(read) < 300
+    }
     public func belongs(to config: LaundryConfig) -> Bool {
         deviceId == config.deviceId && (credentialIdentity == nil || credentialIdentity == config.credentialIdentity)
     }
@@ -297,6 +313,27 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         next.credentialIdentity = new.credentialIdentity
         try store.save(next); record = next
     }
+    /// An unfinished record saved under an older credential for this same machine (for example a
+    /// legacy config whose token was replaced). It is hidden from the current login, yet it still
+    /// blocks new orders.
+    public func hiddenUnfinishedRecord(for config: LaundryConfig) -> LaundryCheckoutRecord? {
+        guard let record, record.stage != .completed, !record.belongs(to:config), record.deviceId == config.deviceId else { return nil }
+        return record
+    }
+    /// Re-attaches such a record when U净 itself returns that order to the current login (same
+    /// account, new token). Read-only: one order-detail request, never a create, pay or cancel.
+    public func adopt(config: LaundryConfig) async throws {
+        guard !busy, var next = hiddenUnfinishedRecord(for:config), let id = next.orderId else { throw LaundryCheckoutError.pending }
+        busy = true; defer { busy = false }
+        let order = try await api.order(config:config,id:id)
+        guard order.id == id, order.deviceId == next.deviceId,
+              order.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
+        next.credentialIdentity = config.credentialIdentity
+        next.order = order; next.orderUpdatedAt = Date()
+        if order.terminal { next.stage = .completed }
+        else if next.stage == .creating { next.stage = .created }
+        try store.save(next); record = next
+    }
     public func create(config: LaundryConfig, snapshot: LaundrySnapshot, program: LaundryProgram) async throws {
         guard !busy, record == nil || record?.stage == .completed else { throw LaundryCheckoutError.pending }
         guard snapshot.deviceId == config.deviceId, snapshot.moduleType == 7,
@@ -323,12 +360,12 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
     }
     public func payment(config: LaundryConfig) async throws -> LaundryPayment {
         guard !busy, var next = record, next.belongs(to:config),
-              next.stage == .created, let id = next.orderId,
+              next.stage == .created || next.mayRetryPayment(), let id = next.orderId,
               let order = next.order, ["10","17"].contains(order.status.text), order.payFlag?.text == "0" else { throw LaundryCheckoutError.pending }
         guard let amount = order.payPrice, amount >= 0, amount <= next.expectedPrice else { throw LaundryCheckoutError.changed }
         busy = true; defer { busy = false }
         // Arguments can have financial side effects; consent precedes this durable marker.
-        next.stage = .paymentRequested; try store.save(next); record = next
+        next.stage = .paymentRequested; next.paymentRequestedAt = Date(); try store.save(next); record = next
         return try await api.payment(config:config,id:id)
     }
     public func refresh(config: LaundryConfig) async throws {

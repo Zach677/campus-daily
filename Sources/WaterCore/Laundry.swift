@@ -100,6 +100,33 @@ public struct LaundrySnapshot: Codable, Sendable {
     }
 }
 
+extension LaundrySnapshot {
+    private enum CodingKeys: String, CodingKey {
+        case deviceId, deviceNo, deviceTypeName, storeName, moduleType, status, createOrderEnabled, programs, fetchedAt
+        case storeId, deviceTypeId, activeOrderId
+    }
+    /// Normalises `activeOrderId` in snapshots cached by older builds (which kept `""`).
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy:CodingKeys.self)
+        self.init(deviceId:try c.decode(String.self,forKey:.deviceId), deviceNo:try c.decode(String.self,forKey:.deviceNo),
+                  deviceTypeName:try c.decode(String.self,forKey:.deviceTypeName), storeName:try c.decode(String.self,forKey:.storeName),
+                  moduleType:try c.decode(Int.self,forKey:.moduleType), status:try c.decode(Int.self,forKey:.status),
+                  createOrderEnabled:try c.decode(Bool.self,forKey:.createOrderEnabled),
+                  programs:try c.decode([LaundryProgram].self,forKey:.programs), fetchedAt:try c.decode(Date.self,forKey:.fetchedAt))
+        storeId = try c.decodeIfPresent(String.self,forKey:.storeId)
+        deviceTypeId = try c.decodeIfPresent(Int.self,forKey:.deviceTypeId)
+        activeOrderId = LaundryOrderID.normalize(try c.decodeIfPresent(String.self,forKey:.activeOrderId))
+    }
+}
+
+/// One rule for U净's "no order" values: missing, empty/blank or "0" all mean no order.
+public enum LaundryOrderID {
+    public static func normalize(_ value: String?) -> String? {
+        guard let text = value?.trimmingCharacters(in:.whitespacesAndNewlines), !text.isEmpty, text != "0" else { return nil }
+        return text
+    }
+}
+
 private struct LaundryEnvelope<T: Decodable>: Decodable { let code: Int; let data: T? }
 private struct LaundryScan: Decodable {
     struct Result: Decodable {
@@ -189,8 +216,7 @@ public final class LaundryProvider: @unchecked Sendable {
         let body = try JSONSerialization.data(withJSONObject:["qrCode":config.qrCode])
         let scan: LaundryScan = try await request("/api/v1/devices/scanWasherCode",config:config,method:"POST",body:body)
         guard scan.result.deviceId == config.deviceId else { throw LaundryError.response }
-        let id = scan.result.orderId?.text
-        return id == "0" || id == "" ? nil : id
+        return LaundryOrderID.normalize(scan.result.orderId?.text)
     }
     private static func snapshot(scan: LaundryScan, info: LaundryInfo, expected: String) throws -> LaundrySnapshot {
         guard info.deviceId == expected, scan.result.deviceId == expected,
@@ -201,7 +227,7 @@ public final class LaundryProvider: @unchecked Sendable {
             storeName:info.storeName,moduleType:info.moduleType,status:scan.result.status,
             createOrderEnabled:scan.result.createOrderEnabled,programs:info.deviceWashModel.filter { $0.hide == 0 },fetchedAt:Date())
         value.storeId = info.storeId; value.deviceTypeId = info.deviceTypeId
-        value.activeOrderId = scan.result.orderId?.text == "0" ? nil : scan.result.orderId?.text
+        value.activeOrderId = LaundryOrderID.normalize(scan.result.orderId?.text)
         return value
     }
     public static func decodeEvidence(scanData: Data, infoData: Data, expectedDeviceId: String) throws -> LaundrySnapshot {

@@ -15,12 +15,15 @@ struct LaundryFacts {
     var loading = false
     var mayCreate = false
     var mayCancel = false
+    /// Order id of a failed start (52) the user has checked (page and home fall back to idle + note).
+    var acknowledgedFailure: String?
 
     @MainActor init(model: LaundryModel) {
         configured = model.configured; snapshot = model.snapshot; record = model.checkout
         busy = model.checkoutBusy; progress = model.checkoutProgress
         issue = model.issue; checkoutIssue = model.checkoutIssue; loading = model.loading
         mayCreate = model.mayCreate; mayCancel = model.mayCancel
+        acknowledgedFailure = model.acknowledgedFailure
     }
     init() {}
 
@@ -50,7 +53,7 @@ struct LaundryFacts {
         now.timeIntervalSince(record.createdAt) < 3 * 3600
     }
 
-    func phase(now: Date = Date(), acknowledgedFailure: String? = nil) -> Phase {
+    func phase(now: Date = Date()) -> Phase {
         guard configured else { return .empty }
         if let record, record.stage != .completed {
             switch record.stage {
@@ -66,7 +69,8 @@ struct LaundryFacts {
                 }
                 if order.paid { return .starting }
                 if ["10","17"].contains(order.status.text), order.payFlag?.text == "0" {
-                    return .unpaid(payable:record.stage == .created)
+                    // A payment request that went nowhere is payable again after a later unpaid read.
+                    return .unpaid(payable:record.stage == .created || record.mayRetryPayment(now:now))
                 }
                 return .check(failedStart:false)
             }

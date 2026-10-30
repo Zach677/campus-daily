@@ -7,14 +7,13 @@ import WaterCore
 struct LaundryDetail: View {
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var reminders = Reminders.shared
     @State private var selectedId: Int?
     @State private var sheet: LaundrySheet?
     /// A confirmed create/pay sequence is running (covers the gap between its two steps).
     @State private var submitting = false
     /// Re-reading the machine right before the confirmation sheet.
     @State private var preparing = false
-    /// Order 52 the user has already checked (page falls back to idle + note).
-    @AppStorage("laundryAckFailedOrder") private var ackFailure = ""
     #if DEBUG
     @State private var demo: LaundryDemo?
     init(demo: LaundryDemo? = nil) { _demo = State(initialValue:demo) }
@@ -34,13 +33,13 @@ struct LaundryDetail: View {
         #if DEBUG
         if let demo { return demo.notify }
         #endif
-        // 「洗衣洗好时」 reminder ships in round 2 block B; until then never promise a notification.
-        return false
+        // Only promise 洗好了会通知你 when the reminder is on and notifications are allowed.
+        return reminders.laundryDoneWillNotify
     }
 
     var body: some View {
         let facts = facts
-        let phase = facts.phase(acknowledgedFailure:ackFailure)
+        let phase = facts.phase()
         let busy = submitting || (facts.busy && Self.showsBusyDock(phase))
         ScrollView {
             VStack(alignment:.leading, spacing:0) {
@@ -352,8 +351,11 @@ struct LaundryDetail: View {
     private func checkButton(_ facts: LaundryFacts, failedStart: Bool) -> some View {
         Button {
             Task {
-                await reload()
-                if failedStart, let id = facts.record?.orderId { ackFailure = id }
+                #if DEBUG
+                if demo != nil { await reload(); return }
+                #endif
+                // Order 52: the model records 「已核对」 only when this re-check actually succeeded.
+                if failedStart { await laundry.checkFailedOrder() } else { await reload() }
             }
         } label: { DockPillLabel(title:"核对洗衣订单", style:facts.busy ? .disabled : .primary) }
             .buttonStyle(PressScaleStyle())

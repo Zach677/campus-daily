@@ -52,10 +52,16 @@ struct CampusRechargeView: View {
             let result = try await CampusProvider().webSession(config:config)
             try Task.checkCancellation()
             guard campus.onboardingLogin?.cacheIdentity == config.cacheIdentity,
-                  campus.onboardingLogin?.accToken == config.accToken else { throw CampusError.expired }
+                  campus.onboardingLogin?.accToken == config.accToken else {
+                // The login changed while this one was loading: start again with the new one.
+                revision = UUID(); return
+            }
             context = result
         } catch is CancellationError { }
-          catch { issue = (error as? CampusError) == .expired ? "学校登录过期了，重新登录一下。" : (error as? LocalizedError)?.errorDescription ?? "学校页面暂时无法打开，请重试" }
+          catch {
+            // Only a real expiry says 「过期」; other refusals show what the school said.
+            issue = (error as? LocalizedError)?.errorDescription ?? "学校页面暂时无法打开，请重试"
+        }
     }
 }
 

@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import Security
 import CryptoKit
+import UIKit
 import WaterCore
 
 @MainActor final class LaundryModel: ObservableObject {
@@ -16,6 +17,9 @@ import WaterCore
     @Published private(set) var checkoutProgress: String?
     @Published private(set) var savedMachines: [SavedWasher] = []
     @Published private(set) var candidate: LaundrySnapshot?
+    /// Order 52 (machine didn't start) the user has checked; shared by the laundry page and home.
+    /// Same UserDefaults key the page used before.
+    @Published private(set) var acknowledgedFailure = UserDefaults.standard.string(forKey:"laundryAckFailedOrder") ?? ""
     private var candidateConfig: LaundryConfig?
     var selectedMachineID: String? { config?.deviceId }
     private var controller: LaundryCheckoutController?
@@ -24,8 +28,12 @@ import WaterCore
     private var lastAttempt: Date?
     private var activitySync: AnyCancellable?
     private var endCheck: (end: Date, task: Task<Void, Never>)?
+    private var needsReload = false
+    private var unlockObserver: NSObjectProtocol?
     private let provider = LaundryProvider { path, status, data in
+        // DEBUG only: these responses include the signed Alipay order string.
         // Own transaction responses only; never persist request credentials or SDK callbacks.
+        #if DEBUG
         let folder = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
             .appendingPathComponent("LaundryCache",isDirectory:true)
         let name = path.hasPrefix("/api/v1/payment/arguments") ? "last-payment-response" : "last-create-response"
@@ -35,6 +43,7 @@ import WaterCore
         if let bytes = try? JSONSerialization.data(withJSONObject:meta) {
             try? bytes.write(to:folder.appendingPathComponent(name + "-metadata.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
         }
+        #endif
     }
     private let key: [String:Any] = [kSecClass as String:kSecClassGenericPassword,
         kSecAttrService as String:"CampusHotWater.laundry.v1",kSecAttrAccount as String:"laundry-config"]
@@ -53,33 +62,57 @@ import WaterCore
                 attributes:[.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication])
             var excluded = folder; var values = URLResourceValues(); values.isExcludedFromBackup = true
             try excluded.setResourceValues(values)
+            #if !DEBUG
+            // Diagnostics written by earlier Release builds (signed order strings among them).
+            for name in ["last-payment-response.json","last-payment-response-metadata.json","last-create-response.json",
+                         "last-create-response-metadata.json","last-payment-launch.json"] {
+                try? FileManager.default.removeItem(at:folder.appendingPathComponent(name))
+            }
+            #endif
             controller = try LaundryCheckoutController(store:LaundryFileStore(folder:folder),api:provider)
             checkout = controller?.record
-            var query = key; query[kSecReturnData as String] = true; query[kSecMatchLimit as String] = kSecMatchLimitOne
-            var result: CFTypeRef?
-            let status = SecItemCopyMatching(query as CFDictionary,&result)
-            if let stored = try UjingConnectionStore.load() {
-                connection = stored; accountConnected = true; config = stored.config; configured = config != nil
-                savedMachines = try readAccountMachines(stored.account)
-                if let value = config {
-                    checkout = controller?.record?.belongs(to:value) == true ? controller?.record : nil
-                    if let data = try? Data(contentsOf:snapshotURL), let cached = try? JSONDecoder().decode(LaundrySnapshot.self,from:data), cached.deviceId == value.deviceId { snapshot = cached }
-                }
-                else { checkout = nil }
-            } else if status == errSecSuccess, let bytes = result as? Data {
-                let value = try JSONDecoder().decode(LaundryConfig.self,from:bytes); try value.validate()
-                config = value; configured = true; accountConnected = true
-                savedMachines = try loadMachines(value)
-                try controller?.associateLegacyAccount(config:value)
-                checkout = controller?.record?.belongs(to:value) == true ? controller?.record : nil
-                if let data = (try? Data(contentsOf:snapshotURL)) ?? (try? Data(contentsOf:cacheURL)),
-                   let old = try? JSONDecoder().decode(LaundrySnapshot.self,from:data), old.deviceId == value.deviceId { snapshot = old }
-            } else if status != errSecItemNotFound { issue = "解锁手机后再打开校日常。" }
-        } catch { issue = "洗衣配置暂时无法读取" }
+            try loadStored()
+        } catch { needsReload = true; issue = "洗衣配置暂时无法读取" }
+        unlockObserver = NotificationCenter.default.addObserver(forName:UIApplication.protectedDataDidBecomeAvailableNotification,
+                                                                object:nil, queue:.main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadIfNeeded() }
+        }
         // Live Activity follows every change of the order or machine reading (after the change lands).
         activitySync = $checkout.combineLatest($snapshot, $configured)
             .debounce(for:.milliseconds(50), scheduler:RunLoop.main)
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.syncActivity() } }
+    }
+    /// Keychain read (WhenUnlocked items): at launch, and again after unlock if that failed.
+    private func loadStored() throws {
+        var query = key; query[kSecReturnData as String] = true; query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary,&result)
+        if let stored = try UjingConnectionStore.load() {
+            connection = stored; accountConnected = true; config = stored.config; configured = config != nil
+            // Migrated earlier: drop the superseded pre-account item and its old token.
+            if status == errSecSuccess { SecItemDelete(key as CFDictionary) }
+            savedMachines = try readAccountMachines(stored.account)
+            if let value = config {
+                checkout = controller?.record?.belongs(to:value) == true ? controller?.record : nil
+                if let data = try? Data(contentsOf:snapshotURL), let cached = try? JSONDecoder().decode(LaundrySnapshot.self,from:data), cached.deviceId == value.deviceId { snapshot = cached }
+            }
+            else { checkout = nil }
+        } else if status == errSecSuccess, let bytes = result as? Data {
+            let value = try JSONDecoder().decode(LaundryConfig.self,from:bytes); try value.validate()
+            config = value; configured = true; accountConnected = true
+            savedMachines = try loadMachines(value)
+            try controller?.associateLegacyAccount(config:value)
+            checkout = controller?.record?.belongs(to:value) == true ? controller?.record : nil
+            if let data = (try? Data(contentsOf:snapshotURL)) ?? (try? Data(contentsOf:cacheURL)),
+               let old = try? JSONDecoder().decode(LaundrySnapshot.self,from:data), old.deviceId == value.deviceId { snapshot = old }
+        } else if status != errSecItemNotFound { needsReload = true; issue = "解锁手机后再打开校日常。" }
+    }
+    /// The launch-time keychain read failed (background launch while locked): read again.
+    func reloadIfNeeded() {
+        guard needsReload, !loading, !checkoutBusy else { return }
+        needsReload = false; issue = nil
+        do { try loadStored() } catch { needsReload = true; issue = "洗衣配置暂时无法读取" }
+        if configured, !needsReload { lastAttempt = nil }
     }
     /// Recomputes the laundry Live Activity from the current facts (also on foreground, for the minutes).
     /// While the order runs, schedules one read-only order re-read a minute after the expected end so a
@@ -176,6 +209,8 @@ import WaterCore
         if let config = next.config { try writeMachines(list,config:config) }
         else { try JSONEncoder().encode(list).write(to:accountLibraryFile(account),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication]) }
         try UjingConnectionStore.save(next)
+        // The pre-account laundry item (old bearer token) is superseded by the connection store.
+        SecItemDelete(key as CFDictionary)
         connection = next; config = next.config; accountConnected = true; configured = config != nil
         savedMachines = list; candidate = nil; candidateConfig = nil; issue = nil; checkoutIssue = nil; lastAttempt = nil
         if !sameAccount || old?.deviceId != config?.deviceId { snapshot = nil }
@@ -260,6 +295,7 @@ import WaterCore
         } catch { checkoutIssue = "旧预约恢复未完成，请刷新订单核对" }
     }
     func refresh(force: Bool = false) async {
+        reloadIfNeeded()
         syncActivity()
         guard let config, !loading else { return }
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < 60 { return }
@@ -279,7 +315,8 @@ import WaterCore
               let snapshot, snapshot.moduleType == 7, snapshot.status == 0,
               snapshot.createOrderEnabled, snapshot.activeOrderId == nil,
               snapshot.storeId != nil, snapshot.deviceTypeId != nil else { return false }
-        return checkout == nil || checkout?.stage == .completed
+        // The controller's own record, not just the visible one: a hidden record still blocks creation.
+        return controller?.record == nil || controller?.record?.stage == .completed
     }
     var deviceStateText: String {
         if let checkout, checkout.stage != .completed {
@@ -374,6 +411,7 @@ import WaterCore
         await refresh(force:true)
     }
     func refreshOrder() async {
+        if let config, let controller, controller.hiddenUnfinishedRecord(for:config) != nil { await adoptHiddenOrder(config, controller); return }
         guard !checkoutBusy, let config, let controller, controller.record?.belongs(to:config) == true else { return }
         checkoutBusy = true; checkoutIssue = nil; checkoutProgress = "正在核对订单…"
         defer { checkout = controller.record; checkoutBusy = false; checkoutProgress = nil }
@@ -390,6 +428,23 @@ import WaterCore
             checkoutProgress = nil
             checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "暂时连不上 U净，先显示上次的状态。"
         }
+    }
+    /// An unfinished order saved under an older U净 login for this machine: re-attach it if U净
+    /// returns it to the current login; otherwise say why ordering is blocked.
+    private func adoptHiddenOrder(_ config: LaundryConfig, _ controller: LaundryCheckoutController) async {
+        guard !checkoutBusy else { return }
+        checkoutBusy = true; checkoutIssue = nil; checkoutProgress = "正在核对订单…"
+        defer { checkout = controller.record?.belongs(to:config) == true ? controller.record : nil; checkoutBusy = false; checkoutProgress = nil }
+        do { try await controller.adopt(config:config) }
+        catch { checkoutIssue = "上一笔订单是用之前的 U净 账号下的，这里查不到。先去 U净 App 的订单里核对，核对完才能在这里下新单。" }
+    }
+    /// 核对 on a failed start (52): re-read, and record the check only if the re-read worked.
+    func checkFailedOrder() async {
+        await refresh(force:true); await refreshOrder()
+        guard issue == nil, checkoutIssue == nil, let record = checkout, record.stage == .completed,
+              record.order?.status.text == "52", let id = record.orderId else { return }
+        acknowledgedFailure = id
+        UserDefaults.standard.set(id, forKey:"laundryAckFailedOrder")
     }
     var freshness: String {
         guard let snapshot else { return "暂未查询" }

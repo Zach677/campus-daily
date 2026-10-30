@@ -6,10 +6,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.beamjason.campushotwater.alipay</string>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER).alipay</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.beamjason.campushotwater.alipay</string>
+				<string>$(PRODUCT_BUNDLE_IDENTIFIER).alipay</string>
 			</array>
 		</dict>
 		<dict>

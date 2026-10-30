@@ -33,4 +33,13 @@ enum CampusSharedCache {
     static func config() -> CampusConfig? {
         read(CampusConfig.self,service:"CampusHotWater.campus-config.v1",account:"campus-config")
     }
+    /// The school login is stored WhenUnlocked: while the phone is locked it can't be read, which
+    /// is not the same as signed out.
+    static var configLocked: Bool {
+        var request = query("CampusHotWater.campus-config.v1","campus-config")
+        request[kSecReturnAttributes as String] = true; request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var attributes: CFTypeRef?
+        let status = SecItemCopyMatching(request as CFDictionary,&attributes)
+        return status == errSecInteractionNotAllowed
+    }
 }
