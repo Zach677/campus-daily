@@ -100,16 +100,21 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
         func webView(_ webView: WKWebView,decidePolicyFor action: WKNavigationAction,decisionHandler: @escaping (WKNavigationActionPolicy)->Void) {
             guard action.targetFrame?.isMainFrame != false else { decisionHandler(.allow); return }
             guard let url = action.request.url, url.user == nil, url.password == nil, url.port == nil || url.port == 443 else {
+                if let url = action.request.url { ShowerDiagnosticReport.record(RechargeNavigation.blockedEvent(url)) }
                 decisionHandler(.cancel); return
             }
             switch RechargeNavigation.decide(url, isUserTap:action.navigationType == .linkActivated, sourceHost:webView.url?.host) {
             case .allow: decisionHandler(.allow)
             case .openExternal: UIApplication.shared.open(url); decisionHandler(.cancel)
-            case .cancel: decisionHandler(.cancel)
+            case .cancel:
+                // Host only, so a device log can show which payment page the school sends to.
+                ShowerDiagnosticReport.record(RechargeNavigation.blockedEvent(url))
+                decisionHandler(.cancel)
             }
         }
         func webView(_ webView: WKWebView,createWebViewWith configuration: WKWebViewConfiguration,for action: WKNavigationAction,windowFeatures: WKWindowFeatures) -> WKWebView? {
             if action.targetFrame == nil, action.request.url?.scheme == "https", action.request.url?.host == "ecykt.gdbtu.edu.cn" { webView.load(action.request) }
+            else if let url = action.request.url { ShowerDiagnosticReport.record(RechargeNavigation.blockedEvent(url)) }
             return nil
         }
     }

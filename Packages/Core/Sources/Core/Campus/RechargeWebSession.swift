@@ -79,4 +79,19 @@ public enum RechargeNavigation {
         if scheme == "about", url.absoluteString == "about:blank" { return .allow }
         return .cancel
     }
+
+    /// Diagnostic line for a cancelled navigation: the host only (or the scheme when there is no
+    /// host), never the path, query or fragment, which can carry order ids or tokens.
+    public static func blockedEvent(_ url: URL) -> String {
+        let scheme = sanitized(url.scheme ?? "", limit: 16)
+        if let host = url.host, !host.isEmpty {
+            return "recharge.blocked " + (scheme.isEmpty ? "" : scheme + "://") + sanitized(host, limit: 50)
+        }
+        return "recharge.blocked " + (scheme.isEmpty ? "unknown" : scheme + ":")
+    }
+
+    private static func sanitized(_ text: String, limit: Int) -> String {
+        let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789.-")
+        return String(text.lowercased().filter { allowed.contains($0) }.prefix(limit))
+    }
 }
