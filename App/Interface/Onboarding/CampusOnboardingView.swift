@@ -225,7 +225,7 @@ struct CampusLoginSheet: View {
 
 struct CampusOnboardingView: View {
     @EnvironmentObject private var campus: CampusModel
-    @EnvironmentObject private var water: WaterModel
+    @EnvironmentObject private var water: ShowerModel
     @State private var login = false
     @State private var offeredLogin = false
     @State private var importingPlatform = false
@@ -334,18 +334,18 @@ struct CampusOnboardingView: View {
     }
 }
 
-/// Dorm → hot-water controller binding over `WaterOnboarding` (direct platform). Used by the
+/// Dorm → hot-water controller binding over `ShowerOnboarding` (direct platform). Used by the
 /// dorm screen and by the first-run guide. Saving never starts water or changes school data.
 @MainActor final class DormSetupFlow: ObservableObject {
-    @Published private(set) var identity: WaterUser?
+    @Published private(set) var identity: ShowerUser?
     @Published private(set) var options: [[AreaNode]] = [[],[],[],[]]
     @Published private(set) var selected: [AreaNode] = []
-    @Published private(set) var machines: [WaterMachine] = []
+    @Published private(set) var machines: [ShowerMachine] = []
     @Published private(set) var autoMatched = false
     @Published private(set) var busy = false
     @Published private(set) var saved = false
     @Published var issue: String?
-    private var directory: WaterDirectory?
+    private var directory: ShowerDirectory?
 
     func reset() {
         identity = nil; options = [[],[],[],[]]; selected = []; machines = []; saved = false; issue = nil
@@ -363,42 +363,42 @@ struct CampusOnboardingView: View {
 
     /// First-run guide: the user confirmed the dorm read from the school account. Bind its
     /// controller when the match is unambiguous; otherwise the caller opens the dorm screen.
-    func autoBind(campus: CampusModel, water: WaterModel) async -> AutoBind {
+    func autoBind(campus: CampusModel, water: ShowerModel) async -> AutoBind {
         if water.configured { return .bound }
         guard campus.configured else { return .needsChoice }
         await prepare(campus:campus, water:water)
-        if identity == nil && issue == WaterModel.platformMissingText { return .unavailable }
+        if identity == nil && issue == ShowerModel.platformMissingText { return .unavailable }
         guard autoMatched, machines.count == 1, let machine = machines.first else { return .needsChoice }
         await save(machine, water:water)
         return saved ? .bound : .needsChoice
     }
 
     /// Reads the hot-water identity, then matches the portal dorm address (never guesses).
-    func prepare(campus: CampusModel, water: WaterModel) async {
+    func prepare(campus: CampusModel, water: ShowerModel) async {
         guard !busy, campus.configured, water.mayImport else { return }
         reset()
         busy = true
         defer { busy = false }
         do {
             if let profile = water.profile {
-                let client = LxtClient(http:AppServices.waterHTTP, profile:profile)
+                let client = LxtClient(http:AppEnvironment.waterHTTP, profile:profile)
                 let user = try await client.userInfo(campus.waterHandoff())
                 identity = user; directory = client
-                let onboarding = WaterOnboarding(directory:client)
+                let onboarding = ShowerOnboarding(directory:client)
                 if let address = campus.address {
                     apply(try await onboarding.match(address, schoolId:user.schoolId), address:address)
                 }
                 if options[0].isEmpty { options[0] = try await client.areas(parent:user.schoolId) }
                 if selected.isEmpty, options[0].count == 1, let only = options[0].first { busy = false; await choose(only, at:0) }
             } else {
-                issue = WaterModel.platformMissingText
+                issue = ShowerModel.platformMissingText
             }
         } catch {
             issue = (error as? ServiceError)?.userMessage ?? "暂时读不到宿舍，稍后再试。"
         }
     }
 
-    private func apply(_ result: WaterOnboarding.Result, address: DormAddress) {
+    private func apply(_ result: ShowerOnboarding.Result, address: DormAddress) {
         switch result {
         case .matched(let path, let machine):
             selected = path; machines = [machine]; autoMatched = true
@@ -422,11 +422,11 @@ struct CampusOnboardingView: View {
         defer { busy = false }
         do {
             if level == 3 {
-                switch try await WaterOnboarding(directory:directory).controllers(path:selected, schoolId:identity.schoolId) {
+                switch try await ShowerOnboarding(directory:directory).controllers(path:selected, schoolId:identity.schoolId) {
                 case .matched(_, let machine): machines = [machine]
                 case .chooseMachine(_, let list): machines = list
                 case .noController(_, let message), .addressUnknown(let message): issue = message
-                case .pick: issue = WaterOnboarding.noControllerText
+                case .pick: issue = ShowerOnboarding.noControllerText
                 }
             } else {
                 options[level+1] = level + 1 == 3 ? try await directory.rooms(floor:option.id) : try await directory.areas(parent:option.id)
@@ -436,12 +436,12 @@ struct CampusOnboardingView: View {
         } catch { issue = (error as? ServiceError)?.userMessage ?? "宿舍列表没读到，重新选一下。" }
     }
 
-    func save(_ machine: WaterMachine, water: WaterModel) async {
+    func save(_ machine: ShowerMachine, water: ShowerModel) async {
         guard selected.count == 4, let identity, water.mayImport else { return }
         busy = true; defer { busy = false }
         do {
-            let binding = WaterBinding(studentId:identity.studentId, schoolId:identity.schoolId, machineId:machine.machineId,
-                                       roomId:selected[3].id, roomLabel:WaterOnboarding.roomLabel(selected),
+            let binding = ShowerBinding(studentId:identity.studentId, schoolId:identity.schoolId, machineId:machine.machineId,
+                                       roomId:selected[3].id, roomLabel:ShowerOnboarding.roomLabel(selected),
                                        machineName:machine.name)
             try water.saveBinding(binding)
             saved = true; issue = nil

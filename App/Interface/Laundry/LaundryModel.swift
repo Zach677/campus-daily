@@ -81,13 +81,13 @@ private struct LaundryEngineHooks: LaundryHooks {
     /// The install's `x-mobile-id`: a dashed UUID (the client rejects anything else), created once
     /// and saved so the SMS request and the login send the same id.
     private var device: UjingDevice {
-        if account == nil, let id = try? AppServices.laundryVault.mobileID() { account = UjingAccountItem(mobileID:id) }
-        return UjingDevice(mobileID:account?.mobileID ?? UUID().uuidString, userAgent:AppServices.userAgent)
+        if account == nil, let id = try? AppEnvironment.laundryVault.mobileID() { account = UjingAccountItem(mobileID:id) }
+        return UjingDevice(mobileID:account?.mobileID ?? UUID().uuidString, userAgent:AppEnvironment.userAgent)
     }
 
     private func reloadAccount() {
         do {
-            account = try AppServices.laundryVault.accountItem()
+            account = try AppEnvironment.laundryVault.accountItem()
             issue = nil
         } catch {
             issue = "解锁手机后再打开校日常。"
@@ -104,15 +104,15 @@ private struct LaundryEngineHooks: LaundryHooks {
     private var selectedMachine: SavedWasher? { savedMachines.first { $0.id == selectedMachineID } }
 
     private var client: UjingClient {
-        if let signedIn = account?.account { return UjingClient(http:AppServices.laundryHTTP, device:device, account:signedIn) }
-        return UjingClient(http:AppServices.laundryHTTP, device:device)
+        if let signedIn = account?.account { return UjingClient(http:AppEnvironment.laundryHTTP, device:device, account:signedIn) }
+        return UjingClient(http:AppEnvironment.laundryHTTP, device:device)
     }
 
     private func rebuildEngine() {
         guard !checkoutBusy else { return }
         observer?.cancel(); observer = nil; engine = nil
         do {
-            let engine = try LaundryEngine(api:client, vault:AppServices.laundryVault, launcher:AlipayPaymentLauncher(),
+            let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(),
                                            hooks:LaundryEngineHooks())
             self.engine = engine
             observer = Task { [weak self] in
@@ -126,7 +126,7 @@ private struct LaundryEngineHooks: LaundryHooks {
             }
         } catch {
             storageBlocked = true
-            checkout = (try? AppServices.laundryVault.checkout()) ?? nil
+            checkout = (try? AppEnvironment.laundryVault.checkout()) ?? nil
         }
     }
 
@@ -151,9 +151,9 @@ private struct LaundryEngineHooks: LaundryHooks {
     func login(mobile: String, code: String) async throws {
         guard mayImport else { throw LaundryEngineError.busy }
         let device = device
-        let signedIn = try await UjingClient(http:AppServices.laundryHTTP, device:device).login(mobile:mobile, code:code)
+        let signedIn = try await UjingClient(http:AppEnvironment.laundryHTTP, device:device).login(mobile:mobile, code:code)
         let item = UjingAccountItem(mobileID:device.mobileID, account:signedIn)
-        try AppServices.laundryVault.saveAccountItem(item)
+        try AppEnvironment.laundryVault.saveAccountItem(item)
         account = item
         accountConnected = true
         configured = selectedMachine != nil
@@ -163,7 +163,7 @@ private struct LaundryEngineHooks: LaundryHooks {
 
     func signOut() {
         guard mayImport else { return }
-        try? AppServices.laundryVault.saveAccountItem(account.map { UjingAccountItem(mobileID:$0.mobileID) })
+        try? AppEnvironment.laundryVault.saveAccountItem(account.map { UjingAccountItem(mobileID:$0.mobileID) })
         account = account.map { UjingAccountItem(mobileID:$0.mobileID) }
         accountConnected = false; configured = false; snapshot = nil
         rebuildEngine()

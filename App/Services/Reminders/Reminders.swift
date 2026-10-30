@@ -219,7 +219,7 @@ enum ReminderKey {
 
     // MARK: Shower still running
 
-    /// Called on every session change (WaterModel). `started` = start of a session that can still be closed.
+    /// Called on every session change (ShowerModel). `started` = start of a session that can still be closed.
     func syncShower(started: Date?) {
         showerStart = started
         let minutes = defaults.integer(forKey:ReminderKey.unsettledMinutes)

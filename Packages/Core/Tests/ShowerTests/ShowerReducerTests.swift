@@ -9,7 +9,7 @@ final class ShowerReducerTests: XCTestCase {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     var identity: Data { FakeFrames.identity(machine) }
     var consumption: Data { FakeFrames.identity(machine, tail: 9) }
-    var auth: WaterAuthorization { WaterAuthorization(machineID: machine, payload: Data(count: 15), authorizationID: "001122ff") }
+    var auth: ShowerAuthorization { ShowerAuthorization(machineID: machine, payload: Data(count: 15), authorizationID: "001122ff") }
 
     func reduce(_ s: ShowerState, _ e: ShowerEvent) -> (ShowerState, [ShowerEffect]) { ShowerReducer.reduce(s, e) }
 
@@ -92,9 +92,9 @@ final class ShowerReducerTests: XCTestCase {
     }
 
     func testUnusableAuthorizationNeedsReview() {
-        let bad = [WaterAuthorization(machineID: "99999999", payload: Data(count: 15), authorizationID: "001122FF"),
-                   WaterAuthorization(machineID: machine, payload: Data(count: 14), authorizationID: "001122FF"),
-                   WaterAuthorization(machineID: machine, payload: Data(count: 15), authorizationID: "0011")]
+        let bad = [ShowerAuthorization(machineID: "99999999", payload: Data(count: 15), authorizationID: "001122FF"),
+                   ShowerAuthorization(machineID: machine, payload: Data(count: 14), authorizationID: "001122FF"),
+                   ShowerAuthorization(machineID: machine, payload: Data(count: 15), authorizationID: "0011")]
         for a in bad {
             let (s, fx) = reduce(authorizing(), .authorized(a))
             XCTAssertEqual(s.failure?.reason, .authorizationInvalid)
@@ -255,14 +255,14 @@ final class ShowerReducerTests: XCTestCase {
     // MARK: settle
 
     func testSettledIsDoneAndDismissKeepsReceipt() {
-        let receipt = WaterReceipt(amount: Money(fen: 163))
+        let receipt = ShowerReceipt(amount: Money(fen: 163))
         let t1 = t0.addingTimeInterval(600)
         let (d, fx) = reduce(settling(), .settled(receipt, at: t1))
         XCTAssertEqual(d.phase, .done)
         XCTAssertEqual(d.endedAt, t1)
         XCTAssertTrue(fx.isEmpty)
         XCTAssertEqual(ShowerDisplay(d).title, "本次 ¥1.63")
-        XCTAssertEqual(ShowerDisplay(ShowerState(phase: .done, receipt: WaterReceipt(amount: nil))).title, "已结算")
+        XCTAssertEqual(ShowerDisplay(ShowerState(phase: .done, receipt: ShowerReceipt(amount: nil))).title, "已结算")
         let (i, _) = reduce(d, .dismiss)
         XCTAssertEqual(i.phase, .idle)
         XCTAssertEqual(i.lastReceipt, receipt)

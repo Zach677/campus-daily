@@ -10,7 +10,7 @@ import Foundation
 ///   acks with a 9-byte frame starting `AA`.
 /// - Close: write `AC <authorizationId XOR 55>` (5 bytes); the controller answers with a
 ///   20-byte `55` consumption frame carrying its identity, which is what gets settled.
-public enum WaterFrames {
+public enum ShowerFrames {
     public static let serviceUUID = "FFE0"
     public static let notifyUUID = "FFE1"
     public static let writeUUID = "FFE2"
@@ -62,13 +62,13 @@ public enum WaterFrames {
     }
 }
 
-public struct WaterFrameError: Error, Equatable, Sendable {
+public struct ShowerFrameError: Error, Equatable, Sendable {
     public init() {}
 }
 
 /// Reassembles notifications that arrive split or coalesced. Lengths by first byte:
 /// `55` → 20, `AA` → 9, `A5` → 1; any other first byte is malformed (never skipped).
-public struct WaterFrameAssembler: Sendable {
+public struct ShowerFrameAssembler: Sendable {
     private var pending = Data()
     public static let bufferLimit = 256
     public init() {}
@@ -77,15 +77,15 @@ public struct WaterFrameAssembler: Sendable {
 
     public mutating func append(_ data: Data) throws -> [Data] {
         pending.append(data)
-        guard pending.count <= Self.bufferLimit else { throw WaterFrameError() }
+        guard pending.count <= Self.bufferLimit else { throw ShowerFrameError() }
         var frames: [Data] = []
         while let first = pending.first {
             let length: Int
             switch first {
-            case 0x55: length = WaterFrames.identityFrameLength
-            case 0xAA: length = WaterFrames.ackLength
+            case 0x55: length = ShowerFrames.identityFrameLength
+            case 0xAA: length = ShowerFrames.ackLength
             case 0xA5: length = 1
-            default: throw WaterFrameError()
+            default: throw ShowerFrameError()
             }
             guard pending.count >= length else { break }
             frames.append(Data(pending.prefix(length)))

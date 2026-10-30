@@ -2,19 +2,19 @@ import Foundation
 
 /// Reads used by onboarding (area tree + controllers). Implemented by `LxtClient` (direct,
 /// signed locally).
-public protocol WaterDirectory: Sendable {
+public protocol ShowerDirectory: Sendable {
     /// Children of `parent` (the platform school id gives the campuses).
     func areas(parent: String) async throws -> [AreaNode]
     /// Rooms under a floor.
     func rooms(floor: String) async throws -> [AreaNode]
-    func machines(room: String, schoolId: String) async throws -> [WaterMachine]
+    func machines(room: String, schoolId: String) async throws -> [ShowerMachine]
 }
 
 /// The two money calls. Errors: `rejected`/`badRequest`/`sessionExpired` are definite refusals;
 /// everything else is `uncertain` (the request may have taken effect).
-public protocol WaterGateway: Sendable {
-    func authorize(_ binding: WaterBinding, frame: Data) async throws -> WaterAuthorization
-    func settle(_ binding: WaterBinding, frame: Data) async throws -> WaterReceipt
+public protocol ShowerGateway: Sendable {
+    func authorize(_ binding: ShowerBinding, frame: Data) async throws -> ShowerAuthorization
+    func settle(_ binding: ShowerBinding, frame: Data) async throws -> ShowerReceipt
 }
 
 public enum LxtEndpoints {
@@ -33,13 +33,13 @@ public enum LxtEndpoints {
 
 /// isv.lxt6.cn, signed with the local platform profile. Reads are GET with the signed query;
 /// authorize/settle are POST form bodies with the same three fields.
-public struct LxtClient: WaterDirectory, WaterGateway {
+public struct LxtClient: ShowerDirectory, ShowerGateway {
     let http: HTTPClient
-    let profile: WaterPlatformProfile
+    let profile: ShowerPlatformProfile
     /// `random(alphabet)` → 6 characters. Injected for golden tests.
     let random: @Sendable (String) -> String
 
-    public init(http: HTTPClient, profile: WaterPlatformProfile,
+    public init(http: HTTPClient, profile: ShowerPlatformProfile,
                 random: @escaping @Sendable (String) -> String = { LxtSigning.random($0) }) {
         self.http = http; self.profile = profile; self.random = random
     }
@@ -47,7 +47,7 @@ public struct LxtClient: WaterDirectory, WaterGateway {
     // MARK: Reads
 
     /// `getUserMsg` (`requestType=1`) with the school's `getSignData.appdata`.
-    public func userInfo(_ h: WaterHandoff) async throws -> WaterUser {
+    public func userInfo(_ h: ShowerHandoff) async throws -> ShowerUser {
         var fields = [("schoolid", LxtEndpoints.platformSchoolID)]
         for (k, v) in [("vsuppid", h.vsuppid), ("appid", h.appid), ("userId", h.userId), ("deptId", h.deptId),
                        ("username", h.username), ("phone", h.phone)] {
@@ -60,7 +60,7 @@ public struct LxtClient: WaterDirectory, WaterGateway {
         guard let data = ResponseDecoding.data(root), data.object != nil else { throw ServiceError.malformed(.lxt6, "Data") }
         guard let student = data["studentid"]?.text, Self.isIdentifier(student) else { throw ServiceError.malformed(.lxt6, "Data.studentid") }
         guard let school = data["schoolid"]?.text, Self.isIdentifier(school) else { throw ServiceError.malformed(.lxt6, "Data.schoolid") }
-        return WaterUser(studentId: student, schoolId: school)
+        return ShowerUser(studentId: student, schoolId: school)
     }
 
     public func areas(parent: String) async throws -> [AreaNode] {
@@ -71,7 +71,7 @@ public struct LxtClient: WaterDirectory, WaterGateway {
         try Self.nodes(try await read(LxtEndpoints.roomInfo, [("id", floor)]))
     }
 
-    public func machines(room: String, schoolId: String) async throws -> [WaterMachine] {
+    public func machines(room: String, schoolId: String) async throws -> [ShowerMachine] {
         let root = try await read(LxtEndpoints.machines, [("typeId", profile.typeId), ("schoolId", schoolId), ("roomId", room)])
         guard let list = ResponseDecoding.data(root)?["objList"]?.array else { throw ServiceError.malformed(.lxt6, "data.objList") }
         guard list.count <= LxtEndpoints.maxMachines else { throw ServiceError.malformed(.lxt6, "data.objList") }
@@ -79,33 +79,33 @@ public struct LxtClient: WaterDirectory, WaterGateway {
             guard let id = row["machineId"]?.text, HexCoding.isHex(id, bytes: 4) else { throw ServiceError.malformed(.lxt6, "data.objList[\(i)].machineId") }
             guard let name = row["machineName"]?.text else { throw ServiceError.malformed(.lxt6, "data.objList[\(i)].machineName") }
             guard let mac = row["Mac"]?.text else { throw ServiceError.malformed(.lxt6, "data.objList[\(i)].Mac") }
-            return WaterMachine(machineId: id, name: name, mac: mac)
+            return ShowerMachine(machineId: id, name: name, mac: mac)
         }
     }
 
     // MARK: Money (state-changing)
 
-    public func authorize(_ b: WaterBinding, frame: Data) async throws -> WaterAuthorization {
+    public func authorize(_ b: ShowerBinding, frame: Data) async throws -> ShowerAuthorization {
         let data = try await operation(LxtEndpoints.authorize, b, frame: frame, name: "authorize")
         return try Self.authorization(data)
     }
 
-    public func settle(_ b: WaterBinding, frame: Data) async throws -> WaterReceipt {
+    public func settle(_ b: ShowerBinding, frame: Data) async throws -> ShowerReceipt {
         let data = try await operation(LxtEndpoints.settle, b, frame: frame, name: "settle")
-        return WaterReceipt.parse(pay: data["pay"])
+        return ShowerReceipt.parse(pay: data["pay"])
     }
 
     /// G1 decoder: `{machineid, studentId (4-byte hex authorization id), systemData (15-byte hex)}`.
     /// Anything unusable after a success code is `uncertain`: the authorization may exist.
-    public static func authorization(_ data: JSONValue) throws -> WaterAuthorization {
+    public static func authorization(_ data: JSONValue) throws -> ShowerAuthorization {
         guard data.object != nil,
               let machine = data["machineid"]?.text, !machine.isEmpty,
               let id = data["studentId"]?.text, HexCoding.isHex(id, bytes: 4),
               let hex = data["systemData"]?.text, let payload = HexCoding.data(hex),
-              payload.count == WaterFrames.authorizationLength else {
+              payload.count == ShowerFrames.authorizationLength else {
             throw ServiceError.uncertain(.lxt6)
         }
-        return WaterAuthorization(machineID: machine.uppercased(), payload: payload, authorizationID: id.uppercased())
+        return ShowerAuthorization(machineID: machine.uppercased(), payload: payload, authorizationID: id.uppercased())
     }
 
     // MARK: Plumbing
@@ -135,9 +135,9 @@ public struct LxtClient: WaterDirectory, WaterGateway {
         return try Self.decodeRead(try await http.send(req))
     }
 
-    private func operation(_ path: String, _ b: WaterBinding, frame: Data, name: String) async throws -> JSONValue {
+    private func operation(_ path: String, _ b: ShowerBinding, frame: Data, name: String) async throws -> JSONValue {
         // Checked before anything leaves: a frame from another controller is never sent.
-        guard WaterFrames.identity(frame) == b.machineId.uppercased() else { throw ServiceError.badRequest(.lxt6) }
+        guard ShowerFrames.identity(frame) == b.machineId.uppercased() else { throw ServiceError.badRequest(.lxt6) }
         let rand = random(LxtSigning.operationAlphabet)
         guard LxtSigning.isValidOperationRandom(rand) else { throw ServiceError.badRequest(.lxt6) }
         let fields = LxtSigning.operationFields(studentId: b.studentId, schoolId: b.schoolId, machineId: b.machineId, frame: frame,

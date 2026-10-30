@@ -3,14 +3,14 @@ import Foundation
 /// Onboarding: portal dorm address → area path (campus → building → floor → room) → controller.
 /// Stops at the first level without exactly one match and hands the options to a manual picker;
 /// never guesses a room or a controller.
-public struct WaterOnboarding: Sendable {
+public struct ShowerOnboarding: Sendable {
     public enum Level: Int, Sendable, Codable, CaseIterable { case campus, building, floor, room }
 
     public enum Result: Sendable, Equatable {
         /// The full path matched and the room has exactly one controller.
-        case matched(path: [AreaNode], machine: WaterMachine)
+        case matched(path: [AreaNode], machine: ShowerMachine)
         /// The room has several controllers: the user picks (then the BLE identity check binds).
-        case chooseMachine(path: [AreaNode], machines: [WaterMachine])
+        case chooseMachine(path: [AreaNode], machines: [ShowerMachine])
         /// Zero or several names fit at `level`: manual picker over `options`, starting below `path`.
         case pick(level: Level, options: [AreaNode], path: [AreaNode])
         /// The room exists but has no controller (`5000` or an empty list): "这个房间没有水控".
@@ -22,8 +22,8 @@ public struct WaterOnboarding: Sendable {
     public static let noControllerText = "这个房间没有水控"
     public static let addressUnknownText = "学校没有登记这个地址"
 
-    let directory: WaterDirectory
-    public init(directory: WaterDirectory) { self.directory = directory }
+    let directory: ShowerDirectory
+    public init(directory: ShowerDirectory) { self.directory = directory }
 
     /// `schoolId` is the platform school id (`getUserMsg.schoolid`), the root of the area tree.
     public func match(_ address: DormAddress, schoolId: String) async throws -> Result {
@@ -48,7 +48,7 @@ public struct WaterOnboarding: Sendable {
     /// Controllers of the last node of `path` (also used after a manual pick).
     public func controllers(path: [AreaNode], schoolId: String) async throws -> Result {
         guard let room = path.last else { return .pick(level: .campus, options: [], path: []) }
-        let machines: [WaterMachine]
+        let machines: [ShowerMachine]
         do {
             machines = try await directory.machines(room: room.id, schoolId: schoolId)
         } catch ServiceError.rejected(.lxt6, "5000", _) {

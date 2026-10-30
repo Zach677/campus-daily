@@ -6,7 +6,7 @@ enum HomeRoute: Hashable { case power, powerSetup, card, water, laundry, washerS
 
 /// Single home screen (design §4): date · hero sentence · status rows · 最近 · bottom dock.
 struct HomeView: View {
-    @EnvironmentObject private var water: WaterModel
+    @EnvironmentObject private var water: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(\.scenePhase) private var phase
@@ -372,7 +372,7 @@ struct HomeView: View {
         StatusRow(emoji:"🚿", title:"热水", subtitle:waterSubtitle(data), value:waterValue(data), dimmed:isUnavailable(data.water))
     }
     /// Hot water can't be used (not imported, no platform, school not open): ink2 title, no value, no pill.
-    private func isUnavailable(_ water: HomeData.Water) -> Bool {
+    private func isUnavailable(_ water: HomeData.Shower) -> Bool {
         switch water {
         case .unconfigured, .unavailable: return true
         default: return false
@@ -425,7 +425,7 @@ struct HomeView: View {
         case .powerSetup: CampusPowerSetupView()
         case .card: CampusRechargeView(kind:.card)
         // Not set up yet: hot water is bound by choosing the dorm.
-        case .water: if water.configured { WaterDetail() } else { CampusOnboardingView() }
+        case .water: if water.configured { ShowerDetail() } else { CampusOnboardingView() }
         case .laundry:
             #if DEBUG
             LaundryDetail(demo:laundryDemo)

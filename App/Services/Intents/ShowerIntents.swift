@@ -6,7 +6,7 @@ struct StartShowerIntent: AppIntent {
     static var openAppWhenRun = true
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
-        try await WaterModel.shared.run(start: true)
+        try await ShowerModel.shared.run(start: true)
         return .result(dialog: "水控连上了，按出水键开水。")
     }
 }
@@ -17,8 +17,8 @@ struct FinishShowerIntent: AppIntent {
     static var openAppWhenRun = true
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
-        try await WaterModel.shared.run(start: false)
-        if let amount = WaterModel.shared.lastCost {
+        try await ShowerModel.shared.run(start: false)
+        if let amount = ShowerModel.shared.lastCost {
             let text = amount.formatted(.currency(code:"CNY").locale(Locale(identifier:"zh_CN")))
             return .result(dialog: "已结算，这次\(text)。看一眼水停了没。")
         }
@@ -26,7 +26,7 @@ struct FinishShowerIntent: AppIntent {
     }
 }
 
-struct WaterShortcuts: AppShortcutsProvider {
+struct ShowerShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: StartShowerIntent(), phrases: ["用\(.applicationName)开始洗澡"],
                     shortTitle: "开始洗澡", systemImageName: "drop.fill")

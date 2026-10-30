@@ -3,7 +3,7 @@ import ActivityKit
 import Core
 
 /// Mirrors `ShowerState` into a single Live Activity.
-/// Driven from WaterModel (engine updates); never talks to the water controller itself.
+/// Driven from ShowerModel (engine updates); never talks to the water controller itself.
 @MainActor final class ShowerActivityController {
     static let shared = ShowerActivityController()
     /// Short dorm label shown on the activity; set by the app from CampusModel.room.

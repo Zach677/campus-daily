@@ -142,7 +142,7 @@ public struct CardRecordPage: Sendable, Equatable {
 // MARK: - Water hand-off (getSignData)
 
 /// `getSignData.appdata`, the school's signed hand-off to the hot-water platform.
-public struct WaterHandoff: Sendable, Equatable, CustomStringConvertible {
+public struct ShowerHandoff: Sendable, Equatable, CustomStringConvertible {
     public var vsuppid: String
     public var appid: String
     public var userId: String

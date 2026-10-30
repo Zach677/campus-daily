@@ -60,7 +60,7 @@ public struct EcyktClient: Sendable {
     }
 
     /// `getSignData` — the hand-off to the hot-water platform (validates the token).
-    public func signData(_ s: EcyktSession, custid: String) async throws -> WaterHandoff {
+    public func signData(_ s: EcyktSession, custid: String) async throws -> ShowerHandoff {
         // The captured official request sends `timestamp: ""` here.
         let data = try await call("/api/customer/getSignData", s, validating: true, extra: [
             "custid": .string(custid), "timestamp": .string(""),
@@ -70,7 +70,7 @@ public struct EcyktClient: Sendable {
             guard let v = app[k]?.text, !v.isEmpty else { throw ServiceError.malformed(.ecykt, "data.appdata.\(k)") }
             return v
         }
-        return WaterHandoff(vsuppid: try f("vsuppid"), appid: try f("appid"), userId: try f("userId"),
+        return ShowerHandoff(vsuppid: try f("vsuppid"), appid: try f("appid"), userId: try f("userId"),
                             deptId: try f("deptId"), username: try f("username"), phone: app["phone"]?.text ?? "",
                             sign: try f("sign"), nonce: try f("nonce"), timestamp: try f("timestamp"))
     }

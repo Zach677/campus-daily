@@ -4,7 +4,7 @@ import UIKit
 import Core
 
 /// Hot-water diagnostics: event names and times only (no ids, frames or tokens), kept on this phone.
-@MainActor enum WaterDiagnosticReport {
+@MainActor enum ShowerDiagnosticReport {
     struct Entry: Codable { let at: Date; let event: String }
     private static let limit = 300
     private static var logURL: URL {
@@ -59,7 +59,7 @@ import Core
     }
 }
 
-struct WaterDiagnosticShare: UIViewControllerRepresentable {
+struct ShowerDiagnosticShare: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: [url], applicationActivities: nil)

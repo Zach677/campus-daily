@@ -3,12 +3,12 @@ import UniformTypeIdentifiers
 import Core
 
 @main struct XiaoRiChangApp: App {
-    @StateObject private var water = WaterModel.shared
+    @StateObject private var water = ShowerModel.shared
     @StateObject private var campus = CampusModel.shared
     @StateObject private var laundry = LaundryModel()
     init() {
         // FinishShowerLiveIntent (Live Activity button) runs in this process.
-        ShowerActivityBridge.finish = { try await WaterModel.shared.run(start:false) }
+        ShowerActivityBridge.finish = { try await ShowerModel.shared.run(start:false) }
         // Notification delegate must be set before launch finishes, so a tapped banner is routed.
         _ = Reminders.shared
     }
@@ -40,8 +40,8 @@ import Core
     }
 }
 
-struct WaterDetail: View {
-    @EnvironmentObject private var water: WaterModel
+struct ShowerDetail: View {
+    @EnvironmentObject private var water: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @State private var confirmResolve = false
     var body: some View {
@@ -113,7 +113,7 @@ struct WaterDetail: View {
                             Text(water.busy ? "正在处理…" : closing ? "结束并结算" : "开始洗澡")
                             Spacer(); Image(systemName:closing ? "stop.circle" : "arrow.up.right")
                         }.padding(.horizontal,18).frame(minHeight:52)
-                    }.buttonStyle(WaterButtonStyle(primary:true,accent:NativeTheme.tint))
+                    }.buttonStyle(ShowerButtonStyle(primary:true,accent:NativeTheme.tint))
                         .disabled(closing ? !water.mayFinish : !water.mayStart)
                         .accessibilityIdentifier(closing ? "finishWater" : "startWater")
                     Text(closing ? "结算完成前，先别离开水控。" : "授权后，按水控上的出水键。")
@@ -144,7 +144,7 @@ struct WaterDetail: View {
     private func perform(start:Bool) { Task { try? await water.run(start:start) } }
 }
 
-struct WaterButtonStyle: ButtonStyle {
+struct ShowerButtonStyle: ButtonStyle {
     let primary: Bool
     let accent: Color
     @Environment(\.isEnabled) private var enabled

@@ -23,7 +23,7 @@ struct OnboardingView: View {
 
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
-    @EnvironmentObject private var water: WaterModel
+    @EnvironmentObject private var water: ShowerModel
     /// Binds the dorm's hot-water controller when 「就是这间」 confirms the dorm.
     @StateObject private var dormFlow = DormSetupFlow()
     @State private var bindingWater = false

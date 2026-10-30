@@ -9,8 +9,8 @@ enum Golden {
     static let secret = "fixture-secret ~/+"
     static let sid = "fixture-sid=1"
     static let frame = Data([0x55, 0x11, 0x22, 0x33, 0x44] + (0..<15).map { UInt8($0) })
-    static let profile = WaterPlatformProfile(secret: secret, sid: sid, bleName: "fixture-ble", typeId: "1", version: "3")
-    static let binding = WaterBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "9栋 199")
+    static let profile = ShowerPlatformProfile(secret: secret, sid: sid, bleName: "fixture-ble", typeId: "1", version: "3")
+    static let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "9栋 199")
 
     static let operationWxcode = "studentId=S1234567*_schoolId=20021*_machineid=11223344*_machinedata=5511223344000102030405060708090A0B0C0D0E*_typeId=1*_alleywaytype=0*_rand=A1B2C3*_version=3"
     static let operationSign = "230d50952cd23127f1cd60a0f2c2b5ac"
@@ -19,7 +19,7 @@ enum Golden {
     static let userMsgQuery = "wxcode=schoolid%3D20021*_vsuppid%3D9000001*_appid%3Dtest00appid0000001*_userId%3D90001*_deptId%3D0099*_username%3D%E6%B5%8B%E8%AF%95+%E5%91%98*_phone%3D13800000000*_random%3DABC123&sign=3a817931f5f12121bddc0ce27a31405f&sid=fixture-sid%3D1&requestType=1"
 
     /// Synthetic hand-off (same shape as `getSignData.appdata`, values as in the redacted fixture).
-    static let handoff = WaterHandoff(vsuppid: "9000001", appid: "test00appid0000001", userId: "90001", deptId: "0099",
+    static let handoff = ShowerHandoff(vsuppid: "9000001", appid: "test00appid0000001", userId: "90001", deptId: "0099",
                                       username: "测试 员", phone: "13800000000", sign: "x", nonce: "y", timestamp: "z")
 
     static func client(_ server: StubServer) -> LxtClient {
@@ -83,37 +83,37 @@ final class LxtSigningGoldenTests: XCTestCase {
     }
 }
 
-final class WaterFrameGoldenTests: XCTestCase {
+final class ShowerFrameGoldenTests: XCTestCase {
     func testCloseCommandGolden() throws {
-        XCTAssertEqual(WaterFrames.closeCommand(authorizationID: "001122FF"), Data([0xAC, 0x55, 0x44, 0x77, 0xAA]))
-        XCTAssertEqual(WaterFrames.closeCommand(authorizationID: "a1b2c3d4"), Data([0xAC, 0xF4, 0xE7, 0x96, 0x81]))
-        XCTAssertEqual(WaterFrames.closeCommand(authorizationID: "FFFFFFFF"), Data([0xAC, 0xAA, 0xAA, 0xAA, 0xAA]))
-        XCTAssertEqual(WaterFrames.closeCommand(authorizationID: "00000000"), Data([0xAC, 0x55, 0x55, 0x55, 0x55]))
+        XCTAssertEqual(ShowerFrames.closeCommand(authorizationID: "001122FF"), Data([0xAC, 0x55, 0x44, 0x77, 0xAA]))
+        XCTAssertEqual(ShowerFrames.closeCommand(authorizationID: "a1b2c3d4"), Data([0xAC, 0xF4, 0xE7, 0x96, 0x81]))
+        XCTAssertEqual(ShowerFrames.closeCommand(authorizationID: "FFFFFFFF"), Data([0xAC, 0xAA, 0xAA, 0xAA, 0xAA]))
+        XCTAssertEqual(ShowerFrames.closeCommand(authorizationID: "00000000"), Data([0xAC, 0x55, 0x55, 0x55, 0x55]))
         for bad in ["", "0011", "001122FG", "001122FF00", " 001122F"] {
-            XCTAssertNil(WaterFrames.closeCommand(authorizationID: bad), bad)
+            XCTAssertNil(ShowerFrames.closeCommand(authorizationID: bad), bad)
         }
     }
 
     func testIdentityGolden() throws {
-        XCTAssertEqual(WaterFrames.identity(Golden.frame), "11223344")
-        XCTAssertNil(WaterFrames.identity(Data(Golden.frame.prefix(19))))
-        XCTAssertNil(WaterFrames.identity(Data([0x56]) + Golden.frame.dropFirst()))
-        XCTAssertEqual(WaterFrames.classify(Data([0xA5])), .active)
-        XCTAssertEqual(WaterFrames.classify(Golden.frame), .idle(machineID: "11223344"))
-        XCTAssertEqual(WaterFrames.classify(Data([0xAA])), .unreadable)
-        XCTAssertTrue(WaterFrames.isAck(Data([0xAA] + [UInt8](repeating: 0, count: 8))))
-        XCTAssertFalse(WaterFrames.isAck(Data([0xAA] + [UInt8](repeating: 0, count: 7))))
-        XCTAssertEqual(WaterFrames.command(WaterFrames.probeCommand), .probe)
-        XCTAssertEqual(WaterFrames.command(Data(count: 15)), .authorization)
-        XCTAssertEqual(WaterFrames.command(Data([0xAC, 0, 0, 0, 0])), .close)
-        XCTAssertEqual(WaterFrames.serviceUUID + WaterFrames.notifyUUID + WaterFrames.writeUUID, "FFE0FFE1FFE2")
+        XCTAssertEqual(ShowerFrames.identity(Golden.frame), "11223344")
+        XCTAssertNil(ShowerFrames.identity(Data(Golden.frame.prefix(19))))
+        XCTAssertNil(ShowerFrames.identity(Data([0x56]) + Golden.frame.dropFirst()))
+        XCTAssertEqual(ShowerFrames.classify(Data([0xA5])), .active)
+        XCTAssertEqual(ShowerFrames.classify(Golden.frame), .idle(machineID: "11223344"))
+        XCTAssertEqual(ShowerFrames.classify(Data([0xAA])), .unreadable)
+        XCTAssertTrue(ShowerFrames.isAck(Data([0xAA] + [UInt8](repeating: 0, count: 8))))
+        XCTAssertFalse(ShowerFrames.isAck(Data([0xAA] + [UInt8](repeating: 0, count: 7))))
+        XCTAssertEqual(ShowerFrames.command(ShowerFrames.probeCommand), .probe)
+        XCTAssertEqual(ShowerFrames.command(Data(count: 15)), .authorization)
+        XCTAssertEqual(ShowerFrames.command(Data([0xAC, 0, 0, 0, 0])), .close)
+        XCTAssertEqual(ShowerFrames.serviceUUID + ShowerFrames.notifyUUID + ShowerFrames.writeUUID, "FFE0FFE1FFE2")
     }
 
     func testAssemblerOnFixedChunkings() throws {
         let ack = Data([0xAA] + [UInt8](repeating: 7, count: 8))
         let stream = Golden.frame + ack + Data([0xA5]) + Golden.frame
         for split in [[7], [1, 1, 1], [20, 9, 1], [3, 25], [40], [stream.count]] {
-            var mine = WaterFrameAssembler()
+            var mine = ShowerFrameAssembler()
             var a: [Data] = []
             var offset = 0, i = 0
             while offset < stream.count {
@@ -128,12 +128,12 @@ final class WaterFrameGoldenTests: XCTestCase {
     }
 
     func testAssemblerRejectsUnknownBytesAndOverflow() {
-        var a = WaterFrameAssembler()
+        var a = ShowerFrameAssembler()
         XCTAssertThrowsError(try a.append(Data([0x00])))
-        var b = WaterFrameAssembler()
+        var b = ShowerFrameAssembler()
         XCTAssertNoThrow(try b.append(Data([0x55, 1, 2])))
         XCTAssertTrue(b.hasPartialFrame)
-        var c = WaterFrameAssembler()
+        var c = ShowerFrameAssembler()
         XCTAssertThrowsError(try c.append(Data([0x55]) + Data(count: 300)))
     }
 
@@ -145,11 +145,11 @@ final class WaterFrameGoldenTests: XCTestCase {
     }
 
     func testReceiptParsing() {
-        XCTAssertEqual(WaterReceipt.parse(pay: .int(9)).amount, Money(fen: 9))
-        XCTAssertEqual(WaterReceipt.parse(pay: .string("163")).amount?.yuanText, "1.63")
-        XCTAssertEqual(WaterReceipt.parse(pay: .int(0)).amount, Money.zero)
+        XCTAssertEqual(ShowerReceipt.parse(pay: .int(9)).amount, Money(fen: 9))
+        XCTAssertEqual(ShowerReceipt.parse(pay: .string("163")).amount?.yuanText, "1.63")
+        XCTAssertEqual(ShowerReceipt.parse(pay: .int(0)).amount, Money.zero)
         for bad: JSONValue? in [nil, .bool(true), .int(-1), .string(""), .string("9abc"), .null, .double(0.5), .int(100_000_000_001)] {
-            XCTAssertNil(WaterReceipt.parse(pay: bad).amount, "\(String(describing: bad))")
+            XCTAssertNil(ShowerReceipt.parse(pay: bad).amount, "\(String(describing: bad))")
         }
     }
 }

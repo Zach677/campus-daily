@@ -3,72 +3,72 @@ import Core
 
 /// Resolves the money calls at call time, so the engine survives a profile import.
 /// No gateway = a definite local refusal (nothing was sent, nothing issued).
-final class WaterGatewayBox: WaterGateway, @unchecked Sendable {
+final class ShowerGatewayBox: ShowerGateway, @unchecked Sendable {
     private let lock = NSLock()
-    private var gateway: WaterGateway?
-    var current: WaterGateway? {
+    private var gateway: ShowerGateway?
+    var current: ShowerGateway? {
         get { lock.withLock { gateway } }
         set { lock.withLock { gateway = newValue } }
     }
-    func authorize(_ binding: WaterBinding, frame: Data) async throws -> WaterAuthorization {
+    func authorize(_ binding: ShowerBinding, frame: Data) async throws -> ShowerAuthorization {
         guard let current else { throw ServiceError.badRequest(.lxt6) }
         return try await current.authorize(binding, frame:frame)
     }
-    func settle(_ binding: WaterBinding, frame: Data) async throws -> WaterReceipt {
+    func settle(_ binding: ShowerBinding, frame: Data) async throws -> ShowerReceipt {
         guard let current else { throw ServiceError.badRequest(.lxt6) }
         return try await current.settle(binding, frame:frame)
     }
 }
 
-private struct WaterHooks: ShowerHooks {
+private struct ShowerModelHooks: ShowerHooks {
     func scheduleUnsettledReminder(after seconds: TimeInterval) async {}
     func cancelUnsettledReminder() async {}
-    func diagnostic(_ event: String) async { await WaterDiagnosticReport.record(event) }
+    func diagnostic(_ event: String) async { await ShowerDiagnosticReport.record(event) }
 }
 
 /// Where the hot-water platform profile comes from (bundled / imported `.waterconfig`).
-enum WaterProfileFiles {
+enum ShowerProfileFiles {
     static var importedURL: URL {
         FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask)[0]
             .appendingPathComponent("Water", isDirectory:true).appendingPathComponent("imported.waterconfig")
     }
-    static let loader = WaterProfileLoader(bundled: {
+    static let loader = ShowerProfileLoader(bundled: {
         guard let url = Bundle.main.url(forResource:"CampusWaterPlatform", withExtension:"json") else { return nil }
         return try Data(contentsOf:url)
     }, imported: { _ in
-        let url = WaterProfileFiles.importedURL
+        let url = ShowerProfileFiles.importedURL
         return FileManager.default.fileExists(atPath:url.path) ? try Data(contentsOf:url) : nil
     })
-    static let sources: [WaterProfileSource] = [.imported(fileName:"imported.waterconfig"), .bundled]
-    static func localProfile() async -> WaterPlatformProfile? {
-        if case .success(.local(let profile, _)) = await WaterProfileResolver.firstUsable(sources, provider:loader) { return profile }
+    static let sources: [ShowerProfileSource] = [.imported(fileName:"imported.waterconfig"), .bundled]
+    static func localProfile() async -> ShowerPlatformProfile? {
+        if case .success(.local(let profile, _)) = await ShowerProfileResolver.firstUsable(sources, provider:loader) { return profile }
         return nil
     }
 }
 
 /// UI state over `ShowerEngine`. The engine owns the session; this class only forwards taps and
 /// mirrors its state (home, detail page, Live Activity, reminder).
-@MainActor final class WaterModel: ObservableObject {
-    static let shared = WaterModel()
+@MainActor final class ShowerModel: ObservableObject {
+    static let shared = ShowerModel()
     @Published private(set) var state = ShowerState.idle
-    @Published private(set) var binding: WaterBinding?
-    @Published private(set) var profile: WaterPlatformProfile?
+    @Published private(set) var binding: ShowerBinding?
+    @Published private(set) var profile: ShowerPlatformProfile?
     @Published private(set) var busy = false
     /// Last action's message (nil = nothing to say).
     @Published private(set) var message: String?
     @Published private(set) var storageBlocked = false
     @Published private(set) var residenceReviewRequired = UserDefaults.standard.bool(forKey:PreferenceKey.waterNeedsResidenceReview)
-    @Published private(set) var verifiedDevice: VerifiedWaterDevice?
+    @Published private(set) var verifiedDevice: VerifiedShowerDevice?
     @Published private(set) var inspectionStatus: String?
     @Published private(set) var inspecting = false
     private var engine: ShowerEngine?
     private var observer: Task<Void, Never>?
-    private let gateway = WaterGatewayBox()
+    private let gateway = ShowerGatewayBox()
     private let bluetooth = BluetoothTransport()
 
     init() {
-        binding = (try? AppServices.waterVault.binding()) ?? nil
-        if let persisted = (try? AppServices.waterVault.showerState()) ?? nil { state = ShowerReducer.restore(persisted) }
+        binding = (try? AppEnvironment.waterVault.binding()) ?? nil
+        if let persisted = (try? AppEnvironment.waterVault.showerState()) ?? nil { state = ShowerReducer.restore(persisted) }
         Task { await reloadProfile() }
     }
 
@@ -116,7 +116,7 @@ enum WaterProfileFiles {
     // MARK: Setup
 
     func reloadProfile() async {
-        profile = await WaterProfileFiles.localProfile()
+        profile = await ShowerProfileFiles.localProfile()
         rebuildEngine()
     }
 
@@ -125,22 +125,22 @@ enum WaterProfileFiles {
         guard !busy else { return }
         observer?.cancel(); observer = nil; engine = nil
         guard binding != nil else {
-            state = ((try? AppServices.waterVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle
+            state = ((try? AppEnvironment.waterVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle
             return
         }
         let bleName: String
         if let profile {
             bleName = profile.bleName
-            gateway.current = LxtClient(http:AppServices.waterHTTP, profile:profile)
+            gateway.current = LxtClient(http:AppEnvironment.waterHTTP, profile:profile)
         } else {
             bleName = ""
             gateway.current = nil
         }
         do {
-            let engine = try ShowerEngine(transport:bluetooth, gateway:gateway, vault:AppServices.waterVault,
+            let engine = try ShowerEngine(transport:bluetooth, gateway:gateway, vault:AppEnvironment.waterVault,
                                           configuration:.init(bleName:bleName,
                                                               reminderMinutes:UserDefaults.standard.integer(forKey:ReminderKey.unsettledMinutes)),
-                                          hooks:WaterHooks())
+                                          hooks:ShowerModelHooks())
             self.engine = engine
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
@@ -166,9 +166,9 @@ enum WaterProfileFiles {
     }
 
     /// Onboarding saved a binding (dorm + controller).
-    func saveBinding(_ value: WaterBinding) throws {
+    func saveBinding(_ value: ShowerBinding) throws {
         guard mayImport else { throw ShowerEngineError.blocked }
-        try AppServices.waterVault.saveBinding(value)
+        try AppEnvironment.waterVault.saveBinding(value)
         binding = value
         verifiedDevice = nil
         if residenceReviewRequired { setResidenceReview(false) }
@@ -186,8 +186,8 @@ enum WaterProfileFiles {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf:url)
-        _ = try WaterConfigFile.parse(data, source:.imported(fileName:"imported.waterconfig"))
-        let target = WaterProfileFiles.importedURL
+        _ = try ShowerConfigFile.parse(data, source:.imported(fileName:"imported.waterconfig"))
+        let target = ShowerProfileFiles.importedURL
         try FileManager.default.createDirectory(at:target.deletingLastPathComponent(), withIntermediateDirectories:true)
         try data.write(to:target, options:[.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         Task { await reloadProfile() }
@@ -262,13 +262,13 @@ enum WaterProfileFiles {
             let nearby = try await bluetooth.inspect(bleName:bleName, remembered:binding.peripheralID)
             guard nearby > 0 else { inspectionStatus = Self.deviceText(.notFound); return }
             let id = try await bluetooth.connect(bleName:bleName, machineID:binding.machineId, required:nil, preferred:binding.peripheralID)
-            let frame = try await bluetooth.exchange(WaterFrames.probeCommand)
+            let frame = try await bluetooth.exchange(ShowerFrames.probeCommand)
             await bluetooth.disconnect()
-            guard let identity = WaterFrames.identity(frame) ?? (WaterFrames.isActive(frame) ? binding.machineId : nil) else {
+            guard let identity = ShowerFrames.identity(frame) ?? (ShowerFrames.isActive(frame) ? binding.machineId : nil) else {
                 inspectionStatus = Self.deviceText(.malformedFrame); return
             }
             guard identity == binding.machineId.uppercased() else { inspectionStatus = "附近的水控不是你宿舍的那台。"; return }
-            verifiedDevice = VerifiedWaterDevice(id:id, name:bleName, machineID:identity, rssi:nil, nearbyCount:nearby, verifiedAt:Date())
+            verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:identity, rssi:nil, nearbyCount:nearby, verifiedAt:Date())
             inspectionStatus = "找到了你宿舍的水控。"
         } catch {
             await bluetooth.disconnect()
@@ -277,7 +277,7 @@ enum WaterProfileFiles {
     }
 
     func exportDiagnostics() throws -> URL {
-        try WaterDiagnosticReport.export(phase:state.phase, needsReview:problem, manualSettleAttempts:state.manualSettleAttempts)
+        try ShowerDiagnosticReport.export(phase:state.phase, needsReview:problem, manualSettleAttempts:state.manualSettleAttempts)
     }
 
     func show(_ error: Error) { message = AppErrorText.text(error) }

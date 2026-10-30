@@ -5,7 +5,7 @@ import Core
 
 /// Composition root: one Keychain store, one HTTP client per service family, the school session.
 /// The hot-water and laundry engines are built by their models (they depend on the binding / login).
-enum AppServices {
+enum AppEnvironment {
     static let store: SecureStore = SharedKeychain.store
 
     static let schoolHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.school)
@@ -13,7 +13,7 @@ enum AppServices {
     static let laundryHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.laundry)
 
     static let schoolVault = StoredSchoolVault(store:store)
-    static let waterVault = StoredWaterVault(store:store)
+    static let waterVault = StoredShowerVault(store:store)
     static let laundryVault = StoredLaundryVault(store:store)
     static let snapshots = SharedSnapshotStore(store:store) {
         WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind)

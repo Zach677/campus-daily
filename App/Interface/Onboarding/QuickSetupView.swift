@@ -3,7 +3,7 @@ import SwiftUI
 struct QuickSetupView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var campus: CampusModel
-    @EnvironmentObject private var water: WaterModel
+    @EnvironmentObject private var water: ShowerModel
     @EnvironmentObject private var laundry: LaundryModel
     private var washerDone: Bool { laundry.accountConnected && !laundry.savedMachines.isEmpty }
     /// 学校洗衣机 off: the washer step isn't part of setup.

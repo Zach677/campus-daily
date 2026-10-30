@@ -25,14 +25,14 @@ struct CampusTimeline: TimelineProvider {
     }
 }
 
-@main struct CampusDailyBundle: WidgetBundle {
+@main struct XiaoRiChangWidgetBundle: WidgetBundle {
     var body: some Widget {
-        CampusDailyWidget()
+        XiaoRiChangWidget()
         ShowerLiveActivity()
         LaundryLiveActivity()
     }
 }
-struct CampusDailyWidget: Widget {
+struct XiaoRiChangWidget: Widget {
     let kind = SharedSnapshotStore.widgetKind
     var body: some WidgetConfiguration {
         StaticConfiguration(kind:kind, provider:CampusTimeline()) { entry in

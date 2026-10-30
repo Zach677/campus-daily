@@ -2,7 +2,7 @@ import Foundation
 @preconcurrency import CoreBluetooth
 import Core
 
-struct VerifiedWaterDevice {
+struct VerifiedShowerDevice {
     let id: String
     let name: String
     let machineID: String
@@ -44,7 +44,7 @@ struct VerifiedWaterDevice {
     private var observedIDs = Set<UUID>()
     private var notify: CBCharacteristic?
     private var write: CBCharacteristic?
-    private var decoder = WaterFrameAssembler()
+    private var decoder = ShowerFrameAssembler()
     private var pendingFrame: Data?
     private var channelError: ShowerDeviceError?
     private var writeAcknowledged = false
@@ -57,7 +57,7 @@ struct VerifiedWaterDevice {
         guard !waiter.isWaiting else { throw ShowerDeviceError.busy }
         // The timer and cancel handler only ever finish this wait (token), never a later step.
         let token = waiter.reserve()
-        WaterDiagnosticReport.record("ble." + name)
+        ShowerDiagnosticReport.record("ble." + name)
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 step = name
@@ -111,19 +111,19 @@ struct VerifiedWaterDevice {
         peripheral = chosen
         chosen.delegate = self
         if chosen.state != .connected { try await wait("connect") { manager.connect(chosen) } }
-        try await wait("service") { chosen.discoverServices([CBUUID(string: WaterFrames.serviceUUID)]) }
-        guard let service = chosen.services?.first(where: { $0.uuid == CBUUID(string: WaterFrames.serviceUUID) }) else {
+        try await wait("service") { chosen.discoverServices([CBUUID(string: ShowerFrames.serviceUUID)]) }
+        guard let service = chosen.services?.first(where: { $0.uuid == CBUUID(string: ShowerFrames.serviceUUID) }) else {
             throw ShowerDeviceError.disconnected
         }
         try await wait("characteristics") {
-            chosen.discoverCharacteristics([CBUUID(string: WaterFrames.notifyUUID), CBUUID(string: WaterFrames.writeUUID)], for: service)
+            chosen.discoverCharacteristics([CBUUID(string: ShowerFrames.notifyUUID), CBUUID(string: ShowerFrames.writeUUID)], for: service)
         }
-        notify = service.characteristics?.first { $0.uuid == CBUUID(string: WaterFrames.notifyUUID) }
-        write = service.characteristics?.first { $0.uuid == CBUUID(string: WaterFrames.writeUUID) }
+        notify = service.characteristics?.first { $0.uuid == CBUUID(string: ShowerFrames.notifyUUID) }
+        write = service.characteristics?.first { $0.uuid == CBUUID(string: ShowerFrames.writeUUID) }
         guard let notify, let write, notify.properties.contains(.notify), write.properties.contains(.write) else {
             throw ShowerDeviceError.disconnected
         }
-        decoder = WaterFrameAssembler(); pendingFrame = nil; channelError = nil
+        decoder = ShowerFrameAssembler(); pendingFrame = nil; channelError = nil
         try await wait("subscribe") { chosen.setNotifyValue(true, for: notify) }
         return chosen.identifier.uuidString
     }
@@ -139,8 +139,8 @@ struct VerifiedWaterDevice {
         chosen.delegate = nil
         write = nil; notify = nil
     }
-    func verifiedInformation(id: String, machineID: String) -> VerifiedWaterDevice {
-        VerifiedWaterDevice(id:id,name:targetName,machineID:machineID.uppercased(),rssi:UUID(uuidString:id).flatMap { signalLevels[$0] },nearbyCount:targets.count,verifiedAt:Date())
+    func verifiedInformation(id: String, machineID: String) -> VerifiedShowerDevice {
+        VerifiedShowerDevice(id:id,name:targetName,machineID:machineID.uppercased(),rssi:UUID(uuidString:id).flatMap { signalLevels[$0] },nearbyCount:targets.count,verifiedAt:Date())
     }
     /// Read-only scan for the 连接检查 screen: how many controllers carry this name nearby.
     func inspect(bleName: String, remembered: String?) async throws -> Int {
@@ -188,8 +188,8 @@ struct VerifiedWaterDevice {
                 guard let uuid = UUID(uuidString:candidate), let device = targets[uuid] else { throw ShowerDeviceError.notFound }
                 do {
                     _ = try await establish(device)
-                    let frame = try await exchange(WaterFrames.probeCommand)
-                    if WaterFrames.identity(frame) != machineID.uppercased() { await abandon(device) }
+                    let frame = try await exchange(ShowerFrames.probeCommand)
+                    if ShowerFrames.identity(frame) != machineID.uppercased() { await abandon(device) }
                     return frame
                 } catch {
                     await abandon(device)
@@ -205,15 +205,15 @@ struct VerifiedWaterDevice {
         guard let peripheral, peripheral.state == .connected, let write,
               !decoder.hasPartialFrame, pendingFrame == nil else { throw ShowerDeviceError.disconnected }
         writeAcknowledged = false
-        WaterDiagnosticReport.record("ble.write." + WaterFrames.command(data).rawValue)
+        ShowerDiagnosticReport.record("ble.write." + ShowerFrames.command(data).rawValue)
         try await wait("exchange", seconds: 8) { peripheral.writeValue(data, for: write, type: .withResponse) }
         guard let frame = pendingFrame else { throw ShowerDeviceError.malformedFrame }
-        WaterDiagnosticReport.record("ble.reply.\(frame.count)")
+        ShowerDiagnosticReport.record("ble.reply.\(frame.count)")
         pendingFrame = nil
         return frame
     }
     func disconnect() async {
-        WaterDiagnosticReport.record("ble.disconnect")
+        ShowerDiagnosticReport.record("ble.disconnect")
         manager?.stopScan()
         complete(.failure(ShowerDeviceError.interrupted))
         if let peripheral {
@@ -222,7 +222,7 @@ struct VerifiedWaterDevice {
             manager.cancelPeripheralConnection(peripheral)
         }
         peripheral = nil; write = nil; notify = nil
-        decoder = WaterFrameAssembler(); pendingFrame = nil
+        decoder = ShowerFrameAssembler(); pendingFrame = nil
     }
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         if step == "power" {
@@ -247,7 +247,7 @@ struct VerifiedWaterDevice {
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         if peripheral === retiring, step == "disconnect" { complete(.success(())) }
         else if peripheral === self.peripheral {
-            WaterDiagnosticReport.record("ble.connectionLost." + (step ?? "idle"))
+            ShowerDiagnosticReport.record("ble.connectionLost." + (step ?? "idle"))
             complete(.failure(ShowerDeviceError.disconnected))
         }
     }

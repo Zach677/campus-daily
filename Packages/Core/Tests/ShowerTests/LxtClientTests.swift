@@ -17,7 +17,7 @@ final class LxtClientTests: XCTestCase {
         let server = StubServer()
         try server.serve("lxt6/getUserMsg-ok")
         let user = try await Golden.client(server).userInfo(Golden.handoff)
-        XCTAssertEqual(user, WaterUser(studentId: "100000000000000001", schoolId: "20021"))
+        XCTAssertEqual(user, ShowerUser(studentId: "100000000000000001", schoolId: "20021"))
         XCTAssertEqual(server.requests.first?.queryItem("requestType"), "1")
         XCTAssertFalse(user.description.contains("1795606"))
     }
@@ -64,7 +64,7 @@ final class LxtClientTests: XCTestCase {
         try server.serve("lxt6/getMachineMacAddress-ok", times: 1)
         let client = Golden.client(server)
         let machines = try await client.machines(room: "100000000000000002", schoolId: "20021")
-        XCTAssertEqual(machines, [WaterMachine(machineId: "1A2B3C4D", name: "9-901", mac: "02:00:00:00:00:01")])
+        XCTAssertEqual(machines, [ShowerMachine(machineId: "1A2B3C4D", name: "9-901", mac: "02:00:00:00:00:01")])
         XCTAssertEqual(server.requests.last?.queryItem("wxcode"), "typeId=1*_schoolId=20021*_roomId=100000000000000002")
 
         try server.serve("lxt6/getMachineMacAddress-unknownRoom", times: 1)
@@ -81,7 +81,7 @@ final class LxtClientTests: XCTestCase {
         let server = StubServer()
         operationReply(server, LxtEndpoints.authorize, #"{"code":0,"data":{"machineid":"11223344","studentId":"a1b2c3d4","systemData":"000102030405060708090a0b0c0d0e"}}"#)
         let a = try await Golden.client(server).authorize(Golden.binding, frame: frame)
-        XCTAssertEqual(a, WaterAuthorization(machineID: "11223344", payload: Data((0..<15).map { UInt8($0) }), authorizationID: "A1B2C3D4"))
+        XCTAssertEqual(a, ShowerAuthorization(machineID: "11223344", payload: Data((0..<15).map { UInt8($0) }), authorizationID: "A1B2C3D4"))
         XCTAssertFalse(a.description.contains("A1B2C3D4"))
     }
 
@@ -143,19 +143,19 @@ final class LxtClientTests: XCTestCase {
 // MARK: - Onboarding
 
 /// Directory double for cases the fixtures do not cover.
-struct FakeDirectory: WaterDirectory {
+struct FakeDirectory: ShowerDirectory {
     var tree: [String: [AreaNode]]
-    var machineRows: [String: [WaterMachine]] = [:]
+    var machineRows: [String: [ShowerMachine]] = [:]
     var error: ServiceError?
     func areas(parent: String) async throws -> [AreaNode] {
         if let error { throw error }
         return tree[parent] ?? []
     }
     func rooms(floor: String) async throws -> [AreaNode] { try await areas(parent: floor) }
-    func machines(room: String, schoolId: String) async throws -> [WaterMachine] { machineRows[room] ?? [] }
+    func machines(room: String, schoolId: String) async throws -> [ShowerMachine] { machineRows[room] ?? [] }
 }
 
-final class WaterOnboardingTests: XCTestCase {
+final class ShowerOnboardingTests: XCTestCase {
     let address = DormAddress.parse("星湖校区9栋9号1层199房")!
 
     func fixtureServer() throws -> StubServer {
@@ -169,13 +169,13 @@ final class WaterOnboardingTests: XCTestCase {
 
     func testEndToEndFromPortalAddressToController() async throws {
         let server = try fixtureServer()
-        let onboarding = WaterOnboarding(directory: Golden.client(server))
+        let onboarding = ShowerOnboarding(directory: Golden.client(server))
         let result = try await onboarding.match(address, schoolId: "20021")
         let path = [AreaNode(id: "170000000000014501", name: "星湖校区"), AreaNode(id: "170000000000090009", name: "9栋"),
                     AreaNode(id: "170000000000090101", name: "一楼"), AreaNode(id: "100000000000000002", name: "199")]
-        XCTAssertEqual(result, .matched(path: path, machine: WaterMachine(machineId: "1A2B3C4D", name: "9-901", mac: "02:00:00:00:00:01")))
-        XCTAssertEqual(WaterOnboarding.roomLabel(path), "9栋 199")
-        XCTAssertTrue(WaterOnboarding.pathMatches(path, address: address))
+        XCTAssertEqual(result, .matched(path: path, machine: ShowerMachine(machineId: "1A2B3C4D", name: "9-901", mac: "02:00:00:00:00:01")))
+        XCTAssertEqual(ShowerOnboarding.roomLabel(path), "9栋 199")
+        XCTAssertTrue(ShowerOnboarding.pathMatches(path, address: address))
         XCTAssertTrue(server.unmatched.isEmpty)
         XCTAssertEqual(server.requests.map { $0.url.lastPathComponent },
                        ["getAreaInfoForApplests", "getAreaInfoForApplests", "getAreaInfoForApplests", "getAreaForRoomApplests", "getMachineMacAddress"])
@@ -183,7 +183,7 @@ final class WaterOnboardingTests: XCTestCase {
 
     func testUnmatchedLevelHandsOptionsToThePicker() async throws {
         let server = try fixtureServer()
-        let onboarding = WaterOnboarding(directory: Golden.client(server))
+        let onboarding = ShowerOnboarding(directory: Golden.client(server))
         let room200 = DormAddress.parse("星湖校区9栋9号1层200房")!
         guard case .pick(let level, let options, let path) = try await onboarding.match(room200, schoolId: "20021") else {
             return XCTFail("expected pick")
@@ -202,7 +202,7 @@ final class WaterOnboardingTests: XCTestCase {
 
     func testRoomWithoutControllerAndUnknownAddress() async throws {
         let server = try fixtureServer()
-        let onboarding = WaterOnboarding(directory: Golden.client(server))
+        let onboarding = ShowerOnboarding(directory: Golden.client(server))
         let path = [AreaNode(id: "999999999999999999", name: "199")]
         do { let r = try await onboarding.controllers(path: path, schoolId: "20021"); XCTAssertEqual(r, .noController(path: path, message: "这个房间没有水控")) }
         do { let r = try await onboarding.match(address, schoolId: "999999999999999999"); XCTAssertEqual(r, .addressUnknown(message: "查无此信息，请联系管理员完善地址信息！")) }
@@ -213,22 +213,22 @@ final class WaterOnboardingTests: XCTestCase {
             "S": [AreaNode(id: "c", name: "星湖校区")],
             "c": [AreaNode(id: "b1", name: "9栋"), AreaNode(id: "b2", name: "9幢")],
         ]
-        let onboarding = WaterOnboarding(directory: FakeDirectory(tree: tree))
+        let onboarding = ShowerOnboarding(directory: FakeDirectory(tree: tree))
         let r = try await onboarding.match(address, schoolId: "S")
         XCTAssertEqual(r, .pick(level: .building, options: tree["c"]!, path: [AreaNode(id: "c", name: "星湖校区")]))
 
         let path = [AreaNode(id: "c", name: "星湖校区"), AreaNode(id: "b", name: "9栋"), AreaNode(id: "f", name: "1层"), AreaNode(id: "r", name: "199房")]
-        let two = [WaterMachine(machineId: "00000001", name: "a", mac: ""), WaterMachine(machineId: "00000002", name: "b", mac: "")]
-        let many = WaterOnboarding(directory: FakeDirectory(tree: [:], machineRows: ["r": two]))
+        let two = [ShowerMachine(machineId: "00000001", name: "a", mac: ""), ShowerMachine(machineId: "00000002", name: "b", mac: "")]
+        let many = ShowerOnboarding(directory: FakeDirectory(tree: [:], machineRows: ["r": two]))
         do { let r = try await many.controllers(path: path, schoolId: "S"); XCTAssertEqual(r, .chooseMachine(path: path, machines: two)) }
-        let none = WaterOnboarding(directory: FakeDirectory(tree: [:]))
-        do { let r = try await none.controllers(path: path, schoolId: "S"); XCTAssertEqual(r, .noController(path: path, message: WaterOnboarding.noControllerText)) }
-        XCTAssertTrue(WaterOnboarding.pathMatches(path, address: address))
-        XCTAssertFalse(WaterOnboarding.pathMatches(Array(path.reversed()), address: address))
+        let none = ShowerOnboarding(directory: FakeDirectory(tree: [:]))
+        do { let r = try await none.controllers(path: path, schoolId: "S"); XCTAssertEqual(r, .noController(path: path, message: ShowerOnboarding.noControllerText)) }
+        XCTAssertTrue(ShowerOnboarding.pathMatches(path, address: address))
+        XCTAssertFalse(ShowerOnboarding.pathMatches(Array(path.reversed()), address: address))
     }
 
     func testOtherErrorsPropagate() async throws {
-        let onboarding = WaterOnboarding(directory: FakeDirectory(tree: [:], error: .offline))
+        let onboarding = ShowerOnboarding(directory: FakeDirectory(tree: [:], error: .offline))
         await Golden.expectError(.offline) { _ = try await onboarding.match(self.address, schoolId: "S") }
     }
 }

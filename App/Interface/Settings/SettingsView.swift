@@ -7,7 +7,7 @@ struct SettingsView: View {
     /// DEBUG demo data; nil = live models.
     var preview: HomeData? = nil
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var water: WaterModel
+    @EnvironmentObject private var water: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
     @AppStorage(ReminderKey.powerLow) private var powerAlert = true
@@ -54,7 +54,7 @@ struct SettingsView: View {
                             SettingsRow(emoji:"🚿", title:"热水", value:"未选")
                         }
                     } else {
-                        NavigationLink { WaterDetail() } label: {
+                        NavigationLink { ShowerDetail() } label: {
                             SettingsRow(emoji:"🚿", title:"热水", value:"已导入")
                         }
                     }
@@ -300,7 +300,7 @@ private struct ChevronRow: View {
 struct AdvancedSettingsView: View {
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
     var preview: HomeData? = nil
-    @EnvironmentObject private var water: WaterModel
+    @EnvironmentObject private var water: ShowerModel
     /// Same source as the main page's 「热水」 row: a dorm controller is bound (HomeData.water != .unconfigured).
     private var waterConfigured: Bool { preview.map { $0.water != .unconfigured } ?? water.configured }
     /// 检查水控状态 only means something while a session may be running.
@@ -382,7 +382,7 @@ struct AdvancedSettingsView: View {
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("高级").navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented:$sharingDiagnostics) {
-            if let diagnosticURL { WaterDiagnosticShare(url:diagnosticURL) }
+            if let diagnosticURL { ShowerDiagnosticShare(url:diagnosticURL) }
         }
         .alert("还没有诊断记录，洗一次澡后再来导出。", isPresented:$diagnosticFailed) { Button("好", role:.cancel) {} }
         .fileImporter(isPresented:$importing, allowedContentTypes:[.json, .data]) { result in

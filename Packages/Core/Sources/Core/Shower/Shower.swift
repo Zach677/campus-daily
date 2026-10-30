@@ -83,8 +83,8 @@ public struct ShowerState: Sendable, Codable, Equatable {
     public var closeSent: Bool
     /// Upper-hex consumption frame to settle.
     public var consumption: String?
-    public var receipt: WaterReceipt?
-    public var lastReceipt: WaterReceipt?
+    public var receipt: ShowerReceipt?
+    public var lastReceipt: ShowerReceipt?
     public var failure: ShowerFailure?
     /// The device contradicted the record (probe idle while "running"): kept for review.
     public var stateReviewRequired: Bool
@@ -99,8 +99,8 @@ public struct ShowerState: Sendable, Codable, Equatable {
 
     public init(phase: ShowerPhase = .idle, machineID: String? = nil, peripheralID: String? = nil, startedAt: Date? = nil,
                 authorizeSent: Bool = false, authorizationID: String? = nil, closingFrom: ShowerPhase? = nil,
-                closeSent: Bool = false, consumption: String? = nil, receipt: WaterReceipt? = nil,
-                lastReceipt: WaterReceipt? = nil, failure: ShowerFailure? = nil, stateReviewRequired: Bool = false,
+                closeSent: Bool = false, consumption: String? = nil, receipt: ShowerReceipt? = nil,
+                lastReceipt: ShowerReceipt? = nil, failure: ShowerFailure? = nil, stateReviewRequired: Bool = false,
                 reviewing: Bool = false, settleRetryArmed: Bool = false, manualSettleAttempts: Int = 0,
                 endedAt: Date? = nil, notice: ShowerNotice? = nil) {
         self.phase = phase; self.machineID = machineID; self.peripheralID = peripheralID; self.startedAt = startedAt
@@ -148,7 +148,7 @@ public struct ShowerState: Sendable, Codable, Equatable {
         return s
     }
 
-    fileprivate func idleAfter(receipt: WaterReceipt?) -> ShowerState {
+    fileprivate func idleAfter(receipt: ShowerReceipt?) -> ShowerState {
         ShowerState(phase: .idle, machineID: machineID, peripheralID: peripheralID, lastReceipt: receipt)
     }
 }
@@ -158,7 +158,7 @@ public enum ShowerEvent: Sendable, Equatable {
     /// Connected and probed (`AA`) before authorize.
     case connected(peripheralID: String, probe: Data)
     case connectFailed(ShowerDeviceError)
-    case authorized(WaterAuthorization)
+    case authorized(ShowerAuthorization)
     case authorizeFailed(ServiceError)
     case writeReplied(Data)
     case writeFailed(ShowerDeviceError)
@@ -168,7 +168,7 @@ public enum ShowerEvent: Sendable, Equatable {
     case probeFailed(ShowerDeviceError)
     case closeReplied(Data)
     case closeFailed(ShowerDeviceError)
-    case settled(WaterReceipt, at: Date)
+    case settled(ShowerReceipt, at: Date)
     case settleFailed(ServiceError)
     /// The task was cancelled after the state was persisted but before the request/write left.
     case cancelledBeforeSend
@@ -219,7 +219,7 @@ public enum ShowerReducer {
 
         case (.authorizing, .connected(let peripheral, let probe)) where !state.authorizeSent:
             s.peripheralID = peripheral
-            switch WaterFrames.classify(probe) {
+            switch ShowerFrames.classify(probe) {
             case .idle(let id) where id == state.machineID:
                 s.authorizeSent = true
                 return (s, [.authorize(frame: probe)])
@@ -241,8 +241,8 @@ public enum ShowerReducer {
 
         case (.authorizing, .authorized(let auth)) where state.authorizeSent:
             guard auth.machineID.uppercased() == state.machineID,
-                  auth.payload.count == WaterFrames.authorizationLength,
-                  WaterFrames.closeCommand(authorizationID: auth.authorizationID) != nil else {
+                  auth.payload.count == ShowerFrames.authorizationLength,
+                  ShowerFrames.closeCommand(authorizationID: auth.authorizationID) != nil else {
                 return (failed(s, .authorizationInvalid, review: true), [.releaseDevice])
             }
             s.phase = .writePending
@@ -257,7 +257,7 @@ public enum ShowerReducer {
 
         // MARK: authorization write
         case (.writePending, .writeReplied(let frame)) where !state.reviewing:
-            if WaterFrames.isAck(frame) {
+            if ShowerFrames.isAck(frame) {
                 s.phase = .running
                 // The official client keeps the link after authorization.
                 return (s, [])
@@ -285,7 +285,7 @@ public enum ShowerReducer {
         case (.writePending, .probeReplied(let frame)), (.running, .probeReplied(let frame)):
             guard state.reviewing else { return (state, []) }
             s.reviewing = false
-            switch WaterFrames.classify(frame) {
+            switch ShowerFrames.classify(frame) {
             case .active:
                 s.phase = .running
                 s.stateReviewRequired = false
@@ -308,9 +308,9 @@ public enum ShowerReducer {
 
         case (.closing, .probeReplied(let frame)) where !state.closeSent:
             let from = state.closingFrom ?? .running
-            switch WaterFrames.classify(frame) {
+            switch ShowerFrames.classify(frame) {
             case .active:
-                guard let id = state.authorizationID, let command = WaterFrames.closeCommand(authorizationID: id) else {
+                guard let id = state.authorizationID, let command = ShowerFrames.closeCommand(authorizationID: id) else {
                     return (back(s, to: from, notice: .writeUnconfirmed), [.releaseDevice])
                 }
                 s.closeSent = true
@@ -338,7 +338,7 @@ public enum ShowerReducer {
             return (back(s, to: state.closingFrom ?? .running, notice: .device(.interrupted)), [.releaseDevice])
 
         case (.closing, .closeReplied(let frame)) where state.closeSent:
-            guard WaterFrames.identity(frame) == state.machineID else {
+            guard ShowerFrames.identity(frame) == state.machineID else {
                 return (failed(s, .closeUnconfirmed, review: true, device: .malformedFrame), [.cancelReminder, .releaseDevice])
             }
             s.phase = .settling

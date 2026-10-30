@@ -4,7 +4,7 @@ import Core
 
 /// Everything the home screen shows, derived from the models (or DEBUG demo data).
 struct HomeData {
-    enum Water: Equatable {
+    enum Shower: Equatable {
         case unconfigured
         /// Hot water can't be used in this build or at this school (no start); the reason is the subtitle.
         case unavailable(String)
@@ -84,7 +84,7 @@ struct HomeData {
     var powerIssue: String?
     var cardLowLine: Decimal = 20
     var powerLowLine: Decimal = 10
-    var water = Water.idle
+    var water = Shower.idle
     var waterIssue: String?
     /// Showering, but the device never confirmed the authorization write (adds one line under the timer).
     var showerUnconfirmed = false
@@ -163,7 +163,7 @@ struct HomeData {
 // MARK: - Live data
 
 extension HomeData {
-    @MainActor init(campus: CampusModel, water model: WaterModel, laundry: LaundryModel, now: Date = Date()) {
+    @MainActor init(campus: CampusModel, water model: ShowerModel, laundry: LaundryModel, now: Date = Date()) {
         signedIn = campus.configured
         dorm = Theme.dorm(campus.room)
         let snapshot = campus.snapshot
@@ -185,7 +185,7 @@ extension HomeData {
         else if state.phase == .failed, state.failure?.needsReview == true {
             water = .unresolved(model.unresolvedClose ? "上次结算还没确认" : ShowerDisplay.failureTitle(state.failure))
         }
-        else if model.platformMissing { water = .unavailable(WaterModel.platformMissingText) }
+        else if model.platformMissing { water = .unavailable(ShowerModel.platformMissingText) }
         else { water = .idle }
         if model.problem, water == .idle { waterIssue = model.status }
         showerUnconfirmed = state.phase == .writePending && water.showering != nil
@@ -332,8 +332,8 @@ enum HomeDemo: String, CaseIterable {
             data.water = .unconfigured
             return (data, nil)
         case .noPlatform:
-            // Live path: WaterModel.platformMissing (direct dorm saved, no bundled platform profile).
-            data.water = .unavailable(WaterModel.platformMissingText)
+            // Live path: ShowerModel.platformMissing (direct dorm saved, no bundled platform profile).
+            data.water = .unavailable(ShowerModel.platformMissingText)
             return (data, nil)
         case .notOpen:
             data.water = .unavailable("本校暂未开放")

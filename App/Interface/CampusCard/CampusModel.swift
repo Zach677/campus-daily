@@ -25,15 +25,15 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var powerChoices: [PowerChoice] = []
     @Published private(set) var powerMatchIssue: String?
     private var lastRefresh: Date?
-    private let session = AppServices.school
+    private let session = AppEnvironment.school
 
     init() { reload() }
 
     /// Re-read the Keychain (launch, after sign-in/out).
     func reload() {
-        configured = ((try? AppServices.schoolVault.ecyktSession()) ?? nil) != nil
-        profile = (try? AppServices.schoolVault.profile()) ?? nil
-        snapshot = ((try? AppServices.snapshots.loadSnapshot()) ?? nil) ?? .empty
+        configured = ((try? AppEnvironment.schoolVault.ecyktSession()) ?? nil) != nil
+        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
+        snapshot = ((try? AppEnvironment.snapshots.loadSnapshot()) ?? nil) ?? .empty
     }
 
     var address: DormAddress? { profile?.residence?.address }
@@ -62,7 +62,7 @@ struct PowerChoice: Identifiable, Equatable {
         case .failed(let e): issue = e.userMessage
         case .notSignedIn: configured = false; issue = nil
         }
-        profile = (try? AppServices.schoolVault.profile()) ?? nil
+        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         Reminders.shared.evaluateCampus(snapshot)
         if report.outcome == .ok { Reminders.shared.campusRead(snapshot) }
     }
@@ -75,12 +75,12 @@ struct PowerChoice: Identifiable, Equatable {
         _ = try await session.adoptWebState(login.state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
         let raw = login.dormAddress.trimmingCharacters(in:.whitespacesAndNewlines)
         if !raw.isEmpty {
-            var stored = (try? AppServices.schoolVault.profile()) ?? nil ?? SchoolProfile()
+            var stored = (try? AppEnvironment.schoolVault.profile()) ?? nil ?? SchoolProfile()
             if stored.residence?.raw != raw {
                 stored.residence = PortalResidence(raw:raw)
                 stored.meter = nil
             }
-            try AppServices.schoolVault.saveProfile(stored)
+            try AppEnvironment.schoolVault.saveProfile(stored)
         }
         reload(); issue = nil; lastRefresh = nil
         powerChoices = []; powerMatchIssue = nil
@@ -103,7 +103,7 @@ struct PowerChoice: Identifiable, Equatable {
             defer { matchingPower = false }
             do {
                 switch try await session.resolveElectricity() {
-                case .matched: profile = (try? AppServices.schoolVault.profile()) ?? nil; await refresh(force:true)
+                case .matched: profile = (try? AppEnvironment.schoolVault.profile()) ?? nil; await refresh(force:true)
                 case .chooseAmong(let meters): powerChoices = meters.map(PowerChoice.init)
                 case .manualPicker: powerMatchIssue = "没自动找到电表，去「绑定电表」里选一下。"
                 case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「绑定电表」里选一下。"
@@ -120,7 +120,7 @@ struct PowerChoice: Identifiable, Equatable {
             do {
                 try await session.chooseMatchedMeter(choice.meter)
                 powerChoices = []; powerMatchIssue = nil
-                profile = (try? AppServices.schoolVault.profile()) ?? nil
+                profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
                 await refresh(force:true)
             } catch { powerMatchIssue = AppErrorText.text(error) }
         }
@@ -131,7 +131,7 @@ struct PowerChoice: Identifiable, Equatable {
     func meterRows(nodeID: String) async throws -> [Meter] { try await session.meterRows(nodeID:nodeID) }
     func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool) async throws {
         try await session.chooseMeter(nodeID:nodeID, meter:meter, nodeIsRoom:nodeIsRoom)
-        profile = (try? AppServices.schoolVault.profile()) ?? nil
+        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         powerChoices = []; powerMatchIssue = nil
         await refresh(force:true)
     }
@@ -139,5 +139,5 @@ struct PowerChoice: Identifiable, Equatable {
     // MARK: Recharge / hot water hand-off
 
     func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession { try await session.rechargeSession(kind) }
-    func waterHandoff() async throws -> WaterHandoff { try await session.waterHandoff() }
+    func waterHandoff() async throws -> ShowerHandoff { try await session.waterHandoff() }
 }

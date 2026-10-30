@@ -4,30 +4,30 @@ import Foundation
 import CoreTestSupport
 
 /// Scripted gateway: results are consumed in order; `.hang` waits for cancellation.
-final class FakeGateway: WaterGateway, @unchecked Sendable {
+final class FakeGateway: ShowerGateway, @unchecked Sendable {
     // @unchecked: state guarded by `lock`.
     enum Outcome<T: Sendable>: Sendable { case ok(T), fail(ServiceError), hang }
     private let lock = NSLock()
-    private var authorizeResults: [Outcome<WaterAuthorization>] = []
-    private var settleResults: [Outcome<WaterReceipt>] = []
+    private var authorizeResults: [Outcome<ShowerAuthorization>] = []
+    private var settleResults: [Outcome<ShowerReceipt>] = []
     private var _authorizeFrames: [Data] = []
     private var _settleFrames: [Data] = []
 
-    func scriptAuthorize(_ o: Outcome<WaterAuthorization>...) { lock.withLock { authorizeResults += o } }
-    func scriptSettle(_ o: Outcome<WaterReceipt>...) { lock.withLock { settleResults += o } }
+    func scriptAuthorize(_ o: Outcome<ShowerAuthorization>...) { lock.withLock { authorizeResults += o } }
+    func scriptSettle(_ o: Outcome<ShowerReceipt>...) { lock.withLock { settleResults += o } }
     var authorizeFrames: [Data] { lock.withLock { _authorizeFrames } }
     var settleFrames: [Data] { lock.withLock { _settleFrames } }
 
-    func authorize(_ binding: WaterBinding, frame: Data) async throws -> WaterAuthorization {
-        let o: Outcome<WaterAuthorization> = lock.withLock {
+    func authorize(_ binding: ShowerBinding, frame: Data) async throws -> ShowerAuthorization {
+        let o: Outcome<ShowerAuthorization> = lock.withLock {
             _authorizeFrames.append(frame)
             return authorizeResults.isEmpty ? .fail(.timedOut) : authorizeResults.removeFirst()
         }
         return try await Self.resolve(o)
     }
 
-    func settle(_ binding: WaterBinding, frame: Data) async throws -> WaterReceipt {
-        let o: Outcome<WaterReceipt> = lock.withLock {
+    func settle(_ binding: ShowerBinding, frame: Data) async throws -> ShowerReceipt {
+        let o: Outcome<ShowerReceipt> = lock.withLock {
             _settleFrames.append(frame)
             return settleResults.isEmpty ? .fail(.timedOut) : settleResults.removeFirst()
         }
@@ -46,12 +46,12 @@ final class FakeGateway: WaterGateway, @unchecked Sendable {
 }
 
 /// Vault whose session writes fail once `failWhen` matches the state being written.
-final class FlakyVault: WaterVault, @unchecked Sendable {
-    let inner: StoredWaterVault
+final class FlakyVault: ShowerVault, @unchecked Sendable {
+    let inner: StoredShowerVault
     let failWhen: @Sendable (ShowerState?) -> Bool
-    init(inner: StoredWaterVault, failWhen: @escaping @Sendable (ShowerState?) -> Bool) { self.inner = inner; self.failWhen = failWhen }
-    func binding() throws -> WaterBinding? { try inner.binding() }
-    func saveBinding(_ binding: WaterBinding?) throws { try inner.saveBinding(binding) }
+    init(inner: StoredShowerVault, failWhen: @escaping @Sendable (ShowerState?) -> Bool) { self.inner = inner; self.failWhen = failWhen }
+    func binding() throws -> ShowerBinding? { try inner.binding() }
+    func saveBinding(_ binding: ShowerBinding?) throws { try inner.saveBinding(binding) }
     func showerState() throws -> ShowerState? { try inner.showerState() }
     func saveShowerState(_ state: ShowerState?) throws {
         if failWhen(state) { throw StorageError(operation: "write water.session", status: -1) }
@@ -78,28 +78,28 @@ final class TaskBox: @unchecked Sendable {
 
 final class ShowerEngineTests: XCTestCase {
     let machine = "11223344"
-    let binding = WaterBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "9栋 199")
-    let auth = WaterAuthorization(machineID: "11223344", payload: Data((0..<15).map { UInt8(0x30 + $0) }), authorizationID: "001122FF")
+    let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "9栋 199")
+    let auth = ShowerAuthorization(machineID: "11223344", payload: Data((0..<15).map { UInt8(0x30 + $0) }), authorizationID: "001122FF")
     let close = Data([0xAC, 0x55, 0x44, 0x77, 0xAA])
-    let receipt = WaterReceipt(amount: Money(fen: 163))
+    let receipt = ShowerReceipt(amount: Money(fen: 163))
     var identity: Data { FakeFrames.identity(machine) }
     var consumption: Data { FakeFrames.identity(machine, tail: 9) }
 
     var store: InMemorySecureStore!
-    var vault: StoredWaterVault!
+    var vault: StoredShowerVault!
     var transport: FakeShowerTransport!
     var gateway: FakeGateway!
     var hooks: RecordingHooks!
 
     override func setUp() {
         store = InMemorySecureStore()
-        vault = StoredWaterVault(store: store)
+        vault = StoredShowerVault(store: store)
         transport = FakeShowerTransport()
         gateway = FakeGateway()
         hooks = RecordingHooks()
     }
 
-    func engine(_ v: WaterVault? = nil) throws -> ShowerEngine {
+    func engine(_ v: ShowerVault? = nil) throws -> ShowerEngine {
         try ShowerEngine(transport: transport, gateway: gateway, vault: v ?? vault,
                          configuration: .init(bleName: "fixture-ble", reminderMinutes: 30), hooks: hooks,
                          now: { Date(timeIntervalSince1970: 1_800_000_000) })
@@ -138,7 +138,7 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(done.receipt, receipt)
         let title = await e.display.title
         XCTAssertEqual(title, "本次 ¥1.63")
-        XCTAssertEqual(transport.writes, [WaterFrames.probeCommand, auth.payload, WaterFrames.probeCommand, close])
+        XCTAssertEqual(transport.writes, [ShowerFrames.probeCommand, auth.payload, ShowerFrames.probeCommand, close])
         XCTAssertEqual(transport.connects.last, FakeShowerTransport.Connect(required: "PERIPHERAL-A", preferred: nil),
                        "finish talks to the session's controller only")
         XCTAssertEqual(gateway.settleFrames, [consumption])
@@ -173,7 +173,7 @@ final class ShowerEngineTests: XCTestCase {
         let title = await e.display.title
         XCTAssertEqual(title, "余额不足")
         XCTAssertEqual(try vault.showerState()?.phase, .idle)
-        XCTAssertEqual(transport.writes, [WaterFrames.probeCommand], "nothing written to the controller")
+        XCTAssertEqual(transport.writes, [ShowerFrames.probeCommand], "nothing written to the controller")
         try await startRunning(e)
     }
 
@@ -340,7 +340,7 @@ final class ShowerEngineTests: XCTestCase {
         let finished = try await e.finish(binding)
         XCTAssertEqual(finished.phase, .done)
         XCTAssertEqual(transport.connects, [FakeShowerTransport.Connect(required: "PERIPHERAL-B", preferred: nil)])
-        let other = WaterBinding(studentId: "S1", schoolId: "20021", machineId: "99999999", roomId: "R", roomLabel: "x")
+        let other = ShowerBinding(studentId: "S1", schoolId: "20021", machineId: "99999999", roomId: "R", roomLabel: "x")
         try vault.saveShowerState(ShowerState(phase: .running, machineID: machine, peripheralID: "P", authorizationID: "001122FF"))
         await expect(.wrongBinding) { try await self.engine().finish(other) }
     }
@@ -354,7 +354,7 @@ final class ShowerEngineTests: XCTestCase {
         gateway.scriptAuthorize(.ok(auth))
         await expect(.storage) { try await e.start(self.binding) }
         XCTAssertTrue(gateway.authorizeFrames.isEmpty, "authorize never leaves without a stored 'sent' record")
-        XCTAssertEqual(transport.writes, [WaterFrames.probeCommand])
+        XCTAssertEqual(transport.writes, [ShowerFrames.probeCommand])
         let blocked = await e.storageBlocked
         XCTAssertTrue(blocked)
         await expect(.storage) { try await e.start(self.binding) }
@@ -383,7 +383,7 @@ final class ShowerEngineTests: XCTestCase {
     func testCancelBeforeAuthorizeLeavesIsNotUncertain() async throws {
         let e = try engine()
         let box = TaskBox()
-        transport.onExchange = { if $0 == WaterFrames.probeCommand { box.cancel() } }
+        transport.onExchange = { if $0 == ShowerFrames.probeCommand { box.cancel() } }
         transport.script(.frame(identity))
         let (gate, open) = AsyncStream.makeStream(of: Void.self)
         let b = binding

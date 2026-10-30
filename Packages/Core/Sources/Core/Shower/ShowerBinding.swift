@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Hot-water identity and binding
 
 /// `getUserMsg` answer: the student's identity on the hot-water platform.
-public struct WaterUser: Sendable, Equatable, Codable, CustomStringConvertible {
+public struct ShowerUser: Sendable, Equatable, Codable, CustomStringConvertible {
     public var studentId: String
     public var schoolId: String
     public init(studentId: String, schoolId: String) { self.studentId = studentId; self.schoolId = schoolId }
@@ -18,7 +18,7 @@ public struct AreaNode: Sendable, Equatable, Hashable, Codable {
 }
 
 /// One controller from `getMachineMacAddress` (`machineId` is 4 bytes hex, upper-cased).
-public struct WaterMachine: Sendable, Equatable, Hashable, Codable {
+public struct ShowerMachine: Sendable, Equatable, Hashable, Codable {
     public var machineId: String
     public var name: String
     public var mac: String
@@ -28,7 +28,7 @@ public struct WaterMachine: Sendable, Equatable, Hashable, Codable {
 }
 
 /// Keychain `water.binding`: who showers where.
-public struct WaterBinding: Sendable, Equatable, Codable, CustomStringConvertible {
+public struct ShowerBinding: Sendable, Equatable, Codable, CustomStringConvertible {
     public var studentId: String
     public var schoolId: String
     public var machineId: String
@@ -51,7 +51,7 @@ public struct WaterBinding: Sendable, Equatable, Codable, CustomStringConvertibl
 
 /// `bathingConsumptionAuthorization` reply (G1): the 15-byte frame to write to the controller and
 /// the 4-byte authorization id (the reply's `studentId`) the close command is built from.
-public struct WaterAuthorization: Sendable, Equatable, CustomStringConvertible {
+public struct ShowerAuthorization: Sendable, Equatable, CustomStringConvertible {
     public var machineID: String
     public var payload: Data
     public var authorizationID: String
@@ -63,14 +63,14 @@ public struct WaterAuthorization: Sendable, Equatable, CustomStringConvertible {
 
 /// `analysisOfBathingConsumptionData` reply (G2). `amount` is nil when the server's `pay` is
 /// missing or not a whole number of fen: never shown as ¥0.
-public struct WaterReceipt: Sendable, Equatable, Codable {
+public struct ShowerReceipt: Sendable, Equatable, Codable {
     public var amount: Money?
     public init(amount: Money?) { self.amount = amount }
 
     public static let maxFen: Int64 = 100_000_000_000
 
     /// The original pay page renders `pay / 100` yuan; `pay` is fen as a number or digit string.
-    public static func parse(pay value: JSONValue?) -> WaterReceipt {
+    public static func parse(pay value: JSONValue?) -> ShowerReceipt {
         let fen: Int64?
         switch value {
         case .int(let i)?: fen = i
@@ -79,8 +79,8 @@ public struct WaterReceipt: Sendable, Equatable, Codable {
             fen = s.range(of: "^[0-9]+$", options: .regularExpression) != nil ? Int64(s) : nil
         default: fen = nil
         }
-        guard let fen, fen >= 0, fen <= maxFen else { return WaterReceipt(amount: nil) }
-        return WaterReceipt(amount: Money(fen: Int(fen)))
+        guard let fen, fen >= 0, fen <= maxFen else { return ShowerReceipt(amount: nil) }
+        return ShowerReceipt(amount: Money(fen: Int(fen)))
     }
 }
 

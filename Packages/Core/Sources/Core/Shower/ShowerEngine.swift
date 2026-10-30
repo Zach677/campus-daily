@@ -38,8 +38,8 @@ public enum ShowerTargetSelection {
             try Task.checkCancellation()
             do {
                 let frame = try await probe(id)
-                if WaterFrames.identity(frame) == machineID.uppercased() { return id }
-                if WaterFrames.identity(frame) != nil { sawOther = true }
+                if ShowerFrames.identity(frame) == machineID.uppercased() { return id }
+                if ShowerFrames.identity(frame) != nil { sawOther = true }
             } catch is CancellationError {
                 throw ShowerDeviceError.interrupted
             } catch ShowerDeviceError.interrupted {
@@ -76,7 +76,7 @@ public enum ShowerEngineError: Error, Equatable, Sendable {
 }
 
 /// Drives `ShowerReducer`: persists every state before running its effects, talks to the
-/// controller through `ShowerTransport` and to the platform through `WaterGateway`.
+/// controller through `ShowerTransport` and to the platform through `ShowerGateway`.
 /// Settle is never retried automatically.
 public actor ShowerEngine {
     public struct Configuration: Sendable {
@@ -86,8 +86,8 @@ public actor ShowerEngine {
     }
 
     let transport: ShowerTransport
-    let gateway: WaterGateway
-    let vault: WaterVault
+    let gateway: ShowerGateway
+    let vault: ShowerVault
     let hooks: ShowerHooks?
     let configuration: Configuration
     let now: @Sendable () -> Date
@@ -95,11 +95,11 @@ public actor ShowerEngine {
     public private(set) var state: ShowerState
     public private(set) var storageBlocked = false
     private var busy = false
-    private var binding: WaterBinding?
+    private var binding: ShowerBinding?
     private var observers: [UUID: AsyncStream<ShowerState>.Continuation] = [:]
 
     /// Restores the persisted session (relaunch rules in `ShowerReducer.restore`).
-    public init(transport: ShowerTransport, gateway: WaterGateway, vault: WaterVault, configuration: Configuration,
+    public init(transport: ShowerTransport, gateway: ShowerGateway, vault: ShowerVault, configuration: Configuration,
                 hooks: ShowerHooks? = nil, now: @escaping @Sendable () -> Date = Date.init) throws {
         self.transport = transport; self.gateway = gateway; self.vault = vault; self.hooks = hooks
         self.configuration = configuration; self.now = now
@@ -132,7 +132,7 @@ public actor ShowerEngine {
 
     /// 开水: connect + identity probe, authorize, write the authorization.
     @discardableResult
-    public func start(_ b: WaterBinding) async throws -> ShowerState {
+    public func start(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()
         guard state.canStart else { throw ShowerEngineError.blocked }
         let preferred = b.peripheralID ?? (state.machineID == b.machineId.uppercased() ? state.peripheralID : nil)
@@ -141,7 +141,7 @@ public actor ShowerEngine {
 
     /// 结束: probe (`A5` required), close, settle once.
     @discardableResult
-    public func finish(_ b: WaterBinding) async throws -> ShowerState {
+    public func finish(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()
         guard state.canFinish else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
@@ -150,7 +150,7 @@ public actor ShowerEngine {
 
     /// Read-only state probe of the session's controller.
     @discardableResult
-    public func review(_ b: WaterBinding) async throws -> ShowerState {
+    public func review(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()
         guard state.canFinish else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
@@ -167,7 +167,7 @@ public actor ShowerEngine {
 
     /// Second confirmation: sends settle once more (idempotency unknown, G2; recorded).
     @discardableResult
-    public func confirmSettleRetry(_ b: WaterBinding) async throws -> ShowerState {
+    public func confirmSettleRetry(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()
         guard state.canRetrySettle, state.settleRetryArmed else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
@@ -195,7 +195,7 @@ public actor ShowerEngine {
         guard !storageBlocked else { throw ShowerEngineError.storage }
     }
 
-    private func run(_ b: WaterBinding?, _ first: ShowerEvent) async throws -> ShowerState {
+    private func run(_ b: ShowerBinding?, _ first: ShowerEvent) async throws -> ShowerState {
         busy = true
         binding = b
         defer { busy = false; binding = nil }
@@ -243,7 +243,7 @@ public actor ShowerEngine {
         case .connectAndProbe(let machine, let preferred):
             do {
                 let id = try await transport.connect(bleName: configuration.bleName, machineID: machine, required: nil, preferred: preferred)
-                let frame = try await transport.exchange(WaterFrames.probeCommand)
+                let frame = try await transport.exchange(ShowerFrames.probeCommand)
                 return .connected(peripheralID: id, probe: frame)
             } catch {
                 return .connectFailed(Self.deviceError(error))
@@ -263,7 +263,7 @@ public actor ShowerEngine {
             do {
                 _ = try await transport.connect(bleName: configuration.bleName, machineID: state.machineID ?? "",
                                                 required: peripheral, preferred: nil)
-                return .probeReplied(try await transport.exchange(WaterFrames.probeCommand))
+                return .probeReplied(try await transport.exchange(ShowerFrames.probeCommand))
             } catch {
                 return .probeFailed(Self.deviceError(error))
             }
