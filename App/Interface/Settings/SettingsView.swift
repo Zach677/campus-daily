@@ -316,7 +316,8 @@ struct AccountView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("学校账号").navigationBarTitleDisplayMode(.inline)
-        .alert("输入学校账号的密码", isPresented:$askPassword) {
+        // Signed in on the web page: no account known, so the alert asks for both.
+        .alert(account == nil ? "输入学校账号和密码" : "输入学校账号的密码", isPresented:$askPassword) {
             // Signed in on the web page: the account was never told to us, so ask for it too.
             if account == nil {
                 TextField("账号", text:$typedAccount)
@@ -339,6 +340,7 @@ struct AccountView: View {
     /// One login checks the password before it is kept; never retried.
     private func save() {
         let password = typedPassword, name = typedAccount.trimmingCharacters(in:.whitespaces)
+        let askedAccount = account == nil
         typedPassword = ""
         guard !password.isEmpty else { return }
         if preview != nil { previewSaved = true; return }
@@ -348,7 +350,7 @@ struct AccountView: View {
             do {
                 try await campus.savePassword(password, account:account == nil ? name : nil)
             } catch SchoolLoginFailure.wrongCredentials {
-                saveIssue = "密码不对，没保存。"
+                saveIssue = askedAccount ? "账号或密码不对，没保存。" : "密码不对，没保存。"
             } catch {
                 saveIssue = SchoolLoginText.text(error)
             }
