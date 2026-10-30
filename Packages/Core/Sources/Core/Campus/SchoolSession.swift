@@ -56,6 +56,9 @@ public actor SchoolSession {
     let ecykt: EcyktClient
     let vault: SchoolVault
     let now: @Sendable () -> Date
+    /// Bumped by `signOut()`. Work that awaited the network checks it before writing the
+    /// Keychain, so a sign-out in the middle is never undone by a late write.
+    private var signOutGeneration = 0
     /// Upper bound on directory calls when locating the room node.
     static let maxDirectoryCalls = 40
 
@@ -110,6 +113,7 @@ public actor SchoolSession {
     }
 
     public func signOut() throws {
+        signOutGeneration += 1
         try vault.savePortalToken(nil)
         try vault.saveEcyktSession(nil)
         try vault.saveProfile(nil)
@@ -123,6 +127,7 @@ public actor SchoolSession {
         guard let stored = (try? vault.ecyktSession()) ?? nil else {
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
+        let started = signOutGeneration
 
         var reexchanged = false
         var live: (BoundCard, EcyktSession)
@@ -149,6 +154,7 @@ public actor SchoolSession {
         }
 
         let (card, session) = live
+        guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         try? vault.saveEcyktSession(session)
         let checkedAt = now()
 
@@ -156,6 +162,7 @@ public actor SchoolSession {
         async let balanceResult = capture { try await self.ecykt.balance(session, custid: card.custid) }
         async let meterResult = readMeter(session, binding: binding)
         let (b, m) = await (balanceResult, meterResult)
+        guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         return SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
                              roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged)
     }
@@ -231,7 +238,9 @@ public actor SchoolSession {
     /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only).
     public func showerHandoff() async throws -> ShowerHandoff {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
+        let started = signOutGeneration
         let (card, live) = try await liveCard(stored)
+        guard started == signOutGeneration else { throw ServiceError.sessionExpired(.ecykt) }
         try? vault.saveEcyktSession(live)
         return try await ecykt.signData(live, custid: card.custid)
     }
@@ -279,10 +288,12 @@ public actor SchoolSession {
     /// Liveness check, then one `loginBySysId`; the fresh token goes into `logintoken`.
     public func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
+        let started = signOutGeneration
         let (card, live) = try await liveCard(stored)
         let fresh = try await ecykt.freshLogin(live)
         var updated = live
         updated.syscustid = fresh.syscustid   // latest ciphertext, valid as input next time
+        guard started == signOutGeneration else { throw ServiceError.sessionExpired(.ecykt) }
         try? vault.saveEcyktSession(updated)
         return try RechargeWebSessionBuilder.build(kind: kind, session: updated, fresh: fresh, card: card)
     }

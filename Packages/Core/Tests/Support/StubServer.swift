@@ -69,6 +69,7 @@ public final class StubServer: @unchecked Sendable {
     private var routes: [StubRoute] = []
     private var _requests: [RecordedRequest] = []
     private var _unmatched: [RecordedRequest] = []
+    private var _gate: (@Sendable (RecordedRequest) -> Void)?
 
     public init() { StubURLProtocol.register(self) }
     deinit { StubURLProtocol.unregister(id) }
@@ -135,8 +136,13 @@ public final class StubServer: @unchecked Sendable {
 
     public func add(_ route: StubRoute) { lock.withLock { routes.append(route) } }
 
+    /// Runs on the loading thread before each request is answered; block in it to hold a
+    /// request in flight (e.g. until the test signed out).
+    public func gate(_ body: @escaping @Sendable (RecordedRequest) -> Void) { lock.withLock { _gate = body } }
+
     func handle(_ r: RecordedRequest) -> StubReply {
-        lock.withLock {
+        lock.withLock { _gate }?(r)
+        return lock.withLock {
             _requests.append(r)
             for i in routes.indices where routes[i].matches(r) {
                 if let left = routes[i].remaining {

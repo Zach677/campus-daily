@@ -26,6 +26,8 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var powerMatchIssue: String?
     private var lastRefresh: Date?
     private var refreshesRunning = 0
+    /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.
+    private var signOutGeneration = 0
     private let session = AppEnvironment.school
     private let refresher = AppEnvironment.refresher
 
@@ -57,7 +59,9 @@ struct PowerChoice: Identifiable, Equatable {
         if !force, refreshesRunning == 0, let lastRefresh, Date().timeIntervalSince(lastRefresh) < 60 { return }
         refreshesRunning += 1; loading = true
         defer { refreshesRunning -= 1; loading = refreshesRunning > 0 }
+        let started = signOutGeneration
         let report = await refresher.refresh(inBackground:inBackground)
+        guard started == signOutGeneration else { return }
         snapshot = report.snapshot
         lastRefresh = Date()
         switch report.outcome {
@@ -91,6 +95,7 @@ struct PowerChoice: Identifiable, Equatable {
     }
 
     func signOut() {
+        signOutGeneration += 1
         let session = session, refresher = refresher
         Task { try? await session.signOut(); try? await refresher.clear() }
         configured = false; snapshot = .empty; profile = nil; issue = nil

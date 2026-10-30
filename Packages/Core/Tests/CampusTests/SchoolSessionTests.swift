@@ -174,6 +174,32 @@ final class SchoolRefreshTests: XCTestCase {
         XCTAssertEqual(report.outcome, .notSignedIn)
         XCTAssertTrue(h.server.requests.isEmpty)
     }
+
+    /// Signing out while the liveness call is in flight: the late answer never writes the
+    /// school card session back, so the next launch is signed out too.
+    func testSignOutDuringRefreshIsNotUndone() async throws {
+        let h = Harness()
+        try h.signedIn(meter: Harness.roomBinding)
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        try h.server.serve("ecykt/electric-getMeterStatus-room", matchBody: ["server", "buildingID"])
+        let reached = expectation(description: "liveness in flight")
+        let release = DispatchSemaphore(value: 0)
+        h.server.gate { r in
+            guard r.url.path.hasSuffix("/getSysBindCustInfo") else { return }
+            reached.fulfill()
+            release.wait()
+        }
+        let session = h.session()
+        async let reading = session.refresh(inBackground: true)
+        await fulfillment(of: [reached], timeout: 5)
+        try await session.signOut()
+        release.signal()
+        let result = await reading
+        XCTAssertEqual(result.outcome, .notSignedIn)
+        XCTAssertNil(result.balance)
+        XCTAssertNil(try h.vault.ecyktSession(), "the session stays signed out")
+    }
 }
 
 final class SchoolRechargeTests: XCTestCase {
