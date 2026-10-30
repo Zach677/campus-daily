@@ -16,11 +16,20 @@ struct ShowerActivityAttributes: ActivityAttributes {
         var durationMinutes: Int?
         /// Only set once the server confirmed settlement. Never an estimate.
         var amountYuan: Decimal?
+        /// The authorization write got no device confirmation (stage .authorizationWritePending).
+        /// Optional so states from earlier builds still decode.
+        var writeUnconfirmed: Bool?
     }
     /// Short dorm label, e.g. "3 栋 108".
     var dorm: String
 }
 #endif
+
+/// Shared copy for the app and the widget.
+enum ShowerCopy {
+    /// Under the shower timer while the authorization write is unconfirmed (Home, lock screen, expanded island).
+    static let writeUnconfirmed = "水控没回应，有热水就照常洗"
+}
 
 /// Hook set by the app at launch. LiveActivityIntent.perform runs in the app process,
 /// so in the widget extension this stays nil; reaching it without the hook is an error, never a silent success.

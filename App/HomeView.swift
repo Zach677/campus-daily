@@ -241,7 +241,7 @@ struct HomeView: View {
     @ViewBuilder private func hero(_ data: HomeData) -> some View {
         ZStack(alignment:.topLeading) {
             if let start = data.water.showering, data.signedIn {
-                ShowerHero(start:start, dorm:data.dorm)
+                ShowerHero(start:start, dorm:data.dorm, unconfirmed:data.showerUnconfirmed)
                     .transition(heroTransition)
             } else {
                 VStack(alignment:.leading, spacing:14) {

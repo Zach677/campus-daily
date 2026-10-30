@@ -259,6 +259,7 @@ import WaterCore
         }
     }
     func run(start: Bool, allowDeviceSelection: Bool = false) async throws {
+        let tapped = Date()
         guard !busy else { throw WaterError.busy }
         guard !start || (!reviewingIdentity && !residenceReviewRequired) else {throw OnboardingError.identity}
         guard let controller, let config else { throw WaterError.invalidConfig }
@@ -270,7 +271,7 @@ import WaterCore
         defer { busy = false; selectionAllowed = false }
         do {
             if start {
-                try await controller.start(config:config,preferredPeripheral:UserDefaults.standard.string(forKey:deviceKey(config)))
+                try await controller.start(config:config,preferredPeripheral:UserDefaults.standard.string(forKey:deviceKey(config)),startedAt:tapped)
                 if let id = controller.session?.peripheralID { UserDefaults.standard.set(id,forKey:deviceKey(config)) }
             }
             else { ShowerActivityController.shared.settling(); try await controller.finish(config: config) }

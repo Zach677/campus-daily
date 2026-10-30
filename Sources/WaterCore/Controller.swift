@@ -134,7 +134,9 @@ extension SessionStore {
         try Task.checkCancellation()
         return id
     }
-    public func start(config: WaterConfig, preferredPeripheral: String? = nil) async throws {
+    /// `startedAt`: when the user asked to start (the shower timer counts from the tap, not from the
+    /// end of the Bluetooth scan). Display only; never used for billing.
+    public func start(config: WaterConfig, preferredPeripheral: String? = nil, startedAt: Date? = nil) async throws {
         try Task.checkCancellation()
         guard !busy else { throw WaterError.busy }
         guard !storageBlocked else { throw WaterError.storage }
@@ -148,7 +150,8 @@ extension SessionStore {
         guard try WaterProtocol.identity(frame) == config.machineID.uppercased() else { throw WaterError.wrongDevice }
         try Task.checkCancellation()
         let previous = session
-        var value = WaterSession(stage: .authorizationPending, machineID: config.machineID.uppercased(), peripheralID: id)
+        var value = WaterSession(stage: .authorizationPending, machineID: config.machineID.uppercased(), peripheralID: id,
+                                 startedAt: min(startedAt ?? Date(), Date()))
         try persist(value)
         // Nothing has been sent yet: a cancellation here leaves no record behind.
         do { try Task.checkCancellation() } catch { rollBack(to: previous); throw error }

@@ -198,19 +198,43 @@ struct ShowerClock: View {
 struct ShowerHero: View {
     let start: Date
     let dorm: String?
+    /// Authorization write not confirmed by the device (stage .authorizationWritePending).
+    var unconfirmed = false
+    /// Once the line has been shown, keep its space after it fades so nothing below moves.
+    @State private var keepLineSpace = false
     var body: some View {
         VStack(alignment:.leading, spacing:0) {
-            // Dot sits on the first line even when a large text size wraps the label.
-            HStack(alignment:.firstTextBaseline, spacing:7) {
-                PulseDot().alignmentGuide(.firstTextBaseline) { $0[.bottom] + 2 }
-                Text(["正在洗澡", dorm].compactMap { $0 }.joined(separator:" · "))
-                    .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+            // Status, time and the unconfirmed line read as one VoiceOver element, in that order.
+            VStack(alignment:.leading, spacing:0) {
+                // Dot sits on the first line even when a large text size wraps the label.
+                HStack(alignment:.firstTextBaseline, spacing:7) {
+                    PulseDot().alignmentGuide(.firstTextBaseline) { $0[.bottom] + 2 }
+                    Text(["正在洗澡", dorm].compactMap { $0 }.joined(separator:" · "))
+                        .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+                }
+                ShowerClock(start:start)
+                    .scaledFont(76, .semibold, design:.rounded, relativeTo:.largeTitle, cap:96)
+                    .monospacedDigit().tracking(-2).foregroundStyle(Theme.ink)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                    .padding(.top,6)
+                if unconfirmed || keepLineSpace {
+                    HStack(alignment:.firstTextBaseline, spacing:5) {
+                        Image(systemName:"exclamationmark.circle").scaledFont(13, relativeTo:.footnote)
+                            .accessibilityHidden(true)
+                        Text(ShowerCopy.writeUnconfirmed).scaledFont(13, relativeTo:.footnote)
+                            .fixedSize(horizontal:false, vertical:true)
+                    }
+                    .foregroundStyle(Theme.ink2)
+                    .padding(.top,4)
+                    .opacity(unconfirmed ? 1 : 0)
+                    .accessibilityHidden(!unconfirmed)
+                    .transition(.opacity)
+                }
             }
-            ShowerClock(start:start)
-                .scaledFont(76, .semibold, design:.rounded, relativeTo:.largeTitle, cap:96)
-                .monospacedDigit().tracking(-2).foregroundStyle(Theme.ink)
-                .lineLimit(1).minimumScaleFactor(0.6)
-                .padding(.top,6)
+            .accessibilityElement(children:.combine)
+            .animation(.easeInOut(duration:0.2), value:unconfirmed)
+            .onAppear { if unconfirmed { keepLineSpace = true } }
+            .onChange(of:unconfirmed) { _, value in if value { keepLineSpace = true } }
             Text("按水控上的出水键就有热水，结算后显示费用。")
                 .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
                 .fixedSize(horizontal:false, vertical:true)

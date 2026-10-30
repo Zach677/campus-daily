@@ -34,8 +34,8 @@ import WaterCore
         guard let session else { return endNow() }
         switch session.stage {
         case .active, .authorizationWritePending:
-            // Only a confirmed .active session creates an activity; a write-pending one may keep it.
-            if session.stage == .active || activity != nil { startOrResume(session.startedAt) }
+            // Write-pending shows as 洗澡中 too (water may be running), with the unconfirmed line.
+            startOrResume(session.startedAt, writeUnconfirmed:session.stage == .authorizationWritePending)
         case .closeWritePending, .settlementPending:
             // Close was sent but not confirmed (refresh only sees this after a failed finish or a relaunch).
             end(.init(startedAt:session.startedAt, phase:.unconfirmed), after:Date().addingTimeInterval(15 * 60))
@@ -53,8 +53,9 @@ import WaterCore
         }
     }
 
-    private func startOrResume(_ startedAt: Date) {
-        let state = ShowerActivityAttributes.ContentState(startedAt:startedAt, phase:.active)
+    private func startOrResume(_ startedAt: Date, writeUnconfirmed: Bool = false) {
+        let state = ShowerActivityAttributes.ContentState(startedAt:startedAt, phase:.active,
+                                                          writeUnconfirmed:writeUnconfirmed ? true : nil)
         if let activity {
             // E.g. a failed finish that left the session active: show the button again.
             guard activity.content.state != state else { return }

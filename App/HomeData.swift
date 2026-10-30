@@ -82,6 +82,8 @@ struct HomeData {
     var powerLowLine: Decimal = 10
     var water = Water.idle
     var waterIssue: String?
+    /// Showering, but the device never confirmed the authorization write (adds one line under the timer).
+    var showerUnconfirmed = false
     var lastShowerMinutes: Int?
     var lastShowerCost: Decimal?
     var laundryBound = false
@@ -167,8 +169,7 @@ extension HomeData {
 
         let stage = model.stage
         if !model.configured { water = .unconfigured }
-        // Only a confirmed .active is 洗澡中; an unconfirmed authorization write shows as 待核对 (finish stays on the water page).
-        else if stage == .active, let start = model.sessionStarted { water = model.busy ? .settling(start) : .showering(start) }
+        else if let stage, stage.mayClose, let start = model.sessionStarted { water = model.busy ? .settling(start) : .showering(start) }
         else if model.busy && (stage == nil || stage == .settled) { water = .starting }
         else if let stage, stage != .settled {
             water = .unresolved(stage == .closeWritePending || stage == .settlementPending ? "上次结算还没确认" : stage.label)
@@ -177,6 +178,7 @@ extension HomeData {
         else if model.schoolClosed, stage == nil || stage == .settled { water = .unavailable(model.status) }
         else { water = .idle }
         if model.problem, water == .idle { waterIssue = model.status }
+        showerUnconfirmed = stage == .authorizationWritePending && water.showering != nil
         var recents: [Recent] = []
         if stage == .settled, let start = model.sessionStarted, let end = model.lastEnded {
             let minutes = max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
@@ -238,6 +240,8 @@ enum HomeDemo: String, CaseIterable {
     case settingsOff = "settings-notif-off"
     case settingsAsk = "settings-ask"
     case unconfirmedRow = "unconfirmed-row"
+    /// Showering while the authorization write is unconfirmed (stage .authorizationWritePending).
+    case showerUnconfirmed = "shower-unconfirmed"
     case laundryRun = "home-laundry-run"
     case laundryCheck = "home-laundry-check"
     /// Hot-water row when the build has no bundled platform profile (OnboardingError.platform).
@@ -291,6 +295,10 @@ enum HomeDemo: String, CaseIterable {
             return (empty, nil)
         case .shower:
             data.water = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
+            return (data, nil)
+        case .showerUnconfirmed:
+            data.water = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
+            data.showerUnconfirmed = true
             return (data, nil)
         case .settled:
             data.recents.insert(.init(id:"demo-new", emoji:"🚿", title:"热水 · 11 分钟", date:now, detail:nil, amount:Decimal(string:"1.32")), at:0)

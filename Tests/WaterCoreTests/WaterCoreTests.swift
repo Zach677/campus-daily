@@ -122,6 +122,19 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
         #expect(c.session?.stage == .active)
         #expect(t.disconnections == 1)
     }
+    @Test func sessionTimerStartsAtTapTime() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        let tapped = Date().addingTimeInterval(-12)
+        try await c.start(config:config,startedAt:tapped)
+        #expect(c.session?.startedAt == tapped && s.value?.startedAt == tapped)
+    }
+    @Test func futureTapTimeIsClampedToNow() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        try await c.start(config:config,startedAt:Date().addingTimeInterval(3600))
+        #expect((c.session?.startedAt ?? .distantFuture) <= Date())
+    }
     @Test func wrongDeviceNeverRequestsAuthorization() async throws {
         let t = Transport(), p = Provider(), s = Store()
         t.replies = [.success(Data([0x55,0x55,0x66,0x77,0x88] + [UInt8](repeating: 0, count: 15)))]
