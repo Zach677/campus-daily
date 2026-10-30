@@ -98,6 +98,7 @@ struct HomeView: View {
         .sensoryFeedback(.impact(weight:.medium), trigger:startTick)
         .sensoryFeedback(.success, trigger:successTick)
         .sensoryFeedback(.error, trigger:errorTick)
+        .accountSwitchAlert { campus.hotWaterSetupRequested = true; settings = true }
         .sheet(isPresented:$settings) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
         .fullScreenCover(item:$onboarding, onDismiss:{ didSeeQuickSetup = true }) { request in
             // .id: a new request must reset the cover's @State (step), not reuse it.
@@ -180,6 +181,13 @@ struct HomeView: View {
                 // Fresh push so the page's @State starts from this demo.
                 path = []
                 Task { try? await Task.sleep(for:.milliseconds(350)); path = [.laundry] }
+                return
+            }
+            if url.host == "demo", url.lastPathComponent.hasPrefix("account-switched") {
+                // B2 alert over the home demo; 「-water」 adds the hot-water line and button.
+                onboarding = nil; settings = false; path = []
+                demo = HomeDemo.normal.content().0
+                campus.switchNotice = AccountSwitchNotice(hotWaterCleared:url.lastPathComponent.hasSuffix("-water"))
                 return
             }
             if url.host == "demo", url.lastPathComponent == "permission" {

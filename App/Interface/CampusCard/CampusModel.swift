@@ -27,6 +27,10 @@ struct PowerChoice: Identifiable, Equatable {
     /// The account signed in with the app's own form (nil after a web sign-in, which never
     /// tells us the account). Its password is present only when the user chose to save it.
     @Published private(set) var account: SchoolAccount?
+    /// A login was a different person; the alert is shown once by the top-most screen.
+    @Published var switchNotice: AccountSwitchNotice?
+    /// 「去设置热水」 from a screen outside Settings: Settings opens 热水 when it appears.
+    @Published var hotWaterSetupRequested = false
     private var lastRefresh: Date?
     private var refreshesRunning = 0
     /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.
@@ -92,7 +96,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// The official ecykt page finished signing in: adopt its `elecampus_state`, and keep the
     /// dorm address the portal page showed (read by the same sign-in).
     func adoptWebState(_ login: CampusWebLogin) async throws {
-        _ = try await session.adoptWebState(login.state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
+        let summary = try await session.adoptWebState(login.state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
+        if summary.switchedAccount { await previousPersonCleared() }
         await refresher.noteChange()
         let raw = login.dormAddress.trimmingCharacters(in:.whitespacesAndNewlines)
         if !raw.isEmpty {
@@ -110,25 +115,33 @@ struct PowerChoice: Identifiable, Equatable {
     /// The app's own login form. Throws `SchoolLoginFailure` for the login itself (shown on the
     /// form), or a service / storage error for the steps after it.
     func signIn(account: String, password: String, savePassword: Bool) async throws {
-        _ = try await session.signIn(account:account, password:password, savePassword:savePassword)
+        let summary = try await session.signIn(account:account, password:password, savePassword:savePassword)
+        if summary.switchedAccount { await previousPersonCleared() }
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
         powerChoices = []; powerMatchIssue = nil
     }
 
-    /// Settings › 学校账号 › 保存密码 on: one login checks the password before it is kept.
-    /// Without a known account (signed in on the web page) it is a full sign-in with `account`,
-    /// so the card session and the saved password are the same person's.
+    /// The login was someone else: Core already dropped their school data. Here: the widget
+    /// snapshot, the hot-water binding made with their identity, and the one-time alert.
+    /// Laundry (U净) is its own login and stays.
+    private func previousPersonCleared() async {
+        try? await refresher.clear()
+        snapshot = .empty
+        let hotWater = ShowerModel.shared.clearBindingForAccountSwitch()
+        switchNotice = AccountSwitchNotice(hotWaterCleared:hotWater)
+    }
+
+    /// Settings › 学校账号 › 保存密码 on / 重新输入密码: one login checks the password before it
+    /// is kept. Never switches person: Core refuses another account (`differentAccount`).
+    /// Without a known account (signed in on the web page) the typed one is checked against
+    /// the signed-in card.
     func savePassword(_ password: String, account typed: String?) async throws {
-        if let known = account?.account, !known.isEmpty {
-            try await session.savePassword(password, account:known)
-            reload()
-        } else if let typed, !typed.isEmpty {
-            try await signIn(account:typed, password:password, savePassword:true)
-            await refresh(force:true)
-        } else {
-            throw SchoolLoginFailure.wrongCredentials
-        }
+        let known = account?.account
+        guard let name = known ?? typed, !name.isEmpty else { throw SchoolLoginFailure.wrongCredentials }
+        try await session.savePassword(password, account:name)
+        reload()
+        if known == nil { await refresh(force:true) }
     }
 
     /// 保存密码 off: the password goes at once; the account stays for display.

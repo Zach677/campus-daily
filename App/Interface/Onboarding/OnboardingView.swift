@@ -85,6 +85,7 @@ struct OnboardingView: View {
         }
         .tint(Theme.accentText)
         .typesettingLanguage(Theme.typesetting)
+        .accountSwitchAlert { openDormPicker() }
         .sheet(isPresented:$login) {
             CampusLoginSheet { value in
                 do {

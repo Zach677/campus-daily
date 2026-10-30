@@ -78,6 +78,8 @@ struct CampusLoginSheet: View {
                     }
                 }
         }
+        // An account-switch alert waits until this sheet has closed.
+        .holdsAccountSwitchAlert()
     }
     /// Spinner instead of the page (a stalled automation shows the page and its buttons).
     private var hidden: Bool { browser.progress.concealed && !browser.stalled }

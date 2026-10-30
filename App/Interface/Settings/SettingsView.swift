@@ -22,6 +22,8 @@ struct SettingsView: View {
     private var data: HomeData { preview ?? HomeData(campus:campus, water:water, laundry:laundry) }
     /// DEBUG demo: the switch flips locally (seeded from the demo data).
     @State private var previewLaundry: Bool?
+    /// 「去设置热水」 after an account switch.
+    @State private var hotWaterSetup = false
 
     /// 「学校洗衣机」 switch.
     var laundryOn: Bool { preview != nil ? (previewLaundry ?? preview?.laundryEnabled ?? true) : laundry.schoolEnabled }
@@ -100,9 +102,14 @@ struct SettingsView: View {
                     Button { dismiss() } label: { Text("完成").fontWeight(.semibold).foregroundStyle(Theme.accentText) }
                 }
             }
-            
+            .navigationDestination(isPresented:$hotWaterSetup) {
+                if water.configured { ShowerDetail() } else { CampusOnboardingView() }
+            }
+            .onAppear { if campus.hotWaterSetupRequested { campus.hotWaterSetupRequested = false; hotWaterSetup = true } }
         }
         .tint(Theme.accentText)
+        // On the stack, not its root: pushing a page must not hand the alert to the screen below.
+        .accountSwitchAlert { hotWaterSetup = true }
         .presentationDetents([.large])
     }
 }
@@ -250,6 +257,8 @@ struct AccountView: View {
     @State private var typedPassword = ""
     @State private var saving = false
     @State private var saveIssue: String?
+    /// The typed account isn't the signed-in one: nothing saved, nobody switched (B2).
+    @State private var differentAccount = false
     /// DEBUG demo: the switch flips locally (seeded from the demo data).
     @State private var previewSaved: Bool?
     private var signedIn: Bool { preview?.signedIn ?? campus.configured }
@@ -331,6 +340,11 @@ struct AccountView: View {
         } message: {
             Text("密码只存在这台 iPhone 的钥匙串里。")
         }
+        .alert(SchoolLoginText.differentAccountTitle, isPresented:$differentAccount) {
+            Button("好", role:.cancel) {}
+        } message: {
+            Text(SchoolLoginText.differentAccountMessage)
+        }
         .confirmationDialog("退出学校账号？", isPresented:$confirmSignOut, titleVisibility:.visible) {
             // DEBUG demo data: the dialog shows, nothing is signed out.
             Button("退出登录", role:.destructive) { if preview == nil { campus.signOut() } }
@@ -354,6 +368,8 @@ struct AccountView: View {
                 try await campus.savePassword(password, account:account == nil ? name : nil)
             } catch SchoolLoginFailure.wrongCredentials {
                 saveIssue = askedAccount ? "账号或密码不对，没保存。" : "密码不对，没保存。"
+            } catch SchoolLoginFailure.differentAccount {
+                differentAccount = true
             } catch {
                 saveIssue = SchoolLoginText.text(error)
             }
