@@ -85,7 +85,7 @@ public struct PowerNode: Sendable, Equatable, Hashable, Codable {
 /// One `getMeterStatus` row. All server fields are strings; numbers are parsed strictly.
 public struct Meter: Sendable, Equatable, Codable {
     public var comAddress: String
-    /// `piplineName`, e.g. "9栋199".
+    /// `piplineName`, e.g. "99栋991".
     public var name: String
     public var leftMoney: Money?
     public var remainingKWh: Decimal?

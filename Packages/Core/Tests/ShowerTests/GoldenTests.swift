@@ -10,7 +10,7 @@ enum Golden {
     static let sid = "fixture-sid=1"
     static let frame = Data([0x55, 0x11, 0x22, 0x33, 0x44] + (0..<15).map { UInt8($0) })
     static let profile = ShowerPlatformProfile(secret: secret, sid: sid, bleName: "fixture-ble", typeId: "1", version: "3")
-    static let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "9栋 199")
+    static let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "99栋 991")
 
     static let operationWxcode = "studentId=S1234567*_schoolId=20021*_machineid=11223344*_machinedata=5511223344000102030405060708090A0B0C0D0E*_typeId=1*_alleywaytype=0*_rand=A1B2C3*_version=3"
     static let operationSign = "230d50952cd23127f1cd60a0f2c2b5ac"

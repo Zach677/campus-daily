@@ -20,13 +20,13 @@ struct Harness {
         SnapshotRefresher(school: session(), store: snapshots)
     }
 
-    func signedIn(portal: Bool = false, meter: MeterBinding? = nil, residence: String = "星湖校区9栋9号1层199房") throws {
+    func signedIn(portal: Bool = false, meter: MeterBinding? = nil, residence: String = "星湖校区99栋9号1层991房") throws {
         try vault.saveEcyktSession(T.session())
         if portal { try vault.savePortalToken(PortalToken("PORTAL")) }
         try vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: residence), meter: meter))
     }
 
-    static let roomBinding = MeterBinding(nodeID: "991001001000109000001003", comAddress: "000000000199", label: "9栋 199", nodeIsRoom: true)
+    static let roomBinding = MeterBinding(nodeID: "991001001000109000001003", comAddress: "000000000991", label: "99栋 991", nodeIsRoom: true)
 
     func loginBySysIdCalls() -> Int { server.requests(path: "/loginBySysId").count }
     func livenessCalls() -> Int { server.requests(path: "/getSysBindCustInfo").count }
@@ -44,7 +44,7 @@ final class SchoolRefreshTests: XCTestCase {
         XCTAssertEqual(report.snapshot.card.value, Money(fen: 790))
         XCTAssertEqual(report.snapshot.card.fetchedAt, h.clock.now)
         XCTAssertEqual(report.snapshot.power.value?.leftMoney, Money(fen: 3692))
-        XCTAssertEqual(report.snapshot.roomLabel, "9栋 199")
+        XCTAssertEqual(report.snapshot.roomLabel, "99栋 991")
         XCTAssertFalse(report.snapshot.needsLogin)
         XCTAssertTrue(report.snapshotSaved)
         let saved = try XCTUnwrap(try h.snapshots.loadSnapshot())
@@ -64,7 +64,7 @@ final class SchoolRefreshTests: XCTestCase {
         try h.signedIn(meter: Harness.roomBinding)
         let t0 = h.clock.now
         var old = SchoolSnapshotReducer.reduce(.empty, .balance(.success(Money(fen: 790)), at: t0))
-        old = SchoolSnapshotReducer.reduce(old, .meter(.success(Meter(comAddress: "000000000199", name: "9栋199")), at: t0))
+        old = SchoolSnapshotReducer.reduce(old, .meter(.success(Meter(comAddress: "000000000991", name: "99栋991")), at: t0))
         try h.snapshots.saveSnapshot(old)
         h.clock.advance(3600)
         try h.server.serve("ecykt/getSysBindCustInfo-badToken")
@@ -161,7 +161,7 @@ final class SchoolRefreshTests: XCTestCase {
         let reading = await h.session().refresh(inBackground: true)
         XCTAssertEqual(reading.outcome, .ok)
         XCTAssertEqual(reading.balance, .success(Money(fen: 790)))
-        XCTAssertEqual(reading.roomLabel, "9栋 199")
+        XCTAssertEqual(reading.roomLabel, "99栋 991")
         XCTAssertEqual(reading.checkedAt, h.clock.now)
         XCTAssertNil(try h.store.read(.sharedSnapshot))
         try await h.session().signOut()
@@ -271,7 +271,7 @@ final class SchoolElectricityTests: XCTestCase {
         return T.editingData(f) { data in
             guard let text = data.text, case .array(var rows)? = try? JSONValue.parse(text) else { return }
             for (i, name) in extra.enumerated() {
-                rows.append(.object(["comAddress": .string(i == 0 ? "000000000199" : "00000000099\(i)"), "piplineName": .string(name),
+                rows.append(.object(["comAddress": .string(i == 0 ? "000000000991" : "00000000099\(i)"), "piplineName": .string(name),
                                      "type": .string("电表"), "leftMoney": .string("36.92"), "remaining": .string("52.00"),
                                      "onlineStatus": .string("在线")]))
             }
@@ -292,12 +292,12 @@ final class SchoolElectricityTests: XCTestCase {
     func testMatchesByPiplineNameAndSavesRoomNode() async throws {
         let h = Harness()
         try h.signedIn()
-        h.server.serve(try campusMeters(extra: ["9栋199"]), matchBody: ["server", "buildingID"])
+        h.server.serve(try campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try serveTree(h)
         let result = try await h.session().resolveElectricity()
         guard case .matched(let binding, let meter) = result else { return XCTFail("\(result)") }
         XCTAssertEqual(binding, Harness.roomBinding)
-        XCTAssertEqual(meter.name, "9栋199")
+        XCTAssertEqual(meter.name, "99栋991")
         XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
         XCTAssertTrue(h.server.unmatched.isEmpty)
         XCTAssertEqual(h.server.requests.filter { $0.bodyField("server") == "/api/getMeterStatus" && $0.bodyField("buildingID") == "991001" }.count, 1,
@@ -307,13 +307,13 @@ final class SchoolElectricityTests: XCTestCase {
     func testFallsBackToCampusNodeWhenRoomNodeNotFound() async throws {
         let h = Harness()
         try h.signedIn()
-        h.server.serve(try campusMeters(extra: ["9栋199"]), matchBody: ["server", "buildingID"])
+        h.server.serve(try campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try h.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
         h.server.respond("POST", "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service",
                          bodyMatch: ["server": "/api/getBuildingInfo"], body: Data(#"{"code":0,"msg":"获取成功","data":"[]"}"#.utf8))
         let result = try await h.session().resolveElectricity()
         guard case .matched(let binding, _) = result else { return XCTFail("\(result)") }
-        XCTAssertEqual(binding, MeterBinding(nodeID: "991001", comAddress: "000000000199", label: "9栋 199", nodeIsRoom: false))
+        XCTAssertEqual(binding, MeterBinding(nodeID: "991001", comAddress: "000000000991", label: "99栋 991", nodeIsRoom: false))
     }
 
     func testZeroOrManyMatchesGoToPicker() async throws {
@@ -327,7 +327,7 @@ final class SchoolElectricityTests: XCTestCase {
 
         let many = Harness()
         try many.signedIn()
-        many.server.serve(try campusMeters(extra: ["9栋199", "9栋 199"]), matchBody: ["server", "buildingID"])
+        many.server.serve(try campusMeters(extra: ["99栋991", "99栋 991"]), matchBody: ["server", "buildingID"])
         try many.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
         let r2 = try await many.session().resolveElectricity()
         guard case .chooseAmong(let list) = r2 else { return XCTFail("\(r2)") }
@@ -352,10 +352,10 @@ final class SchoolSignInTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         let summary = try await h.session().signIn(portalToken: PortalToken("PORTAL"))
         XCTAssertEqual(summary.cardholder, "测试员")
-        XCTAssertEqual(summary.residence?.address?.meterName, "9栋199")
+        XCTAssertEqual(summary.residence?.address?.meterName, "99栋991")
         XCTAssertEqual(try h.vault.portalToken(), PortalToken("PORTAL"))
         XCTAssertEqual(try h.vault.ecyktSession()?.cardUnionID, "TESTid00000000000000000000000001")
-        XCTAssertEqual(try h.vault.profile()?.residence?.raw, "星湖校区9栋9号1层199房")
+        XCTAssertEqual(try h.vault.profile()?.residence?.raw, "星湖校区99栋9号1层991房")
     }
 
     func testAdoptWebStateFallback() async throws {

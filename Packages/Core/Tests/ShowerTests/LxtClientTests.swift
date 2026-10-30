@@ -156,7 +156,7 @@ struct FakeDirectory: ShowerDirectory {
 }
 
 final class ShowerOnboardingTests: XCTestCase {
-    let address = DormAddress.parse("星湖校区9栋9号1层199房")!
+    let address = DormAddress.parse("星湖校区99栋9号1层991房")!
 
     func fixtureServer() throws -> StubServer {
         let server = StubServer()
@@ -171,10 +171,10 @@ final class ShowerOnboardingTests: XCTestCase {
         let server = try fixtureServer()
         let onboarding = ShowerOnboarding(directory: Golden.client(server))
         let result = try await onboarding.match(address, schoolId: "20021")
-        let path = [AreaNode(id: "997000000000014501", name: "星湖校区"), AreaNode(id: "997000000000090009", name: "9栋"),
-                    AreaNode(id: "997000000000090101", name: "一楼"), AreaNode(id: "991000000000000002", name: "199")]
+        let path = [AreaNode(id: "997000000000014501", name: "星湖校区"), AreaNode(id: "997000000000090009", name: "99栋"),
+                    AreaNode(id: "997000000000090101", name: "一楼"), AreaNode(id: "991000000000000002", name: "991")]
         XCTAssertEqual(result, .matched(path: path, machine: ShowerMachine(machineId: "1A2B3C4D", name: "9-901", mac: "02:00:00:00:00:01")))
-        XCTAssertEqual(ShowerOnboarding.roomLabel(path), "9栋 199")
+        XCTAssertEqual(ShowerOnboarding.roomLabel(path), "99栋 991")
         XCTAssertTrue(ShowerOnboarding.pathMatches(path, address: address))
         XCTAssertTrue(server.unmatched.isEmpty)
         XCTAssertEqual(server.requests.map { $0.url.lastPathComponent },
@@ -184,15 +184,15 @@ final class ShowerOnboardingTests: XCTestCase {
     func testUnmatchedLevelHandsOptionsToThePicker() async throws {
         let server = try fixtureServer()
         let onboarding = ShowerOnboarding(directory: Golden.client(server))
-        let room200 = DormAddress.parse("星湖校区9栋9号1层200房")!
+        let room200 = DormAddress.parse("星湖校区99栋9号1层200房")!
         guard case .pick(let level, let options, let path) = try await onboarding.match(room200, schoolId: "20021") else {
             return XCTFail("expected pick")
         }
         XCTAssertEqual(level, .room)
-        XCTAssertEqual(options.map(\.name), ["197", "198", "199"])
-        XCTAssertEqual(path.map(\.name), ["星湖校区", "9栋", "一楼"])
+        XCTAssertEqual(options.map(\.name), ["989", "990", "991"])
+        XCTAssertEqual(path.map(\.name), ["星湖校区", "99栋", "一楼"])
 
-        let otherCampus = DormAddress.parse("示例校区9栋1层199房")!
+        let otherCampus = DormAddress.parse("示例校区99栋1层991房")!
         guard case .pick(.campus, let campuses, let none) = try await onboarding.match(otherCampus, schoolId: "20021") else {
             return XCTFail("expected campus pick")
         }
@@ -203,7 +203,7 @@ final class ShowerOnboardingTests: XCTestCase {
     func testRoomWithoutControllerAndUnknownAddress() async throws {
         let server = try fixtureServer()
         let onboarding = ShowerOnboarding(directory: Golden.client(server))
-        let path = [AreaNode(id: "999999999999999999", name: "199")]
+        let path = [AreaNode(id: "999999999999999999", name: "991")]
         do { let r = try await onboarding.controllers(path: path, schoolId: "20021"); XCTAssertEqual(r, .noController(path: path, message: "这个房间没有水控")) }
         do { let r = try await onboarding.match(address, schoolId: "999999999999999999"); XCTAssertEqual(r, .addressUnknown(message: "查无此信息，请联系管理员完善地址信息！")) }
     }
@@ -211,13 +211,13 @@ final class ShowerOnboardingTests: XCTestCase {
     func testAmbiguityIsNeverResolvedByGuessing() async throws {
         let tree: [String: [AreaNode]] = [
             "S": [AreaNode(id: "c", name: "星湖校区")],
-            "c": [AreaNode(id: "b1", name: "9栋"), AreaNode(id: "b2", name: "9幢")],
+            "c": [AreaNode(id: "b1", name: "99栋"), AreaNode(id: "b2", name: "99幢")],
         ]
         let onboarding = ShowerOnboarding(directory: FakeDirectory(tree: tree))
         let r = try await onboarding.match(address, schoolId: "S")
         XCTAssertEqual(r, .pick(level: .building, options: tree["c"]!, path: [AreaNode(id: "c", name: "星湖校区")]))
 
-        let path = [AreaNode(id: "c", name: "星湖校区"), AreaNode(id: "b", name: "9栋"), AreaNode(id: "f", name: "1层"), AreaNode(id: "r", name: "199房")]
+        let path = [AreaNode(id: "c", name: "星湖校区"), AreaNode(id: "b", name: "99栋"), AreaNode(id: "f", name: "1层"), AreaNode(id: "r", name: "991房")]
         let two = [ShowerMachine(machineId: "00000001", name: "a", mac: ""), ShowerMachine(machineId: "00000002", name: "b", mac: "")]
         let many = ShowerOnboarding(directory: FakeDirectory(tree: [:], machineRows: ["r": two]))
         do { let r = try await many.controllers(path: path, schoolId: "S"); XCTAssertEqual(r, .chooseMachine(path: path, machines: two)) }

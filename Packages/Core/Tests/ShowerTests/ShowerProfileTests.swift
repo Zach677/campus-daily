@@ -62,7 +62,7 @@ final class ShowerProfileTests: XCTestCase {
         let vault = StoredShowerVault(store: store)
         XCTAssertNil(try vault.binding())
         XCTAssertNil(try vault.showerState())
-        let binding = ShowerBinding(studentId: "S1", schoolId: "20021", machineId: "1a2b3c4d", roomId: "r", roomLabel: "9栋 199",
+        let binding = ShowerBinding(studentId: "S1", schoolId: "20021", machineId: "1a2b3c4d", roomId: "r", roomLabel: "99栋 991",
                                    machineName: "9-901", peripheralID: "P")
         XCTAssertEqual(binding.machineId, "1A2B3C4D")
         try vault.saveBinding(binding)

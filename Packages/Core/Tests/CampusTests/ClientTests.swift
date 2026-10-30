@@ -53,7 +53,7 @@ final class PortalClientTests: XCTestCase {
         let server = StubServer()
         try server.serve("portal/getMyInfo-ok")
         let r = try await PortalClient(http: server.makeClient()).myInfo(PortalToken("PT"))
-        XCTAssertEqual(r.raw, "星湖校区9栋9号1层199房")
+        XCTAssertEqual(r.raw, "星湖校区99栋9号1层991房")
         XCTAssertEqual(r.address?.chineseFloorLabel, "一楼")
         let req = try XCTUnwrap(server.requests.first)
         XCTAssertEqual(req.header("X-Id-Token"), "PT")
@@ -295,11 +295,11 @@ final class EcyktElectricityTests: XCTestCase {
         let l1 = try await c.buildings(T.session(), parent: "991001")
         XCTAssertEqual(l1.first?.name, "半山公寓")
         let l2 = try await c.buildings(T.session(), parent: "991001001")
-        XCTAssertEqual(l2.map(\.name), ["1栋", "2栋", "9栋"])
+        XCTAssertEqual(l2.map(\.name), ["1栋", "2栋", "99栋"])
         let l3 = try await c.buildings(T.session(), parent: "991001001000109")
         XCTAssertEqual(l3.map(\.name), ["1楼", "2楼", "3楼"])
         let l4 = try await c.buildings(T.session(), parent: "991001001000109000001")
-        XCTAssertEqual(l4.map(\.name), ["197", "198", "199"])
+        XCTAssertEqual(l4.map(\.name), ["989", "990", "991"])
         let leaf = try await c.buildings(T.session(), parent: "991001001000109000001003")
         XCTAssertEqual(leaf, [])
         XCTAssertTrue(s.unmatched.isEmpty)
@@ -320,7 +320,7 @@ final class EcyktElectricityTests: XCTestCase {
         XCTAssertEqual(campus[0].leftMoney, Money(fen: 5000))
         XCTAssertEqual(campus[0].online, true)
         let room = try await c.meters(T.session(), nodeID: "991001001000109000001003")
-        XCTAssertEqual(room, [Meter(comAddress: "000000000199", name: "9栋199", leftMoney: Money(fen: 3692),
+        XCTAssertEqual(room, [Meter(comAddress: "000000000991", name: "99栋991", leftMoney: Money(fen: 3692),
                                     remainingKWh: DecimalText.parse("52.00"), dailyUseKWh: DecimalText.parse("3.2"),
                                     price: DecimalText.parse("0.7100"), online: true, switchState: "合闸-", updatedAt: "2026-10-30 08:10:22")])
         let floor = try await c.meters(T.session(), nodeID: "991001001000109000001")
@@ -338,7 +338,7 @@ final class EcyktElectricityTests: XCTestCase {
 
         let room = try FixtureLoader.load("ecykt/electric-getMeterStatus-room")
         let cases: [(JSONValue, String)] = [
-            (.string(#"[{"piplineName":"9栋199"}]"#), "data[0].comAddress"),
+            (.string(#"[{"piplineName":"99栋991"}]"#), "data[0].comAddress"),
             (.string("not json"), "data<json>"),
             (.int(3), "data"),
         ]

@@ -28,14 +28,14 @@
     "body": {
       "msg": "获取成功",
       "code": 0,
-      "data": "[{\"comAddress\":\"000000000199\",\"piplineName\":\"9栋199\",\"type\":\"电表\",\"meterData\":\"1234.5600\",\"leftMoney\":\"36.92\",\"preUseDay\":\"3.2\",\"meterStatus\":\"合闸-\",\"updateDateTime\":\"2026-10-30 08:10:22\",\"onlineStatus\":\"在线\",\"price\":\"0.7100\",\"remaining\":\"52.00\"}]"
+      "data": "[{\"comAddress\":\"000000000991\",\"piplineName\":\"99栋991\",\"type\":\"电表\",\"meterData\":\"1234.5600\",\"leftMoney\":\"36.92\",\"preUseDay\":\"3.2\",\"meterStatus\":\"合闸-\",\"updateDateTime\":\"2026-10-30 08:10:22\",\"onlineStatus\":\"在线\",\"price\":\"0.7100\",\"remaining\":\"52.00\"}]"
     }
   },
   "_fixture": {
     "capturedAt": "2026-10-30",
     "redacted": true,
     "synthetic": {
-      "$.data<json>": "Synthetic meter for the faked user room 9栋199."
+      "$.data<json>": "Synthetic meter for the faked user room 99栋991."
     }
   }
 }

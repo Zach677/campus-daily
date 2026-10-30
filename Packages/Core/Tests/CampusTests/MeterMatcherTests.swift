@@ -3,8 +3,8 @@ import Core
 
 final class MeterMatcherTests: XCTestCase {
     func testMatchOneNoneMany() throws {
-        let a = try XCTUnwrap(DormAddress.parse("星湖校区9栋9号1层199房"))
-        let m1 = Meter(comAddress: "1", name: "9栋199"), m2 = Meter(comAddress: "2", name: "9栋198"), m3 = Meter(comAddress: "3", name: "9栋199")
+        let a = try XCTUnwrap(DormAddress.parse("星湖校区99栋9号1层991房"))
+        let m1 = Meter(comAddress: "1", name: "99栋991"), m2 = Meter(comAddress: "2", name: "99栋990"), m3 = Meter(comAddress: "3", name: "99栋991")
         XCTAssertEqual(MeterMatcher.match([m1, m2], address: a), .one(m1))
         XCTAssertEqual(MeterMatcher.match([m2], address: a), .none)
         XCTAssertEqual(MeterMatcher.match([m1, m2, m3], address: a), .many([m1, m3]))

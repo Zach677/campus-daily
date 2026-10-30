@@ -78,7 +78,7 @@ final class TaskBox: @unchecked Sendable {
 
 final class ShowerEngineTests: XCTestCase {
     let machine = "11223344"
-    let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "9栋 199")
+    let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "99栋 991")
     let auth = ShowerAuthorization(machineID: "11223344", payload: Data((0..<15).map { UInt8(0x30 + $0) }), authorizationID: "001122FF")
     let close = Data([0xAC, 0x55, 0x44, 0x77, 0xAA])
     let receipt = ShowerReceipt(amount: Money(fen: 163))

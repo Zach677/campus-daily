@@ -19,14 +19,14 @@ final class CountingSecureStore: SecureStore, @unchecked Sendable {
 final class LegacyShowerBindingTests: XCTestCase {
     /// The old shape: the direct fields plus an `access` grant (synthetic values).
     static let legacyJSON = Data("""
-    {"studentId":"S1234567","schoolId":"20021","machineId":"11223344","roomId":"R1","roomLabel":"9栋 199",
-     "machineName":"9-199","peripheralID":"P-SYNTH-1",
+    {"studentId":"S1234567","schoolId":"20021","machineId":"11223344","roomId":"R1","roomLabel":"99栋 991",
+     "machineName":"99-991","peripheralID":"P-SYNTH-1",
      "access":{"token":"SYNTH-ACCESS-TOKEN","campusOwner":"synthetic","expiresAt":1793300000000,
                "bleName":"SYNTH","typeID":1,"version":2}}
     """.utf8)
 
     static let direct = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1",
-                                      roomLabel: "9栋 199", machineName: "9-199", peripheralID: "P-SYNTH-1")
+                                      roomLabel: "99栋 991", machineName: "99-991", peripheralID: "P-SYNTH-1")
 
     func testOldBindingWithAccessDecodesAsADirectBinding() throws {
         let store = CountingSecureStore()

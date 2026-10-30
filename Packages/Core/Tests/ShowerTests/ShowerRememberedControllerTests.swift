@@ -21,7 +21,7 @@ extension ShowerEngineTests {
     }
 
     func testAnotherMachinesControllerIsNotPreferred() async throws {
-        let other = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "99999999", roomId: "R1", roomLabel: "9栋 199")
+        let other = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "99999999", roomId: "R1", roomLabel: "99栋 991")
         try vault.saveBinding(other)
         try vault.saveShowerState(ShowerState(phase: .idle, machineID: machine, peripheralID: "PERIPHERAL-B"))
         let e = try engine()

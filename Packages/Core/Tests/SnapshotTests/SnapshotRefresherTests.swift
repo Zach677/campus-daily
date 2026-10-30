@@ -34,7 +34,7 @@ final class ScriptedSchoolReader: SchoolReader, @unchecked Sendable {
 final class SnapshotRefresherTests: XCTestCase {
     let t0 = Date(timeIntervalSince1970: 1_000)
     let t1 = Date(timeIntervalSince1970: 2_000)
-    let meter = Meter(comAddress: "000000000199", name: "9栋199")
+    let meter = Meter(comAddress: "000000000991", name: "99栋991")
 
     func goodSnapshot() -> HomeSnapshot {
         var s = SchoolSnapshotReducer.reduce(.empty, .balance(.success(Money(fen: 790)), at: t0))
@@ -45,7 +45,7 @@ final class SnapshotRefresherTests: XCTestCase {
     func testRefreshReducesTheReadingAndWritesOnce() async {
         let store = RecordingSnapshotStore()
         let reader = ScriptedSchoolReader(SchoolReading(outcome: .ok, checkedAt: t1, balance: .success(Money(fen: 500)),
-                                                        meter: .success(meter), roomLabel: "9栋 199", readAt: t1))
+                                                        meter: .success(meter), roomLabel: "99栋 991", readAt: t1))
         let refresher = SnapshotRefresher(school: reader, store: store)
         let report = await refresher.refresh(inBackground: false)
         XCTAssertEqual(report.outcome, .ok)
@@ -55,7 +55,7 @@ final class SnapshotRefresherTests: XCTestCase {
         XCTAssertEqual(report.snapshot.card.value, Money(fen: 500))
         XCTAssertEqual(report.snapshot.card.fetchedAt, t1)
         XCTAssertEqual(report.snapshot.power.value, meter)
-        XCTAssertEqual(report.snapshot.roomLabel, "9栋 199")
+        XCTAssertEqual(report.snapshot.roomLabel, "99栋 991")
         XCTAssertEqual(report.snapshot.checkedAt, t1)
     }
 
@@ -80,9 +80,9 @@ final class SnapshotRefresherTests: XCTestCase {
 
     func testOneSourceFailingKeepsItsOldValueWhileTheOtherUpdates() async {
         let store = RecordingSnapshotStore(goodSnapshot())
-        let newer = Meter(comAddress: "000000000199", name: "9栋199", leftMoney: Money(fen: 1200))
+        let newer = Meter(comAddress: "000000000991", name: "99栋991", leftMoney: Money(fen: 1200))
         let reading = SchoolReading(outcome: .ok, checkedAt: t1, balance: .failure(.timedOut), meter: .success(newer),
-                                    roomLabel: "9栋 199", readAt: t1)
+                                    roomLabel: "99栋 991", readAt: t1)
         let report = await SnapshotRefresher(school: ScriptedSchoolReader(reading), store: store).refresh(inBackground: false)
         XCTAssertEqual(report.snapshot.card.value, Money(fen: 790))
         XCTAssertEqual(report.snapshot.card.fetchedAt, t0)

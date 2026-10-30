@@ -54,7 +54,7 @@
     "capturedAt": "2026-10-30",
     "redacted": true,
     "synthetic": {
-      "$.data": "Synthetic floor ids under the synthetic 9栋 (997000000000090009). Names match the real 一楼…七楼 pattern."
+      "$.data": "Synthetic floor ids under the synthetic 99栋 (997000000000090009). Names match the real 一楼…七楼 pattern."
     }
   }
 }

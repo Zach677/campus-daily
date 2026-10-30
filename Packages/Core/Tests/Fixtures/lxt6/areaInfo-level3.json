@@ -18,15 +18,15 @@
       "data": [
         {
           "id": "997000000000091197",
-          "name": "197"
+          "name": "989"
         },
         {
           "id": "997000000000091198",
-          "name": "198"
+          "name": "990"
         },
         {
           "id": "991000000000000002",
-          "name": "199"
+          "name": "991"
         }
       ],
       "serial": 1793321431224,
@@ -38,7 +38,7 @@
     "capturedAt": "2026-10-30",
     "redacted": true,
     "synthetic": {
-      "$.data": "Replaced with 3 synthetic rooms (197-199). '199' / 991000000000000002 is the faked user room used by portal/getMyInfo-ok (gydz ...9栋9号1层199房) and lxt6/getMachineMacAddress-ok (roomId). Shape (id: 18-digit string, name: room number string) matches the real response; ids and names are not real."
+      "$.data": "Replaced with 3 synthetic rooms (989-991). '991' / 991000000000000002 is the faked user room used by portal/getMyInfo-ok (gydz ...99栋9号1层991房) and lxt6/getMachineMacAddress-ok (roomId). Shape (id: 18-digit string, name: room number string) matches the real response; ids and names are not real."
     }
   }
 }

@@ -187,7 +187,7 @@ final class KeychainStoreTests: XCTestCase {
         let kc = appKeychain()
         let vault = StoredSchoolVault(store: appStore(kc))
         try vault.saveEcyktSession(EcyktSession(token: "t", syscustid: "s"))
-        try vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: "示例校区9栋9号1层199房")))
+        try vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: "示例校区99栋9号1层991房")))
         try vault.savePortalToken(PortalToken("p"))
         XCTAssertNotNil(kc.items[key(.schoolEcykt, group)])
         XCTAssertNotNil(kc.items[key(.schoolProfile, group)])
@@ -353,8 +353,8 @@ final class SchoolStoresTests: XCTestCase {
         XCTAssertEqual(try vault.ecyktSession(), s)
         try vault.savePortalToken(PortalToken("p"))
         XCTAssertEqual(try vault.portalToken(), PortalToken("p"))
-        let profile = SchoolProfile(residence: PortalResidence(raw: "示例校区9栋9号1层199房"),
-                                    meter: MeterBinding(nodeID: "n", comAddress: "a", label: "9栋 199", nodeIsRoom: true))
+        let profile = SchoolProfile(residence: PortalResidence(raw: "示例校区99栋9号1层991房"),
+                                    meter: MeterBinding(nodeID: "n", comAddress: "a", label: "99栋 991", nodeIsRoom: true))
         try vault.saveProfile(profile)
         XCTAssertEqual(try vault.profile(), profile)
         try vault.saveEcyktSession(nil)

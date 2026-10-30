@@ -80,7 +80,7 @@ public struct ShowerOnboarding: Sendable {
         }
     }
 
-    /// The binding label, e.g. "9栋 199".
+    /// The binding label, e.g. "99栋 991".
     public static func roomLabel(_ path: [AreaNode]) -> String {
         guard path.count == 4 else { return path.map(\.name).joined(separator: " ") }
         return path[1].name + " " + path[3].name

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The dorm address the portal registers (`getMyInfo.gydz`), e.g. "示例校区9栋9号1层199房".
+/// The dorm address the portal registers (`getMyInfo.gydz`), e.g. "示例校区99栋9号1层991房".
 /// Format: `<campus>校区 <building>栋|幢 [<unit>号] <floor>层|楼 <room>房|室`.
 public struct DormAddress: Sendable, Equatable, Hashable, Codable {
     public let campus: String
@@ -35,10 +35,10 @@ public struct DormAddress: Sendable, Equatable, Hashable, Codable {
         return DormAddress(campus: campus, building: building, unit: part(3), floor: floor, room: room)
     }
 
-    /// The electricity meter's `piplineName` for this room, e.g. "9栋199".
+    /// The electricity meter's `piplineName` for this room, e.g. "99栋991".
     public var meterName: String { building + "栋" + room }
 
-    /// Display label, e.g. "9栋 199".
+    /// Display label, e.g. "99栋 991".
     public var roomLabel: String { building + "栋 " + room }
 
     /// Chinese-numeral floor label used by the hot-water platform: 1 → "一楼", 12 → "十二楼".
@@ -76,7 +76,7 @@ public struct DormAddress: Sendable, Equatable, Hashable, Codable {
         [room, room + "房", room + "室"].contains(DormAddress.normalized(label))
     }
 
-    /// Exact match of an electricity `piplineName` ("9栋199"; "9栋 · 199" tolerated).
+    /// Exact match of an electricity `piplineName` ("99栋991"; "99栋 · 991" tolerated).
     public func matchesMeterName(_ label: String) -> Bool {
         let n = DormAddress.normalized(label)
         return n == meterName || n == meterName + "房" || n == meterName + "室"

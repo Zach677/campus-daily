@@ -592,10 +592,10 @@ phone, `studentid`, `userId`, `deptId`, `vsuppid`, appid, `headurl`, `voucherno`
 `username`/`userUid`, `organizationId`, `accountId`, `userId`, `imageUrl`,
 `organizationName`/`organizationCode`, `identityTypeId`, `userName`) are fake values. Numeric
 ids and ciphertexts use shapes no real value has, so `Scripts/privacy-check.sh` can allow them by whole value: zero-padded
-counters (`TESTid` + 26 digits, meter `000000000199`), numeric ids starting with `99` (dorm
+counters (`TESTid` + 26 digits, meter `000000000991`), numeric ids starting with `99` (dorm
 building ids `991001…`, hot-water area ids `997…`, room `991000000000000002`), or a few fixed
 placeholders listed in the script. Dorm data is synthetic: the faked user room is
-`星湖校区9栋9号1层199房` (meter `9栋199`, water room `199`), and the room/building lists around
+`星湖校区99栋9号1层991房` (meter `99栋991`, water room `991`), and the room/building lists around
 it are synthetic, as are all meter readings and balances (the campus-wide meter list
 `electric-getMeterStatus-ok` is 12 invented rows). Lists longer than 12 entries are cut to 12
 (`_fixture.truncatedLists` keeps the original length). A `_fixture.synthetic` note in a fixture
@@ -645,7 +645,7 @@ with an empty body**: treat it as a bad request, never as expiry.
 | `POST /api/customer/getSysBindCustInfo` | yes | `areacode, version, appid` | `[{custid, custunionid, custname, idno(masked), areaname, headurl, …}]` | RO |
 | `POST /scanpay/getUserBalance` | no | `custid` | yuan number | RO |
 | `POST /api/electricnew/service` `server=/api/getBuildingInfo` | no | `areacode, [buildingID]` | JSON string `[{buildingName, buildingID}]`; `[]` at a room | RO |
-| `POST /api/electricnew/service` `server=/api/getMeterStatus` | no | `areacode, buildingID` | JSON string `[{comAddress, piplineName("9栋199"), type, meterData, leftMoney, preUseDay, meterStatus, updateDateTime, onlineStatus("在线"/"离线"), price, remaining}]` (all strings) | RO |
+| `POST /api/electricnew/service` `server=/api/getMeterStatus` | no | `areacode, buildingID` | JSON string `[{comAddress, piplineName("99栋991"), type, meterData, leftMoney, preUseDay, meterStatus, updateDateTime, onlineStatus("在线"/"离线"), price, remaining}]` (all strings) | RO |
 | `POST /api/electricnew/service` without `server` | – | – | `code:500, msg:"缺少参数"` | – |
 | `POST /api/customer/getSignData` | yes | `custid, timestamp:""` | `{userLoginData, appdata:{vsuppid, phone, appid, sign, deptId, userId, nonce, username, timestamp}}` | RO (hot-water hand-off) |
 | `POST /card/getRecordList` | – | `begin, end (yyyyMMdd), custid, datetype:1, pageNum, pageSize, dcflag:"", address:""` | `{total, rows:[{transdate, transtime, transname, amount, balance, dcflag, …}]}` | RO |
@@ -668,7 +668,7 @@ Headers as in A.1. Envelope `{code, message, data}`, HTTP 200.
 
 | Endpoint | `data` | Errors | Kind |
 |---|---|---|---|
-| `GET /portalData/v2/personalData/getMyInfo` | `{gydz:"示例校区9栋9号1层199房", szbj}` (`gydz` = registered dorm address) | bad token `code:-1001 "无效 token"`; no token `code:-1 "没有访问权限"` | RO |
+| `GET /portalData/v2/personalData/getMyInfo` | `{gydz:"示例校区99栋9号1层991房", szbj}` (`gydz` = registered dorm address) | bad token `code:-1001 "无效 token"`; no token `code:-1 "没有访问权限"` | RO |
 | `GET /portal-api/v2/personalData/getMyECard` | `{balance, monthBalance, cardStatus, lastExpenditure[], lastIncome[], appUrl, pcUrl, …}` | same | RO (new CAS ticket in `pcUrl` each call) |
 | `GET https://authx-service.gdbtu.edu.cn/personal/api/v1/personal/me/user` | `{username, roles, attributes}` | same | RO |
 
