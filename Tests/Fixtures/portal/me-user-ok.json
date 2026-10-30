@@ -1,0 +1,48 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://authx-service.gdbtu.edu.cn/personal/api/v1/personal/me/user",
+    "headers": {
+      "X-Id-Token": "REDACTED_TOKEN_1",
+      "X-Device-Info": "PC",
+      "X-Terminal-Info": "PC",
+      "Accept": "application/json"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx/1.28.0",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "acknowleged": true,
+      "code": 0,
+      "message": null,
+      "data": {
+        "username": "0822533952004",
+        "roles": [
+          "user"
+        ],
+        "attributes": {
+          "organizationId": "253747f452c463953791a29605969329",
+          "identityTypeCode": "S02",
+          "accountId": "4f224924c0153491773b8a54031c361f",
+          "organizationName": "计算机学院",
+          "organizationCode": "010203",
+          "imageUrl": "rvovxwhv__29158560__3404ehn7-21bz-0r7q-p858-9r0l82sj52q6__tpf.phf",
+          "identityTypeName": "本科生",
+          "identityTypeId": "4269105363e194582311928033565030",
+          "userName": "测试员",
+          "userId": "108b6663fd1082140d55b2880c434464",
+          "userUid": "0822533952004"
+        }
+      }
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}
