@@ -106,19 +106,24 @@ struct SchoolLoginForm: View {
                 .padding(.top,14)
                 .accessibilityIdentifier("loginIssue")
             }
-            Toggle(isOn:$savePassword) {
-                VStack(alignment:.leading, spacing:4) {
-                    Text(SchoolLoginText.saveTitle).scaledFont(16, .medium).foregroundStyle(Theme.ink)
-                        .fixedSize(horizontal:false, vertical:true)
-                    Text(SchoolLoginText.saveNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                        .fixedSize(horizontal:false, vertical:true)
-                }
-            }
-            .toggleStyle(CheckToggleStyle())
-            .disabled(state == .loading)
-            .padding(.top,18)
-            .accessibilityIdentifier("savePassword")
+            // After 「没法直接登录」 the next step is the web login, which keeps no password.
+            if state != .cannotDirect { saveCheck }
         }
+    }
+
+    private var saveCheck: some View {
+        Toggle(isOn:$savePassword) {
+            VStack(alignment:.leading, spacing:4) {
+                Text(SchoolLoginText.saveTitle).scaledFont(16, .medium).foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal:false, vertical:true)
+                Text(SchoolLoginText.saveNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                    .fixedSize(horizontal:false, vertical:true)
+            }
+        }
+        .toggleStyle(CheckToggleStyle())
+        .disabled(state == .loading)
+        .padding(.top,18)
+        .accessibilityIdentifier("savePassword")
     }
 
     private func row<Field: View>(_ label: String, @ViewBuilder field: () -> Field) -> some View {
