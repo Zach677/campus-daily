@@ -157,7 +157,13 @@ struct HomeView: View {
         .onOpenURL { url in
             // Widget tap: campusdaily://home back to the home screen; campusdaily://login (login
             // expired, never signed in) straight to the login step; campusdaily://settings/account
-            // (automatic login held off) to Settings › 学校账号.
+            // (automatic login held off) to Settings › 学校账号. Any app can open these, so they
+            // never close a top-up page or a laundry order being paid.
+            if url.scheme == "campusdaily", ["home", "login", "settings"].contains(url.host ?? ""),
+               !WidgetLink.mayClosePages(rechargeOpen:path.contains(.card) || path.contains(.power),
+                                         laundryOpen:path.contains(.laundry), laundry:laundry.checkout?.phase) {
+                return
+            }
             if url.scheme == "campusdaily", url.host == "home" { settings = false; path = []; return }
             // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
             if url.scheme == "campusdaily", url.host == "settings", url.path == "/account" {
