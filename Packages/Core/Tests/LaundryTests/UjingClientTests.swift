@@ -155,7 +155,7 @@ final class UjingClientTests: XCTestCase {
     func testProgramsExpiredRefusedMalformed() async throws {
         let server = StubServer()
         let c = L.client(server)
-        // The R1 capture: no token at all → 401 "JWT token is missing".
+        // Captured reply: no token at all → 401 "JWT token is missing".
         try server.serve("ujing/programInfo-noAuth", times: 1)
         await L.expectError(.sessionExpired(.ujing)) { _ = try await c.programs(deviceID: "0") }
         try server.serve("ujing/programInfo-refused", times: 1)
@@ -242,7 +242,7 @@ final class UjingClientTests: XCTestCase {
     func testOrderDetailExpiredRefusedMalformed() async throws {
         let server = StubServer()
         let c = L.client(server)
-        // The R1 capture: invalid token → 401 "Token is invalid".
+        // Captured reply: invalid token → 401 "Token is invalid".
         try server.serve("ujing/orderDetail-badAuth", times: 1)
         await L.expectError(.sessionExpired(.ujing)) { _ = try await c.order("0") }
         try server.serve("ujing/orderDetail-refused", times: 1)

@@ -31,7 +31,7 @@ enum T {
         return f.withResponseBody(.object(root))
     }
 
-    /// Synthetic `csalogintoken` answer (G6: never captured; shape from the official JS).
+    /// Synthetic `csalogintoken` answer (never captured; shape from the official JS).
     static func exchangeBody(token: String) -> Data {
         Data(#"{"code":0,"msg":"操作成功","data":{"syscustid":"SYNTH-SYS-NEW","isbind":1,"status":"1","token":"\#(token)"}}"#.utf8)
     }

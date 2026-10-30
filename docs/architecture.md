@@ -85,7 +85,7 @@ singletons (the Live Activity intent, background refresh and notification delega
 outside the view tree); `LaundryModel` is created by the app scene. The App and Widget targets
 build in Swift 5 language mode; Core builds in Swift 6 mode.
 
-**After R2 (target).** The App and Widget targets move to Swift 6. Models become `@Observable`
+**Target design.** The App and Widget targets move to Swift 6. Models become `@Observable`
 adapters that observe the engines' `AsyncStream<State>`, created in `AppEnvironment` and passed
 through initializers or the environment, with no singletons.
 

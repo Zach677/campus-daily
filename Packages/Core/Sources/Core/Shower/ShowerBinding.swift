@@ -49,7 +49,7 @@ public struct ShowerBinding: Sendable, Equatable, Codable, CustomStringConvertib
 
 // MARK: - Authorize / settle results
 
-/// `bathingConsumptionAuthorization` reply (G1): the 15-byte frame to write to the controller and
+/// `bathingConsumptionAuthorization` reply: the 15-byte frame to write to the controller and
 /// the 4-byte authorization id (the reply's `studentId`) the close command is built from.
 public struct ShowerAuthorization: Sendable, Equatable, CustomStringConvertible {
     public var machineID: String
@@ -61,7 +61,7 @@ public struct ShowerAuthorization: Sendable, Equatable, CustomStringConvertible 
     public var description: String { "WaterAuthorization(<redacted>, payload: \(payload.count) bytes)" }
 }
 
-/// `analysisOfBathingConsumptionData` reply (G2). `amount` is nil when the server's `pay` is
+/// `analysisOfBathingConsumptionData` reply. `amount` is nil when the server's `pay` is
 /// missing or not a whole number of fen: never shown as ¥0.
 public struct ShowerReceipt: Sendable, Equatable, Codable {
     public var amount: Money?

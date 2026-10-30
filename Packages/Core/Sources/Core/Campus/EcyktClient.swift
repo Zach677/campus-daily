@@ -22,7 +22,7 @@ public struct EcyktClient: Sendable {
     // MARK: Login
 
     /// `POST /verify/csalogintoken/{areacode} {ticket}` → `{syscustid, isbind, status, token}`.
-    /// Not yet captured live (G6): shape from the official page's JS.
+    /// Not yet captured live: shape from the official page's JS.
     public func exchange(ticket: String, areacode: String = EcyktSession.defaultAreacode,
                          userAgent: String = EcyktSession.defaultUserAgent) async throws -> EcyktLogin {
         guard let url = URL(string: SchoolEndpoints.ecyktBase.absoluteString + "/verify/csalogintoken/" + FormEncoding.encode(areacode)) else {

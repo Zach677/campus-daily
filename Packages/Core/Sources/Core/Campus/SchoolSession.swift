@@ -66,7 +66,7 @@ public actor SchoolSession {
         return SignInSummary(cardholder: card.displayName, residence: residence)
     }
 
-    /// Fallback while the ticket exchange is uncaptured (G6): adopt the
+    /// Fallback while the ticket exchange is uncaptured: adopt the
     /// `localStorage.elecampus_state` the official page wrote, then validate it.
     public func adoptWebState(_ elecampusState: Data, portalToken: PortalToken?,
                               userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {

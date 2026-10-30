@@ -95,7 +95,7 @@ public struct LxtClient: ShowerDirectory, ShowerGateway {
         return ShowerReceipt.parse(pay: data["pay"])
     }
 
-    /// G1 decoder: `{machineid, studentId (4-byte hex authorization id), systemData (15-byte hex)}`.
+    /// Authorize reply decoder: `{machineid, studentId (4-byte hex authorization id), systemData (15-byte hex)}`.
     /// Anything unusable after a success code is `uncertain`: the authorization may exist.
     public static func authorization(_ data: JSONValue) throws -> ShowerAuthorization {
         guard data.object != nil,

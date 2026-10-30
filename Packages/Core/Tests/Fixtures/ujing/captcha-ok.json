@@ -24,6 +24,6 @@
   },
   "_fixture": {
     "synthetic": true,
-    "note": "Synthetic reply shaped like the existing iOS/Android U净 code expects (gap G3); verified on device in R5. All ids/phone/tokens are fake."
+    "note": "Synthetic reply shaped like the existing iOS/Android U净 code expects (no capture of it yet; to be checked on a device). All ids/phone/tokens are fake."
   }
 }

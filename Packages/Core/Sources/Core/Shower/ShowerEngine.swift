@@ -165,7 +165,7 @@ public actor ShowerEngine {
         return try await run(nil, .requestSettleRetry)
     }
 
-    /// Second confirmation: sends settle once more (idempotency unknown, G2; recorded).
+    /// Second confirmation: sends settle once more (idempotency unknown; recorded).
     @discardableResult
     public func confirmSettleRetry(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()

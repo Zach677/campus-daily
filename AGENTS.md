@@ -18,7 +18,7 @@ The rules for working in this repo, for people and AI agents alike. The full des
 
 ## Code
 
-- iOS 17. Core builds in Swift 6 mode; the App and Widget targets are still Swift 5 until R2. Today's screen models are `ObservableObject` (some with `.shared` singletons, see docs/architecture.md); new code passes dependencies through initializers instead of adding singletons. Time, network and Bluetooth are injectable.
+- iOS 17. Core builds in Swift 6 mode; the App and Widget targets are still Swift 5; the target design (docs/architecture.md) moves them to Swift 6. Today's screen models are `ObservableObject` (some with `.shared` singletons, see docs/architecture.md); new code passes dependencies through initializers instead of adding singletons. Time, network and Bluetooth are injectable.
 - One main type per file, named after the type. Split files over 400 lines by responsibility (`HomeView+Rows.swift`).
 - Feature names are Campus, Shower, Laundry and Snapshot everywhere. Do not use Water, HotWater or DailyXxx in new names.
 - Comment only what the code cannot say, for example a field order that the platform signs.
@@ -30,7 +30,7 @@ Hot-water signing, BLE commands, and how school and U净 responses are parsed mu
 
 ## Privacy
 
-The repo is public. Real student ids, phone numbers, rooms, device ids, keys and captures never go in it. Fixtures in `Packages/Core/Tests/Fixtures` are synthetic. Run `mise privacy-check` on the staged files before every commit. It needs your private value list: set `LEAKCHECK_FILE` (default `private/capture/secrets/leakcheck.txt`), otherwise it fails.
+The repo is public. Real student ids, phone numbers, rooms, device ids, keys and raw captures never go in it. Fixtures in `Packages/Core/Tests/Fixtures` are captured replies with every personal value replaced by a fake one, plus synthetic replies for calls that were never captured (redaction rules in docs/architecture.md). Run `mise privacy-check` on the staged files before every commit. It needs your private value list: set `LEAKCHECK_FILE` (default `private/capture/secrets/leakcheck.txt`), otherwise it fails.
 
 ## Before committing
 
