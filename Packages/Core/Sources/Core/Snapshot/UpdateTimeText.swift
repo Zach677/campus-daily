@@ -22,6 +22,14 @@ public enum UpdateTimeText {
         stamp(date, now: now, calendar: calendar) + " 更新"
     }
 
+    /// The small widget's stale line has room for one of them only: 「8:10」 today, else the day
+    /// alone, 「昨天」 or 「10月29日」 (the day matters more than the clock once it is not today).
+    public static func dayOrClock(_ date: Date, now: Date, calendar: Calendar) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return clock(date, calendar: calendar) }
+        if isYesterday(date, now: now, calendar: calendar) { return "昨天" }
+        return monthDay(date, calendar: calendar)
+    }
+
     static func monthDay(_ date: Date, calendar: Calendar) -> String {
         let parts = calendar.dateComponents([.month, .day], from: date)
         return "\(parts.month ?? 0)月\(parts.day ?? 0)日"

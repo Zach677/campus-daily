@@ -2,7 +2,7 @@
 import SwiftUI
 import Core
 
-/// campusdaily://demo/widget-preview[/2|/3] — draws the 「校日常」 widget views in the app at home-screen
+/// campusdaily://demo/widget-preview[/2|/3|/4] — draws the 「校日常」 widget views in the app at home-screen
 /// sizes (small 170×170, medium 364×170, corner 22, 16pt margins), because widgets can't be
 /// captured from the simulator CLI. Same view code as the widget; follows the system appearance.
 struct WidgetPreview: View {
@@ -12,7 +12,7 @@ struct WidgetPreview: View {
         let parts = Array(url.pathComponents.dropFirst())
         guard url.scheme == "campusdaily", url.host == "demo", parts.first == "widget-preview" else { return nil }
         let number = parts.count > 1 ? Int(parts[1]) ?? 1 : 1
-        return Page(number:(1...3).contains(number) ? number : 1)
+        return Page(number:(1...4).contains(number) ? number : 1)
     }
     var page = 1
     @Environment(\.colorScheme) private var scheme
@@ -22,10 +22,16 @@ struct WidgetPreview: View {
     private var staleTime: Date {
         Calendar.current.date(bySettingHour:8, minute:10, second:0, of:Date()) ?? Date()
     }
-    private func model(_ state: WidgetFreshness = .fresh, power: String = "42.6", card: String = "86.50", extras: Bool = false) -> CampusWidgetModel {
+    /// 22:10 yesterday / 22:10 two days ago, for the footers that must name the day.
+    private func daysAgo(_ days: Int) -> Date {
+        let day = Calendar.current.date(byAdding:.day, value:-days, to:Date()) ?? Date()
+        return Calendar.current.date(bySettingHour:22, minute:10, second:0, of:day) ?? day
+    }
+    private func model(_ state: WidgetFreshness = .fresh, power: String = "42.6", card: String = "86.50", extras: Bool = false,
+                       at time: Date? = nil) -> CampusWidgetModel {
         CampusWidgetModel(state:state, remainingKWh:Decimal(string:power), balance:Decimal(string:card),
                           yesterdayKWh:extras ? Decimal(string:"5.1") : nil,
-                          powerBalance:extras ? Decimal(string:"23.40") : nil, updated:state == .stale ? staleTime : updated)
+                          powerBalance:extras ? Decimal(string:"23.40") : nil, updated:time ?? (state == .stale ? staleTime : updated))
     }
     /// Signed in, nothing read yet.
     private var firstRead: CampusWidgetModel { CampusWidgetModel(state:.fresh) }
@@ -51,6 +57,14 @@ struct WidgetPreview: View {
                     tile(model(power:"4.8"), caption:"电量低（只有电量变红）")
                     tile(model(.stale, power:"4.8", card:"12.30"), caption:"过期 · 都低")
                 }
+            case 4:
+                // Readings not from today: the footer names the day.
+                HStack(spacing:24) {
+                    tile(model(.stale, at:daysAgo(1)), caption:"过期 · 昨天")
+                    tile(model(.stale, at:daysAgo(2)), caption:"过期 · 更早")
+                }
+                tile(model(.stale, extras:true, at:daysAgo(1)), medium:true, caption:"中号 · 过期 · 昨天")
+                tile(model(extras:true, at:daysAgo(2)), medium:true, caption:"中号 · 存了密码 · 更早")
             default:
                 HStack(spacing:24) {
                     tile(firstRead, caption:"登录了 · 还没数据")

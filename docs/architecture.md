@@ -271,6 +271,8 @@ that second (`WidgetStatus.staleAt`). Tap: expired / never → `campusdaily://lo
 step), else `campusdaily://home`. Red is only for low electricity. The footer time
 (`UpdateTimeText` in Core) is relative to the entry's date: 「22:10 更新」, 「昨天 22:10 更新」,
 「10月29日 22:10 更新」, so an old reading never looks like today's.
+The small stale line keeps one line at full size: 「8:10 · 打开 App 更新」 today, else the day alone
+(「昨天 · 打开 App 更新」).
 
 **Electricity resolution.** The power tree contains apartment levels that the dorm address lacks,
 so do not walk it level by level. Onboarding: call `meters(nodeID: <campus node>)` once (≈2.3k

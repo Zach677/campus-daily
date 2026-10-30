@@ -41,8 +41,12 @@ struct CampusWidgetModel: Sendable {
 
     /// 「22:10 更新」/「昨天 22:10 更新」/「10月29日 22:10 更新」.
     var updatedText: String? { updated.map { UpdateTimeText.widgetUpdated($0, now:now, calendar:.current) } }
-    /// The time before 「 · 打开 App 更新」 on the stale face.
-    var staleStamp: String? { updated.map { UpdateTimeText.stamp($0, now:now, calendar:.current) } }
+    /// The time before 「 · 打开 App 更新」 on the stale face: medium has room for the day and the
+    /// clock, small shows the clock today and the day alone otherwise.
+    func staleStamp(medium: Bool) -> String? {
+        updated.map { medium ? UpdateTimeText.stamp($0, now:now, calendar:.current)
+                             : UpdateTimeText.dayOrClock($0, now:now, calendar:.current) }
+    }
 
     /// Signed in but no number read yet (and not expired): 「打开校日常⏎刷新一下」.
     var waitingForFirstRead: Bool {
@@ -222,7 +226,7 @@ struct CampusWidgetFace: View {
             .widgetAccentable()
     }
 
-    /// fresh: 「10:32 更新」 ink2; stale: 「昨天 8:10 · 打开 App 更新」 (time ink3, action accentText);
+    /// fresh: 「10:32 更新」 ink2; stale: 「昨天 8:10 · 打开 App 更新」 (small: 「昨天 · 打开 App 更新」) (time ink3, action accentText);
     /// expired (medium): 「登录过期了 · 打开校日常重新登录」.
     @ViewBuilder private var footer: some View {
         switch model.state {
@@ -231,9 +235,10 @@ struct CampusWidgetFace: View {
             let tail = Text(" · 打开校日常重新登录").foregroundStyle(P.ink2)
             Text("\(lead)\(tail)").font(.system(size:11)).lineLimit(1).minimumScaleFactor(0.8)
         case .stale:
-            let time = Text(model.staleStamp.map { $0 + " · " } ?? "").foregroundStyle(P.ink3)
+            let time = Text(model.staleStamp(medium:medium).map { $0 + " · " } ?? "").foregroundStyle(P.ink3)
             let action = Text("打开 App 更新").fontWeight(.semibold).foregroundStyle(P.accentText)
-            Text("\(time)\(action)").font(.system(size:11)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
+            // One line at full size: the small face's date-only stamp is short enough not to shrink.
+            Text("\(time)\(action)").font(.system(size:11)).monospacedDigit().lineLimit(1)
         case .fresh, .never:
             if let updated = model.updatedText {
                 Text(updated).font(.system(size:11)).monospacedDigit().foregroundStyle(P.ink2).lineLimit(1)

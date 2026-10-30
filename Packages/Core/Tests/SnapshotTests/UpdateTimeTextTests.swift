@@ -55,4 +55,13 @@ final class UpdateTimeTextTests: XCTestCase {
         let t = utc.date(from: DateComponents(year: 2026, month: 10, day: 29, hour: 23, minute: 30))!
         XCTAssertEqual(UpdateTimeText.widgetUpdated(t, now: now, calendar: calendar), "7:30 更新")
     }
+
+    /// Small widget, stale: the clock only today, the day alone otherwise.
+    func testSmallStaleLineIsDateOnlyWhenNotToday() {
+        func line(_ d: Date) -> String { UpdateTimeText.dayOrClock(d, now: now, calendar: calendar) }
+        XCTAssertEqual(line(date(10, 30, 8, 10)), "8:10")
+        XCTAssertEqual(line(date(10, 29, 22, 10)), "昨天")
+        XCTAssertEqual(line(date(10, 29, 0, 1)), "昨天")
+        XCTAssertEqual(line(date(10, 28, 22, 10)), "10月28日")
+    }
 }
