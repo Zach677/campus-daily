@@ -556,11 +556,15 @@ Recorded with read-only requests only. Redacted fixtures live in
 `Location` values and the hot-water `sid` are `REDACTED_TOKEN_n` (same value → same number
 across fixtures). Personal identifiers (`syscustid`, `custid`, `custunionid`, name, `idno`,
 phone, `studentid`, `userId`, `deptId`, `vsuppid`, appid, `headurl`, `voucherno`, meter
-`comAddress`, water `machineId`/`Mac`/`machineName`, portal `gydz`/`szbj`) are fake values of
-the same length and character class. Dorm data is synthetic: the faked user room is
+`comAddress`, water `machineId`/`Mac`/`machineName`, portal `gydz`/`szbj`, and in `me/user`
+`username`/`userUid`, `organizationId`, `accountId`, `userId`, `imageUrl`,
+`organizationName`/`organizationCode`, `identityTypeId`, `userName`) are fake values of the same
+length and character class. Dorm data is synthetic: the faked user room is
 `星湖校区9栋9号1层199房` (meter `9栋199`, water room `199`), and the room/building lists around
-it are synthetic. Lists longer than 12 entries are cut to 12 (`_fixture.truncatedLists` keeps
-the original length). Captures of a bad token still returning data are not kept in the repo.
+it are synthetic, as are all meter readings and balances (the campus-wide meter list
+`electric-getMeterStatus-ok` is 12 invented rows). Lists longer than 12 entries are cut to 12
+(`_fixture.truncatedLists` keeps the original length). A `_fixture.synthetic` note in a fixture
+names the parts that were replaced with invented data. Captures of a bad token still returning data are not kept in the repo.
 
 Legend: **RO** read-only, **ST** changes server state, **$$** spends money.
 

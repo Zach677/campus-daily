@@ -316,8 +316,8 @@ final class EcyktElectricityTests: XCTestCase {
         let c = EcyktClient(http: s.makeClient())
         let campus = try await c.meters(T.session(), nodeID: "001001", wide: true)
         XCTAssertEqual(campus.count, 12)
-        XCTAssertEqual(campus[0].name, "24栋101")
-        XCTAssertEqual(campus[0].leftMoney, Money(fen: 44523))
+        XCTAssertEqual(campus[0].name, "8栋101")
+        XCTAssertEqual(campus[0].leftMoney, Money(fen: 5000))
         XCTAssertEqual(campus[0].online, true)
         let room = try await c.meters(T.session(), nodeID: "001001001000109000001003")
         XCTAssertEqual(room, [Meter(comAddress: "000000000199", name: "9栋199", leftMoney: Money(fen: 3692),
