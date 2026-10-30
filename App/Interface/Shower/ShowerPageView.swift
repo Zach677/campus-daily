@@ -325,11 +325,11 @@ struct ShowerPageView: View {
                     HStack(alignment:.firstTextBaseline, spacing:6) {
                         Image(systemName:"exclamationmark.circle.fill").scaledFont(17, relativeTo:.body).accessibilityHidden(true)
                         Text(ShowerPageText.endFailed(failure)).scaledFont(15, relativeTo:.subheadline)
+                            .multilineTextAlignment(.leading)
                             .fixedSize(horizontal:false, vertical:true)
                     }
                     .foregroundStyle(Theme.accentText)
-                    // Lined up with the capsule's label inset, 12 pt above it.
-                    .padding(.leading,20)
+                    // From the capsule's left edge across its width, 12 pt above it.
                     .frame(maxWidth:.infinity, alignment:.leading)
                     .padding(.bottom,6)
                     .accessibilityElement(children:.combine)
