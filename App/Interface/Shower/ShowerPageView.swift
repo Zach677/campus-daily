@@ -26,6 +26,16 @@ enum ShowerPageText {
     static let checkButton = "核对上次洗澡"
     static let review = "去核对"
     static let resolve = "我在学校记录里核对过了"
+    /// The needs-check face's read-only probe, under the body.
+    static let recheck = "再查一次水控"
+    static let rechecking = "正在查水控…"
+    static func recheckResult(_ result: ShowerRecheckResult) -> String {
+        switch result {
+        case .stopped: return "查过了，水控是停着的。"
+        case .noConnection: return "没连上水控，靠近一点再查。"
+        case .otherController: return "附近的水控不是你宿舍的那台。"
+        }
+    }
     static let resolveConfirm = "这次洗澡核对过了吗？"
     static let resolveConfirmButton = "核对过了"
     static let resolveConfirmNote = "标记以后，校日常不会再结算这一次。先在学校的热水记录里找到这次洗澡，再点核对过了。"
@@ -107,6 +117,10 @@ struct ShowerPageView: View {
             default: break
             }
             if let phase { AccessibilityNotification.Announcement(announcement(phase)).post() }
+        }
+        .onChange(of:flow.recheckResult) { _, result in
+            guard let result else { return }
+            AccessibilityNotification.Announcement(ShowerPageText.recheckResult(result)).post()
         }
         .onChange(of:flow.endFailed) { _, failure in
             guard let failure else { return }
@@ -209,9 +223,47 @@ struct ShowerPageView: View {
                 icon("questionmark.circle", Theme.accentText)
                 title(ShowerPageText.check)
                 bodyText(ShowerPageText.checkBody)
+                recheckRow.padding(.top,18)
             }
         }
         .frame(maxWidth:.infinity, alignment:.leading)
+    }
+
+    /// 再查一次水控: icon + text in accentText (a spinner and 正在查水控… in ink2 while it runs),
+    /// then what it found under it. Water still running goes back to the timer with no line.
+    private var recheckRow: some View {
+        VStack(alignment:.leading, spacing:4) {
+            Button { shower.pageEvent(.recheckTapped) } label: {
+                HStack(spacing:8) {
+                    if flow.rechecking {
+                        ProgressView().controlSize(.small).frame(width:16, height:16)
+                    } else {
+                        Image(systemName:"arrow.clockwise").scaledFont(15, relativeTo:.body)
+                    }
+                    Text(flow.rechecking ? ShowerPageText.rechecking : ShowerPageText.recheck).scaledFont(17, .medium)
+                }
+                .foregroundStyle(flow.rechecking ? Theme.ink2 : Theme.accentText)
+                .frame(minHeight:44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            // While it runs the row stays at full ink2 (the reducer ignores a second tap).
+            .disabled(!flow.mayRecheck && !flow.rechecking)
+            .accessibilityIdentifier("showerRecheck")
+            if let result = flow.recheckResult {
+                if result == .stopped {
+                    Text(ShowerPageText.recheckResult(result)).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                        .fixedSize(horizontal:false, vertical:true)
+                } else {
+                    HStack(alignment:.firstTextBaseline, spacing:6) {
+                        Image(systemName:"exclamationmark.circle.fill").scaledFont(17, relativeTo:.body).accessibilityHidden(true)
+                        Text(ShowerPageText.recheckResult(result)).scaledFont(15, relativeTo:.subheadline)
+                            .fixedSize(horizontal:false, vertical:true)
+                    }
+                    .foregroundStyle(Theme.accentText)
+                    .accessibilityElement(children:.combine)
+                }
+            }
+        }
     }
 
     private var runningLabel: some View {
@@ -308,9 +360,11 @@ struct ShowerPageView: View {
                 capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.reviewTapped) }
                 textButton("先回首页") { shower.pageEvent(.homeTapped) }
             case .needsCheck:
-                capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.reviewTapped) }
+                capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk, enabled:!flow.rechecking) {
+                    shower.pageEvent(.reviewTapped)
+                }
                 textButton(ShowerPageText.resolve) { confirmResolve = true }
-                    .disabled(!flow.mayResolve)
+                    .disabled(!flow.mayResolve).opacity(flow.mayResolve ? 1 : 0.5)
             }
         }
     }

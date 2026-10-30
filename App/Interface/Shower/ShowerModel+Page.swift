@@ -41,6 +41,11 @@ extension ShowerModel {
             reviewRequested = true
         case .resolveManually:
             Task { await resolveManually() }
+        case .recheck:
+            Task {
+                let result = await recheckSession()
+                pageEvent(.recheckReturned(result))
+            }
         }
     }
 

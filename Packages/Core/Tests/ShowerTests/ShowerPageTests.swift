@@ -234,6 +234,41 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertEqual(flow.page?.phase, .needsCheck)
     }
 
+    /// 再查一次水控 on the check face: both buttons wait; still running goes back to the timer
+    /// with no line; stopped or not reached stays with a line under it.
+    func testRecheckingTheControllerFromTheCheckFace() {
+        let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)
+        var flow = ShowerPageFlow(record: check, presented: true)
+        XCTAssertTrue(flow.mayRecheck)
+        XCTAssertEqual(reduce(&flow, .recheckTapped), [.recheck])
+        XCTAssertTrue(flow.rechecking)
+        XCTAssertFalse(flow.mayResolve)
+        XCTAssertEqual(reduce(&flow, .reviewTapped), [], "去核对 waits for the probe")
+        XCTAssertEqual(reduce(&flow, .recheckTapped), [], "one probe at a time")
+
+        var stopped = flow
+        _ = reduce(&stopped, .record(check))
+        _ = reduce(&stopped, .recheckReturned(ShowerRecheckResult(after: check)))
+        XCTAssertEqual(stopped.recheckResult, .stopped)
+        XCTAssertTrue(stopped.mayResolve)
+
+        var away = flow
+        let notReached = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .device(.notFound))
+        _ = reduce(&away, .record(notReached))
+        _ = reduce(&away, .recheckReturned(ShowerRecheckResult(after: notReached)))
+        XCTAssertEqual(away.recheckResult, .noConnection)
+        XCTAssertTrue(away.mayRecheck, "can be tried again")
+
+        let flowing = ShowerState(phase: .running, startedAt: t0)
+        XCTAssertNil(ShowerRecheckResult(after: flowing))
+        _ = reduce(&flow, .record(flowing))
+        _ = reduce(&flow, .recheckReturned(nil))
+        XCTAssertEqual(flow.page?.phase, .running, "straight back to the timer")
+        XCTAssertNil(flow.recheckResult)
+        XCTAssertTrue(flow.mayEnd)
+        XCTAssertTrue(flow.presented)
+    }
+
     /// 检查水控状态 in Settings found the controller stopped: the record waits for a check, but
     /// Settings stays open (only an end brings the check up by itself).
     func testAProbeFromSettingsDoesNotBringTheCheckUp() {

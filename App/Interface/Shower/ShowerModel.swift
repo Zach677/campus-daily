@@ -279,6 +279,16 @@ enum ShowerProfileFiles {
         }
     }
 
+    /// 再查一次水控 on the needs-check face: the same read-only probe; still running goes back to
+    /// the timer (the record says so), otherwise what it found.
+    func recheckSession() async -> ShowerRecheckResult? {
+        guard let engine, let binding, !busy, state.canFinish else { return nil }
+        busy = true; defer { busy = false }
+        guard let result = try? await engine.review(binding) else { return .noConnection }
+        apply(result)
+        return ShowerRecheckResult(after:result)
+    }
+
     func resolveManually() async {
         guard let engine, !busy else { return }
         busy = true; defer { busy = false }
