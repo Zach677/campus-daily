@@ -222,6 +222,25 @@ final class AppResetTests: XCTestCase {
         XCTAssertEqual(steps, ["signOut", "resync"])
     }
 
+    /// After a reset stopped behind the sign-out, a running shower keeps its Live Activity and
+    /// 「还没结束洗澡？」; a finished one loses them; laundry is never touched.
+    func testTheResyncKeepsARunningShowersLockScreenAndReminder() {
+        let start = Date(timeIntervalSince1970: 1_793_000_000)
+        let running = AppReset.Resync(shower: ShowerState(phase: .running, startedAt: start))
+        XCTAssertEqual(running.showerReminderStart, start)
+        XCTAssertTrue(running.keepsShowerActivity)
+        let pending = AppReset.Resync(shower: ShowerState(phase: .writePending, startedAt: start))
+        XCTAssertEqual(pending.showerReminderStart, start, "water may run while the write is unconfirmed")
+        XCTAssertTrue(pending.keepsShowerActivity)
+        let settling = AppReset.Resync(shower: ShowerState(phase: .settling, startedAt: start))
+        XCTAssertNil(settling.showerReminderStart)
+        XCTAssertTrue(settling.keepsShowerActivity, "the end is still on the lock screen")
+        let idle = AppReset.Resync(shower: .idle)
+        XCTAssertNil(idle.showerReminderStart)
+        XCTAssertFalse(idle.keepsShowerActivity)
+        XCTAssertTrue(idle.leavesLaundry && running.leavesLaundry)
+    }
+
     /// A marker that can't be written: the reset does not start at all.
     @MainActor func testNoMarkerNoReset() async {
         let store = InMemorySecureStore()

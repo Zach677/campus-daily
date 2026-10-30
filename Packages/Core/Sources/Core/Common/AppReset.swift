@@ -51,6 +51,23 @@ public enum AppReset {
         }
     }
 
+    /// A reset stopped after the sign-out changed only the school side. What the shower's lock
+    /// screen and reminders do then: they follow its record, so water that may be running keeps
+    /// 结束并结算 and 「还没结束洗澡？」; laundry reminders and Live Activities are not touched.
+    public struct Resync: Sendable, Equatable {
+        /// 「还没结束洗澡？」 is (re)scheduled from this start; nil removes it.
+        public var showerReminderStart: Date?
+        /// The shower Live Activity stays (water may run, or the end is still settling).
+        public var keepsShowerActivity: Bool
+        /// Laundry reminders and its Live Activity are left as they are.
+        public let leavesLaundry = true
+
+        public init(shower: ShowerState) {
+            showerReminderStart = shower.mayBeFlowing ? shower.startedAt : nil
+            keepsShowerActivity = [.writePending, .running, .closing, .settling].contains(shower.phase)
+        }
+    }
+
     /// A shower or laundry start refused while a reset runs (what Shortcuts shows, too).
     public struct InProgress: LocalizedError, Sendable, Equatable {
         public init() {}

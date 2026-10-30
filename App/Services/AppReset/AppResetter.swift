@@ -106,8 +106,10 @@ import Core
     private static func resync(campus: CampusModel, shower: ShowerModel) {
         campus.reload()
         let state = shower.state
+        let plan = AppReset.Resync(shower:state)
+        // Keeps the activity while `plan.keepsShowerActivity` (sync follows the record).
         ShowerActivityController.shared.sync(state:state)
-        Reminders.shared.syncShower(started:state.mayBeFlowing ? state.startedAt : nil)
+        Reminders.shared.syncShower(started:plan.showerReminderStart)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
