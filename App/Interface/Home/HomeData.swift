@@ -63,14 +63,9 @@ struct HomeData {
         let amount: Decimal?
         let detail: String
     }
-    struct Recent: Identifiable, Equatable {
-        let id: String
-        let emoji: String
-        let title: String
-        let date: Date
-        let detail: String?
-        let amount: Decimal?
-    }
+    /// One run of a sentence with its own colour (the laundry page's hero).
+    struct Segment { let text: String; var color: Color? = nil }
+
     var signedIn = true
     /// Settings › 学校账号 (nil after a web sign-in).
     var schoolAccount: SchoolAccount?
@@ -79,23 +74,19 @@ struct HomeData {
     var resetLock: AppReset.Lock?
     var dorm: String?
     var powerBound = true
-    var remainingKWh: Decimal?
-    var yesterdayKWh: Decimal?
-    var balance: Decimal?
-    var balanceUpdated: Date?
-    /// Last campus refresh problem (e.g. login expired); the balance shown is then the old one.
-    var campusIssue: String?
-    /// Last power read failed; the kWh shown (if any) is the previous reading.
-    var powerIssue: String?
-    var cardLowLine: Decimal = 20
-    var powerLowLine: Decimal = 10
+    /// Balance, meter and card records with their own read times and errors.
+    var snapshot = HomeSnapshot()
+    var lines = ReminderLines()
+    /// A school refresh is running (this process).
+    var refreshing = false
     var water = Shower.idle
+    /// The last start failed (shown under the shower button instead of the last shower).
     var waterIssue: String?
-    /// Showering, but the device never confirmed the authorization write (adds one line under the timer).
+    /// Showering, but the device never confirmed the authorization write (said under the button).
     var showerUnconfirmed = false
     var lastShowerMinutes: Int?
     var lastShowerCost: Decimal?
-    /// 「学校洗衣机」 on. Off: no laundry row, recent, scan button or done panel.
+    /// 「学校洗衣机」 on. Off: no laundry row, no laundry in 最近, no done panel.
     var laundryEnabled = true
     /// The 学校洗衣机 switch can't be turned off yet (an order is unfinished).
     var laundryLocked = false
@@ -104,65 +95,24 @@ struct HomeData {
     var laundry = Laundry.unknown
     /// A recently finished order, for the once-per-order done panel.
     var laundryDone: LaundryDone?
-    var recents: [Recent] = []
+    /// The app's own showers and laundry orders, merged with the card records in 最近.
+    var appActivities: [AppActivity] = []
 
-    // MARK: Electricity estimate
-
-    private var hoursLeft: Double? {
-        guard let remainingKWh, let yesterdayKWh, yesterdayKWh > 0 else { return nil }
-        return NSDecimalNumber(decimal:remainingKWh / yesterdayKWh).doubleValue * 24
+    func cardFigure(now: Date = Date()) -> HomeFigure {
+        HomeFigures.card(snapshot, signedIn:signedIn, lines:lines, now:now)
     }
-    /// floor(remaining / yesterday), only when yesterday > 0.
-    var daysLeft: Int? { hoursLeft.map { Int(($0 / 24).rounded(.down)) } }
-    var powerLow: Bool {
-        guard let remainingKWh else { return false }
-        return remainingKWh < powerLowLine || (daysLeft ?? 99) <= 1
+    func powerFigure(now: Date = Date()) -> HomeFigure {
+        guard !signedIn || powerBound else { return HomeFigure(value:nil, low:false, subline:nil) }
+        return HomeFigures.power(snapshot, signedIn:signedIn, lines:lines, now:now)
     }
-    /// 「今晚」/「明晚」 when the estimate runs out today/tomorrow.
-    func runsOutWord(now: Date = Date(), calendar: Calendar = .current) -> String? {
-        guard let hoursLeft else { return nil }
-        let end = now.addingTimeInterval(hoursLeft * 3600)
-        if calendar.isDate(end, inSameDayAs:now) { return "今晚" }
-        if let tomorrow = calendar.date(byAdding:.day, value:1, to:now), calendar.isDate(end, inSameDayAs:tomorrow) { return "明晚" }
-        return nil
+    var updateLine: HomeUpdateLine {
+        HomeUpdateLine.of(snapshot, signedIn:signedIn, meterBound:powerBound, refreshing:refreshing)
     }
-    var cardLow: Bool { balance.map { $0 < cardLowLine } ?? false }
-    var powerSubtitle: String {
-        if powerLow, let word = runsOutWord() { return "约" + word + "用完" }
-        return daysLeft.map { "够用约 \($0) 天" } ?? ""
+    /// Newest first, at most four; card records only while signed in (the snapshot is empty otherwise).
+    var recents: [RecentItem] {
+        let app = laundryEnabled ? appActivities : appActivities.filter { if case .laundry = $0.kind { return false }; return true }
+        return RecentFeed.items(card:snapshot.activity.value?.records, app:app)
     }
-
-    // MARK: Hero sentence
-
-    struct Segment { let text: String; var color: Color? = nil }
-    var hero: [Segment] {
-        guard signedIn else { return [Segment(text:"先登录学校账号，\n电量和余额就会出现。")] }
-        let power = remainingKWh, card = balance
-        if powerLow && cardLow { return [Segment(text:"电和校园卡都快没了，记得充值。")] }
-        if powerLow, let power {
-            switch runsOutWord() {
-            case "今晚": return [Segment(text:"电"), Segment(text:"今晚", color:Theme.redLarge), Segment(text:"就要用完了，\n记得充电费。")]
-            case "明晚": return [Segment(text:"电只够到"), Segment(text:"明晚", color:Theme.redLarge), Segment(text:"了，\n记得充电费。")]
-            default: return [Segment(text:"电只剩 "), Segment(text:Theme.kwh(power) + " 度", color:Theme.redLarge), Segment(text:" 了，\n记得充电费。")]
-            }
-        }
-        if cardLow, let card {
-            return [Segment(text:"卡里只剩 "), Segment(text:Theme.yuan(card), color:Theme.redLarge), Segment(text:" 了，\n记得充值。")]
-        }
-        var powerPart: [Segment] = []
-        if let power {
-            if let days = daysLeft { powerPart = [Segment(text:"电够用 "), Segment(text:"\(days) 天", color:Theme.accentLarge)] }
-            else { powerPart = [Segment(text:"电还剩 "), Segment(text:Theme.kwh(power) + " 度", color:Theme.accentLarge)] }
-        }
-        let cardPart = card.map { [Segment(text:"卡里还有 "), Segment(text:Theme.yuan($0), color:Theme.accentLarge)] } ?? []
-        switch (powerPart.isEmpty, cardPart.isEmpty) {
-        case (false, false): return powerPart + [Segment(text:"，\n")] + cardPart + [Segment(text:"。")]
-        case (false, true): return powerPart + [Segment(text:"。")]
-        case (true, false): return cardPart + [Segment(text:"。")]
-        case (true, true): return [Segment(text:"还没读到电量和余额，下拉刷新一下。")]
-        }
-    }
-    var heroLabel: String { hero.map(\.text).joined().replacingOccurrences(of:"\n", with:"") }
 }
 
 // MARK: - Live data
@@ -172,16 +122,10 @@ extension HomeData {
         signedIn = campus.configured
         schoolAccount = campus.account
         dorm = Theme.dorm(campus.room)
-        let snapshot = campus.snapshot
+        snapshot = campus.snapshot
         powerBound = campus.powerConfigured
-        remainingKWh = snapshot.power.value?.remainingKWh
-        yesterdayKWh = snapshot.power.value?.dailyUseKWh
-        balance = snapshot.card.value?.yuan
-        balanceUpdated = snapshot.card.fetchedAt
-        campusIssue = campus.configured ? campus.issue : nil
-        powerIssue = campus.configured && powerBound ? snapshot.power.error?.userMessage : nil
-        let lines = ReminderKey.lines
-        powerLowLine = lines.power; cardLowLine = lines.card
+        refreshing = campus.loading
+        lines = ReminderKey.lines
 
         let state = model.state
         if !model.configured { water = .unconfigured }
@@ -195,12 +139,12 @@ extension HomeData {
         else { water = .idle }
         if model.problem, water == .idle { waterIssue = model.status }
         showerUnconfirmed = state.phase == .writePending && water.showering != nil
-        var recents: [Recent] = []
+        var activities: [AppActivity] = []
         if state.phase == .done, let start = model.sessionStarted, let end = model.lastEnded {
             let minutes = max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
             lastShowerMinutes = minutes; lastShowerCost = model.lastCost
-            recents.append(Recent(id:"water-\(start.timeIntervalSince1970)", emoji:"🚿", title:"热水 · \(minutes) 分钟",
-                                  date:end, detail:nil, amount:model.lastCost))
+            activities.append(AppActivity(id:"shower-\(start.timeIntervalSince1970)", kind:.shower(minutes:minutes),
+                                          date:end, amount:model.lastCost.map { Money(yuan:$0) }))
         }
 
         laundryEnabled = laundry.schoolEnabled
@@ -210,12 +154,13 @@ extension HomeData {
         let facts = LaundryFacts(model:laundry)
         self.laundry = Self.laundryRow(facts, now:now)
         laundryDone = laundryEnabled ? Self.laundryDone(facts, now:now) : nil
-        if laundryEnabled, let record = laundry.checkout, record.inFlight, let created = record.createdAt {
-            recents.append(Recent(id:"laundry-\(record.orderId ?? created.description)", emoji:"🧺",
-                                  title:"洗衣 · " + record.programName, date:created,
-                                  detail:record.draft.map { "\($0.machineName) 号机" }, amount:facts.amount))
+        if let record = laundry.checkout, record.inFlight, let created = record.createdAt {
+            activities.append(AppActivity(id:"laundry-\(record.orderId ?? created.description)",
+                                          kind:.laundry(program:record.programName), date:created,
+                                          amount:facts.amount.map { Money(yuan:$0) },
+                                          detail:record.draft.map { "\($0.machineName) 号机" }))
         }
-        self.recents = Array(recents.sorted { $0.date > $1.date }.prefix(4))
+        appActivities = activities
     }
 }
 
@@ -280,6 +225,10 @@ enum HomeDemo: String, CaseIterable {
     case noPlatform = "no-platform"
     /// Hot-water row when the service says this school isn't open (transactions_not_enabled).
     case notOpen = "not-open"
+    /// The update line while reading, after a failed read, and with the card records unread.
+    case updating = "home-updating"
+    case failed = "home-fail"
+    case noRecords = "home-notx"
 
     static func handle(_ url: URL) -> (HomeData, SettlementResult?)?? {
         guard url.scheme == "campusdaily", url.host == "demo" else { return nil }
@@ -294,18 +243,29 @@ enum HomeDemo: String, CaseIterable {
         var data = HomeData()
         data.dorm = "3 栋 108"
         data.schoolAccount = SchoolAccount(account:"99100991")
-        data.remainingKWh = Decimal(string:"42.6"); data.yesterdayKWh = Decimal(string:"4.6")
-        data.balance = Decimal(string:"86.50"); data.balanceUpdated = now.addingTimeInterval(-25 * 60)
+        let read = now.addingTimeInterval(-25 * 60)
+        data.snapshot = Self.snapshot(now:now, read:read, kwh:"42.6", dailyKWh:"4.6")
         data.lastShowerMinutes = 11; data.lastShowerCost = Decimal(string:"1.32")
         data.laundryBound = true; data.laundryMachine = "3"; data.laundry = .idle
         let yesterday = calendar.date(bySettingHour:22, minute:14, second:0, of:calendar.date(byAdding:.day, value:-1, to:now)!)!
         let twoDays = calendar.date(bySettingHour:19, minute:2, second:0, of:calendar.date(byAdding:.day, value:-2, to:now)!)!
-        data.recents = [
-            .init(id:"demo-water", emoji:"🚿", title:"热水 · 11 分钟", date:yesterday, detail:nil, amount:Decimal(string:"1.32")),
-            .init(id:"demo-laundry", emoji:"🧺", title:"洗衣 · 标准洗", date:twoDays, detail:"3 号机", amount:Decimal(string:"4.00")),
+        data.appActivities = [
+            AppActivity(id:"demo-shower", kind:.shower(minutes:11), date:yesterday, amount:Money(fen:132)),
+            AppActivity(id:"demo-laundry", kind:.laundry(program:"标准洗"), date:twoDays, amount:Money(fen:400), detail:"3 号机"),
         ]
         switch self {
         case .normal, .settings, .settingsOff, .settingsAsk: return (data, nil)
+        case .updating:
+            data.refreshing = true
+            return (data, nil)
+        case .failed:
+            data.snapshot.card.fail(.offline, at:now)
+            data.snapshot.power.fail(.offline, at:now)
+            data.snapshot.activity.fail(.offline, at:now)
+            return (data, nil)
+        case .noRecords:
+            data.snapshot.activity = Tile()
+            return (data, nil)
         case .settingsResetShower:
             data.water = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
             data.resetLock = .showering
@@ -331,7 +291,6 @@ enum HomeDemo: String, CaseIterable {
             return (data, nil)
         case .laundryOff, .settingsLaundryOff:
             data.laundryEnabled = false
-            data.recents.removeAll { $0.emoji == "🧺" }
             return (data, nil)
         case .settingsLaundryLocked:
             data.laundryLocked = true
@@ -347,15 +306,15 @@ enum HomeDemo: String, CaseIterable {
             data.water = .unresolved("上次结算还没确认")
             return (data, nil)
         case .low:
-            // Runs out tomorrow evening, so the sentence reads 「明晚」.
+            // Runs out tomorrow evening (只够到明晚); the balance is under the default line too.
             let target = calendar.date(bySettingHour:21, minute:0, second:0, of:calendar.date(byAdding:.day, value:1, to:now)!)!
-            let days = target.timeIntervalSince(now) / 86400
-            data.remainingKWh = Decimal(string:"4.8")
-            data.yesterdayKWh = Decimal(4.8 / days)
+            let days = target.timeIntervalSince(read) / 86400
+            data.snapshot = Self.snapshot(now:now, read:read, kwh:"4.8", dailyKWh:String(format:"%.3f", 4.8 / days), balance:"12.40")
             data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
             return (data, nil)
         case .empty:
             var empty = HomeData(); empty.signedIn = false; empty.dorm = "3 栋 108"
+            empty.laundryBound = true; empty.laundryMachine = "3"; empty.laundry = .idle
             return (empty, nil)
         case .shower:
             data.water = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
@@ -365,7 +324,7 @@ enum HomeDemo: String, CaseIterable {
             data.showerUnconfirmed = true
             return (data, nil)
         case .settled:
-            data.recents.insert(.init(id:"demo-new", emoji:"🚿", title:"热水 · 11 分钟", date:now, detail:nil, amount:Decimal(string:"1.32")), at:0)
+            data.appActivities.insert(AppActivity(id:"demo-new", kind:.shower(minutes:11), date:now, amount:Money(fen:132)), at:0)
             return (data, .settled(minutes:11, amount:Decimal(string:"1.32")))
         case .unconfirmed:
             return (data, .unconfirmed)
@@ -380,6 +339,30 @@ enum HomeDemo: String, CaseIterable {
             data.water = .unavailable("本校暂未开放")
             return (data, nil)
         }
+    }
+
+    /// Synthetic balance, meter and card records (yesterday and today in the school's calendar).
+    static func snapshot(now: Date, read: Date, kwh: String, dailyKWh: String, balance: String = "86.50") -> HomeSnapshot {
+        let school = SchoolCalendar.shanghai
+        func record(daysAgo: Int, _ time: String, _ title: String, _ yuan: String) -> CardRecord {
+            let day = school.date(byAdding:.day, value:-daysAgo, to:now)!
+            return CardRecord(date:SchoolCalendar.dayString(day, calendar:school), time:time, title:title,
+                              amount:Money(yuanString:yuan)!, balanceAfter:nil, direction:nil)
+        }
+        let range = CardActivity.range(at:now)
+        var s = HomeSnapshot()
+        s.card.succeed(Money(yuanString:balance)!, at:read)
+        s.power.succeed(Meter(comAddress:"demo-meter", name:"3栋108", remainingKWh:Decimal(string:kwh),
+                              dailyUseKWh:Decimal(string:dailyKWh)), at:read)
+        s.activity.succeed(CardActivity(records:[
+            record(daysAgo:0, "073000", "POS消费示例早餐铺", "-4.50"),
+            record(daysAgo:1, "221500", "蓝牙热水", "-1.32"),
+            record(daysAgo:1, "120500", "POS消费示例面馆", "-12.00"),
+            record(daysAgo:1, "090000", "校园卡充值", "50.00"),
+            record(daysAgo:1, "081000", "POS消费示例早餐铺", "-3.50"),
+        ], begin:range.begin, end:range.end, complete:true), at:read)
+        s.roomLabel = "3栋108"
+        return s
     }
 }
 

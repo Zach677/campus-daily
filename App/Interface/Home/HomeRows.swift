@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 
 /// Trailing value of a status row.
 enum RowValue: Equatable {
@@ -97,7 +98,7 @@ struct StatusRow: View {
 
 /// 「最近」 row: min height 56, emoji 18, 16pt text.
 struct RecentRow: View {
-    let item: HomeData.Recent
+    let item: RecentItem
     /// Replaces the amount with an accentText word (laundry 「待核对」).
     var accentWord: String? = nil
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -120,7 +121,7 @@ struct RecentRow: View {
         .padding(.vertical,8).frame(minHeight:56)
         .padding(.horizontal,24)
         .accessibilityElement(children:.ignore)
-        .accessibilityLabel([item.title, subtitle, accentWord ?? item.amount.map { Theme.yuan($0).dropFirst() + " 元" }].compactMap { $0 }.joined(separator:"，"))
+        .accessibilityLabel([item.title, subtitle, accentWord ?? item.spokenAmount].compactMap { $0 }.joined(separator:"，"))
     }
     private var titles: some View {
         VStack(alignment:.leading, spacing:2) {
@@ -131,8 +132,8 @@ struct RecentRow: View {
     @ViewBuilder private var amountView: some View {
         if let accentWord {
             Text(accentWord).scaledFont(17, .medium).foregroundStyle(Theme.accentText)
-        } else if let amount = item.amount {
-            Text(Theme.yuan(amount)).scaledFont(16, .medium, relativeTo:.callout).monospacedDigit().foregroundStyle(Theme.ink)
+        } else if let amount = item.amountText {
+            Text(amount).scaledFont(16, .medium, relativeTo:.callout).monospacedDigit().foregroundStyle(Theme.ink)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
     }
@@ -167,80 +168,6 @@ struct PulseDot: View {
                 withAnimation(.easeInOut(duration:0.8).repeatForever(autoreverses:true)) { dim = true }
             }
             .accessibilityHidden(true)
-    }
-}
-
-/// mm:ss, h:mm:ss past one hour.
-struct ShowerClock: View {
-    let start: Date
-    var body: some View {
-        TimelineView(.periodic(from:start, by:1)) { context in
-            let seconds = max(0, Int(context.date.timeIntervalSince(start)))
-            Text(Self.format(seconds))
-                .contentTransition(.numericText(countsDown:false))
-                .animation(.default, value:seconds)
-                .accessibilityLabel(Self.spoken(seconds))
-        }
-    }
-    static func format(_ seconds: Int) -> String {
-        let h = seconds / 3600, m = seconds / 60 % 60, s = seconds % 60
-        return h > 0 ? String(format:"%d:%02d:%02d", h, m, s) : String(format:"%02d:%02d", m, s)
-    }
-    /// Quantised to 30s so VoiceOver is not flooded.
-    static func spoken(_ seconds: Int) -> String {
-        let q = seconds / 30 * 30
-        let m = q / 60, s = q % 60
-        return s == 0 ? "已经洗了 \(m) 分钟" : "已经洗了 \(m) 分 \(s) 秒"
-    }
-}
-
-/// Hero while showering. No estimated price.
-struct ShowerHero: View {
-    let start: Date
-    let dorm: String?
-    /// Authorization write not confirmed by the device (stage .authorizationWritePending).
-    var unconfirmed = false
-    /// Once the line has been shown, keep its space after it fades so nothing below moves.
-    @State private var keepLineSpace = false
-    var body: some View {
-        VStack(alignment:.leading, spacing:0) {
-            // Status, time and the unconfirmed line read as one VoiceOver element, in that order.
-            VStack(alignment:.leading, spacing:0) {
-                // Dot sits on the first line even when a large text size wraps the label.
-                HStack(alignment:.firstTextBaseline, spacing:7) {
-                    PulseDot().alignmentGuide(.firstTextBaseline) { $0[.bottom] + 2 }
-                    Text(["正在洗澡", dorm].compactMap { $0 }.joined(separator:" · "))
-                        .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
-                }
-                ShowerClock(start:start)
-                    .scaledFont(76, .semibold, design:.rounded, relativeTo:.largeTitle, cap:96)
-                    .monospacedDigit().tracking(-2).foregroundStyle(Theme.ink)
-                    .lineLimit(1).minimumScaleFactor(0.6)
-                    .padding(.top,6)
-                if unconfirmed || keepLineSpace {
-                    HStack(alignment:.firstTextBaseline, spacing:5) {
-                        Image(systemName:"exclamationmark.circle").scaledFont(13, relativeTo:.footnote)
-                            .accessibilityHidden(true)
-                        Text(ShowerCopy.writeUnconfirmed).scaledFont(13, relativeTo:.footnote)
-                            .fixedSize(horizontal:false, vertical:true)
-                    }
-                    .foregroundStyle(Theme.ink2)
-                    .padding(.top,4)
-                    .opacity(unconfirmed ? 1 : 0)
-                    .accessibilityHidden(!unconfirmed)
-                    .transition(.opacity)
-                }
-            }
-            .accessibilityElement(children:.combine)
-            .animation(.easeInOut(duration:0.2), value:unconfirmed)
-            .onAppear { if unconfirmed { keepLineSpace = true } }
-            .onChange(of:unconfirmed) { _, value in if value { keepLineSpace = true } }
-            Text("按水控上的出水键就有热水，结算后显示费用。")
-                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
-                .fixedSize(horizontal:false, vertical:true)
-                .padding(.top,10)
-        }
-        .frame(maxWidth:.infinity, alignment:.leading)
     }
 }
 

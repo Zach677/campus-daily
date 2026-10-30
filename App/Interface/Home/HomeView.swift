@@ -4,7 +4,7 @@ import Core
 
 enum HomeRoute: Hashable { case power, powerSetup, card, water, laundry, washerSetup }
 
-/// Single home screen: date · hero sentence · status rows · 最近 · bottom dock.
+/// Single home screen: date · the two numbers · update line · shower button · 洗衣 · 最近.
 struct HomeView: View {
     @EnvironmentObject private var water: ShowerModel
     @EnvironmentObject private var campus: CampusModel
@@ -86,8 +86,7 @@ struct HomeView: View {
                     .navigationTitle(scrolledPastDate ? dateTitle : "")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement:.topBarTrailing) { gear } }
-                    .safeAreaInset(edge:.bottom, spacing:0) { dock(data) }
-                    .refreshable { await campus.refresh(force:true); await laundry.refresh(force:true) }
+                    .refreshable { await pull() }
                     .onChange(of:data.water.showering) { old, new in
                         if old == nil, new != nil { withAnimation(reduceMotion ? nil : Theme.spring) { proxy.scrollTo("top", anchor:.top) } }
                     }
@@ -277,8 +276,6 @@ struct HomeView: View {
 
     /// Negative top inset that lifts the date block into the navigation-bar row.
     private let dateLift: CGFloat = -48
-    /// Subtitle bottom → hero glyph top ≈ 28pt (text line boxes add the rest).
-    private let heroGap: CGFloat = 16
 
     private var dateTitle: String {
         let parts = Calendar.current.dateComponents([.month,.day], from:Date())
@@ -286,19 +283,24 @@ struct HomeView: View {
     }
 
     @ViewBuilder private func content(_ data: HomeData) -> some View {
+        let now = Date()
         VStack(alignment:.leading, spacing:0) {
             dateBlock(data).id("top")
-            hero(data)
-                .padding(.top,heroGap).padding(.horizontal,24).padding(.bottom,6)
-            if !data.signedIn {
-                HomeSectionHeader(text:"登录后会出现").padding(.top,24)
-                signedOutRows(data)
-            } else {
-                statusRows(data).padding(.top,24)
-                if !data.recents.isEmpty {
-                    HomeSectionHeader(text:"最近").padding(.top,30)
-                    recentRows(data)
-                }
+            HomeDuo(card:data.cardFigure(now:now), power:data.powerFigure(now:now),
+                    cardAction:{ data.signedIn ? path.append(.card) : openOnboarding() },
+                    powerAction:{ data.signedIn ? path.append(data.powerBound ? .power : .powerSetup) : openOnboarding() })
+                .padding(.top,28)
+            HomeUpdateLineView(line:data.updateLine, now:now)
+                .padding(.top,16).padding(.horizontal,24)
+            shower(data).padding(.top,28)
+            if data.laundryEnabled {
+                HomeSectionHeader(text:"洗衣").padding(.top,30)
+                rowLink(data.laundryBound ? .laundry : .washerSetup, label:laundryLabel(data)) { laundryRow(data) }
+            }
+            let recents = data.recents
+            if !recents.isEmpty {
+                HomeSectionHeader(text:"最近").padding(.top,30)
+                recentRows(recents)
             }
         }
         .frame(maxWidth:600)
@@ -318,74 +320,47 @@ struct HomeView: View {
         .onGeometryChange(for:Bool.self) { $0.frame(in:.global).maxY < 64 } action: { scrolledPastDate = $0 }
     }
 
-    @ViewBuilder private func hero(_ data: HomeData) -> some View {
-        ZStack(alignment:.topLeading) {
-            if let start = data.water.showering, data.signedIn {
-                ShowerHero(start:start, dorm:data.dorm, unconfirmed:data.showerUnconfirmed)
-                    .transition(heroTransition)
-            } else {
-                VStack(alignment:.leading, spacing:14) {
-                    if !data.signedIn { Mascot(size:52) }
-                    sentence(data)
+    // MARK: Shower
+
+    /// The shower button, or a plain row when hot water can't be used here.
+    @ViewBuilder private func shower(_ data: HomeData) -> some View {
+        if let kind = showerKind(data) {
+            HomeShowerButton(kind:kind) { tap(kind) }
+        } else {
+            VStack(spacing:0) {
+                Hairline()
+                rowLink(.water, label:"热水，" + showerUnavailableReason(data)) {
+                    StatusRow(emoji:"🚿", title:"热水", subtitle:showerUnavailableReason(data), dimmed:true)
                 }
-                .frame(maxWidth:.infinity, alignment:.leading)
-                .transition(heroTransition)
+                Hairline()
             }
         }
-        .animation(Theme.spring, value:data.water.showering)
     }
 
-    /// Reduce Motion: plain cross-fade, no offset.
-    private var heroTransition: AnyTransition {
-        reduceMotion ? .opacity : .opacity.combined(with:.offset(y:6))
-    }
-
-    private func sentence(_ data: HomeData) -> some View {
-        var text = AttributedString()
-        for segment in data.hero {
-            var run = AttributedString(segment.text)
-            run.foregroundColor = segment.color ?? Theme.ink
-            text += run
+    private func showerKind(_ data: HomeData) -> HomeShowerButton.Kind? {
+        guard data.signedIn else { return .signIn }
+        switch data.water {
+        case .unconfigured, .unavailable: return nil
+        case .idle:
+            if let issue = data.waterIssue { return .start(caption:issue) }
+            let last = data.lastShowerMinutes.map { "上次 \($0) 分钟" + (data.lastShowerCost.map { " · " + Theme.yuan($0) } ?? "") }
+            return .start(caption:last)
+        case .starting: return .starting
+        case .showering(let start):
+            return .showering(start, caption:data.showerUnconfirmed ? ShowerCopy.writeUnconfirmed : "点一下回到洗澡页")
+        case .settling: return .settling
+        case .unresolved: return .review
         }
-        return Text(text)
-            .scaledFont(30, .bold, relativeTo:.title)
-            .tracking(-0.6).lineSpacing(5)
-            .fixedSize(horizontal:false, vertical:true)
-            .contentTransition(reduceMotion ? .opacity : .numericText())
-            .animation(Theme.spring, value:data.heroLabel)
-            .accessibilityElement(children:.ignore)
-            .accessibilityLabel(data.heroLabel)
-            .accessibilityHint(data.powerLow ? "电量不足" : "")
-            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func showerUnavailableReason(_ data: HomeData) -> String {
+        switch data.water {
+        case .unavailable(let reason): return reason
+        default: return "先在设置里选好宿舍"
+        }
     }
 
     // MARK: Rows
-
-    @ViewBuilder private func statusRows(_ data: HomeData) -> some View {
-        VStack(spacing:0) {
-            rowLink(.power, label:powerLabel(data)) { powerRow(data) }
-            RowSeparator()
-            rowLink(.card, label:cardLabel(data)) { cardRow(data) }
-            RowSeparator()
-            rowLink(.water, label:waterLabel(data)) { waterRow(data) }
-            if data.laundryEnabled {
-                RowSeparator()
-                rowLink(data.laundryBound ? .laundry : .washerSetup, label:laundryLabel(data)) { laundryRow(data) }
-            }
-        }
-    }
-
-    private func signedOutRows(_ data: HomeData) -> some View {
-        let rows = [("⚡","电量"),("💳","校园卡"),("🚿","热水")] + (data.laundryEnabled ? [("🧺","洗衣")] : [])
-        return VStack(spacing:0) {
-            ForEach(Array(rows.enumerated()), id:\.offset) { index, row in
-                if index > 0 { RowSeparator() }
-                StatusRow(emoji:row.0, title:row.1, subtitle:"登录后显示", value:.dash, dimmed:true)
-                    .accessibilityElement(children:.ignore)
-                    .accessibilityLabel(row.1 + "，登录后显示")
-            }
-        }
-    }
 
     private func rowLink(_ route: HomeRoute, label: String, @ViewBuilder row: () -> some View) -> some View {
         NavigationLink(value:route) { row() }
@@ -395,70 +370,9 @@ struct HomeView: View {
             .accessibilityAddTraits(.isButton)
     }
 
-    private func powerRow(_ data: HomeData) -> some View {
-        let value: RowValue = data.remainingKWh.map { .number(Theme.kwh($0), unit:"度", low:data.powerLow) } ?? .dash
-        return StatusRow(emoji:"⚡", title:"电量", subtitle:data.powerIssue ?? data.powerSubtitle, subtitleLow:data.powerIssue == nil && data.powerLow, value:value)
-            .animation(Theme.spring, value:data.remainingKWh)
-    }
-    private func powerLabel(_ data: HomeData) -> String {
-        guard let kwh = data.remainingKWh else { return ["电量，未读取", data.powerIssue].compactMap { $0 }.joined(separator:"，") }
-        return ["电量", Theme.kwh(kwh) + " 度", data.powerIssue ?? (data.powerSubtitle.isEmpty ? nil : data.powerSubtitle)].compactMap { $0 }.joined(separator:"，")
-    }
-
-    private func cardRow(_ data: HomeData) -> some View {
-        let value: RowValue = data.balance.map { .number(Theme.yuan($0), unit:nil, low:data.cardLow) } ?? .dash
-        return StatusRow(emoji:"💳", title:"校园卡", subtitle:data.campusIssue ?? data.balanceUpdated.map { Theme.updated($0) } ?? "", value:value)
-            .animation(Theme.spring, value:data.balance)
-    }
-    private func cardLabel(_ data: HomeData) -> String {
-        guard let balance = data.balance else { return ["校园卡余额，未读取", data.campusIssue].compactMap { $0 }.joined(separator:"，") }
-        return "校园卡余额，" + Theme.yuan(balance).dropFirst() + " 元" + (data.campusIssue.map { "，" + $0 } ?? "")
-    }
-
-    private func waterSubtitle(_ data: HomeData) -> String {
-        switch data.water {
-        case .unconfigured: return "先在设置里选好宿舍"
-        case .unavailable(let reason): return reason
-        case .showering, .settling: return "正在洗澡"
-        case .unresolved(let label): return label
-        case .idle, .starting:
-            if let issue = data.waterIssue { return issue }
-            guard let minutes = data.lastShowerMinutes else { return "" }
-            return "上次 \(minutes) 分钟" + (data.lastShowerCost.map { " · " + Theme.yuan($0) } ?? "")
-        }
-    }
-    private func waterValue(_ data: HomeData) -> RowValue? {
-        switch data.water {
-        case .unconfigured, .unavailable: return nil
-        case .showering, .settling: return .word("使用中")
-        case .unresolved: return .accentWord("待核对")
-        case .idle, .starting: return .word("可以洗")
-        }
-    }
-    private func waterRow(_ data: HomeData) -> some View {
-        StatusRow(emoji:"🚿", title:"热水", subtitle:waterSubtitle(data), value:waterValue(data), dimmed:isUnavailable(data.water))
-    }
-    /// Hot water can't be used (not imported, no platform, school not open): ink2 title, no value, no pill.
-    private func isUnavailable(_ water: HomeData.Shower) -> Bool {
-        switch water {
-        case .unconfigured, .unavailable: return true
-        default: return false
-        }
-    }
-    private func waterLabel(_ data: HomeData) -> String {
-        var parts = ["热水"]
-        switch waterValue(data) {
-        case .word(let word)?, .accentWord(let word)?: parts.append(word)
-        default: break
-        }
-        let subtitle = waterSubtitle(data)
-        if !subtitle.isEmpty { parts.append(subtitle.replacingOccurrences(of:" · ¥", with:" ").appending(data.lastShowerCost != nil && subtitle.hasPrefix("上次") ? " 元" : "")) }
-        return parts.joined(separator:"，")
-    }
-
     private func laundryTitle(_ data: HomeData) -> String {
         guard data.laundryBound, let machine = data.laundryMachine else { return "洗衣" }
-        return "洗衣 · \(machine) 号机"
+        return "\(machine) 号机"
     }
     private func laundryRow(_ data: HomeData) -> some View {
         StatusRow(emoji:"🧺", title:laundryTitle(data),
@@ -469,21 +383,27 @@ struct HomeView: View {
         guard data.laundryBound else { return "洗衣，扫机身上的码来绑定" }
         var subtitle = data.laundry.subtitle
         if case .running(let program, let end) = data.laundry { subtitle = program + "，" + LaundryFormat.spokenClock(end) + "洗完" }
-        return [laundryTitle(data), data.laundry.spokenValue(), subtitle].compactMap { $0 }.joined(separator:"，")
+        return ["洗衣", laundryTitle(data), data.laundry.spokenValue(), subtitle].compactMap { $0 }.joined(separator:"，")
     }
 
-    @ViewBuilder private func recentRows(_ data: HomeData) -> some View {
+    /// The app's own showers and orders open their page; card records are plain rows.
+    @ViewBuilder private func recentRows(_ items: [RecentItem]) -> some View {
         VStack(spacing:0) {
-            ForEach(Array(data.recents.enumerated()), id:\.element.id) { index, item in
+            ForEach(Array(items.enumerated()), id:\.element.id) { index, item in
                 VStack(spacing:0) {
                     if index > 0 { RowSeparator() }
-                    NavigationLink(value:item.emoji == "🧺" ? HomeRoute.laundry : HomeRoute.water) { RecentRow(item:item) }
-                        .buttonStyle(RowPressStyle())
+                    if item.source == .app {
+                        NavigationLink(value:item.kind == .laundry ? HomeRoute.laundry : HomeRoute.water) { RecentRow(item:item) }
+                            .buttonStyle(RowPressStyle())
+                    } else {
+                        RecentRow(item:item)
+                    }
                 }
                 .transition(reduceMotion ? .opacity : .move(edge:.top).combined(with:.opacity))
             }
         }
-        .animation(Theme.spring, value:data.recents.map(\.id))
+        .padding(.bottom,40)
+        .animation(Theme.spring, value:items.map(\.id))
     }
 
     @ViewBuilder private func destination(_ route: HomeRoute) -> some View {
@@ -508,7 +428,8 @@ struct HomeView: View {
         }
     }
 
-    // MARK: Toolbar & dock
+    // MARK: Toolbar
+
 
     @ViewBuilder private var gear: some View {
         let button = Button { settings = true } label: {
@@ -521,96 +442,17 @@ struct HomeView: View {
         }
     }
 
-    private enum PillKind: Equatable { case start, starting, finish, settling, signIn, review, laundryReview }
-
-    private func pillKind(_ data: HomeData) -> PillKind? {
-        guard data.signedIn else { return .signIn }
-        let water = waterPillKind(data)
-        // Laundry 待核对 takes the dock only when the shower is idle (shower 待核对 wins).
-        if data.laundryEnabled, data.laundryBound, data.laundry == .unresolved, water == nil || water == .start { return .laundryReview }
-        return water
-    }
-
-    private func waterPillKind(_ data: HomeData) -> PillKind? {
-        switch data.water {
-        case .unconfigured, .unavailable: return nil
-        case .showering: return .finish
-        case .settling: return .settling
-        case .starting: return .starting
-        case .unresolved: return .review
-        case .idle: return .start
-        }
-    }
-
-    private func dock(_ data: HomeData) -> some View {
-        let kind = pillKind(data)
-        // The scan button only leads to the washer: gone with 学校洗衣机 off (the pill fills the row).
-        let showsRound = data.laundryEnabled && data.signedIn && kind != .finish && kind != .settling
-        return HStack(spacing:12) {
-            if let kind { pill(kind, data:data) }
-            else { Spacer(minLength:0) }
-            if showsRound {
-                Button { path.append(.washerSetup) } label: {
-                    Image(systemName:"qrcode.viewfinder").font(.system(size:22)).foregroundStyle(Theme.ink)
-                        .frame(width:60, height:60)
-                        .background(Theme.group, in:Circle())
-                        .overlay(Circle().strokeBorder(Theme.separator, lineWidth:0.5))
-                }
-                .buttonStyle(PressScaleStyle())
-                .accessibilityLabel("扫码")
-                .transition(reduceMotion ? .opacity : .scale.combined(with:.opacity))
-            }
-        }
-        .padding(.top,18).padding(.horizontal,20)
-        .frame(maxWidth:640)
-        .frame(maxWidth:.infinity)
-        .background {
-            ZStack { Rectangle().fill(.ultraThinMaterial); Theme.bg.opacity(0.85) }.ignoresSafeArea(edges:.bottom)
-        }
-        .animation(Theme.spring, value:kind)
-    }
-
-    private func pill(_ kind: PillKind, data: HomeData) -> some View {
-        let background: Color, foreground: Color, title: String
-        switch kind {
-        case .start: background = Theme.pill; foreground = Theme.pillInk; title = "开始洗澡"
-        case .starting: background = Theme.fill; foreground = Theme.ink2; title = "开始洗澡"
-        case .finish: background = Theme.accent; foreground = Theme.accentInk; title = "结束并结算"
-        case .settling: background = Theme.fill; foreground = Theme.ink2; title = "正在结算…"
-        case .signIn: background = Theme.pill; foreground = Theme.pillInk; title = "登录学校账号"
-        case .review: background = Theme.pill; foreground = Theme.pillInk; title = "核对上次结算"
-        case .laundryReview: background = Theme.pill; foreground = Theme.pillInk; title = "核对洗衣订单"
-        }
-        return Button { tap(kind) } label: {
-            HStack(spacing:8) {
-                if kind == .starting || kind == .settling { ProgressView().tint(Theme.ink2) }
-                if kind == .start { Image(systemName:"drop.fill").font(.system(size:17)) }
-                Text(title).scaledFont(18, .semibold, relativeTo:.headline)
-                    .lineLimit(1).minimumScaleFactor(0.8)
-                    .contentTransition(reduceMotion ? .opacity : .interpolate)
-            }
-            // One line at any size: cap the label; the pill grows with it (minHeight, not a fixed height).
-            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-            .foregroundStyle(foreground)
-            .padding(.horizontal,16)
-            .frame(maxWidth:.infinity).frame(minHeight:60)
-            .background(background, in:Capsule())
-        }
-        .buttonStyle(PressScaleStyle())
-        .disabled(kind == .starting || kind == .settling)
-        .accessibilityLabel(title)
-    }
-
     // MARK: Actions
 
-    private func tap(_ kind: PillKind) {
+    /// Starting works as before (the shower runs from here, its page shows the details); every
+    /// other state opens the shower page, where 结束并结算 and 核对 live.
+    private func tap(_ kind: HomeShowerButton.Kind) {
         #if DEBUG
         if demo != nil { demoTap(kind); return }
         #endif
         switch kind {
         case .signIn: openOnboarding()
-        case .review: path.append(.water)
-        case .laundryReview: path.append(.laundry)
+        case .review, .showering, .settling: path.append(.water)
         case .start:
             // An unchecked record blocks a new start: show it instead of failing.
             guard water.mayStart else { path.append(.water); return }
@@ -619,13 +461,15 @@ struct HomeView: View {
                 do { try await water.run(start:true) }
                 catch { errorTick += 1 }
             }
-        case .finish:
-            Task {
-                do { try await water.run(start:false) }
-                catch { if unresolvedClose { presentUnconfirmed() } else { errorTick += 1 } }
-            }
-        case .starting, .settling: break
+        case .starting: break
         }
+    }
+
+    /// Pull to refresh: joins a running refresh. Only a pull the user made buzzes on failure.
+    private func pull() async {
+        await campus.refresh(force:true)
+        await laundry.refresh(force:true)
+        if case .failed = HomeData(campus:campus, water:water, laundry:laundry).updateLine { errorTick += 1 }
     }
 
     private var unresolvedClose: Bool { water.unresolvedClose }
@@ -656,34 +500,28 @@ struct HomeView: View {
     }
 
     #if DEBUG
-    private func demoTap(_ kind: PillKind) {
+    private func demoTap(_ kind: HomeShowerButton.Kind) {
         switch kind {
         case .start:
             startTick += 1
             withAnimation(Theme.spring) { demo?.water = .showering(Date()) }
-        case .finish:
-            guard case .showering(let start)? = demo?.water else { return }
+        case .showering(let start, _):
             withAnimation(Theme.spring) { demo?.water = .settling(start) }
             Task {
                 try? await Task.sleep(for:.seconds(1.5))
                 let minutes = max(1, Int((Date().timeIntervalSince(start) / 60).rounded()))
-                let amount = Decimal(string:"1.32")
                 withAnimation(Theme.spring) {
                     demo?.water = .idle
-                    demo?.lastShowerMinutes = minutes; demo?.lastShowerCost = amount
-                    demo?.recents.insert(.init(id:"demo-\(Date().timeIntervalSince1970)", emoji:"🚿", title:"热水 · \(minutes) 分钟",
-                                               date:Date(), detail:nil, amount:amount), at:0)
-                    demo?.recents = Array(demo?.recents.prefix(4) ?? [])
+                    demo?.lastShowerMinutes = minutes; demo?.lastShowerCost = Decimal(string:"1.32")
+                    demo?.appActivities.insert(AppActivity(id:"demo-\(Date().timeIntervalSince1970)", kind:.shower(minutes:minutes),
+                                                           date:Date(), amount:Money(fen:132)), at:0)
                 }
                 successTick += 1
-                panel = .settled(minutes:minutes, amount:amount)
+                panel = .settled(minutes:minutes, amount:Decimal(string:"1.32"))
             }
         case .signIn: openOnboarding()
-        case .review: path.append(.water)
-        case .laundryReview:
-            laundryDemo = LaundryDemo.make(.check)
-            path.append(.laundry)
-        case .starting, .settling: break
+        case .review, .settling: path.append(.water)
+        case .starting: break
         }
     }
     #endif

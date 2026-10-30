@@ -221,8 +221,9 @@ struct LaundryDetail: View {
         case .check:
             if let record = facts.record {
                 HomeSectionHeader(text:"最近").padding(.top,30)
-                RecentRow(item:.init(id:"laundry-check", emoji:"🧺", title:"洗衣 · " + record.programName, date:record.createdAt ?? Date(),
-                                     detail:facts.machine.map(LaundryFormat.machine), amount:nil),
+                RecentRow(item:RecentItem(id:"laundry-check", kind:.laundry, title:"洗衣 · " + record.programName,
+                                          date:record.createdAt ?? Date(), detail:facts.machine.map(LaundryFormat.machine),
+                                          amount:nil, source:.app),
                           accentWord:"待核对")
             }
         case .unpaid, .empty, .unknown:
