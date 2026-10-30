@@ -7,7 +7,7 @@ enum T {
     static let custid = "TESTcustid000000000000000000000000000%1A00000%3G"
     static let pcUrl = "https://ecykt.gdbtu.edu.cn/ykt-view/authcsatoken?areacode=450010&redirect=%2Fhome&ticket=SYNTHETIC-TICKET-1"
     static func session(token: String = "REDACTED_TOKEN_2", syscustid: String = T.syscustid) -> EcyktSession {
-        EcyktSession(token: token, syscustid: syscustid, custid: T.custid, cardUnionID: "TESTida2ebe564310b2159320753dbd6")
+        EcyktSession(token: token, syscustid: syscustid, custid: T.custid, cardUnionID: "TESTid00000000000000000000000001")
     }
 
     static func expectError(_ expected: ServiceError, file: StaticString = #filePath, line: UInt = #line,
@@ -104,8 +104,8 @@ final class EcyktLivenessTests: XCTestCase {
         try server.serve("ecykt/getSysBindCustInfo-ok")
         let cards = try await EcyktClient(http: server.makeClient()).boundCards(T.session())
         XCTAssertEqual(cards.count, 1)
-        XCTAssertEqual(cards[0].custid, "TESTid42d8842cd296220095ff774c0fe1ef1f73007c1c090d64")
-        XCTAssertEqual(cards[0].unionID, "TESTida2ebe564310b2159320753dbd6")
+        XCTAssertEqual(cards[0].custid, "TESTid00000000000000000000000002")
+        XCTAssertEqual(cards[0].unionID, "TESTid00000000000000000000000001")
         XCTAssertEqual(cards[0].areaName, "星湖校区")
     }
 
@@ -126,7 +126,7 @@ final class EcyktLivenessTests: XCTestCase {
             server.serve(f)
             let token = f.requestBody?["acc_token"]?.text ?? ""
             let cards = try await EcyktClient(http: server.makeClient()).boundCards(T.session(token: token))
-            XCTAssertEqual(cards.first?.unionID, "TESTida2ebe564310b2159320753dbd6", name)
+            XCTAssertEqual(cards.first?.unionID, "TESTid00000000000000000000000001", name)
             XCTAssertEqual(server.requests.first?.bodyField("acc_token"), token, name)
         }
     }
@@ -290,17 +290,17 @@ final class EcyktElectricityTests: XCTestCase {
                             "ecykt/electric-getBuildingInfo-level3", "ecykt/electric-getBuildingInfo-level4", "ecykt/electric-getBuildingInfo-leafEmpty"])
         let c = EcyktClient(http: s.makeClient())
         let root = try await c.buildings(T.session(), parent: nil)
-        XCTAssertEqual(root.first, PowerNode(id: "001001", name: "星湖校区"))
+        XCTAssertEqual(root.first, PowerNode(id: "991001", name: "星湖校区"))
         XCTAssertEqual(root.count, 4)
-        let l1 = try await c.buildings(T.session(), parent: "001001")
+        let l1 = try await c.buildings(T.session(), parent: "991001")
         XCTAssertEqual(l1.first?.name, "半山公寓")
-        let l2 = try await c.buildings(T.session(), parent: "001001001")
+        let l2 = try await c.buildings(T.session(), parent: "991001001")
         XCTAssertEqual(l2.map(\.name), ["1栋", "2栋", "9栋"])
-        let l3 = try await c.buildings(T.session(), parent: "001001001000109")
+        let l3 = try await c.buildings(T.session(), parent: "991001001000109")
         XCTAssertEqual(l3.map(\.name), ["1楼", "2楼", "3楼"])
-        let l4 = try await c.buildings(T.session(), parent: "001001001000109000001")
+        let l4 = try await c.buildings(T.session(), parent: "991001001000109000001")
         XCTAssertEqual(l4.map(\.name), ["197", "198", "199"])
-        let leaf = try await c.buildings(T.session(), parent: "001001001000109000001003")
+        let leaf = try await c.buildings(T.session(), parent: "991001001000109000001003")
         XCTAssertEqual(leaf, [])
         XCTAssertTrue(s.unmatched.isEmpty)
         let r = try XCTUnwrap(s.requests.first)
@@ -314,16 +314,16 @@ final class EcyktElectricityTests: XCTestCase {
         let s = try server(["ecykt/electric-getMeterStatus-ok", "ecykt/electric-getMeterStatus-room", "ecykt/electric-getMeterStatus-leaf",
                             "ecykt/electric-getMeterStatus-unknownBuilding"])
         let c = EcyktClient(http: s.makeClient())
-        let campus = try await c.meters(T.session(), nodeID: "001001", wide: true)
+        let campus = try await c.meters(T.session(), nodeID: "991001", wide: true)
         XCTAssertEqual(campus.count, 12)
         XCTAssertEqual(campus[0].name, "8栋101")
         XCTAssertEqual(campus[0].leftMoney, Money(fen: 5000))
         XCTAssertEqual(campus[0].online, true)
-        let room = try await c.meters(T.session(), nodeID: "001001001000109000001003")
+        let room = try await c.meters(T.session(), nodeID: "991001001000109000001003")
         XCTAssertEqual(room, [Meter(comAddress: "000000000199", name: "9栋199", leftMoney: Money(fen: 3692),
                                     remainingKWh: DecimalText.parse("52.00"), dailyUseKWh: DecimalText.parse("3.2"),
                                     price: DecimalText.parse("0.7100"), online: true, switchState: "合闸-", updatedAt: "2026-10-30 08:10:22")])
-        let floor = try await c.meters(T.session(), nodeID: "001001001000109000001")
+        let floor = try await c.meters(T.session(), nodeID: "991001001000109000001")
         XCTAssertEqual(floor.count, 3)
         let unknown = try await c.meters(T.session(), nodeID: "999999")
         XCTAssertEqual(unknown, [], "[] is success: 没找到电表")

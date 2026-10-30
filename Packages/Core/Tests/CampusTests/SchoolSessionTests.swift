@@ -21,7 +21,7 @@ struct Harness {
         try vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: residence), meter: meter))
     }
 
-    static let roomBinding = MeterBinding(nodeID: "001001001000109000001003", comAddress: "000000000199", label: "9栋 199", nodeIsRoom: true)
+    static let roomBinding = MeterBinding(nodeID: "991001001000109000001003", comAddress: "000000000199", label: "9栋 199", nodeIsRoom: true)
 
     func loginBySysIdCalls() -> Int { server.requests(path: "/loginBySysId").count }
     func livenessCalls() -> Int { server.requests(path: "/getSysBindCustInfo").count }
@@ -48,9 +48,9 @@ final class SchoolRefreshTests: XCTestCase {
         XCTAssertEqual(h.loginBySysIdCalls(), 0, "refresh never calls loginBySysId")
         XCTAssertTrue(h.server.unmatched.isEmpty)
         // Latest custid ciphertext from the liveness answer is kept for next time.
-        XCTAssertEqual(try h.vault.ecyktSession()?.custid, "TESTid42d8842cd296220095ff774c0fe1ef1f73007c1c090d64")
+        XCTAssertEqual(try h.vault.ecyktSession()?.custid, "TESTid00000000000000000000000002")
         // Balance used the custid from the validating response.
-        XCTAssertEqual(h.server.requests(path: "/getUserBalance").first?.bodyField("custid"), "TESTid42d8842cd296220095ff774c0fe1ef1f73007c1c090d64")
+        XCTAssertEqual(h.server.requests(path: "/getUserBalance").first?.bodyField("custid"), "TESTid00000000000000000000000002")
     }
 
     /// Batch 1 acceptance: liveness `-1` → needsLogin while the old balance stays with its fetchedAt.
@@ -169,14 +169,14 @@ final class SchoolRechargeTests: XCTestCase {
         XCTAssertEqual(state["logintoken"]?.text, "REDACTED_TOKEN_9")
         XCTAssertNotEqual(state["logintoken"]?.text, "REDACTED_TOKEN_2")
         XCTAssertEqual(state["loginInfo"]?["token"]?.text, "REDACTED_TOKEN_9")
-        XCTAssertEqual(state["loginInfo"]?["syscustid"]?.text, "TESTid8d96ff9f158170332e222e38ddc81e10a48754eda0f1")
+        XCTAssertEqual(state["loginInfo"]?["syscustid"]?.text, "TESTid00000000000000000000000003")
         XCTAssertEqual(state["schoolid"]?.text, "450010")
-        XCTAssertEqual(state["custInfo"]?["custunionid"]?.text, "TESTida2ebe564310b2159320753dbd6")
-        XCTAssertEqual(state["custid"]?.text, "TESTid42d8842cd296220095ff774c0fe1ef1f73007c1c090d64")
+        XCTAssertEqual(state["custInfo"]?["custunionid"]?.text, "TESTid00000000000000000000000001")
+        XCTAssertEqual(state["custid"]?.text, "TESTid00000000000000000000000002")
         XCTAssertTrue(web.userScript.contains("location.origin !== 'https://ecykt.gdbtu.edu.cn'"))
         XCTAssertTrue(web.userScript.contains("elecampus_state"))
         XCTAssertFalse("\(web)".contains("REDACTED_TOKEN_9"))
-        XCTAssertEqual(try h.vault.ecyktSession()?.syscustid, "TESTid8d96ff9f158170332e222e38ddc81e10a48754eda0f1")
+        XCTAssertEqual(try h.vault.ecyktSession()?.syscustid, "TESTid00000000000000000000000003")
         // Same shape as the official CSA state for the fields the page reads.
         let official = try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"]
         for key in ["logintoken", "loginInfo", "schoolid", "custInfo"] { XCTAssertNotNil(official?[key], key); XCTAssertNotNil(state[key], key) }
@@ -190,8 +190,8 @@ final class SchoolRechargeTests: XCTestCase {
         let web = try await h.session().rechargeSession(.electricity)
         let comps = try XCTUnwrap(URLComponents(url: web.startURL, resolvingAgainstBaseURL: false))
         XCTAssertEqual(comps.path, "/ykt-mini/api/electricnew/getPowerUrl")
-        XCTAssertEqual(comps.queryItems?.first { $0.name == "syscustid" }?.value, "TESTid52fbfe071ca7703bd0ad1331fbc0bf1c65889181")
-        XCTAssertEqual(comps.queryItems?.first { $0.name == "custid" }?.value, "TESTid42d8842cd296220095ff774c0fe1ef1f73007c1c090d64")
+        XCTAssertEqual(comps.queryItems?.first { $0.name == "syscustid" }?.value, "TESTid00000000000000000000000004")
+        XCTAssertEqual(comps.queryItems?.first { $0.name == "custid" }?.value, "TESTid00000000000000000000000002")
     }
 
     func testExpiredRechargeNeverMints() async throws {
@@ -252,7 +252,7 @@ final class SchoolElectricityTests: XCTestCase {
         XCTAssertEqual(meter.name, "9栋199")
         XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
         XCTAssertTrue(h.server.unmatched.isEmpty)
-        XCTAssertEqual(h.server.requests.filter { $0.bodyField("server") == "/api/getMeterStatus" && $0.bodyField("buildingID") == "001001" }.count, 1,
+        XCTAssertEqual(h.server.requests.filter { $0.bodyField("server") == "/api/getMeterStatus" && $0.bodyField("buildingID") == "991001" }.count, 1,
                        "one campus-wide meter read")
     }
 
@@ -265,7 +265,7 @@ final class SchoolElectricityTests: XCTestCase {
                          bodyMatch: ["server": "/api/getBuildingInfo"], body: Data(#"{"code":0,"msg":"获取成功","data":"[]"}"#.utf8))
         let result = try await h.session().resolveElectricity()
         guard case .matched(let binding, _) = result else { return XCTFail("\(result)") }
-        XCTAssertEqual(binding, MeterBinding(nodeID: "001001", comAddress: "000000000199", label: "9栋 199", nodeIsRoom: false))
+        XCTAssertEqual(binding, MeterBinding(nodeID: "991001", comAddress: "000000000199", label: "9栋 199", nodeIsRoom: false))
     }
 
     func testZeroOrManyMatchesGoToPicker() async throws {
@@ -306,7 +306,7 @@ final class SchoolSignInTests: XCTestCase {
         XCTAssertEqual(summary.cardholder, "测试员")
         XCTAssertEqual(summary.residence?.address?.meterName, "9栋199")
         XCTAssertEqual(try h.vault.portalToken(), PortalToken("PORTAL"))
-        XCTAssertEqual(try h.vault.ecyktSession()?.cardUnionID, "TESTida2ebe564310b2159320753dbd6")
+        XCTAssertEqual(try h.vault.ecyktSession()?.cardUnionID, "TESTid00000000000000000000000001")
         XCTAssertEqual(try h.vault.profile()?.residence?.raw, "星湖校区9栋9号1层199房")
     }
 

@@ -1,7 +1,7 @@
 {
   "request": {
     "method": "GET",
-    "url": "https://isv.lxt6.cn/zk_areainfo_api/areaInfo/getAreaForRoomApplests?wxcode=id=170000000000090101&sign=REDACTED_TOKEN_23&sid=REDACTED_TOKEN_19",
+    "url": "https://isv.lxt6.cn/zk_areainfo_api/areaInfo/getAreaForRoomApplests?wxcode=id=997000000000090101&sign=REDACTED_TOKEN_23&sid=REDACTED_TOKEN_19",
     "headers": {
       "Content-Type": "application/x-www-form-urlencoded"
     },
@@ -17,15 +17,15 @@
       "message": "OK",
       "data": [
         {
-          "id": "170000000000091197",
+          "id": "997000000000091197",
           "name": "197"
         },
         {
-          "id": "170000000000091198",
+          "id": "997000000000091198",
           "name": "198"
         },
         {
-          "id": "100000000000000002",
+          "id": "991000000000000002",
           "name": "199"
         }
       ],
@@ -38,7 +38,7 @@
     "capturedAt": "2026-10-30",
     "redacted": true,
     "synthetic": {
-      "$.data": "Replaced with 3 synthetic rooms (197-199). '199' / 100000000000000002 is the faked user room used by portal/getMyInfo-ok (gydz ...9栋9号1层199房) and lxt6/getMachineMacAddress-ok (roomId). Shape (id: 18-digit string, name: room number string) matches the real response; ids and names are not real."
+      "$.data": "Replaced with 3 synthetic rooms (197-199). '199' / 991000000000000002 is the faked user room used by portal/getMyInfo-ok (gydz ...9栋9号1层199房) and lxt6/getMachineMacAddress-ok (roomId). Shape (id: 18-digit string, name: room number string) matches the real response; ids and names are not real."
     }
   }
 }

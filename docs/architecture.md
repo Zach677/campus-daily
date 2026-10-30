@@ -558,8 +558,11 @@ across fixtures). Personal identifiers (`syscustid`, `custid`, `custunionid`, na
 phone, `studentid`, `userId`, `deptId`, `vsuppid`, appid, `headurl`, `voucherno`, meter
 `comAddress`, water `machineId`/`Mac`/`machineName`, portal `gydz`/`szbj`, and in `me/user`
 `username`/`userUid`, `organizationId`, `accountId`, `userId`, `imageUrl`,
-`organizationName`/`organizationCode`, `identityTypeId`, `userName`) are fake values of the same
-length and character class. Dorm data is synthetic: the faked user room is
+`organizationName`/`organizationCode`, `identityTypeId`, `userName`) are fake values. Numeric
+ids and ciphertexts use shapes no real value has, so `Scripts/privacy-check.sh` can allow them by whole value: zero-padded
+counters (`TESTid` + 26 digits, meter `000000000199`), numeric ids starting with `99` (dorm
+building ids `991001…`, hot-water area ids `997…`, room `991000000000000002`), or a few fixed
+placeholders listed in the script. Dorm data is synthetic: the faked user room is
 `星湖校区9栋9号1层199房` (meter `9栋199`, water room `199`), and the room/building lists around
 it are synthetic, as are all meter readings and balances (the campus-wide meter list
 `electric-getMeterStatus-ok` is 12 invented rows). Lists longer than 12 entries are cut to 12

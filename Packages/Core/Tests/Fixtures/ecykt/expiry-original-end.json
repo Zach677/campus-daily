@@ -27,8 +27,8 @@
       "code": 0,
       "data": [
         {
-          "custid": "TESTid32c2beaa5472b6273fbe81d7a1c4a141cd47dc67170050",
-          "custunionid": "TESTida2ebe564310b2159320753dbd6",
+          "custid": "TESTid00000000000000000000000009",
+          "custunionid": "TESTid00000000000000000000000001",
           "custname": "测试员",
           "idno": "************573408",
           "specialtyname": null,

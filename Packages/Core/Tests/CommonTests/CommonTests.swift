@@ -50,7 +50,7 @@ final class ServiceErrorTests: XCTestCase {
 final class JSONValueTests: XCTestCase {
     func testParsesFragmentsAndKeepsIntegersExact() throws {
         XCTAssertEqual(try JSONValue.parse("7.9"), .double(7.9))
-        XCTAssertEqual(try JSONValue.parse("170000000000000001"), .int(170000000000000001))
+        XCTAssertEqual(try JSONValue.parse("997000000000000001"), .int(997000000000000001))
         XCTAssertEqual(try JSONValue.parse("\"[]\"").text, "[]")
         XCTAssertEqual(try JSONValue.parse("{\"a\":[true,null]}")["a"], .array([.bool(true), .null]))
     }

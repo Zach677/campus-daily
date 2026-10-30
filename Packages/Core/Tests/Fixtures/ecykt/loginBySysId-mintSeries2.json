@@ -30,7 +30,7 @@
       "msg": "操作成功",
       "code": 0,
       "data": {
-        "syscustid": "TESTid52fbfe071ca7703bd0ad1331fbc0bf1c65889181",
+        "syscustid": "TESTid00000000000000000000000004",
         "isbind": 1,
         "token": "REDACTED_TOKEN_10"
       }

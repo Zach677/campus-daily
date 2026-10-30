@@ -15,7 +15,7 @@
       "acc_token": "REDACTED_TOKEN_2",
       "server": "/api/getBuildingInfo",
       "areacode": "450010",
-      "buildingID": "001001001000109000001"
+      "buildingID": "991001001000109000001"
     }
   },
   "response": {
@@ -28,7 +28,7 @@
     "body": {
       "msg": "获取成功",
       "code": 0,
-      "data": "[{\"buildingName\":\"197\",\"buildingID\":\"001001001000109000001001\"},{\"buildingName\":\"198\",\"buildingID\":\"001001001000109000001002\"},{\"buildingName\":\"199\",\"buildingID\":\"001001001000109000001003\"}]"
+      "data": "[{\"buildingName\":\"197\",\"buildingID\":\"991001001000109000001001\"},{\"buildingName\":\"198\",\"buildingID\":\"991001001000109000001002\"},{\"buildingName\":\"199\",\"buildingID\":\"991001001000109000001003\"}]"
     }
   },
   "_fixture": {

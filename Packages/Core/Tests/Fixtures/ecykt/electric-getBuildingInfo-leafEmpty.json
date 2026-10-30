@@ -15,7 +15,7 @@
       "acc_token": "REDACTED_TOKEN_2",
       "server": "/api/getBuildingInfo",
       "areacode": "450010",
-      "buildingID": "001001001000109000001003"
+      "buildingID": "991001001000109000001003"
     }
   },
   "response": {

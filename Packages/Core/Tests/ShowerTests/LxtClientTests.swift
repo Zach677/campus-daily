@@ -17,7 +17,7 @@ final class LxtClientTests: XCTestCase {
         let server = StubServer()
         try server.serve("lxt6/getUserMsg-ok")
         let user = try await Golden.client(server).userInfo(Golden.handoff)
-        XCTAssertEqual(user, ShowerUser(studentId: "100000000000000001", schoolId: "20021"))
+        XCTAssertEqual(user, ShowerUser(studentId: "991000000000000001", schoolId: "20021"))
         XCTAssertEqual(server.requests.first?.queryItem("requestType"), "1")
         XCTAssertFalse(user.description.contains("1795606"))
     }
@@ -40,7 +40,7 @@ final class LxtClientTests: XCTestCase {
         let client = Golden.client(server)
         let campuses = try await client.areas(parent: "20021")
         XCTAssertEqual(campuses.count, 6)
-        XCTAssertEqual(campuses[1], AreaNode(id: "170000000000014501", name: "星湖校区"))
+        XCTAssertEqual(campuses[1], AreaNode(id: "997000000000014501", name: "星湖校区"))
 
         try server.serve("lxt6/areaInfo-badSign", times: 1)
         await Golden.expectError(.badRequest(.lxt6)) { _ = try await client.areas(parent: "20021") }
@@ -63,9 +63,9 @@ final class LxtClientTests: XCTestCase {
         let server = StubServer()
         try server.serve("lxt6/getMachineMacAddress-ok", times: 1)
         let client = Golden.client(server)
-        let machines = try await client.machines(room: "100000000000000002", schoolId: "20021")
+        let machines = try await client.machines(room: "991000000000000002", schoolId: "20021")
         XCTAssertEqual(machines, [ShowerMachine(machineId: "1A2B3C4D", name: "9-901", mac: "02:00:00:00:00:01")])
-        XCTAssertEqual(server.requests.last?.queryItem("wxcode"), "typeId=1*_schoolId=20021*_roomId=100000000000000002")
+        XCTAssertEqual(server.requests.last?.queryItem("wxcode"), "typeId=1*_schoolId=20021*_roomId=991000000000000002")
 
         try server.serve("lxt6/getMachineMacAddress-unknownRoom", times: 1)
         await Golden.expectError(.rejected(.lxt6, code: "5000", message: "系统提示： 当前房间未绑定设备")) {
@@ -171,8 +171,8 @@ final class ShowerOnboardingTests: XCTestCase {
         let server = try fixtureServer()
         let onboarding = ShowerOnboarding(directory: Golden.client(server))
         let result = try await onboarding.match(address, schoolId: "20021")
-        let path = [AreaNode(id: "170000000000014501", name: "星湖校区"), AreaNode(id: "170000000000090009", name: "9栋"),
-                    AreaNode(id: "170000000000090101", name: "一楼"), AreaNode(id: "100000000000000002", name: "199")]
+        let path = [AreaNode(id: "997000000000014501", name: "星湖校区"), AreaNode(id: "997000000000090009", name: "9栋"),
+                    AreaNode(id: "997000000000090101", name: "一楼"), AreaNode(id: "991000000000000002", name: "199")]
         XCTAssertEqual(result, .matched(path: path, machine: ShowerMachine(machineId: "1A2B3C4D", name: "9-901", mac: "02:00:00:00:00:01")))
         XCTAssertEqual(ShowerOnboarding.roomLabel(path), "9栋 199")
         XCTAssertTrue(ShowerOnboarding.pathMatches(path, address: address))

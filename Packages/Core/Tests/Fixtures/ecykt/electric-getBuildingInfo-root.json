@@ -27,7 +27,7 @@
     "body": {
       "msg": "获取成功",
       "code": 0,
-      "data": "[{\"buildingName\":\"星湖校区\",\"buildingID\":\"001001\"},{\"buildingName\":\"大旺校区\",\"buildingID\":\"001002\"},{\"buildingName\":\"中梁壹号院\",\"buildingID\":\"001003\"},{\"buildingName\":\"高要睿臻环保公司\",\"buildingID\":\"001004\"}]"
+      "data": "[{\"buildingName\":\"星湖校区\",\"buildingID\":\"991001\"},{\"buildingName\":\"大旺校区\",\"buildingID\":\"001002\"},{\"buildingName\":\"中梁壹号院\",\"buildingID\":\"001003\"},{\"buildingName\":\"高要睿臻环保公司\",\"buildingID\":\"001004\"}]"
     }
   },
   "_fixture": {

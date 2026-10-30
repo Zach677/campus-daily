@@ -15,7 +15,7 @@
       "acc_token": "REDACTED_TOKEN_2",
       "server": "/api/getMeterStatus",
       "areacode": "450010",
-      "buildingID": "001001"
+      "buildingID": "991001"
     }
   },
   "response": {

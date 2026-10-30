@@ -15,7 +15,7 @@
       "acc_token": "REDACTED_TOKEN_2",
       "server": "/api/getBuildingInfo",
       "areacode": "450010",
-      "buildingID": "001001"
+      "buildingID": "991001"
     }
   },
   "response": {
@@ -28,7 +28,7 @@
     "body": {
       "msg": "获取成功",
       "code": 0,
-      "data": "[{\"buildingName\":\"半山公寓\",\"buildingID\":\"001001001\"},{\"buildingName\":\"樱花公寓\",\"buildingID\":\"001001002\"},{\"buildingName\":\"日月湖公寓\",\"buildingID\":\"001001003\"},{\"buildingName\":\"紫荆公寓\",\"buildingID\":\"001001004\"},{\"buildingName\":\"明湖公寓\",\"buildingID\":\"001001005\"},{\"buildingName\":\"葫芦湖公寓\",\"buildingID\":\"001001006\"},{\"buildingName\":\"兰香公寓\",\"buildingID\":\"001001007\"},{\"buildingName\":\"教师公寓\",\"buildingID\":\"001001008\"},{\"buildingName\":\"学生公寓\",\"buildingID\":\"001001009\"}]"
+      "data": "[{\"buildingName\":\"半山公寓\",\"buildingID\":\"991001001\"},{\"buildingName\":\"樱花公寓\",\"buildingID\":\"991001002\"},{\"buildingName\":\"日月湖公寓\",\"buildingID\":\"991001003\"},{\"buildingName\":\"紫荆公寓\",\"buildingID\":\"991001004\"},{\"buildingName\":\"明湖公寓\",\"buildingID\":\"991001005\"},{\"buildingName\":\"葫芦湖公寓\",\"buildingID\":\"991001006\"},{\"buildingName\":\"兰香公寓\",\"buildingID\":\"991001007\"},{\"buildingName\":\"教师公寓\",\"buildingID\":\"991001008\"},{\"buildingName\":\"学生公寓\",\"buildingID\":\"991001009\"}]"
     }
   },
   "_fixture": {

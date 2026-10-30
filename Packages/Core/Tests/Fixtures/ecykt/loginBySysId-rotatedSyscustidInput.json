@@ -11,7 +11,7 @@
       "Referer": "https://ecykt.gdbtu.edu.cn/ykt-view/recharge?isbind=1"
     },
     "body": {
-      "syscustid": "TESTid1b8e352c0e72e799d2b869d155110fd3cc435f5b14",
+      "syscustid": "TESTid00000000000000000000000018",
       "acc_token": "REDACTED_TOKEN_4",
       "areacode": "450010",
       "version": "v1.1.55",
@@ -30,7 +30,7 @@
       "msg": "操作成功",
       "code": 0,
       "data": {
-        "syscustid": "TESTid055e57020d869e84db65869e976c2175b438eab497bb",
+        "syscustid": "TESTid00000000000000000000000024",
         "isbind": 1,
         "token": "REDACTED_TOKEN_15"
       }
