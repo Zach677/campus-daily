@@ -159,6 +159,20 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertTrue(flow.presented)
     }
 
+    /// 取消 as the controller or the platform turns the start down: the refusal is shown (nothing
+    /// was charged), the page does not just close.
+    func testACancelMeetingARefusalShowsTheRefusal() {
+        for (reason, denial) in [(ShowerFailureReason.authorizeRefused, ShowerPage.Denial.refused(nil)), (.deviceBusy, .inUse)] {
+            var flow = ShowerPageFlow(record: ShowerState(phase: .authorizing, startedAt: t0), presented: true)
+            XCTAssertEqual(reduce(&flow, .cancelTapped), [.cancelStart])
+            XCTAssertEqual(reduce(&flow, .record(failed(reason, review: false))), [], "\(reason)")
+            XCTAssertTrue(flow.presented)
+            XCTAssertEqual(flow.page?.phase, .denied)
+            XCTAssertEqual(flow.page?.denial, denial)
+            XCTAssertEqual(reduce(&flow, .closeTapped), [.dismissRecord])
+        }
+    }
+
     /// A cancel that arrives as the start runs into an uncertain authorization: that is shown.
     func testACancelNeverHidesAnUncertainRecord() {
         var flow = ShowerPageFlow(record: ShowerState(phase: .authorizing, startedAt: t0), presented: true)

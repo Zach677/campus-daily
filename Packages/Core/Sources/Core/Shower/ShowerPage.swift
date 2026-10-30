@@ -250,8 +250,10 @@ public struct ShowerPageFlow: Sendable, Equatable {
             }
             if flow.cancelling, next.phase != .authorizing {
                 f.cancelling = false
-                if next.phase == .failed, next.failure?.needsReview == false {
-                    // The start stopped as asked: back home, no failure face, no record.
+                if ShowerPage(next)?.phase == .connectFailed {
+                    // The start stopped as asked: back home, no failure face, no record. A
+                    // refusal that came first (the platform said no, the controller is in use)
+                    // is the answer to the start and is shown.
                     f.presented = false
                     return (f, [.dismissRecord])
                 }
