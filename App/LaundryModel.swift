@@ -81,9 +81,11 @@ private struct LaundryEngineHooks: LaundryHooks {
 
     // MARK: Account + engine
 
+    /// The install's `x-mobile-id`: a dashed UUID (the client rejects anything else), created once
+    /// and saved so the SMS request and the login send the same id.
     private var device: UjingDevice {
-        let mobileID = account?.mobileID ?? UUID().uuidString.replacingOccurrences(of:"-", with:"").lowercased()
-        return UjingDevice(mobileID:mobileID, userAgent:AppServices.userAgent)
+        if account == nil, let id = try? AppServices.laundryVault.mobileID() { account = UjingAccountItem(mobileID:id) }
+        return UjingDevice(mobileID:account?.mobileID ?? UUID().uuidString, userAgent:AppServices.userAgent)
     }
 
     private func reloadAccount() {

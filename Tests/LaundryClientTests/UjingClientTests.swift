@@ -3,6 +3,7 @@ import Foundation
 import DailyCore
 import DailyHTTP
 import DailyTestSupport
+import DailyStore
 @testable import LaundryClient
 
 final class UjingClientTests: XCTestCase {
@@ -27,6 +28,24 @@ final class UjingClientTests: XCTestCase {
         XCTAssertEqual(r.header("x-mobile-brand"), "apple")
         XCTAssertNil(r.header("Authorization"))
         XCTAssertTrue(server.unmatched.isEmpty)
+    }
+
+    /// Regression: the app once generated a dash-less id, which the client's own check rejected,
+    /// so the SMS request never left the phone. The default id must pass that check.
+    func testDefaultMobileIDIsADashedUUIDTheClientAccepts() async throws {
+        let vault = StoredLaundryVault(store: InMemorySecureStore())
+        let id = try vault.mobileID()
+        XCTAssertNotNil(UUID(uuidString: id))
+        XCTAssertEqual(try vault.mobileID(), id)
+        let server = StubServer()
+        try server.serve("ujing/captcha-ok")
+        let ok = UjingClient(http: server.makeClient(allowedHosts: AllowedHosts.laundry, log: RecordingLogSink()),
+                             device: UjingDevice(mobileID: id, userAgent: "XiaoRiChang/test"), token: nil)
+        try await ok.requestSMS(mobile: "13800000000")
+        XCTAssertEqual(server.requests.first?.header("x-mobile-id"), id)
+        let dashless = UjingClient(http: server.makeClient(allowedHosts: AllowedHosts.laundry, log: RecordingLogSink()),
+                                   device: UjingDevice(mobileID: id.replacingOccurrences(of: "-", with: ""), userAgent: "XiaoRiChang/test"), token: nil)
+        await L.expectError(.badRequest(.ujing)) { try await dashless.requestSMS(mobile: "13800000000") }
     }
 
     func testRequestSMSRefusedMalformedUncertainAndBadInput() async throws {
