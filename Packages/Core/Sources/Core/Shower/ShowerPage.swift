@@ -52,10 +52,19 @@ public enum ShowerEndFailure: Sendable, Equatable {
 public enum ShowerRecheckResult: Sendable, Equatable {
     /// The controller answered and is stopped: the check stands.
     case stopped
-    /// The controller was not reached (or its answer could not be read).
+    /// The controller was not reached: moving closer may help.
     case noConnection
     /// The controller that answered is not this dorm's.
     case otherController
+    /// Bluetooth is off.
+    case bluetoothOff
+    /// Something else was talking to the controller or the record (a refresh, an end): nothing
+    /// was probed.
+    case busy
+    /// The probe ran and failed some other way (an unreadable answer, a storage error).
+    case failed
+    /// The probe could not start at all (the record moved on, no binding or engine yet).
+    case unavailable
 
     /// From the record after the probe; nil when water runs again (the timer face).
     public init?(after record: ShowerState) {
@@ -63,7 +72,20 @@ public enum ShowerRecheckResult: Sendable, Equatable {
         switch record.notice {
         case .notActive?: self = .stopped
         case .wrongDevice?: self = .otherController
-        default: self = .noConnection
+        case .device(.bluetoothOff)?: self = .bluetoothOff
+        case .device(.notFound)?, .device(.timedOut)?, .device(.disconnected)?, .device(.ambiguous)?, .device(.interrupted)?:
+            self = .noConnection
+        case .device(.busy)?: self = .busy
+        case .device(.malformedFrame)?, .writeUnconfirmed?, nil: self = .failed
+        }
+    }
+
+    /// The probe threw before it reached the controller.
+    public init(error: Error) {
+        switch error as? ShowerEngineError {
+        case .busy?: self = .busy
+        case .notAllowed?, .blocked?: self = .unavailable
+        default: self = .failed
         }
     }
 }
@@ -182,7 +204,7 @@ public enum ShowerPageEvent: Sendable, Equatable {
     case homeTapped
     /// 再查一次水控 (needs check): probe the controller again, read-only.
     case recheckTapped
-    /// That probe came back; nil when it could not run at all.
+    /// That probe came back; nil when water runs again.
     case recheckReturned(ShowerRecheckResult?)
 }
 

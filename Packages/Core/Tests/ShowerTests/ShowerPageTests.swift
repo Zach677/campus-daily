@@ -269,6 +269,31 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertTrue(flow.presented)
     }
 
+    /// What 再查一次水控 says: Bluetooth off, something else busy, an unreadable answer and a
+    /// probe that could not start each get their own line, not 「没连上」.
+    func testRecheckResultsTellTheFailuresApart() {
+        func after(_ notice: ShowerNotice?) -> ShowerRecheckResult? {
+            ShowerRecheckResult(after: ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: notice))
+        }
+        XCTAssertEqual(after(.device(.bluetoothOff)), .bluetoothOff)
+        XCTAssertEqual(after(.device(.notFound)), .noConnection)
+        XCTAssertEqual(after(.device(.timedOut)), .noConnection)
+        XCTAssertEqual(after(.device(.busy)), .busy)
+        XCTAssertEqual(after(.device(.malformedFrame)), .failed)
+        XCTAssertEqual(after(.wrongDevice), .otherController)
+        XCTAssertEqual(ShowerRecheckResult(error: ShowerEngineError.busy), .busy)
+        XCTAssertEqual(ShowerRecheckResult(error: ShowerEngineError.notAllowed), .unavailable)
+        XCTAssertEqual(ShowerRecheckResult(error: ShowerEngineError.storage), .failed)
+        XCTAssertEqual(ShowerRecheckResult(error: ShowerEngineError.wrongBinding), .failed)
+
+        let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)
+        var flow = ShowerPageFlow(record: check, presented: true)
+        _ = reduce(&flow, .recheckTapped)
+        _ = reduce(&flow, .recheckReturned(.unavailable))
+        XCTAssertEqual(flow.recheckResult, .unavailable, "a probe that could not start still says so")
+        XCTAssertFalse(flow.rechecking)
+    }
+
     /// 检查水控状态 in Settings found the controller stopped: the record waits for a check, but
     /// Settings stays open (only an end brings the check up by itself).
     func testAProbeFromSettingsDoesNotBringTheCheckUp() {

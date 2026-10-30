@@ -271,7 +271,7 @@ struct OnboardingView: View {
         switch outcome {
         case .verified: return ShowerModel.inspectionVerifiedText
         case .notFound: return "没找到水控，走近一点再试。"
-        case .bluetoothOff: return "蓝牙关着，打开后再核对。"
+        case .bluetoothOff: return ShowerPageText.bluetoothOff
         case .inUse: return ShowerModel.inspectionBusyText
         case .otherMachine: return "附近的水控不是你宿舍的那台。"
         case .failed(let text): return text

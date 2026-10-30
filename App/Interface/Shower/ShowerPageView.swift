@@ -29,11 +29,16 @@ enum ShowerPageText {
     /// The needs-check face's read-only probe, under the body.
     static let recheck = "再查一次水控"
     static let rechecking = "正在查水控…"
+    static let bluetoothOff = "蓝牙关着，打开后再核对。"
     static func recheckResult(_ result: ShowerRecheckResult) -> String {
         switch result {
         case .stopped: return "查过了，水控是停着的。"
         case .noConnection: return "没连上水控，靠近一点再查。"
         case .otherController: return "附近的水控不是你宿舍的那台。"
+        case .bluetoothOff: return bluetoothOff
+        case .busy: return SchoolLoginText.busy
+        case .failed: return "没查到水控，再试一次。"
+        case .unavailable: return "现在查不了，等一下再试。"
         }
     }
     static let resolveConfirm = "这次洗澡核对过了吗？"

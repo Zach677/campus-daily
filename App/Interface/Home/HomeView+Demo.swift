@@ -99,6 +99,10 @@ extension HomeView {
                 case "sh-check-rechecking": shower.page.rechecking = true
                 case "sh-check-stopped": shower.page.recheckResult = .stopped
                 case "sh-check-nocon": shower.page.recheckResult = .noConnection
+                case "sh-check-bt": shower.page.recheckResult = .bluetoothOff
+                case "sh-check-busy": shower.page.recheckResult = .busy
+                case "sh-check-failed": shower.page.recheckResult = .failed
+                case "sh-check-unavailable": shower.page.recheckResult = .unavailable
                 default: break
                 }
                 return
@@ -123,7 +127,8 @@ extension HomeView {
     }
     /// campusdaily://demo/sh-<face>: connect, run, settle, done, nocon, denied, busy, unsure, check,
     /// endfail (back on the timer after an end that didn't go through), check-rechecking,
-    /// check-stopped, check-nocon (再查一次水控 running, stopped, not reached).
+    /// check-stopped, check-nocon, check-bt, check-busy, check-failed, check-unavailable
+    /// (再查一次水控 running, then what it found or why it could not look).
     enum ShowerPageDemo {
         static func record(_ name: String, now: Date = Date()) -> ShowerState? {
             let start = now.addingTimeInterval(-(8 * 60 + 42))
@@ -134,7 +139,8 @@ extension HomeView {
             switch name {
             case "sh-connect": return ShowerState(phase:.authorizing, startedAt:now)
             case "sh-run", "sh-endfail": return ShowerState(phase:.running, startedAt:start)
-            case "sh-check", "sh-check-rechecking", "sh-check-stopped", "sh-check-nocon": return ShowerState(phase:.running, startedAt:start, stateReviewRequired:true, notice:.notActive)
+            case "sh-check", "sh-check-rechecking", "sh-check-stopped", "sh-check-nocon",
+                 "sh-check-bt", "sh-check-busy", "sh-check-failed", "sh-check-unavailable": return ShowerState(phase:.running, startedAt:start, stateReviewRequired:true, notice:.notActive)
             case "sh-settle": return ShowerState(phase:.settling, startedAt:start)
             case "sh-done":
                 return ShowerState(phase:.done, startedAt:now.addingTimeInterval(-11 * 60),
