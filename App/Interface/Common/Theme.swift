@@ -36,9 +36,6 @@ enum Theme {
     }
     static func yuan(_ value: Decimal) -> String { CampusFormat.yuan(value) }
     static func kwh(_ value: Decimal) -> String { CampusFormat.kwh(value) }
-    static func weekday(_ date: Date, calendar: Calendar = .current) -> String {
-        "周" + ["日","一","二","三","四","五","六"][calendar.component(.weekday, from:date) - 1]
-    }
     /// 「10:32 更新」/「昨天 22:10 更新」/「10月26日更新」 (shared with the widget).
     static func updated(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
         CampusFormat.updated(date, now:now, calendar:calendar)

@@ -4,10 +4,8 @@ import Core
 extension HomeView {
     // MARK: Content
 
-    var dateTitle: String {
-        let parts = Calendar.current.dateComponents([.month,.day], from:Date())
-        return "\(parts.month ?? 0)月\(parts.day ?? 0)日"
-    }
+    /// The school's day, as 最近 below it.
+    var dateTitle: String { SchoolCalendar.dayTitle(Date()) }
 
     @ViewBuilder func content(_ data: HomeData) -> some View {
         let now = Date()
@@ -37,7 +35,7 @@ extension HomeView {
     func dateBlock(_ data: HomeData) -> some View {
         VStack(spacing:2) {
             Text(dateTitle).scaledFont(24, .semibold, design:.serif, relativeTo:.title2).foregroundStyle(Theme.ink)
-            Text([Theme.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:" · "))
+            Text([SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:" · "))
                 .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }
         .frame(maxWidth:.infinity)
@@ -45,7 +43,7 @@ extension HomeView {
         // accessibility sizes the taller date would run under the bar, so it stays below it.
         .padding(.top,typeSize.isAccessibilitySize ? 0 : dateLift)
         .accessibilityElement(children:.ignore)
-        .accessibilityLabel([dateTitle, Theme.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:"，"))
+        .accessibilityLabel([dateTitle, SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:"，"))
         .accessibilityAddTraits(.isHeader)
         .onGeometryChange(for:Bool.self) { $0.frame(in:.global).maxY < 64 } action: { scrolledPastDate = $0 }
     }

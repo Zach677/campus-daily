@@ -63,6 +63,17 @@ final class RecentFeedTests: XCTestCase {
 
     // MARK: Record times
 
+    /// The home header's date and weekday are the school's, whatever the phone's time zone:
+    /// 17:30 UTC on Wednesday 28 October is already Thursday the 29th in the school.
+    func testTheHomeDateIsTheSchoolsDay() {
+        let moment = Date(timeIntervalSince1970: 1_793_208_600) // 2026-10-28 17:30 UTC
+        var phone = Calendar(identifier: .gregorian)
+        phone.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        XCTAssertEqual(phone.component(.day, from: moment), 28)
+        XCTAssertEqual(SchoolCalendar.dayTitle(moment), "10月29日")
+        XCTAssertEqual(SchoolCalendar.weekday(moment), "周四")
+    }
+
     func testRecordTimesAreSchoolTime() {
         XCTAssertEqual(record("20261029", "235959", "x", "1").moment(), moment(29, 23, 59).addingTimeInterval(59))
         XCTAssertEqual(record("20261030", "70500", "x", "1").moment(), moment(30, 7, 5), "a leading zero left out")

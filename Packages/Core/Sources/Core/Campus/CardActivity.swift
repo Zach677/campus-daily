@@ -10,6 +10,17 @@ public enum SchoolCalendar {
         return c
     }
 
+    /// 「10月28日」 for the home header: the school's day.
+    public static func dayTitle(_ date: Date, calendar: Calendar = shanghai) -> String {
+        let p = calendar.dateComponents([.month, .day], from: date)
+        return "\(p.month ?? 0)月\(p.day ?? 0)日"
+    }
+
+    /// 「周二」 under it, on the same day.
+    public static func weekday(_ date: Date, calendar: Calendar = shanghai) -> String {
+        "周" + ["日", "一", "二", "三", "四", "五", "六"][calendar.component(.weekday, from: date) - 1]
+    }
+
     /// `yyyyMMdd` of `date` in `calendar`, the format of `card/getRecordList`'s `begin`/`end`.
     public static func dayString(_ date: Date, calendar: Calendar = shanghai) -> String {
         let p = calendar.dateComponents([.year, .month, .day], from: date)
