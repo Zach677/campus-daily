@@ -89,6 +89,9 @@ struct CampusOnboardingView: View {
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var water: ShowerModel
     @State private var login = false
+    /// 重新登录 once signed in: the account-and-password sheet (the web page is its fallback), so
+    /// a saved password is checked and kept instead of silently dropped by a web sign-in.
+    @State private var relogin = false
     @State private var offeredLogin = false
     @State private var importingPlatform = false
     /// Dorm → hot-water controller binding; shared with the first-run guide's dorm step.
@@ -118,7 +121,9 @@ struct CampusOnboardingView: View {
             }
             AutomaticPowerSection()
             Section {
-                Button { login = true } label: { Label(campus.configured ? "重新登录" : "登录并连接校园卡",systemImage:"person.crop.circle") }
+                Button { if campus.configured { relogin = true } else { login = true } } label: {
+                    Label(campus.configured ? "重新登录" : "登录并连接校园卡",systemImage:"person.crop.circle")
+                }
                     .accessibilityIdentifier("officialCampusLogin").disabled(flow.busy)
                 if campus.configured {
                     Label("已读取学校账号",systemImage:"checkmark.circle").foregroundStyle(.green)
@@ -172,6 +177,13 @@ struct CampusOnboardingView: View {
                     Task { await flow.prepare(campus:campus,water:water) }
                 } catch { flow.issue = "这次没登录上，再试一次。" }
             } }
+            .sheet(isPresented:$relogin) {
+                SchoolReloginSheet(signedIn:{
+                    flow.reset()
+                    campus.matchPowerAutomatically()
+                    Task { await flow.prepare(campus:campus,water:water) }
+                })
+            }
             .task {
                 if campus.configured {
                     if !water.configured && flow.identity == nil { await flow.prepare(campus:campus,water:water) }
