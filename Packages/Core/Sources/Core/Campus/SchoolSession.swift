@@ -318,7 +318,8 @@ public actor SchoolSession {
 
     /// As above; `numbers` gets the reading with the balance and the meter (no records) as
     /// soon as they are in, so they can be stored before the slower card records arrive. The
-    /// returned reading has all three; the records are given up after `recordsTimeout`.
+    /// returned reading has all three; the records are given up `recordsTimeout` after they
+    /// were asked for, which is at the same time as the balance and the meter.
     public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true },
                         numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
         guard let stored = (try? vault.ecyktSession()) ?? nil else {

@@ -34,8 +34,10 @@ public struct CardActivity: Sendable, Equatable, Codable {
     /// Records asked for per refresh: the day before yesterday through today, one page.
     public static let days = 3
     public static let pageSize = 50
-    /// The records are read after the balance and the meter are stored, and given up after
-    /// this long: the widget has about 20 s in all.
+    /// The records are asked for together with the balance and the meter, and given up this
+    /// long after that request starts (not after the numbers are stored): the widget has about
+    /// 20 s in all, and the balance and the meter are stored without waiting for them. On a
+    /// network slow enough to miss it, 昨天花了 stays hidden.
     public static let timeout: TimeInterval = 6
 
     /// `begin`/`end` for a read at `now`.
