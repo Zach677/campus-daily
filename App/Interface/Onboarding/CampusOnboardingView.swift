@@ -177,7 +177,7 @@ struct CampusOnboardingView: View {
                     Task { await flow.prepare(campus:campus,water:water) }
                 } catch {
                     // The widget is refreshing (and may be signing in): nothing was stored.
-                    flow.issue = error as? SchoolLoginFailure == .busy ? "正在更新，等一下再试。" : "这次没登录上，再试一次。"
+                    flow.issue = error as? SchoolLoginFailure == .busy ? SchoolLoginText.busy : "这次没登录上，再试一次。"
                 }
             } }
             .sheet(isPresented:$relogin) {

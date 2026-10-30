@@ -14,7 +14,7 @@ enum SchoolLoginText {
     static let differentAccountTitle = "这不是现在登录的账号，没保存。"
     static let differentAccountMessage = "要换账号，先退出登录。"
     /// The widget is refreshing (and may be logging in itself): nothing was sent.
-    static let busy = "正在更新，稍后再试。"
+    static let busy = "正在更新，等一下再试。"
 
     /// Anything other than the two login answers (network, storage, the card steps after login).
     static func text(_ error: Error) -> String {
