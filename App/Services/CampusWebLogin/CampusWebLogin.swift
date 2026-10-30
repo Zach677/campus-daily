@@ -53,6 +53,11 @@ struct OfficialCampusBrowser: UIViewRepresentable {
         }
         var login = URLComponents(string:"https://cas.gdbtu.edu.cn/cas/login")!
         login.queryItems = [URLQueryItem(name:"service",value:"https://portal.gdbtu.edu.cn/?path=https%3A%2F%2Fportal.gdbtu.edu.cn%2Fmain.html%23%2FStudent")]
+        guard WebNavigationPolicy.isEnforced(by:context.coordinator) else {
+            let state = state
+            Task { @MainActor in state.stalled = true; state.issue = "学校网页暂时打不开，更新校日常后再试。" }
+            return view
+        }
         if loads { view.load(URLRequest(url:login.url!)) }
         return view
     }

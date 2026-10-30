@@ -81,6 +81,8 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
         view.navigationDelegate = bridge.coordinator; view.uiDelegate = bridge.coordinator
         view.isInspectable = false
         if !context.userAgent.isEmpty { view.customUserAgent = context.userAgent }
+        // Without the allow-list nothing loads; the page simply stays blank.
+        guard WebNavigationPolicy.isEnforced(by:bridge.coordinator) else { return view }
         view.load(URLRequest(url:context.startURL))
         return view
     }
