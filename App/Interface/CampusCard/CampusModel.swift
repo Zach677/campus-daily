@@ -143,10 +143,12 @@ struct PowerChoice: Identifiable, Equatable {
     /// snapshot, the hot-water binding made with their identity, and the one-time alert.
     /// Laundry (U净) is its own login and stays.
     private func previousPersonCleared() async {
-        try? await refresher.clear()
+        let refresher = refresher
+        let hotWater = await AccountSwitch.clearPreviousPerson(
+            snapshot:{ try await refresher.clear() },
+            hotWater:{ ShowerModel.shared.clearBindingForAccountSwitch() })
         snapshot = .empty
-        let hotWater = ShowerModel.shared.clearBindingForAccountSwitch()
-        switchNotice = AccountSwitchNotice(hotWaterCleared:hotWater)
+        switchNotice = AccountSwitchNotice(hotWaterCleared:hotWater.noticed)
     }
 
     /// Settings › 学校账号 › 保存密码 on / 重新输入密码: one login checks the password before it

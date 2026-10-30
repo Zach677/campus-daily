@@ -193,15 +193,20 @@ enum ShowerProfileFiles {
     /// The school login changed to another person: the binding came from the previous
     /// person's school identity. Removed when nothing could be open; with a session in flight
     /// it stays (so the close can still be sent) but no new start is allowed until reviewed.
-    /// Returns whether there was a binding to set up again.
-    func clearBindingForAccountSwitch() -> Bool {
-        guard binding != nil else { return false }
-        guard mayImport else { setResidenceReview(true); return true }
-        guard (try? AppEnvironment.showerVault.saveBinding(nil)) != nil else { setResidenceReview(true); return true }
-        binding = nil; verifiedDevice = nil; inspectionStatus = nil; inspectionFoundBusy = false; message = nil
-        if residenceReviewRequired { setResidenceReview(false) }
-        rebuildEngine()
-        return true
+    /// Returns what became of it (`noticed`: there was a binding to set up again).
+    func clearBindingForAccountSwitch() -> AccountSwitch.HotWater {
+        let result = AccountSwitch.clearHotWater(hasBinding:binding != nil, mayClear:mayImport) {
+            try AppEnvironment.showerVault.saveBinding(nil)
+        }
+        switch result {
+        case .none: break
+        case .keptForReview: setResidenceReview(true)
+        case .cleared:
+            binding = nil; verifiedDevice = nil; inspectionStatus = nil; inspectionFoundBusy = false; message = nil
+            if residenceReviewRequired { setResidenceReview(false) }
+            rebuildEngine()
+        }
+        return result
     }
 
     func setResidenceReview(_ value: Bool) {
