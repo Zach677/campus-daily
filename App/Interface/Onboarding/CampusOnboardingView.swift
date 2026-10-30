@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 import Core
 
 struct CampusLoginSheet: View {
