@@ -2,10 +2,13 @@ import Foundation
 
 // MARK: - Credentials (descriptions never show secret values)
 
-/// Portal `X-Id-Token` (from `localStorage.token` after CAS login).
+/// Portal `X-Id-Token` (from `localStorage.token` after the web login, or the CAS ticket's
+/// `idToken` after a password login, which also says when it expires).
 public struct PortalToken: Sendable, Equatable, Codable, CustomStringConvertible, CustomDebugStringConvertible {
     public let value: String
-    public init(_ value: String) { self.value = value }
+    /// From the token's own `exp` claim; nil when unknown (web login).
+    public var expiresAt: Date?
+    public init(_ value: String, expiresAt: Date? = nil) { self.value = value; self.expiresAt = expiresAt }
     public var description: String { "PortalToken(<redacted>)" }
     public var debugDescription: String { description }
 }

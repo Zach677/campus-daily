@@ -7,6 +7,14 @@ public enum SchoolEndpoints {
     public static let casHost = "cas.gdbtu.edu.cn"
     public static let portalHost = "portal.gdbtu.edu.cn"
     public static let ecyktHost = "ecykt.gdbtu.edu.cn"
+    /// Where CAS sends the browser after login: the portal's student page.
+    public static let casService = "https://portal.gdbtu.edu.cn/?path=https%3A%2F%2Fportal.gdbtu.edu.cn%2Fmain.html%23%2FStudent"
+    /// The CAS password form, for the portal.
+    public static var casLoginURL: URL {
+        var c = URLComponents(string: "https://cas.gdbtu.edu.cn/cas/login")!
+        c.queryItems = [URLQueryItem(name: "service", value: casService)]
+        return c.url!
+    }
     public static let rechargePage = URL(string: "https://ecykt.gdbtu.edu.cn/ykt-view/recharge?isbind=1")!
     /// Values the official ecykt web app sends.
     public static let ecyktVersion = "v1.1.55"
