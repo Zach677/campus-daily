@@ -68,7 +68,7 @@ struct ShowerDetail: View {
             .navigationTitle("热水洗澡").navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge:.bottom) {
                 VStack(spacing:10) {
-                    Button { if needsCheck { shower.pageEvent(.reopen) } else { perform(start:!closing) } } label: {
+                    Button { if needsCheck { shower.pageEventShowingPage(.reopen) } else { perform(start:!closing) } } label: {
                         HStack {
                             if shower.busy { ProgressView().tint(Theme.pillInk).controlSize(.small) }
                             Text(shower.busy ? "正在处理…" : needsCheck ? ShowerPageText.review : closing ? "结束并结算" : "开始洗澡")
@@ -107,7 +107,7 @@ struct ShowerDetail: View {
     }
     /// Both go through the shower page, which shows the start or the end as it runs.
     private func perform(start:Bool) {
-        if start { shower.pageEvent(.startTapped) } else { shower.pageEvent(.reopen); shower.pageEvent(.endTapped) }
+        if start { shower.pageEventShowingPage(.startTapped) } else { shower.pageEventShowingPage(.reopen, .endTapped) }
     }
 }
 

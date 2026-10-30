@@ -57,6 +57,9 @@ enum ShowerProfileFiles {
     @Published var page = ShowerPageFlow(record:.idle)
     /// 去核对 on the page: the home screen opens the 核对 screen.
     @Published var reviewRequested = false
+    /// Bumped by a tap that wants the page on screen, even when it is already marked up: the
+    /// home screen brings it up (closing what covers it first).
+    @Published var pageWanted = 0
     /// The running start, so an accepted 取消 can cut the Bluetooth connect short.
     var startTask: Task<Void, Never>?
     @Published private(set) var binding: ShowerBinding?

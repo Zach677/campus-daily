@@ -204,6 +204,7 @@ struct HomeView: View {
         }
         .onChange(of:shower.page.presented, initial:true) { _, up in followShowerPage(up) }
         .onChange(of:shower.page.page?.phase) { _, _ in followShowerPage(shower.page.presented) }
+        .onChange(of:shower.pageWanted) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:shower.reviewRequested) { _, requested in
             guard requested else { return }
             shower.reviewRequested = false

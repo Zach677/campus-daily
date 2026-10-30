@@ -10,6 +10,13 @@ extension ShowerModel {
         for effect in effects { perform(effect) }
     }
 
+    /// A page event from a screen other than home (the 核对 screen), then the page brought up
+    /// the way home's own buttons do.
+    func pageEventShowingPage(_ events: ShowerPageEvent...) {
+        for event in events { pageEvent(event) }
+        pageWanted += 1
+    }
+
     private func perform(_ effect: ShowerPageEffect) {
         switch effect {
         case .start:
