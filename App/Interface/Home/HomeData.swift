@@ -54,7 +54,7 @@ struct HomeData {
     struct Segment { let text: String; var color: Color? = nil }
 
     var signedIn = true
-    /// Settings › 学校账号 (nil after a web sign-in).
+    /// Settings › 学校账号 (nil after a web sign-in by someone not known to be the same person).
     var schoolAccount: SchoolAccount?
     var passwordSaved: Bool { schoolAccount?.password != nil }
     /// DEBUG demo only: why Settings › 高级 › 重置校日常 is locked (the live value comes from the shower).

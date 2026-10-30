@@ -111,13 +111,6 @@ struct SchoolReloginSheet: View {
                     .disabled(loggingIn)
                     .accessibilityIdentifier("reloginWeb")
             }
-            if !keyboardUp && passwordSaved {
-                // The web page never says whose login it is, so it drops the saved password.
-                Text(SchoolLoginText.webDropsPassword)
-                    .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                    .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
-                    .frame(maxWidth:.infinity)
-            }
         }
         .padding(.horizontal,20)
         .padding(.bottom,keyboardUp ? 12 : 4)

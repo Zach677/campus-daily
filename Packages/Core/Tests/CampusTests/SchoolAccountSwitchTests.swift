@@ -90,6 +90,22 @@ final class SchoolAccountSwitchTests: XCTestCase {
         XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
     }
 
+    /// The widget keeps signing in with the saved password after the same person used the web page.
+    func testWebSignInKeepsTheSavedPasswordOnlyForTheSamePerson() async throws {
+        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let same = try signedInHarness(card: "TESTid00000000000000000000000001", password: "synthetic-pw-991")
+        try same.server.serve("ecykt/getSysBindCustInfo-ok")
+        let kept = try await same.session().adoptWebState(try state.encoded(), portalToken: nil)
+        XCTAssertFalse(kept.switchedAccount)
+        XCTAssertEqual(try same.vault.account(), SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+
+        let other = try signedInHarness(card: Self.otherCard, password: "synthetic-pw-991")
+        try other.server.serve("ecykt/getSysBindCustInfo-ok")
+        let switched = try await other.session().adoptWebState(try state.encoded(), portalToken: nil)
+        XCTAssertTrue(switched.switchedAccount)
+        XCTAssertNil(try other.vault.account())
+    }
+
     func testSavingAPasswordForAnotherKnownAccountIsRefusedWithoutALogin() async throws {
         let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
         let h = try signedInHarness(card: "TESTid00000000000000000000000001", login: login)

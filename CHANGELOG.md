@@ -21,6 +21,7 @@
 - Bind the campus instead of a room when more same-named rooms exist than are read, or when one meter is found in two of them.
 - Keep a running shower's Live Activity and reminder after a reset that stopped behind the school sign-out.
 - Wait for the widget's refresh before the school web sign-in, and keep a typed password that was not sent.
+- Keep the saved password when the same person signs in with the school's web page, so the widget still signs in by itself; a different person still clears it.
 - Let 取消 tapped while a shower starts wait for the start, and show a refusal instead of closing the page.
 
 ### Removed

@@ -172,7 +172,8 @@ public actor SchoolSession {
         try vault.saveAccount(SchoolAccount(account: stored.account))
     }
 
-    /// The signed-in account (nil after a web sign-in, which never tells us the account).
+    /// The signed-in account (nil after a web sign-in that did not show the same person: the
+    /// page never tells us the account).
     public func account() -> SchoolAccount? { (try? vault.account()) ?? nil }
 
     /// False only when the card session was read and is not there.
@@ -259,10 +260,12 @@ public actor SchoolSession {
         let before = signedInPerson()
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
-        let switched = SignedInPerson.match(before, cardUnionID: card.unionID, account: nil) == .different
+        let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: nil)
+        let switched = match == .different
         if switched { try clearPreviousPerson() }
-        // The web page never tells us the account, so a saved password may belong to someone else.
-        try vault.saveAccount(nil)
+        // The web page never tells us the account: a saved password stays only when the card
+        // shows it is the same person (the widget keeps signing in with it).
+        if match != .same { try vault.saveAccount(nil) }
         if let portalToken { try vault.savePortalToken(stamped(portalToken)) }
         try vault.saveEcyktSession(updated)
         var residence: PortalResidence?

@@ -26,8 +26,8 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var matchingPower = false
     @Published private(set) var powerChoices: [PowerChoice] = []
     @Published private(set) var powerMatchIssue: String?
-    /// The account signed in with the app's own form (nil after a web sign-in, which never
-    /// tells us the account). Its password is present only when the user chose to save it.
+    /// The account signed in with the app's own form (kept by a web sign-in only when the card
+    /// shows the same person). Its password is present only when the user chose to save it.
     @Published private(set) var account: SchoolAccount?
     /// A login was a different person; the alert is shown once by the top-most screen.
     @Published var switchNotice: AccountSwitchNotice?
