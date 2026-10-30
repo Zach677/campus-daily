@@ -10,6 +10,8 @@ struct Harness {
     var diagnostic: @Sendable (String) -> Void = { _ in }
     /// Keep the lifetime lines in `store` as the app and the widget do.
     var keepsCredentialLog = false
+    /// False for the widget's session.
+    var createsLoginDeviceID = true
     var vault: StoredSchoolVault { StoredSchoolVault(store: store) }
     var snapshots: SharedSnapshotStore { SharedSnapshotStore(store: store) }
 
@@ -17,7 +19,8 @@ struct Harness {
         let http = server.makeClient()
         return SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http), vault: vault,
                              passwordLogin: passwordLogin, now: clock.function, diagnostic: diagnostic,
-                             credentialLog: keepsCredentialLog ? CredentialLifetimeLog(store: store) : nil)
+                             credentialLog: keepsCredentialLog ? CredentialLifetimeLog(store: store) : nil,
+                             createsLoginDeviceID: createsLoginDeviceID)
     }
 
     /// The refresher over this harness's session and shared store.

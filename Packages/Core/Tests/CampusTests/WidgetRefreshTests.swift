@@ -75,6 +75,14 @@ final class WidgetRefreshTests: XCTestCase {
         XCTAssertEqual(try h.snapshots.loadSnapshot(), stored)
     }
 
+    func testOnlyTheAppCreatesTheLoginDeviceID() async {
+        let h = Harness()
+        let widget = await stack(h).session.createsLoginDeviceID
+        let app = await stack(h, role: "app").session.createsLoginDeviceID
+        XCTAssertFalse(widget)
+        XCTAssertTrue(app)
+    }
+
     func testRolesNameTheLeaseOwner() async throws {
         let h = Harness()
         let app = await stack(h, role: "app").refresher.lease?.owner

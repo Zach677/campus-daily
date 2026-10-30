@@ -169,6 +169,34 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertEqual(try h.vault.account()?.paused, false)
     }
 
+    /// After an upgrade the widget can run before the app moved the login device id into the
+    /// shared group: it sends no password then (and pauses nothing), and logs in once the id is there.
+    func testWidgetLeavesThePasswordLoginToTheAppUntilTheDeviceIdIsShared() async throws {
+        let login = FakePasswordLogin(.success(Self.freshToken))
+        var h = harness(login)
+        h.createsLoginDeviceID = false
+        let lines = OSAllocatedUnfairLock<[String]>(initialState: [])
+        h.diagnostic = { line in lines.withLock { $0.append(line) } }
+        try h.signedIn()
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 2)
+        let first = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(first.outcome, .failed(.offline))
+        XCTAssertTrue(login.calls.isEmpty)
+        XCTAssertNil(try h.vault.loginDeviceID(), "no new id that the move would then keep")
+        let held = try XCTUnwrap(try h.vault.account())
+        XCTAssertFalse(held.paused)
+        XCTAssertNil(held.unansweredAt)
+        XCTAssertTrue(lines.withLock { $0 }.contains("school.passwordLogin deferred reason=noLoginDeviceID"))
+
+        try h.vault.saveLoginDeviceID("99000000000000000000000000000991")
+        try serveExchange(h, token: "AFTER-MOVE")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        let second = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(second.outcome, .ok)
+        XCTAssertEqual(login.calls.map(\.visitorID), ["99000000000000000000000000000991"])
+    }
+
     /// A posted password with no answer is never sent again by a refresh for the next hours;
     /// after that one more automatic try is allowed.
     func testNoAnswerHoldsAutomaticLoginsOff() async throws {

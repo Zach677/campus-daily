@@ -83,6 +83,11 @@ public actor SchoolSession {
     let diagnostic: @Sendable (String) -> Void
     /// Where the same lifetime lines are kept for the in-app diagnostics export.
     let credentialLog: CredentialLifetimeLog?
+    /// False in the widget. Every saved password came with a login device id, so a widget that
+    /// sees a password but no id is running before the app moved the id (and the portal token)
+    /// out of its private group; a login then would start a second "browser" at the school and
+    /// the move would keep that one. The widget leaves the login to the app instead.
+    let createsLoginDeviceID: Bool
     /// Expiries already logged by this process, so a dead credential read again is logged once.
     private var loggedExpiries: Set<String> = []
     /// Bumped by `signOut()`. Work that awaited the network checks it before writing the
@@ -93,9 +98,9 @@ public actor SchoolSession {
 
     public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, passwordLogin: SchoolPasswordLogin? = nil,
                 now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in },
-                credentialLog: CredentialLifetimeLog? = nil) {
+                credentialLog: CredentialLifetimeLog? = nil, createsLoginDeviceID: Bool = true) {
         self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
-        self.diagnostic = diagnostic; self.credentialLog = credentialLog
+        self.diagnostic = diagnostic; self.credentialLog = credentialLog; self.createsLoginDeviceID = createsLoginDeviceID
     }
 
     // MARK: Account and password
@@ -438,6 +443,11 @@ public actor SchoolSession {
     private func signInWithSavedPassword(previous: EcyktSession, since started: Int,
                                          mayMint: @Sendable () async -> Bool) async -> PasswordStep {
         guard let saved = (try? vault.account()) ?? nil, let password = saved.automaticPassword(at: now()) else { return .unavailable }
+        // Not moved to the shared group yet: like no network, nothing is paused or held.
+        if !createsLoginDeviceID, ((try? vault.loginDeviceID()) ?? nil)?.isEmpty ?? true {
+            diagnostic("school.passwordLogin deferred reason=noLoginDeviceID")
+            return .offline
+        }
         // The portal exchange may have taken most of the lease: confirm it before the password goes out.
         guard await mayMint() else { return .lostLease }
         let sentAt = now()

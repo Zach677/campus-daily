@@ -2,7 +2,7 @@ import Foundation
 
 /// The school session and the snapshot refresher, built the same way in the app and in the
 /// widget so both run one refresh ladder and one write path. Each process builds this once;
-/// `role` ("app" / "widget") names its lease owner.
+/// `role` ("app" / "widget") names its lease owner; only the app may create the login device id.
 public struct SchoolRefreshStack: Sendable {
     public let session: SchoolSession
     public let refresher: SnapshotRefresher
@@ -17,7 +17,8 @@ public struct SchoolRefreshStack: Sendable {
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
         session = SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http),
                                 vault: StoredSchoolVault(store: store), passwordLogin: CASLoginClient(http: http),
-                                diagnostic: diagnostic, credentialLog: CredentialLifetimeLog(store: store))
+                                diagnostic: diagnostic, credentialLog: CredentialLifetimeLog(store: store),
+                                createsLoginDeviceID: role != "widget")
         refresher = SnapshotRefresher(school: session, store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot),
                                       lease: RefreshLease(store: store, owner: RefreshLease.owner(role)),
                                       leaseWait: leaseWait, diagnostic: diagnostic)
