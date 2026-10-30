@@ -10,6 +10,8 @@ struct OnboardingView: View {
     /// DEBUG demo values; when set, no real login or picker is opened.
     struct Preview {
         var dorm: String?
+        /// The dorm's full directory location under the room (nil: the line is left out).
+        var dormLocation: String?
         var laundryConnected = false
         /// Same-name meter locations for the dorm step's picker.
         var powerChoices: [LocationChoice] = []
@@ -74,6 +76,11 @@ struct OnboardingView: View {
     }
 
     private var dorm: String? { preview != nil ? preview?.dorm : Theme.dorm(campus.room) }
+    private var dormLocation: String? {
+        preview != nil ? preview?.dormLocation : campus.profile?.directoryDormLocation
+    }
+    /// Footnote under the dorm: where it came from.
+    static let dormSource = "从学校账号里读到的"
     private var laundryConnected: Bool { preview?.laundryConnected ?? laundry.accountConnected }
 
     var body: some View {
@@ -144,7 +151,14 @@ struct OnboardingView: View {
                 Text(dorm).font(.system(size:40, weight:.semibold, design:.rounded)).foregroundStyle(Theme.ink)
                     .minimumScaleFactor(0.6).lineLimit(1)
                     .padding(.top,28)
-                Text("从学校账号里读到的").scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                // The full location only when the electricity directory gave one: it is what
+                // tells same-name dorms apart. The portal address alone has no apartment.
+                if let dormLocation {
+                    Text(dormLocation).scaledFont(17, .medium).foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal:false, vertical:true)
+                        .padding(.top,6)
+                }
+                Text(Self.dormSource).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                     .padding(.top,6)
             }
             if step == .water { waterStatus.padding(.top,28) }

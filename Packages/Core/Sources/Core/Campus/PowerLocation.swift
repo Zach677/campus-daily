@@ -35,8 +35,15 @@ extension SchoolProfile {
     /// portal address. nil when the portal gave no readable dorm.
     public var dormLocation: String? {
         guard let address = residence?.address else { return nil }
-        if let location = meter?.location, PowerLocation.sameRoom(location, address) { return location }
-        return PowerLocation.dorm(address)
+        return directoryDormLocation ?? PowerLocation.dorm(address)
+    }
+
+    /// The dorm as the electricity directory names it (校区 · 公寓 · 楼栋 · 房间), when the bound
+    /// meter is the portal's room. nil without one: a campus-wide binding only knows the campus.
+    public var directoryDormLocation: String? {
+        guard let address = residence?.address, let location = meter?.location,
+              PowerLocation.sameRoom(location, address) else { return nil }
+        return location
     }
 
     /// The bound meter's full location (bindings from before it was kept show their label).
