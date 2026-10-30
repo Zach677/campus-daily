@@ -22,8 +22,8 @@ final class HomeFiguresTests: XCTestCase {
         return s
     }
 
-    func record(_ date: String, _ time: String, _ title: String, _ yuan: String) -> CardRecord {
-        CardRecord(date: date, time: time, title: title, amount: Money(yuanString: yuan)!, balanceAfter: nil, direction: "1")
+    func record(_ date: String, _ time: String, _ title: String, _ yuan: String, flag: String? = "1") -> CardRecord {
+        CardRecord(date: date, time: time, title: title, amount: Money(yuanString: yuan)!, balanceAfter: nil, direction: flag)
     }
 
     func power(_ s: HomeSnapshot) -> HomeFigure { HomeFigures.power(s, signedIn: true, lines: lines, now: now, calendar: calendar) }
@@ -97,7 +97,7 @@ final class HomeFiguresTests: XCTestCase {
 
     func testCardYesterdaySpent() {
         let f = card(snapshot(records: [record("20261029", "120500", "POS消费示例面馆", "12.00"),
-                                        record("20261029", "180000", "校园卡充值", "50.00")]))
+                                        record("20261029", "180000", "校园卡充值", "50.00", flag: nil)]))
         XCTAssertEqual(f, HomeFigure(value: Decimal(string: "86.5"), low: false, subline: .spent(Money(fen: 1200))))
         XCTAssertEqual(f.subline?.text, "昨天花了 ¥12.00")
     }

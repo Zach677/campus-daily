@@ -8,8 +8,9 @@ final class RecentFeedTests: XCTestCase {
     /// 2026-10-30 12:00 in Shanghai.
     var noon: Date { cal.date(from: DateComponents(year: 2026, month: 10, day: 30, hour: 12))! }
 
-    func record(_ date: String, _ time: String, _ title: String, _ yuan: String) -> CardRecord {
-        CardRecord(date: date, time: time, title: title, amount: Money(yuanString: yuan)!, balanceAfter: nil, direction: "1")
+    /// Payments carry flag 「1」; money coming in is given no flag here (`flag: nil`).
+    func record(_ date: String, _ time: String, _ title: String, _ yuan: String, flag: String? = "1") -> CardRecord {
+        CardRecord(date: date, time: time, title: title, amount: Money(yuanString: yuan)!, balanceAfter: nil, direction: flag)
     }
 
     func moment(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
@@ -28,6 +29,8 @@ final class RecentFeedTests: XCTestCase {
             ("示例洗衣机", .laundry),
             ("购电(99栋)", .electricity),
             ("电费缴纳", .electricity),
+            ("电费充值", .electricity),
+            ("转入水控", .shower),
             ("示例超市", .other),
         ]
         for (name, kind) in cases { XCTAssertEqual(CardRecordKind.of(name: name), kind, name) }
@@ -137,7 +140,7 @@ final class RecentFeedTests: XCTestCase {
     func testYesterdayIsTheSchoolsDayAndCountsMoneyOutOnly() {
         let records = [record("20261029", "000000", "示例超市", "1"),
                        record("20261029", "235959", "POS消费(示例饭堂POS)", "2.5"),
-                       record("20261029", "120000", "校园卡充值", "50"),
+                       record("20261029", "120000", "校园卡充值", "50", flag: nil),
                        record("20261030", "000000", "示例超市", "7"),
                        record("20261028", "235959", "示例超市", "9")]
         XCTAssertEqual(CardSpending.yesterday(activity(records, fetchedAt: noon), now: noon), Money(fen: 350))
@@ -147,7 +150,7 @@ final class RecentFeedTests: XCTestCase {
     }
 
     func testNoSpendingYesterdayIsZero() {
-        let records = [record("20261030", "080000", "示例超市", "1"), record("20261029", "080000", "校园卡充值", "50")]
+        let records = [record("20261030", "080000", "示例超市", "1"), record("20261029", "080000", "校园卡充值", "50", flag: nil)]
         XCTAssertEqual(CardSpending.yesterday(activity(records, fetchedAt: noon), now: noon), .zero)
     }
 
@@ -167,16 +170,40 @@ final class RecentFeedTests: XCTestCase {
     /// 「昨天花了 ¥12.00」, not 24; a 100 元 grant is not spending.
     func testRefundsAndGrantsAreMoneyIn() {
         let records = [record("20261029", "120000", "POS消费(示例饭堂POS)01档口示例面馆", "12"),
-                       record("20261029", "121000", "POS消费退款", "12"),
-                       record("20261029", "080000", "伙食补贴", "100"),
-                       record("20261029", "090000", "消费冲正", "3"),
-                       record("20261029", "091000", "撤销交易", "2")]
+                       record("20261029", "121000", "POS消费退款", "12", flag: nil),
+                       record("20261029", "080000", "伙食补贴", "100", flag: nil),
+                       record("20261029", "090000", "消费冲正", "3", flag: nil),
+                       record("20261029", "091000", "撤销交易", "2", flag: nil)]
         XCTAssertEqual(CardSpending.yesterday(activity(records, fetchedAt: noon), now: noon), Money(fen: 1200))
         let items = RecentFeed.items(card: records, app: [], limit: 10)
         XCTAssertEqual(items.first { $0.date == moment(29, 12, 10) }?.amountText, "+¥12.00")
         XCTAssertEqual(items.first { $0.date == moment(29, 12, 10) }?.spokenAmount, "进账 12 元")
         XCTAssertEqual(items.first { $0.date == moment(29, 8) }?.amountText, "+¥100.00")
         XCTAssertEqual(items.first { $0.date == moment(29, 12) }?.amountText, "−¥12.00")
+    }
+
+    /// Paying electricity or hot water from the card can carry 充值 / 转入 in its name; with
+    /// flag 「1」 it is money out, and its kind is what was paid for.
+    func testPaymentsNamedLikeTopUpsAreMoneyOut() {
+        let records = [record("20261029", "100000", "电费充值(99栋)", "20"),
+                       record("20261029", "110000", "转入水控", "10"),
+                       record("20261029", "120000", "校园卡充值", "50", flag: nil),
+                       record("20261029", "130000", "银行圈存", "30", flag: "2")]
+        XCTAssertEqual(records.map(\.kind), [.electricity, .shower, .topUp, .topUp])
+        XCTAssertEqual(CardSpending.yesterday(activity(records, fetchedAt: noon), now: noon), Money(fen: 3000))
+        let items = RecentFeed.items(card: records, app: [], limit: 10)
+        XCTAssertEqual(items.first { $0.date == moment(29, 10) }?.amountText, "−¥20.00")
+        XCTAssertEqual(items.first { $0.date == moment(29, 11) }?.amountText, "−¥10.00")
+        XCTAssertEqual(items.first { $0.date == moment(29, 12) }?.amountText, "+¥50.00")
+        XCTAssertEqual(items.first { $0.date == moment(29, 13) }?.amountText, "+¥30.00")
+    }
+
+    /// A refund flagged as a payment is still taken as one: only the flag says which way.
+    func testFlagOneIsMoneyOutWhateverTheName() {
+        let refund = record("20261029", "121000", "POS消费退款", "12")
+        XCTAssertEqual(refund.flow, .moneyOut)
+        XCTAssertEqual(record("20261029", "121000", "POS消费退款", "12", flag: nil).flow, .moneyIn)
+        XCTAssertEqual(record("20261029", "121000", "示例超市", "12", flag: "2").flow, .unknown)
     }
 
     /// A record that may be money in or out (a negative amount, an unseen direction flag)

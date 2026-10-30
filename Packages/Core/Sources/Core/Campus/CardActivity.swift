@@ -74,15 +74,16 @@ public enum CardRecordKind: String, Sendable, Codable, CaseIterable {
 
 
     /// Classifies by the record name (`transname`). Order matters: a hot-water name contains
-    /// 「POS」 too.
+    /// 「POS」 too, and paying for electricity or hot water from the card can be called
+    /// 「电费充值」 or 「转入水控」, so those come before top-ups.
     public static func of(_ record: CardRecord) -> CardRecordKind { of(name: record.title) }
 
     public static func of(name: String) -> CardRecordKind {
         let n = name.filter { !$0.isWhitespace }
-        if ["充值", "圈存", "转入"].contains(where: n.contains) { return .topUp }
-        if n.contains("热水") { return .shower }
+        if n.contains("热水") || n.contains("水控") { return .shower }
         if n.contains("洗衣") { return .laundry }
         if n.contains("电费") || n.contains("购电") { return .electricity }
+        if ["充值", "圈存", "转入"].contains(where: n.contains) { return .topUp }
         if n.hasPrefix("POS消费") || ["食堂", "饭堂", "餐厅"].contains(where: n.contains) { return .canteen }
         return .other
     }
@@ -107,15 +108,17 @@ public extension CardRecord {
 
     var kind: CardRecordKind { CardRecordKind.of(self) }
 
-    /// Money in or out. A name that says money came back or in (充值, 退款, 冲正, 补贴 …) is
-    /// in. Otherwise the record is out only when it looks like every payment the school was
-    /// seen to send: a positive amount with direction flag 「1」 or none. Anything else (a
-    /// negative amount, another flag) can't be told apart and is `.unknown`.
+    /// Money in or out. Direction flag 「1」 is a payment from the card, whatever the name says
+    /// (「电费充值」 and 「转入水控」 take money out): out for a positive amount. Without a flag, a
+    /// name that says money came back or in (充值, 退款, 冲正, 补贴 …) is in, and any other
+    /// positive amount is out. Anything else (a negative amount, another flag) can't be told
+    /// apart and is `.unknown`.
     var flow: CardFlow {
+        let flag = direction?.trimmingCharacters(in: .whitespaces) ?? ""
+        if flag == "1" { return amount.fen >= 0 ? .moneyOut : .unknown }
         let n = title.filter { !$0.isWhitespace }
         if CardFlow.incomeWords.contains(where: n.contains) { return .moneyIn }
-        let flag = direction?.trimmingCharacters(in: .whitespaces) ?? ""
-        guard flag.isEmpty || flag == "1" else { return .unknown }
+        guard flag.isEmpty else { return .unknown }
         return amount.fen >= 0 ? .moneyOut : .unknown
     }
 }

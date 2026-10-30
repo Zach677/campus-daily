@@ -339,10 +339,10 @@ enum HomeDemo: String, CaseIterable {
     /// Synthetic balance, meter and card records (yesterday and today in the school's calendar).
     static func snapshot(now: Date, read: Date, kwh: String, dailyKWh: String, balance: String = "86.50") -> HomeSnapshot {
         let school = SchoolCalendar.shanghai
-        func record(daysAgo: Int, _ time: String, _ title: String, _ yuan: String) -> CardRecord {
+        func record(daysAgo: Int, _ time: String, _ title: String, _ yuan: String, flag: String? = "1") -> CardRecord {
             let day = school.date(byAdding:.day, value:-daysAgo, to:now)!
             return CardRecord(date:SchoolCalendar.dayString(day, calendar:school), time:time, title:title,
-                              amount:Money(yuanString:yuan)!, balanceAfter:nil, direction:"1")
+                              amount:Money(yuanString:yuan)!, balanceAfter:nil, direction:flag)
         }
         let range = CardActivity.range(at:now)
         var s = HomeSnapshot()
@@ -353,7 +353,7 @@ enum HomeDemo: String, CaseIterable {
             record(daysAgo:0, "073000", "POS消费示例早餐铺", "4.50"),
             record(daysAgo:1, "221500", "蓝牙热水", "1.32"),
             record(daysAgo:1, "120500", "POS消费示例面馆", "12.00"),
-            record(daysAgo:1, "090000", "校园卡充值", "50.00"),
+            record(daysAgo:1, "090000", "校园卡充值", "50.00", flag:nil),
             record(daysAgo:1, "081000", "POS消费示例早餐铺", "3.50"),
         ], begin:range.begin, end:range.end, complete:true), at:read)
         s.roomLabel = "3栋108"
