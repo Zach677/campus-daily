@@ -12,7 +12,7 @@
 #
 # Allowlists match the complete value, never a prefix or the rest of the
 # line. Synthetic values in fixtures are therefore written in shapes no real
-# id has: zero-padded counters (000...0199), a leading 99, or one of the few
+# id has: zero-padded counters (000...0991), a leading 99, or one of the few
 # exact placeholders listed below.
 #
 # The value list lives outside Git. Its path comes from LEAKCHECK_FILE
@@ -79,7 +79,7 @@ if [ "$files" -eq 0 ]; then
 fi
 
 # 1. Pattern scan. Digit rules look at whole digit runs.
-counter='0+[0-9]{1,3}'   # zero-padded counter: 000000000199, 0000...0002
+counter='0+[0-9]{1,3}'   # zero-padded counter: 000000000991, 0000...0002
 scan "$tmp/digits" '[0-9]{11,}'
 # CN mobile, 11 digits (13800000000 is the one synthetic number)
 grep -E "${tab}1[3-9][0-9]{9}\$" "$tmp/digits" | notallowed '13800000000' > "$tmp/phone"

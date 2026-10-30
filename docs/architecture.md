@@ -198,7 +198,7 @@ Facts the design relies on (from the read-only captures):
 
 **One refresh at a time.** Callers today are pull-to-refresh, the app coming to the foreground,
 the background task, and the refreshes after a state change (sign-in, meter choice, recharge).
-The widget does not refresh: it only reads the stored snapshot. Within the app process the
+The widget does not refresh: it only reads the stored snapshot and the reminder lines. Within the app process the
 refresher runs one read at a time; a caller arriving while one runs awaits that read and gets
 its report (pull-to-refresh awaits it, so the "updated" time or the failure really shows).
 Exceptions to joining:

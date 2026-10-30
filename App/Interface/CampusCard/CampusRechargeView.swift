@@ -113,7 +113,8 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
             case .allow: decisionHandler(.allow)
             case .openExternal: UIApplication.shared.open(url); decisionHandler(.cancel)
             case .cancel:
-                // Host only, so a device log can show which payment page the school sends to.
+                // Scheme and host only (never the path or query), kept in the diagnostics the user
+                // can export, so it shows which payment page the school sent to.
                 ShowerDiagnosticReport.record(RechargeNavigation.blockedEvent(url))
                 decisionHandler(.cancel)
             }
