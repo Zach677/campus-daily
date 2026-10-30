@@ -105,7 +105,7 @@ public actor SnapshotRefresher {
         let id = nextRunID
         let task = Task { () -> RefreshReport in
             let report = await self.run(inBackground: inBackground)
-            await self.finished(id)
+            self.finished(id)
             return report
         }
         current = Run(id: id, task: task, inBackground: inBackground, changes: changes)
