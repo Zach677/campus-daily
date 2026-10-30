@@ -1,9 +1,11 @@
 import SwiftUI
 import Core
 
-/// First-run guide. Presented as a full-screen cover.
+/// First-run guide, presented as a full-screen cover: 登录 → 学校洗衣机 → 宿舍 → 水控 → 好了.
 struct OnboardingView: View {
-    enum Step: Int, CaseIterable { case login, dorm, washer, done }
+    enum Step: Int, CaseIterable { case login, washer, dorm, water, done }
+    /// Steps with a page dot (好了 has none).
+    static let dotted = 4
 
     /// DEBUG demo values; when set, no real login or picker is opened.
     struct Preview {
@@ -18,6 +20,9 @@ struct OnboardingView: View {
         var password = ""
         var savePassword = false
         var loginState = SchoolLoginState.idle
+        /// Controller step: checking, or what the check found.
+        var waterChecking = false
+        var waterOutcome: ShowerModel.InspectionOutcome?
     }
 
     var preview: Preview?
@@ -31,6 +36,7 @@ struct OnboardingView: View {
         _savePassword = State(initialValue:preview?.savePassword ?? false)
         _loginState = State(initialValue:preview?.loginState ?? .idle)
         _apartment = State(initialValue:preview?.picked)
+        _waterChecked = State(initialValue:preview?.waterOutcome != nil)
     }
 
     @EnvironmentObject private var campus: CampusModel
@@ -57,6 +63,8 @@ struct OnboardingView: View {
     /// 「保存密码，让小组件自动刷新」, off by default.
     @State private var savePassword: Bool
     @State private var loginState: SchoolLoginState
+    /// 开始核对 was tapped on this step (an earlier check from Settings is not shown here).
+    @State private var waterChecked: Bool
     @FocusState private var loginFocus: SchoolLoginField?
 
     /// Keyboard up on the login step: mascot and body make room; the save-password note stays.
@@ -116,19 +124,30 @@ struct OnboardingView: View {
         ScrollView {
         VStack(alignment:.leading, spacing:0) {
             if !keyboardUp {
-                icon.frame(width:76, height:76, alignment:.leading).padding(.top,typeSize.isAccessibilitySize ? 56 : 120)
+                // 52 pt at y≈104 on every step; the done screen's mascot is 76 pt at y≈180.
+                let size: CGFloat = step == .done ? 76 : 52
+                icon.frame(width:size, height:size, alignment:.leading)
+                    .padding(.top,typeSize.isAccessibilitySize ? 32 : step == .done ? 120 : 44)
             }
-            // Same title style on every step, done screen included (32 bold, line height 40);
-            // 28 while the login keyboard is up.
-            title.scaledFont(keyboardUp ? 28 : 32, .bold, relativeTo:.largeTitle).lineSpacing(2).foregroundStyle(Theme.ink)
+            // Same title style on every step, done screen included (32 bold); 28 while the
+            // login keyboard is up.
+            Text(title).scaledFont(keyboardUp ? 28 : 32, .bold, relativeTo:.largeTitle).lineSpacing(2).foregroundStyle(Theme.ink)
                 .fixedSize(horizontal:false, vertical:true)
-                .padding(.top,keyboardUp ? 40 : 26)
+                .padding(.top,keyboardUp ? 40 : 22)
                 .accessibilityAddTraits(.isHeader)
             if !keyboardUp, let body = bodyText {
                 Text(body).scaledFont(17).foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal:false, vertical:true)
-                    .padding(.top,12)
+                    .padding(.top,10)
             }
+            if step == .dorm, !choosingApartment, let dorm {
+                Text(dorm).font(.system(size:40, weight:.semibold, design:.rounded)).foregroundStyle(Theme.ink)
+                    .minimumScaleFactor(0.6).lineLimit(1)
+                    .padding(.top,28)
+                Text("从学校账号里读到的").scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                    .padding(.top,6)
+            }
+            if step == .water { waterStatus.padding(.top,28) }
             if step == .login {
                 SchoolLoginForm(account:$account, password:$password, savePassword:$savePassword,
                                 state:loginState, focus:$loginFocus, submit:submitLogin)
@@ -144,7 +163,7 @@ struct OnboardingView: View {
                     .fixedSize(horizontal:false, vertical:true).padding(.top,16)
             }
         }
-        .padding(.horizontal,28)
+        .padding(.horizontal,24)
         .frame(maxWidth:.infinity, alignment:.leading)
         if typeSize.isAccessibilitySize { bottom.padding(.top,40) }
         }
@@ -155,38 +174,78 @@ struct OnboardingView: View {
 
     @ViewBuilder private var icon: some View {
         switch step {
-        case .login, .done: Mascot(size:76)
-        case .dorm: symbol("house.fill")
+        case .login: Mascot(size:52)
+        case .done: Mascot(size:76)
         case .washer: symbol("washer.fill")
+        case .dorm: symbol("house.fill")
+        case .water: symbol("drop.fill")
         }
     }
 
     private func symbol(_ name: String) -> some View {
-        Image(systemName:name).font(.system(size:60, weight:.semibold)).foregroundStyle(Theme.accent)
+        Image(systemName:name).font(.system(size:38, weight:.semibold)).foregroundStyle(Theme.accent)
             .accessibilityHidden(true)
     }
 
-    private var title: Text {
-        let accent = { (word: String) in Text(word).foregroundStyle(Theme.accentLarge) }
-        let question = Text("？")   // full-width U+FF1F, per copy
+    private var title: String {
         switch step {
-        case .login: return Text("登录") + accent("学校账号")
-        case .dorm where choosingApartment:
-            return Text(SameNameText.titleLead) + accent(SameNameText.titleAccent) + Text(SameNameText.titleTail)
-        case .dorm: return Text("你住在") + accent("哪一间") + question
-        // 学校洗衣机 question: same page, 「洗衣机」 in the accent colour.
-        case .washer: return Text("宿舍用学校的") + accent("洗衣机") + Text("吗") + question
-        case .done: return Text("好了，\n") + accent("都准备好了") + Text("。")
+        case .login: return "登录学校账号"
+        case .washer: return SchoolLaundryPreference.Onboarding.title
+        case .dorm where choosingApartment: return SameNameText.titleLead + SameNameText.titleAccent + SameNameText.titleTail
+        case .dorm: return "你住哪间？"
+        case .water: return "核对宿舍的水控"
+        case .done: return "好了"
         }
     }
 
     private var bodyText: String? {
         switch step {
         case .login: return "用你在学校官网登录时的账号和密码。"
-        case .dorm where choosingApartment: return SameNameText.hint(apartmentChoices)
-        case .dorm: return dorm.map { "已经从学校账号读到：\($0)。不对就改一下。" } ?? "没读到你的宿舍，手动选一下。"
         case .washer: return SchoolLaundryPreference.Onboarding.subtitle
-        case .done: return nil
+        case .dorm where choosingApartment: return SameNameText.hint(apartmentChoices)
+        case .dorm: return dorm != nil ? "电量和热水都按这间宿舍来。" : "没读到你的宿舍，手动选一下。"
+        case .water: return "站在水控旁边，打开蓝牙。只读编号，不会开水。"
+        case .done: return "以后在设置里都能改。"
+        }
+    }
+
+    // MARK: Controller check
+
+    private var waterChecking: Bool { preview?.waterChecking ?? water.inspecting }
+    private var waterOutcome: ShowerModel.InspectionOutcome? {
+        guard waterChecked, !waterChecking else { return nil }
+        return preview != nil ? preview?.waterOutcome : water.inspectionOutcome
+    }
+
+    /// 28 pt under the body: nothing before the first check, a spinner while it runs, then
+    /// what it found (errors in the login's error style).
+    @ViewBuilder private var waterStatus: some View {
+        if waterChecking {
+            HStack(spacing:10) {
+                ProgressView().tint(Theme.ink2).frame(width:20, height:20)
+                Text("正在找水控…").scaledFont(17, .medium).foregroundStyle(Theme.ink2)
+            }
+        } else if let outcome = waterOutcome {
+            if outcome == .verified {
+                Label { Text(ShowerModel.inspectionVerifiedText).scaledFont(17, .medium).foregroundStyle(Theme.ink) }
+                    icon: { Image(systemName:"checkmark.circle.fill").font(.system(size:22)).foregroundStyle(Theme.accentText) }
+            } else {
+                Label { Text(Self.waterText(outcome)).scaledFont(15, relativeTo:.subheadline) }
+                    icon: { Image(systemName:"exclamationmark.circle.fill").font(.system(size:17)) }
+                    .foregroundStyle(Theme.accentText)
+                    .fixedSize(horizontal:false, vertical:true)
+            }
+        }
+    }
+
+    static func waterText(_ outcome: ShowerModel.InspectionOutcome) -> String {
+        switch outcome {
+        case .verified: return ShowerModel.inspectionVerifiedText
+        case .notFound: return "没找到水控，走近一点再试。"
+        case .bluetoothOff: return "蓝牙关着，打开后再核对。"
+        case .inUse: return ShowerModel.inspectionBusyText
+        case .otherMachine: return "附近的水控不是你宿舍的那台。"
+        case .failed(let text): return text
         }
     }
 
@@ -233,11 +292,11 @@ struct OnboardingView: View {
         VStack(spacing:0) {
             if step != .done && !keyboardUp {
                 HStack(spacing:7) {
-                    ForEach(0..<3, id:\.self) { index in
+                    ForEach(0..<Self.dotted, id:\.self) { index in
                         Circle().fill(index == step.rawValue ? Theme.ink : Theme.ink3).frame(width:7, height:7)
                     }
                 }
-                .accessibilityElement().accessibilityLabel("第 \(step.rawValue + 1) 步，共 3 步")
+                .accessibilityElement().accessibilityLabel("第 \(step.rawValue + 1) 步，共 \(Self.dotted) 步")
                 .padding(.bottom,18)
             }
             Button(action:primary) {
@@ -245,7 +304,7 @@ struct OnboardingView: View {
                 // Waiting for an apartment choice or logging in: the home dock's disabled look
                 // (「正在结算…」: fill + ink2). Login fields not filled yet: fill + ink3.
                 HStack(spacing:10) {
-                    if loggingIn { ProgressView().tint(Theme.ink2) }
+                    if loggingIn || step == .water && waterChecking { ProgressView().tint(Theme.ink2) }
                     Text(primaryTitle)
                 }
                     .scaledFont(18, .semibold, relativeTo:.headline).foregroundStyle(primaryInk)
@@ -257,47 +316,44 @@ struct OnboardingView: View {
             }
             .buttonStyle(PressScaleStyle())
             .disabled(primaryDimmed || bindingWater || choosingApartment && campus.matchingPower)
+            .sensoryFeedback(.success, trigger:waterOutcome == .verified) { _, found in found }
             .accessibilityIdentifier("onboardingPrimary")
             .accessibilityLabel(primaryTitle)
             // Fixed slot below the pill so the pill doesn't jump between steps.
             ZStack(alignment:.top) {
                 if step == .dorm && dorm != nil {
-                    Button(choosingApartment ? "都不是，换一间" : "换一间") { openDormPicker() }
-                        .scaledFont(17, .medium).foregroundStyle(Theme.ink2)
-                        .frame(minHeight:44).padding(.top,4)
+                    secondary(choosingApartment ? "都不是，换一间" : "换一间") { openDormPicker() }
                 }
                 if step == .washer {
                     VStack(spacing:0) {
-                        Button(action:skipLaundry) {
-                            Text(SchoolLaundryPreference.Onboarding.no)
-                                .scaledFont(17, .medium, relativeTo:.body).foregroundStyle(Theme.ink)
-                                .lineLimit(1).minimumScaleFactor(0.8)
-                                .frame(maxWidth:.infinity, minHeight:50)
-                                // Spec: 6% black light / secondary fill dark — that's Theme.fill (Theme.group is white).
-                                .background(Theme.fill, in:RoundedRectangle(cornerRadius:25, style:.continuous))
-                        }
-                        .buttonStyle(PressScaleStyle())
-                        .accessibilityLabel(SchoolLaundryPreference.Onboarding.no)
+                        secondary(SchoolLaundryPreference.Onboarding.no, action:skipLaundry)
                         Text(SchoolLaundryPreference.Onboarding.note)
                             .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                             .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
-                            .padding(.top,10)
                     }
-                    .padding(.top,12)
+                }
+                if step == .water && waterOutcome != .verified {
+                    secondary("以后再核对") { advance() }
+                        .accessibilityIdentifier("waterLater")
                 }
                 if step == .login && !keyboardUp && loginState != .cannotDirect {
-                    Button(SchoolLoginText.webLogin) { openWebLogin() }
-                        .scaledFont(17, .medium).foregroundStyle(Theme.ink2)
-                        .frame(minHeight:44).padding(.top,4)
+                    secondary(SchoolLoginText.webLogin) { openWebLogin() }
                         .disabled(loggingIn)
                         .accessibilityIdentifier("webLogin")
                 }
             }
-            .frame(minHeight:keyboardUp ? 0 : 48, alignment:.top)
+            .frame(minHeight:keyboardUp ? 0 : 46, alignment:.top)
         }
-        .padding(.horizontal,28)
+        .padding(.horizontal,24)
         .padding(.bottom,keyboardUp ? 12 : 4)
         .animation(reduceMotion ? .easeInOut(duration:0.2) : Theme.spring, value:step)
+    }
+
+    /// The text button under the pill: 46 pt, 17 medium ink2.
+    private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action:action)
+            .scaledFont(17, .medium).foregroundStyle(Theme.ink2)
+            .frame(maxWidth:.infinity, minHeight:46)
     }
 
     private var primaryTitle: String {
@@ -307,6 +363,13 @@ struct OnboardingView: View {
             return loginState == .cannotDirect ? SchoolLoginText.webLogin : "登录"
         case .dorm: return bindingWater ? "正在找宿舍的水控…" : dorm != nil ? "就是这间" : "选宿舍"
         case .washer: return SchoolLaundryPreference.Onboarding.yes
+        case .water:
+            if waterChecking { return "正在核对…" }
+            switch waterOutcome {
+            case nil, .bluetoothOff?: return "开始核对"
+            case .verified?: return "下一步"
+            default: return "再试一次"
+            }
         case .done: return "开始用"
         }
     }
@@ -317,12 +380,13 @@ struct OnboardingView: View {
     /// it is the web login and always available.
     private var primaryDimmed: Bool {
         if step == .login { return loginState != .cannotDirect && (loggingIn || !loginReady) }
+        if step == .water { return waterChecking }
         return waitingForApartment
     }
 
     private var primaryInk: Color {
         guard primaryDimmed else { return Theme.pillInk }
-        return step == .login && !loggingIn ? Theme.ink3 : Theme.ink2
+        return step == .login && !loggingIn || waitingForApartment ? Theme.ink3 : Theme.ink2
     }
 
     // MARK: Actions
@@ -346,6 +410,10 @@ struct OnboardingView: View {
             laundry.setSchoolEnabled(true)
             if laundryConnected { washer = true }
             else { ujing = true }
+        case .water:
+            if waterOutcome == .verified || preview != nil { advance(); return }
+            waterChecked = true
+            Task { await water.inspectBluetooth() }
         case .done: close()
         }
     }
@@ -366,10 +434,10 @@ struct OnboardingView: View {
         }
     }
 
-    /// 不用: laundry hidden everywhere (changeable in 设置); first-run setup ends here.
+    /// 不用: laundry hidden everywhere (changeable in 设置); on to the dorm.
     private func skipLaundry() {
         if preview == nil { laundry.setSchoolEnabled(false) }
-        close()
+        advance()
     }
 
     /// One login with the form's account and password; never retried (failures count towards
@@ -414,7 +482,9 @@ struct OnboardingView: View {
     }
 
     private func advance() {
-        guard let next = Step(rawValue:step.rawValue + 1) else { close(); return }
+        guard var next = Step(rawValue:step.rawValue + 1) else { close(); return }
+        // No controller bound (no water platform, or left for Settings): nothing to check.
+        if next == .water, preview == nil, !water.configured { next = .done }
         issue = nil
         withAnimation(reduceMotion ? .easeInOut(duration:0.2) : Theme.spring) { step = next }
     }

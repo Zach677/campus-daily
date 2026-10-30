@@ -71,6 +71,13 @@ enum ShowerProfileFiles {
     @Published private(set) var inspecting = false
     /// The last check reached a controller that was in use, so it could not say whose it is.
     @Published private(set) var inspectionFoundBusy = false
+    /// What the last 核对 found (the first-run guide's controller step shows it its own way).
+    @Published private(set) var inspectionOutcome: InspectionOutcome?
+    enum InspectionOutcome: Equatable {
+        case verified, notFound, bluetoothOff, inUse, otherMachine
+        /// Anything else, with the troubleshooting text.
+        case failed(String)
+    }
     private(set) var engine: ShowerEngine?
     private var observer: Task<Void, Never>?
     private let gateway = ShowerGatewayBox()
@@ -180,7 +187,7 @@ enum ShowerProfileFiles {
     func reloadAfterReset() async {
         binding = (try? AppEnvironment.showerVault.binding()) ?? nil
         residenceReviewRequired = UserDefaults.standard.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
-        verifiedDevice = nil; inspectionStatus = nil; inspectionFoundBusy = false; message = nil
+        verifiedDevice = nil; inspectionStatus = nil; inspectionFoundBusy = false; inspectionOutcome = nil; message = nil
         await reloadProfile()
         ShowerActivityController.shared.sync(state:state)
         Reminders.shared.syncShower(started:nil)
@@ -211,7 +218,7 @@ enum ShowerProfileFiles {
         case .none: break
         case .keptForReview: setResidenceReview(true)
         case .cleared:
-            binding = nil; verifiedDevice = nil; inspectionStatus = nil; inspectionFoundBusy = false; message = nil
+            binding = nil; verifiedDevice = nil; inspectionStatus = nil; inspectionFoundBusy = false; inspectionOutcome = nil; message = nil
             if residenceReviewRequired { setResidenceReview(false) }
             rebuildEngine()
         }
@@ -315,31 +322,40 @@ enum ShowerProfileFiles {
     func inspectBluetooth() async {
         guard let binding, mayImport, !inspecting else { return }
         let bleName = profile?.bleName ?? ""
-        guard !bleName.isEmpty else { inspectionStatus = Self.platformMissingText; return }
-        inspecting = true; inspectionStatus = nil; verifiedDevice = nil; inspectionFoundBusy = false
+        guard !bleName.isEmpty else { inspectionStatus = Self.platformMissingText; inspectionOutcome = .failed(Self.platformMissingText); return }
+        inspecting = true; inspectionStatus = nil; verifiedDevice = nil; inspectionFoundBusy = false; inspectionOutcome = nil
         defer { inspecting = false }
         do {
             let nearby = try await bluetooth.inspect(bleName:bleName, remembered:binding.peripheralID)
-            guard nearby > 0 else { inspectionStatus = Self.deviceText(.notFound); return }
+            guard nearby > 0 else { inspectionStatus = Self.deviceText(.notFound); inspectionOutcome = .notFound; return }
             let outcome = try await ShowerInspection.run(transport:bluetooth, bleName:bleName, machineID:binding.machineId,
                                                          remembered:binding.peripheralID) { forgetRemembered($0, for:binding) }
             let id: String
             switch outcome {
-            case .unreadable: inspectionStatus = Self.deviceText(.malformedFrame); return
-            case .otherMachine: inspectionStatus = "附近的水控不是你宿舍的那台。"; return
+            case .unreadable:
+                inspectionStatus = Self.deviceText(.malformedFrame); inspectionOutcome = .failed(Self.deviceText(.malformedFrame)); return
+            case .otherMachine: inspectionStatus = "附近的水控不是你宿舍的那台。"; inspectionOutcome = .otherMachine; return
             case .busy:
                 // An in-use controller does not say which machine it is: nothing was verified.
                 inspectionFoundBusy = true
                 inspectionStatus = Self.inspectionBusyText
+                inspectionOutcome = .inUse
                 return
             case .verified(let found): id = found
             }
             verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:binding.machineId.uppercased(), rssi:nil, nearbyCount:nearby, verifiedAt:Date())
             if let proven = outcome.peripheralToRemember { rememberVerified(proven, for:binding) }
             inspectionStatus = Self.inspectionVerifiedText
+            inspectionOutcome = .verified
         } catch {
             await bluetooth.disconnect()
-            inspectionStatus = Self.deviceText((error as? ShowerDeviceError) ?? .disconnected)
+            let device = (error as? ShowerDeviceError) ?? .disconnected
+            inspectionStatus = Self.deviceText(device)
+            switch device {
+            case .bluetoothOff: inspectionOutcome = .bluetoothOff
+            case .notFound: inspectionOutcome = .notFound
+            default: inspectionOutcome = .failed(Self.deviceText(device))
+            }
         }
     }
 
