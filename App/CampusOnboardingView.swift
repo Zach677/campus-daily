@@ -194,7 +194,7 @@ struct CampusLoginSheet: View {
                             .animation(.easeInOut(duration:0.2), value:browser.progress.slowNote(now:browser.now))
                         }
                         .padding(.horizontal,32).padding(.bottom,60)
-                        .frame(maxWidth:.infinity,maxHeight:.infinity).background(NativeTheme.background)
+                        .frame(maxWidth:.infinity,maxHeight:.infinity).background(Theme.bg)
                         .accessibilityElement(children:.combine)
                     }
                 }
@@ -208,7 +208,7 @@ struct CampusLoginSheet: View {
                 } label: { Text(browser.reading ? "正在读取…" : "从当前页面读取").frame(maxWidth:.infinity,minHeight:44) }
                     .buttonStyle(.borderedProminent).padding().disabled(browser.reading || delivered).accessibilityIdentifier("readCampusLogin")
                 }
-            }.background(NativeTheme.background).navigationTitle("连接校园卡").navigationBarTitleDisplayMode(.inline)
+            }.background(Theme.bg).navigationTitle("登录学校账号").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() } } }
                 .onReceive(browser.$connected.compactMap { $0 }) { config in deliver(config) }
                 .task {

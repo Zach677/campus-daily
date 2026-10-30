@@ -19,7 +19,7 @@ public struct CampusLoginProgress: Equatable, Sendable {
     }
 
     public static let openingText = "正在打开学校登录…"
-    public static let slowText = "学校网站有点慢，再等等…"
+    public static let slowText = "学校网站有点慢，再等一会儿。"
     /// A stage running longer than this adds `slowText`.
     public static let slowAfter: TimeInterval = 8
     /// Never keep the page hidden longer than this while opening (no form found: show what's there).

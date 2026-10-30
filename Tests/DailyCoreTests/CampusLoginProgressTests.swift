@@ -46,7 +46,7 @@ final class CampusLoginProgressTests: XCTestCase {
     func testSlowNoteAfterEightSecondsPerStage() {
         var p = CampusLoginProgress(now:t0)
         XCTAssertNil(p.slowNote(now:t0.addingTimeInterval(8)))
-        XCTAssertEqual(p.slowNote(now:t0.addingTimeInterval(8.5)), "学校网站有点慢，再等等…")
+        XCTAssertEqual(p.slowNote(now:t0.addingTimeInterval(8.5)), "学校网站有点慢，再等一会儿。")
         p.pageStarted(host:"ecykt.gdbtu.edu.cn", now:t0.addingTimeInterval(9))
         XCTAssertNil(p.slowNote(now:t0.addingTimeInterval(12)), "a new stage restarts the clock")
         XCTAssertNotNil(p.slowNote(now:t0.addingTimeInterval(17.1)))

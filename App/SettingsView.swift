@@ -123,7 +123,7 @@ extension SettingsView {
                 // A disabled navigation-link Picker is dimmed by the system on top of ink2, so it read lighter
                 // than the three switches. Off: a static row in the same ink2 as their labels.
                 HStack {
-                    Text("洗完没结算").foregroundStyle(Theme.ink2)
+                    Text("洗完澡没结算").foregroundStyle(Theme.ink2)
                     Spacer()
                     Text(unsettledMinutes > 0 ? "\(unsettledMinutes) 分钟后" : "不提醒").foregroundStyle(Theme.ink2)
                     Image(systemName:"chevron.right").font(.system(size:13, weight:.semibold)).foregroundStyle(Theme.ink3)
@@ -134,7 +134,7 @@ extension SettingsView {
                 Picker(selection:$unsettledMinutes) {
                     ForEach([15, 30, 60], id:\.self) { Text("\($0) 分钟后").tag($0) }
                     Text("不提醒").tag(0)
-                } label: { Text("洗完没结算").foregroundStyle(Theme.ink) }
+                } label: { Text("洗完澡没结算").foregroundStyle(Theme.ink) }
                 .pickerStyle(.navigationLink)
             }
             if laundryOn {
@@ -154,7 +154,7 @@ extension SettingsView {
         } header: {
             Text("提醒")
         } footer: {
-            Text(off ? "系统通知关着，这里的开关暂时不起作用。" : "电快没了、衣服洗好了，校日常会提醒你。")
+            Text(off ? "系统通知关着，这里的开关暂时不起作用。" : (laundryOn ? "电快没了、衣服洗好了，校日常会提醒你。" : "电快没了、校园卡钱不多了，校日常会提醒你。"))
                 .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }
         .tint(.green)
