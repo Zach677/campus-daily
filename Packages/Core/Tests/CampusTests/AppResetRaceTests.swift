@@ -18,6 +18,7 @@ final class AppResetRaceTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let stopped = try await AppReset.run(
+            marker: ResetMarker(store: h.store), now: Date(),
             lock: { nil },
             signOut: { try? await session.signOut(); try? await refresher.clear() },
             clear: { try AppReset.clear(store: h.store, preferences: defaults, preferencesDomain: suite, files: []) },

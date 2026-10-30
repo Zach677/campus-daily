@@ -113,7 +113,7 @@ private struct LaundryEngineHooks: LaundryHooks {
         observer?.cancel(); observer = nil; engine = nil
         do {
             let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(),
-                                           hooks:LaundryEngineHooks())
+                                           hooks:LaundryEngineHooks(), resetMarker:AppResetter.marker)
             self.engine = engine
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
@@ -374,7 +374,7 @@ private struct LaundryEngineHooks: LaundryHooks {
         case .notAllowed?: return "现在不能这样操作，下拉刷新看看。"
         case .washerChanged?: return "机器或价格变了，刷新一下再下单。"
         case .storage?: return "这台手机暂时存不了洗衣订单，重启 App 后再试。"
-        case nil: return message(error) ?? uncertainText
+        case nil: return (error as? AppReset.InProgress)?.errorDescription ?? message(error) ?? uncertainText
         }
     }
 

@@ -27,32 +27,62 @@ import Core
             + [ShowerDiagnosticReport.exportFolder]
     }
 
-    /// The order is `AppReset.run`: lock, sign out, lock again, clear, reload. Returns the lock
-    /// that stopped it (nil = reset done).
+    /// A reset left unfinished by the last run of the app was found at launch and stopped by a
+    /// lock: nothing was cleared. The home screen says so.
+    @Published var resumeStopped: AppReset.Lock?
+
+    static var marker: ResetMarker { ResetMarker(store:AppEnvironment.store) }
+
+    /// The models' locks, then the stored records (the models may still be loading at launch).
+    static func anyLock(water: ShowerModel, laundry: LaundryModel) -> AppReset.Lock? {
+        lock(water:water, laundry:laundry) ?? AppReset.storedLock(store:AppEnvironment.store)
+    }
+
+    /// `AppReset.run`: marker, lock, sign out, clear, reload. Returns the lock that stopped it
+    /// (nil = reset done).
     @discardableResult
     func reset(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async throws -> AppReset.Lock? {
         guard !running else { return nil }
         running = true
         defer { running = false }
-        let stopped = try await AppReset.run(
-            lock: { Self.lock(water:water, laundry:laundry) },
-            signOut: { await campus.signOutForReset() },
-            clear: {
-                // The in-memory diagnostics first: the next event would write them all back.
-                ShowerDiagnosticReport.clearMemory()
-                try AppReset.clear(store:AppEnvironment.store, preferences:.standard,
-                                   preferencesDomain:Bundle.main.bundleIdentifier ?? "", files:Self.files)
-            },
-            reload: {
-                campus.reload()
-                await water.reloadAfterReset()
-                laundry.reloadAfterReset()
-                Reminders.shared.clearAfterReset()
-                ShowerActivityController.shared.endAll()
-                WidgetCenter.shared.reloadAllTimelines()
-            })
+        let stopped = try await AppReset.run(marker:Self.marker, now:Date(),
+                                             lock:{ Self.anyLock(water:water, laundry:laundry) },
+                                             signOut:{ await campus.signOutForReset() },
+                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, water:water, laundry:laundry) })
         if stopped == nil { completed += 1 }
         return stopped
+    }
+
+    /// At launch: finish a reset the app was killed in the middle of (or say why not).
+    func resumeIfInterrupted(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async {
+        guard !running else { return }
+        running = true
+        defer { running = false }
+        let resumed = try? await AppReset.resume(marker:Self.marker, now:Date(),
+                                                 lock:{ Self.anyLock(water:water, laundry:laundry) },
+                                                 signOut:{ await campus.signOutForReset() },
+                                                 clear:Self.clear, reload:{ await Self.reload(campus:campus, water:water, laundry:laundry) })
+        switch resumed {
+        case .completed?: completed += 1
+        case .stopped(let lock)?: resumeStopped = lock
+        case nil: break
+        }
+    }
+
+    private static func clear() throws {
+        // The in-memory diagnostics first: the next event would write them all back.
+        ShowerDiagnosticReport.clearMemory()
+        try AppReset.clear(store:AppEnvironment.store, preferences:.standard,
+                           preferencesDomain:Bundle.main.bundleIdentifier ?? "", files:files)
+    }
+
+    private static func reload(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async {
+        campus.reload()
+        await water.reloadAfterReset()
+        laundry.reloadAfterReset()
+        Reminders.shared.clearAfterReset()
+        ShowerActivityController.shared.endAll()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     #if DEBUG

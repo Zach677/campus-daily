@@ -4,8 +4,18 @@ import Core
 
 /// Footer of 重置校日常 for the two newer lock reasons.
 enum ResetLockText {
-    static let recordsUnreadable = "洗澡或洗衣记录现在读不出来，重启 App 以后再重置。"
-    static let checkingController = "正在核对水控，核对完再重置。"
+    static func text(_ lock: AppReset.Lock) -> String {
+        switch lock {
+        case .showering: return "正在洗澡，结束并结算以后再重置。"
+        case .unsettled: return "上次洗澡还没核对，核对完再重置。"
+        case .laundry: return "洗衣还有一笔没处理完，处理完再重置。"
+        case .recordsUnreadable: return "洗澡或洗衣记录现在读不出来，重启 App 以后再重置。"
+        case .checkingController: return "正在核对水控，核对完再重置。"
+        }
+    }
+    /// After a reset that found a lock (just now, or resuming one at launch): nothing was touched.
+    static let blockedTitle = "没有重置"
+    static func blockedMessage(_ lock: AppReset.Lock) -> String { text(lock) + "什么都没清掉。" }
 }
 
 /// Settings sheet.
@@ -293,6 +303,8 @@ struct AdvancedSettingsView: View {
     @ObservedObject private var resetter = AppResetter.shared
     @State private var confirmReset = false
     @State private var resetIssue: String?
+    /// Set when a lock stopped the reset (nothing was cleared).
+    @State private var resetBlocked: AppReset.Lock?
     @State private var importing = false
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
@@ -321,14 +333,8 @@ struct AdvancedSettingsView: View {
                 if let resetIssue {
                     Label(resetIssue, systemImage:"exclamationmark.circle").foregroundStyle(Theme.ink2)
                 }
-                switch lock {
-                case .showering?: Text("正在洗澡，结束并结算以后再重置。")
-                case .unsettled?: Text("上次洗澡还没核对，核对完再重置。")
-                case .laundry?: Text("洗衣还有一笔没处理完，处理完再重置。")
-                case .recordsUnreadable?: Text(ResetLockText.recordsUnreadable)
-                case .checkingController?: Text(ResetLockText.checkingController)
-                case nil: Text("清掉登录、宿舍和所有记录，回到刚装好的样子。")
-                }
+                if let lock { Text(ResetLockText.text(lock)) }
+                else { Text("清掉登录、宿舍和所有记录，回到刚装好的样子。") }
             }
         }.listRowBackground(Theme.group)
     }
@@ -339,7 +345,7 @@ struct AdvancedSettingsView: View {
         #endif
         guard preview == nil else { return }
         Task {
-            do { try await resetter.reset(campus:campus, water:water, laundry:laundry) }
+            do { resetBlocked = try await resetter.reset(campus:campus, water:water, laundry:laundry) }
             catch { resetIssue = AppErrorText.text(error) }
         }
     }
@@ -378,6 +384,11 @@ struct AdvancedSettingsView: View {
             Button("重置", role:.destructive) { runReset() }
         } message: {
             Text("会清掉学校账号和保存的密码、宿舍和电表、记住的水控、U净 登录、洗澡和洗衣记录、小组件上的数字、选的主题，还有导入的热水配置。学校那边的余额和消费记录不受影响。")
+        }
+        .alert(ResetLockText.blockedTitle, isPresented:Binding(get:{ resetBlocked != nil }, set:{ if !$0 { resetBlocked = nil } })) {
+            Button("好", role:.cancel) {}
+        } message: {
+            Text(resetBlocked.map(ResetLockText.blockedMessage) ?? "")
         }
         .fileImporter(isPresented:$importing, allowedContentTypes:[.json, .data]) { result in
             importIssue = nil

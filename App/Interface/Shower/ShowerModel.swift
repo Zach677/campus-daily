@@ -142,7 +142,7 @@ enum ShowerProfileFiles {
             let engine = try ShowerEngine(transport:bluetooth, gateway:gateway, vault:AppEnvironment.showerVault,
                                           configuration:.init(bleName:bleName,
                                                               reminderMinutes:UserDefaults.standard.integer(forKey:ReminderKey.unsettledMinutes)),
-                                          hooks:ShowerModelHooks())
+                                          hooks:ShowerModelHooks(), resetMarker:AppResetter.marker)
             self.engine = engine
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked

@@ -127,7 +127,16 @@ struct HomeView: View {
             #if DEBUG
             if demo != nil { return }
             #endif
+            // A reset the app was killed in: finished now (then the guide opens), or not, and why.
+            await resetter.resumeIfInterrupted(campus:campus, water:water, laundry:laundry)
+            if resetter.completed > 0 { return }
             if !didSeeQuickSetup && !campus.configured && !water.configured && !laundry.configured { openOnboarding() }
+        }
+        .alert(ResetLockText.blockedTitle, isPresented:Binding(get:{ resetter.resumeStopped != nil },
+                                                               set:{ if !$0 { resetter.resumeStopped = nil } })) {
+            Button("好", role:.cancel) {}
+        } message: {
+            Text(resetter.resumeStopped.map(ResetLockText.blockedMessage) ?? "")
         }
         .onChange(of:phase) { _, value in
             if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }

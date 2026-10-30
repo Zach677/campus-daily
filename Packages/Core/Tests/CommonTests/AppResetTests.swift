@@ -51,7 +51,8 @@ final class AppResetTests: XCTestCase {
     /// A new Keychain item is cleared by reset too; this count makes adding one a conscious step.
     func testResetCoversEveryKeychainItem() {
         XCTAssertEqual(Set(AppReset.keychainItems), Set(StoreKey.allCases))
-        XCTAssertEqual(AppReset.keychainItems.count, 13, "a new item: check reset clears it, then update this count")
+        XCTAssertEqual(AppReset.keychainItems.count, 14, "a new item: check reset clears it, then update this count")
+        XCTAssertEqual(AppReset.keychainItems.last, .sharedResetMarker, "the marker goes last")
         // The refresh lease is an item of its own; the credential times live inside the
         // card session and portal token items, so they go with them.
         XCTAssertTrue(AppReset.keychainItems.contains(.sharedRefreshLease))
@@ -101,7 +102,10 @@ final class AppResetTests: XCTestCase {
         XCTAssertThrowsError(try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, files: [])) {
             XCTAssertEqual(($0 as? AppReset.Failure)?.items, ["school.password"])
         }
-        for key in StoreKey.allCases where key != .schoolPassword { XCTAssertNil(try store.read(key), key.rawValue) }
+        for key in StoreKey.allCases where key != .schoolPassword && key != .sharedResetMarker {
+            XCTAssertNil(try store.read(key), key.rawValue)
+        }
+        XCTAssertNotNil(try store.read(.sharedResetMarker), "kept, so the next launch finishes the reset")
     }
 
     /// An unfinished laundry order locks reset too; the shower reasons come first.
@@ -136,43 +140,59 @@ final class AppResetTests: XCTestCase {
         XCTAssertNil(AppReset.lock(shower: .idle, recordsUnreadable: false, checkingController: false))
     }
 
-    /// lock → sign out → lock again → clear → reload.
+    /// marker → lock → sign out → clear → reload; the marker goes with a successful clear.
     @MainActor func testResetRunsItsStepsInOrder() async throws {
+        let store = InMemorySecureStore()
+        let marker = ResetMarker(store: store)
         var steps: [String] = []
-        let stopped = try await AppReset.run(lock: { steps.append("lock"); return nil },
+        let stopped = try await AppReset.run(marker: marker, now: Date(),
+                                             lock: { steps.append(marker.startedAt() == nil ? "lock without marker" : "lock"); return nil },
                                              signOut: { steps.append("signOut") },
-                                             clear: { steps.append("clear") },
+                                             clear: { steps.append("clear"); try marker.end() },
                                              reload: { steps.append("reload") })
         XCTAssertNil(stopped)
-        XCTAssertEqual(steps, ["lock", "signOut", "lock", "clear", "reload"])
+        XCTAssertEqual(steps, ["lock", "signOut", "clear", "reload"], "one lock check, after the marker")
+        XCTAssertNil(marker.startedAt())
     }
 
-    @MainActor func testALockFirstDoesNothing() async throws {
+    /// A lock: nothing signed out, cleared or reloaded, and the marker is gone again.
+    @MainActor func testALockTouchesNothingAndRemovesTheMarker() async throws {
+        let store = InMemorySecureStore()
+        let marker = ResetMarker(store: store)
         var steps: [String] = []
-        let stopped = try await AppReset.run(lock: { .laundry }, signOut: { steps.append("signOut") },
+        let stopped = try await AppReset.run(marker: marker, now: Date(), lock: { .laundry }, signOut: { steps.append("signOut") },
                                              clear: { steps.append("clear") }, reload: { steps.append("reload") })
         XCTAssertEqual(stopped, .laundry)
         XCTAssertEqual(steps, [])
+        XCTAssertNil(marker.startedAt())
+        XCTAssertNil(try store.read(.sharedResetMarker))
     }
 
-    /// A shower started while sign-out waited: nothing is cleared.
-    @MainActor func testALockAfterSignOutStopsBeforeClearing() async throws {
+    /// A marker that can't be written: the reset does not start at all.
+    @MainActor func testNoMarkerNoReset() async {
+        let store = InMemorySecureStore()
+        store.failWrites(to: .sharedResetMarker)
         var steps: [String] = []
-        var showering = false
-        let stopped = try await AppReset.run(lock: { showering ? .showering : nil },
-                                             signOut: { steps.append("signOut"); showering = true },
-                                             clear: { steps.append("clear") }, reload: { steps.append("reload") })
-        XCTAssertEqual(stopped, .showering)
-        XCTAssertEqual(steps, ["signOut", "reload"])
+        do {
+            _ = try await AppReset.run(marker: ResetMarker(store: store), now: Date(), lock: { steps.append("lock"); return nil },
+                                       signOut: { steps.append("signOut") }, clear: { steps.append("clear") },
+                                       reload: { steps.append("reload") })
+            XCTFail("expected the storage error")
+        } catch { XCTAssertTrue(error is StorageError) }
+        XCTAssertEqual(steps, [])
     }
 
+    /// A failed clear still reloads and reports; the marker stays for the next launch to finish.
     @MainActor func testAFailedClearStillReloadsAndReports() async {
+        let store = InMemorySecureStore()
+        let marker = ResetMarker(store: store)
         var reloaded = false
         do {
-            _ = try await AppReset.run(lock: { nil }, signOut: {}, clear: { throw AppReset.Failure(items: ["x"]) },
-                                       reload: { reloaded = true })
+            _ = try await AppReset.run(marker: marker, now: Date(), lock: { nil }, signOut: {},
+                                       clear: { throw AppReset.Failure(items: ["x"]) }, reload: { reloaded = true })
             XCTFail("expected the failure")
         } catch { XCTAssertEqual(error as? AppReset.Failure, AppReset.Failure(items: ["x"])) }
         XCTAssertTrue(reloaded)
+        XCTAssertNotNil(marker.startedAt())
     }
 }

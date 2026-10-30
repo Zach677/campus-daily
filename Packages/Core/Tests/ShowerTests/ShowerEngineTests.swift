@@ -164,6 +164,26 @@ final class ShowerEngineTests: XCTestCase {
 
     // MARK: Refusal / uncertainty
 
+    /// While a reset runs, a start (the in-app button and the 开始洗澡 shortcut both come here)
+    /// is refused before anything reaches the controller; once the marker is stale it goes ahead.
+    func testAStartIsRefusedWhileAResetRuns() async throws {
+        let marker = ResetMarker(store: InMemorySecureStore())
+        let t = Date(timeIntervalSince1970: 1_800_000_000)
+        try marker.begin(at: t)
+        let e = try ShowerEngine(transport: transport, gateway: gateway, vault: vault,
+                                 configuration: .init(bleName: "fixture-ble", reminderMinutes: 30), hooks: hooks,
+                                 resetMarker: marker, now: { t })
+        do { _ = try await e.start(binding); XCTFail("expected the refusal") }
+        catch { XCTAssertEqual(error as? AppReset.InProgress, AppReset.InProgress()); XCTAssertEqual(error.localizedDescription, "正在重置") }
+        XCTAssertTrue(transport.writes.isEmpty, "nothing sent")
+        XCTAssertNil(try vault.showerState(), "nothing recorded")
+
+        let stale = try ShowerEngine(transport: transport, gateway: gateway, vault: vault,
+                                     configuration: .init(bleName: "fixture-ble", reminderMinutes: 30), hooks: hooks,
+                                     resetMarker: marker, now: { t.addingTimeInterval(ResetMarker.staleAfter + 1) })
+        try await startRunning(stale)
+    }
+
     func testRefusalLeavesNoRecordAndAllowsAnotherStart() async throws {
         let e = try engine()
         transport.script(.frame(identity))

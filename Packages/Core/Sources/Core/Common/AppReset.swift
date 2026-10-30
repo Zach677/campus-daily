@@ -39,19 +39,27 @@ public enum AppReset {
         return nil
     }
 
-    /// The steps of a reset, in order. `lock` is asked twice: before signing out, and again
-    /// after (a shortcut may have started a shower while sign-out waited for a refresh). A lock
-    /// the second time stops before anything is cleared; the school sign-out stands. `reload`
-    /// runs whenever sign-out ran, so the models show what is stored even after a failure.
-    /// Returns the lock that stopped it, or nil when the stores were cleared.
-    @MainActor public static func run(lock: () -> Lock?, signOut: () async -> Void,
+    /// A shower or laundry start refused while a reset runs (what Shortcuts shows, too).
+    public struct InProgress: LocalizedError, Sendable, Equatable {
+        public init() {}
+        public var errorDescription: String? { "正在重置" }
+    }
+
+    /// All or nothing. The marker goes first, so from then on nothing can start; then one check of
+    /// the locks. A lock removes the marker and returns, with nothing signed out or cleared.
+    /// Otherwise: school sign-out (local deletes happen whatever it meets), clear, reload. The
+    /// marker goes with the clear, and only when the clear succeeded: a failed or interrupted
+    /// clear leaves it, and the next launch finishes the reset (`resume`). Returns the lock that
+    /// stopped it, or nil when the stores were cleared. A marker that can't be written stops it
+    /// before anything happens (thrown).
+    @MainActor public static func run(marker: ResetMarker, now: Date, lock: () -> Lock?, signOut: () async -> Void,
                                       clear: () throws -> Void, reload: () async -> Void) async throws -> Lock? {
-        if let first = lock() { return first }
-        await signOut()
-        if let second = lock() {
-            await reload()
-            return second
+        try marker.begin(at: now)
+        if let found = lock() {
+            try? marker.end()
+            return found
         }
+        await signOut()
         var failure: Error?
         do { try clear() } catch { failure = error }
         await reload()
@@ -59,8 +67,35 @@ public enum AppReset {
         return nil
     }
 
-    /// Every Keychain item. A new `StoreKey` is cleared without being listed here.
-    public static var keychainItems: [StoreKey] { StoreKey.allCases }
+    public enum Resumed: Sendable, Equatable {
+        case completed
+        case stopped(Lock)
+    }
+
+    /// At launch: a marker left by a reset that did not finish. The same steps as `run`, the lock
+    /// check included (a shower may have started once the marker went stale): stopped, the marker
+    /// goes and nothing is cleared. Nil when there is no marker.
+    @MainActor public static func resume(marker: ResetMarker, now: Date, lock: () -> Lock?, signOut: () async -> Void,
+                                         clear: () throws -> Void, reload: () async -> Void) async throws -> Resumed? {
+        guard marker.startedAt() != nil else { return nil }
+        let stopped = try await run(marker: marker, now: now, lock: lock, signOut: signOut, clear: clear, reload: reload)
+        return stopped.map(Resumed.stopped) ?? .completed
+    }
+
+    /// The locks as stored, for when the models may not have loaded yet (at launch): the shower
+    /// record and the laundry record, an unreadable one locking as `recordsUnreadable`.
+    public static func storedLock(store: SecureStore) -> Lock? {
+        let shower: ShowerState, laundry: LaundryCheckout
+        do {
+            shower = ShowerReducer.restore(try StoredShowerVault(store: store).showerState())
+            laundry = LaundryReducer.restore(try StoredLaundryVault(store: store).checkout())
+        } catch { return .recordsUnreadable }
+        return lock(shower: shower, laundry: laundry.phase)
+    }
+
+    /// Every Keychain item. A new `StoreKey` is cleared without being listed here. The reset
+    /// marker is the last, and only when everything before it went.
+    public static var keychainItems: [StoreKey] { StoreKey.allCases.filter { $0 != .sharedResetMarker } + [.sharedResetMarker] }
 
     public struct Failure: Error, Sendable, Equatable {
         /// Item or file names only (never values).
@@ -68,13 +103,14 @@ public enum AppReset {
     }
 
     /// Deletes everything; keeps going after a failure and reports what could not be deleted.
+    /// After a failure the reset marker stays, so the next launch tries again.
     /// `preferencesDomain` is the app's own preferences domain (its bundle id; a suite name in
     /// tests): the whole domain goes, so a preference added later, `xrc.`-named or not, is
     /// cleared without being listed.
     public static func clear(store: SecureStore, preferences: UserDefaults, preferencesDomain: String, files: [URL],
                              fileManager: FileManager = .default) throws {
         var failed: [String] = []
-        for key in keychainItems {
+        for key in keychainItems where key != .sharedResetMarker {
             do { try store.delete(key) } catch { failed.append(key.rawValue) }
         }
         preferences.removePersistentDomain(forName: preferencesDomain)
@@ -82,5 +118,6 @@ public enum AppReset {
             do { try fileManager.removeItem(at: url) } catch { failed.append(url.lastPathComponent) }
         }
         if !failed.isEmpty { throw Failure(items: failed) }
+        do { try store.delete(.sharedResetMarker) } catch { throw Failure(items: [StoreKey.sharedResetMarker.rawValue]) }
     }
 }

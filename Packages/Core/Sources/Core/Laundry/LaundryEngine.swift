@@ -41,15 +41,18 @@ public actor LaundryEngine {
     public private(set) var state: LaundryCheckout
     public private(set) var storageBlocked = false
     private var busy = false
+    private let resetMarker: ResetMarker?
     private var observers: [UUID: AsyncStream<LaundryCheckout>.Continuation] = [:]
 
     /// Restores the persisted record (relaunch rules in `LaundryReducer.restore`).
+    /// `resetMarker`: while a reset runs, no order is created (`AppReset.InProgress`).
     public init(api: LaundryOrdering, vault: LaundryVault, launcher: PaymentLauncher, hooks: LaundryHooks? = nil,
-                now: @escaping @Sendable () -> Date = Date.init,
+                resetMarker: ResetMarker? = nil, now: @escaping @Sendable () -> Date = Date.init,
                 sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { s in
                     try await Task.sleep(nanoseconds: UInt64(max(0, s) * 1_000_000_000))
                 }) throws {
         self.api = api; self.vault = vault; self.launcher = launcher; self.hooks = hooks; self.now = now; self.sleep = sleep
+        self.resetMarker = resetMarker
         let persisted: LaundryCheckout?
         do { persisted = try vault.checkout() } catch { throw LaundryEngineError.storage }
         let restored = LaundryReducer.restore(persisted)
@@ -81,6 +84,7 @@ public actor LaundryEngine {
     @discardableResult
     public func confirmOrder(_ snapshot: WasherSnapshot, program: WasherProgram) async throws -> LaundryCheckout {
         try guardIdle()
+        try resetMarker?.checkStart(at: now())
         guard state.canCreate else { throw LaundryEngineError.notAllowed }
         guard let draft = LaundryDraft.make(snapshot, program: program, now: now()) else { throw LaundryEngineError.washerChanged }
         return try await run(.confirm(draft, at: now()))

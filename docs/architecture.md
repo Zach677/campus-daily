@@ -542,7 +542,18 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
 | credential-lifetime lines (kind, minutes, time; last 50) | Keychain `shared.credentialLog` | same | **yes** (the widget's refresh appends) |
+| reset-in-progress marker (start time) | Keychain `shared.resetMarker` | same | **yes** (any process that can start a shower or a laundry order checks it) |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard), keys prefixed `xrc.` | – | no |
+
+Reset (Settings › 重置) is all or nothing. It writes `shared.resetMarker` first; while the
+marker is under five minutes old, `ShowerEngine.start` and `LaundryEngine.confirmOrder` refuse
+with `AppReset.InProgress` (「正在重置」), so neither the app's buttons nor a Shortcut can start
+one mid-reset. It then checks the locks once (a shower, a laundry order, an unconfirmed
+settlement, an unreadable record). A lock removes the marker and clears nothing (「没有重置」).
+Otherwise: school sign-out, clear every item, reload, and the marker is deleted last, only after
+a clear that fully succeeded. A marker found at launch means the app was killed mid-reset; the
+same steps run again, lock check first, so a shower started after the marker went stale is
+left alone and the same alert is shown.
 
 All Keychain items use service `com.beamjason.xiaorichang.<name>.v1`, account `default`.
 Session stores (water/laundry) write synchronously and fail closed: a failed write blocks the

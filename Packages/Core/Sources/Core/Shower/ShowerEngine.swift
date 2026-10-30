@@ -99,13 +99,15 @@ public actor ShowerEngine {
     public private(set) var storageBlocked = false
     private var busy = false
     private var binding: ShowerBinding?
+    private let resetMarker: ResetMarker?
     private var observers: [UUID: AsyncStream<ShowerState>.Continuation] = [:]
 
     /// Restores the persisted session (relaunch rules in `ShowerReducer.restore`).
+    /// `resetMarker`: while a reset runs, `start` is refused (`AppReset.InProgress`).
     public init(transport: ShowerTransport, gateway: ShowerGateway, vault: ShowerVault, configuration: Configuration,
-                hooks: ShowerHooks? = nil, now: @escaping @Sendable () -> Date = Date.init) throws {
+                hooks: ShowerHooks? = nil, resetMarker: ResetMarker? = nil, now: @escaping @Sendable () -> Date = Date.init) throws {
         self.transport = transport; self.gateway = gateway; self.vault = vault; self.hooks = hooks
-        self.configuration = configuration; self.now = now
+        self.configuration = configuration; self.now = now; self.resetMarker = resetMarker
         let persisted: ShowerState?
         do { persisted = try vault.showerState() } catch { throw ShowerEngineError.storage }
         let restored = ShowerReducer.restore(persisted)
@@ -137,6 +139,7 @@ public actor ShowerEngine {
     @discardableResult
     public func start(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()
+        try resetMarker?.checkStart(at: now())
         guard state.canStart else { throw ShowerEngineError.blocked }
         let preferred = b.peripheralID ?? (state.machineID == b.machineId.uppercased() ? state.peripheralID : nil)
         return try await run(b, .start(machineID: b.machineId, preferredPeripheral: preferred, at: now()))

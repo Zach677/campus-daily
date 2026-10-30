@@ -120,6 +120,20 @@ final class LaundryEngineTests: XCTestCase {
 
     // MARK: create
 
+    /// While a reset runs no order is created; nothing is sent or recorded.
+    func testNoOrderWhileAResetRuns() async throws {
+        let marker = ResetMarker(store: InMemorySecureStore())
+        let t = L.t0.addingTimeInterval(10)
+        try marker.begin(at: t)
+        let sleeps = self.sleeps!
+        let e = try LaundryEngine(api: api, vault: vault, launcher: launcher, hooks: hooks, resetMarker: marker,
+                                  now: { t }, sleep: { sleeps.record($0) })
+        do { _ = try await e.confirmOrder(L.snapshot(), program: L.standard); XCTFail("expected the refusal") }
+        catch { XCTAssertEqual(error as? AppReset.InProgress, AppReset.InProgress()) }
+        XCTAssertEqual(api.calls, [])
+        XCTAssertNil(try vault.checkout())
+    }
+
     func testConfirmPersistsBeforeCreateAndCreatesOnce() async throws {
         let v = vault!
         api.beforeSend = { name in

@@ -34,6 +34,7 @@ enum AppEnvironment {
 enum AppErrorText {
     static func text(_ error: Error) -> String {
         if let e = error as? ServiceError { return e.userMessage }
+        if let e = error as? AppReset.InProgress { return e.errorDescription ?? "正在重置" }
         if error is StorageError { return "这台手机的钥匙串暂时写不进去，重启 App 后再试。" }
         return "没完成，稍后再试。"
     }
