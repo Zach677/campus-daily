@@ -298,11 +298,13 @@ rows, needs the 1 MiB cap), match `piplineName == "<building>栋<room>"` from th
 address; exactly one match → save `comAddress` + the room-level node id; zero → manual
 picker over `buildings(parent:)`. Several matches (same-named buildings in different apartments)
 → walk campus → apartment → building → floor → room by name, keeping the whole path, and read the
-matching rooms' meters (1 row each, at most 8) to pair them by `comAddress`; each
+matching rooms' meters (1 row each, at most 8) to pair them by `comAddress`. With more than four
+same-named rooms not all of them are read, so none is trusted and the campus node is bound; each
 `MeterCandidate` carries its location 「校区 · 公寓 · 楼栋 · 房间」 and binds its room node. A
 candidate whose room isn't found binds the campus node (wide read, picked by `comAddress`).
-Every binding keeps that location (`MeterBinding.location`; floors are left out of picker
-paths); Settings shows it, and the dorm row uses it when it is the same room
+In a same-name list each row is titled by the first location level that differs among the
+candidates (`LocationNaming.titles`), with the full location under it. Every binding keeps that
+location (`MeterBinding.location`; floors are left out of picker paths); Settings shows it, and the dorm row uses it when it is the same room
 (`SchoolProfile.dormLocation`), else the portal address. Daily refresh queries the room-level
 node only (1 row).
 `data` is a JSON **string**; all numeric fields are strings → parse with `Decimal` in POSIX locale.
@@ -452,6 +454,10 @@ Rules:
 - Close is sent only after the probe returns `0xA5`; otherwise keep the session, flag review.
 - `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
   needs a second confirmation and is recorded in diagnostics.
+- A probe that finds the controller stopped under a running record sets `stateReviewRequired`:
+  the shower page shows a check face (去核对 / 「我在学校记录里核对过了」) and the home card's
+  button reads 去核对. 「再查一次水控」 on that face runs the same read-only probe again: water
+  still running returns to the timer; a stopped or unreachable controller is said under it.
 - Unsettled reminder after the configured minutes in `writePending/running`. The Live Activity
   mirrors `{phase, startedAt, writeUnconfirmed, amountYuan?}`; its "结束并结算" intent calls
   `ShowerEngine.finish()` in the app process.
@@ -566,7 +572,10 @@ settlement, an unreadable record). A lock removes the marker and clears nothing 
 Otherwise: school sign-out, clear every item, reload, and the marker is deleted last, only after
 a clear that fully succeeded. A marker found at launch means the app was killed mid-reset; the
 same steps run again, lock check first, so a shower started after the marker went stale is
-left alone and the same alert is shown.
+left alone and the same alert is shown. A lock found on the second check, after the sign-out,
+leaves the user signed out with everything else kept; the shower's Live Activity and its
+「还没结束洗澡？」 reminder then follow the shower record (`AppReset.Resync`), and laundry is not
+touched.
 
 All Keychain items use service `com.beamjason.xiaorichang.<name>.v1`, account `default`.
 Session stores (water/laundry) write synchronously and fail closed: a failed write blocks the

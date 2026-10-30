@@ -9,12 +9,19 @@
 - Show 最近 on the home screen: the card's records from the last three school days merged with the app's own showers and laundry orders, newest first, at most four.
 - Show the full location 「校区 · 公寓 · 楼栋 · 房间」 of the dorm and the electricity meter in Settings.
 - Add a 扫洗衣机 button to the laundry page's navigation bar.
+- Check the dorm's hot-water controller in the first-run guide (登录 → 学校洗衣机 → 宿舍 → 核对宿舍的水控 → 好了); the check is read-only and can be left for Settings.
+- Show a check face on the shower page when the controller reads stopped under a running shower, with 去核对, 「我在学校记录里核对过了」 and 「再查一次水控」; the home card's button reads 去核对 then.
 
 ### Fixed
 
 - Offer same-named electricity meters (one building name in two apartments) with their full location instead of identical names, and bind the chosen one at room level.
 - Do not count refunds, reversals and grants as money spent yesterday.
 - Do not send a password login when the other process (app or widget) stored new school credentials meanwhile.
+- Count 最近's today and yesterday in the school's time zone, as 昨天花了 does.
+- Bind the campus instead of a room when more same-named rooms exist than are read, or when one meter is found in two of them.
+- Keep a running shower's Live Activity and reminder after a reset that stopped behind the school sign-out.
+- Wait for the widget's refresh before the school web sign-in, and keep a typed password that was not sent.
+- Let 取消 tapped while a shower starts wait for the start, and show a refusal instead of closing the page.
 
 ### Removed
 
@@ -23,6 +30,9 @@
 
 ### Changed
 
+- Title same-named dorm and meter rows by the location level that tells them apart (校区, 公寓, 楼栋 or 房间).
+- List 电表 first in Settings › 设备.
+- Redesign the first-run guide: one layout on every step, four page dots, and 不用 on the laundry question continues to the dorm.
 - Redesign the home screen: the date, the card balance and electricity as two numbers (昨天花了 / 够用约 N 天 underneath, red when running low), an update line, one shower button, the 洗衣 row and 最近. The hero sentence and the bottom dock are gone.
 - Read the balance and electricity without waiting for the card records; the records get 6 seconds and arrive in a second write.
 - Reorganize the repository by feature: `App/` (Application, Interface, Services, Resources), `Shared/`, `Widget/`, one `Packages/Core` package, `Android/`, `Configuration/`, `Scripts/`. The Xcode project is committed (`XiaoRiChang.xcworkspace`), and routine commands run through `mise`.
