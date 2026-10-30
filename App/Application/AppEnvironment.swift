@@ -10,11 +10,11 @@ enum AppEnvironment {
     static let store: SecureStore = SharedKeychain.store
 
     static let schoolHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.school)
-    static let waterHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWater)
+    static let showerHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWater)
     static let laundryHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.laundry)
 
     static let schoolVault = StoredSchoolVault(store:store)
-    static let waterVault = StoredShowerVault(store:store)
+    static let showerVault = StoredShowerVault(store:store)
     static let laundryVault = StoredLaundryVault(store:store)
     private static let snapshots = SharedSnapshotStore(store:store) {
         WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind)

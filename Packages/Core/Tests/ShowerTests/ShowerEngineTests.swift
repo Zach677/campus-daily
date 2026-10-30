@@ -361,7 +361,7 @@ final class ShowerEngineTests: XCTestCase {
     }
 
     func testStorageFailureOnFirstWriteTouchesNothing() async throws {
-        store.failWrites(to: .waterSession)
+        store.failWrites(to: .showerSession)
         let e = try engine()
         await expect(.storage) { try await e.start(self.binding) }
         XCTAssertTrue(transport.connects.isEmpty)

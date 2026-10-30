@@ -10,10 +10,10 @@ public struct StoredShowerVault: ShowerVault {
     /// object with that service's token. It is ignored when decoding (the binding goes direct);
     /// the first read saves the binding again so the old token leaves the Keychain.
     public func binding() throws -> ShowerBinding? {
-        guard let data = try store.read(.waterBinding) else { return nil }
+        guard let data = try store.read(.showerBinding) else { return nil }
         let binding: ShowerBinding
         do { binding = try JSONDecoder().decode(ShowerBinding.self, from: data) }
-        catch { throw StorageError(operation: "decode \(StoreKey.waterBinding.rawValue)", status: -1) }
+        catch { throw StorageError(operation: "decode \(StoreKey.showerBinding.rawValue)", status: -1) }
         if Self.hasLegacyAccess(data) { try? saveBinding(binding) }
         return binding
     }
@@ -22,7 +22,7 @@ public struct StoredShowerVault: ShowerVault {
         guard case .object(let fields)? = try? JSONValue.parse(data) else { return false }
         return fields["access"] != nil
     }
-    public func saveBinding(_ binding: ShowerBinding?) throws { try store.writeJSON(binding, .waterBinding) }
-    public func showerState() throws -> ShowerState? { try store.readJSON(ShowerState.self, .waterSession) }
-    public func saveShowerState(_ state: ShowerState?) throws { try store.writeJSON(state, .waterSession) }
+    public func saveBinding(_ binding: ShowerBinding?) throws { try store.writeJSON(binding, .showerBinding) }
+    public func showerState() throws -> ShowerState? { try store.readJSON(ShowerState.self, .showerSession) }
+    public func saveShowerState(_ state: ShowerState?) throws { try store.writeJSON(state, .showerSession) }
 }

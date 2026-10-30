@@ -73,7 +73,7 @@ final class ShowerProfileTests: XCTestCase {
         try vault.saveShowerState(nil)
         XCTAssertNil(try vault.showerState())
 
-        store.failWrites(to: .waterSession)
+        store.failWrites(to: .showerSession)
         XCTAssertThrowsError(try vault.saveShowerState(state))
         XCTAssertFalse(binding.description.contains("S1"))
     }

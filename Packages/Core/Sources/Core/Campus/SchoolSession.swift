@@ -229,7 +229,7 @@ public actor SchoolSession {
     // MARK: Hot-water hand-off
 
     /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only).
-    public func waterHandoff() async throws -> ShowerHandoff {
+    public func showerHandoff() async throws -> ShowerHandoff {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let (card, live) = try await liveCard(stored)
         try? vault.saveEcyktSession(live)

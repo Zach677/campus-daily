@@ -60,6 +60,13 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(SharedSnapshotStore.widgetKind, "XiaoRiChangBalances")
     }
 
+    /// The Swift names say shower; the stored names stay what installed builds already wrote.
+    func testShowerItemsKeepTheirStoredNames() {
+        XCTAssertEqual(StoreKey.showerBinding.service, "com.beamjason.xiaorichang.water.binding.v1")
+        XCTAssertEqual(StoreKey.showerSession.service, "com.beamjason.xiaorichang.water.session.v1")
+        XCTAssertEqual(PreferenceKey.showerNeedsResidenceReview, "xrc.water.needsResidenceReview")
+    }
+
     func testSharedItemsUseAccessGroupPortalTokenNever() throws {
         let kc = FakeKeychain()
         let store = KeychainSecureStore(backend: kc, accessGroup: group)
@@ -105,7 +112,7 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(kc.accessibility[.init(service: StoreKey.schoolEcykt.service, group: group)], .afterFirstUnlockThisDeviceOnly,
                        "background and widget reads work while the phone is locked")
         XCTAssertNil(kc.items[.init(service: StoreKey.schoolPortal.service, group: group)])
-        for key in [StoreKey.waterBinding, .waterSession, .laundryAccount, .laundryCheckout] { XCTAssertFalse(key.isShared, key.rawValue) }
+        for key in [StoreKey.showerBinding, .showerSession, .laundryAccount, .laundryCheckout] { XCTAssertFalse(key.isShared, key.rawValue) }
         // A second store in the same group (the widget process) reads the same session.
         let widget = StoredSchoolVault(store: KeychainSecureStore(backend: kc, accessGroup: group))
         XCTAssertEqual(try widget.ecyktSession()?.syscustid, "s")

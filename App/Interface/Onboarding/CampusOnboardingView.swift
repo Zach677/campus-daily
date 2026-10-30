@@ -241,8 +241,8 @@ struct CampusOnboardingView: View {
         defer { busy = false }
         do {
             if let profile = water.profile {
-                let client = LxtClient(http:AppEnvironment.waterHTTP, profile:profile)
-                let user = try await client.userInfo(campus.waterHandoff())
+                let client = LxtClient(http:AppEnvironment.showerHTTP, profile:profile)
+                let user = try await client.userInfo(campus.showerHandoff())
                 identity = user; directory = client
                 let onboarding = ShowerOnboarding(directory:client)
                 if let address = campus.address {

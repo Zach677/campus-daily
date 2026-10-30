@@ -143,5 +143,5 @@ struct PowerChoice: Identifiable, Equatable {
     // MARK: Recharge / hot water hand-off
 
     func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession { try await session.rechargeSession(kind) }
-    func waterHandoff() async throws -> ShowerHandoff { try await session.waterHandoff() }
+    func showerHandoff() async throws -> ShowerHandoff { try await session.showerHandoff() }
 }

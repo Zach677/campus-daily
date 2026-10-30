@@ -6,8 +6,8 @@ public enum StoreKey: String, Sendable, CaseIterable {
     case schoolPortal = "school.portal"
     case schoolEcykt = "school.ecykt"
     case schoolProfile = "school.profile"
-    case waterBinding = "water.binding"
-    case waterSession = "water.session"
+    case showerBinding = "water.binding"
+    case showerSession = "water.session"
     case laundryAccount = "laundry.account"
     case laundryCheckout = "laundry.checkout"
     case sharedSnapshot = "shared.snapshot"
@@ -35,7 +35,7 @@ public enum StoreKey: String, Sendable, CaseIterable {
     public var isShared: Bool {
         switch self {
         case .sharedSnapshot, .sharedReminderLines, .schoolEcykt, .schoolProfile: return true
-        case .schoolPortal, .waterBinding, .waterSession, .laundryAccount, .laundryCheckout: return false
+        case .schoolPortal, .showerBinding, .showerSession, .laundryAccount, .laundryCheckout: return false
         }
     }
 }
@@ -68,7 +68,7 @@ public enum PreferenceKey {
     public static let prefix = "xrc."
     public static func reminder(_ name: String) -> String { prefix + "reminder." + name }
     public static let laundryAckFailedOrder = prefix + "laundry.ackFailedOrder"
-    public static let waterNeedsResidenceReview = prefix + "water.needsResidenceReview"
+    public static let showerNeedsResidenceReview = prefix + "water.needsResidenceReview"
     /// Bool, absent = on (school laundry shown).
     public static let schoolLaundry = prefix + "laundry.school"
 }

@@ -30,7 +30,7 @@ final class LegacyShowerBindingTests: XCTestCase {
 
     func testOldBindingWithAccessDecodesAsADirectBinding() throws {
         let store = CountingSecureStore()
-        try store.inner.write(Self.legacyJSON, for: .waterBinding)
+        try store.inner.write(Self.legacyJSON, for: .showerBinding)
         let binding = try XCTUnwrap(try StoredShowerVault(store: store).binding())
         XCTAssertEqual(binding, Self.direct)
         // Nothing about the access service survives in the value the engine gets.
@@ -41,32 +41,32 @@ final class LegacyShowerBindingTests: XCTestCase {
 
     func testReadingTheOldFormatSavesItOnceWithoutTheToken() throws {
         let store = CountingSecureStore()
-        try store.inner.write(Self.legacyJSON, for: .waterBinding)
+        try store.inner.write(Self.legacyJSON, for: .showerBinding)
         let vault = StoredShowerVault(store: store)
         _ = try vault.binding()
-        XCTAssertEqual(store.writes(.waterBinding), 1)
-        let stored = try XCTUnwrap(try store.read(.waterBinding))
+        XCTAssertEqual(store.writes(.showerBinding), 1)
+        let stored = try XCTUnwrap(try store.read(.showerBinding))
         XCTAssertFalse(StoredShowerVault.hasLegacyAccess(stored))
         XCTAssertFalse(String(decoding: stored, as: UTF8.self).contains("SYNTH-ACCESS-TOKEN"))
         XCTAssertEqual(try vault.binding(), Self.direct)
-        XCTAssertEqual(store.writes(.waterBinding), 1, "a current binding is never rewritten on read")
+        XCTAssertEqual(store.writes(.showerBinding), 1, "a current binding is never rewritten on read")
     }
 
     func testFailedResaveStillReturnsTheBindingAndRetriesNextRead() throws {
         let store = CountingSecureStore()
-        try store.inner.write(Self.legacyJSON, for: .waterBinding)
-        store.inner.failWrites(to: .waterBinding)
+        try store.inner.write(Self.legacyJSON, for: .showerBinding)
+        store.inner.failWrites(to: .showerBinding)
         let vault = StoredShowerVault(store: store)
         XCTAssertEqual(try vault.binding(), Self.direct)
-        XCTAssertTrue(StoredShowerVault.hasLegacyAccess(try XCTUnwrap(try store.read(.waterBinding))))
-        store.inner.failWrites(to: .waterBinding, false)
+        XCTAssertTrue(StoredShowerVault.hasLegacyAccess(try XCTUnwrap(try store.read(.showerBinding))))
+        store.inner.failWrites(to: .showerBinding, false)
         XCTAssertEqual(try vault.binding(), Self.direct)
-        XCTAssertFalse(StoredShowerVault.hasLegacyAccess(try XCTUnwrap(try store.read(.waterBinding))))
+        XCTAssertFalse(StoredShowerVault.hasLegacyAccess(try XCTUnwrap(try store.read(.showerBinding))))
     }
 
     func testUnreadableBindingStillThrows() throws {
         let store = InMemorySecureStore()
-        try store.write(Data("{".utf8), for: .waterBinding)
+        try store.write(Data("{".utf8), for: .showerBinding)
         XCTAssertThrowsError(try StoredShowerVault(store: store).binding()) { XCTAssertTrue($0 is StorageError) }
     }
 }

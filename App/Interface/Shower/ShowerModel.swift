@@ -57,7 +57,7 @@ enum ShowerProfileFiles {
     /// Last action's message (nil = nothing to say).
     @Published private(set) var message: String?
     @Published private(set) var storageBlocked = false
-    @Published private(set) var residenceReviewRequired = UserDefaults.standard.bool(forKey:PreferenceKey.waterNeedsResidenceReview)
+    @Published private(set) var residenceReviewRequired = UserDefaults.standard.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
     @Published private(set) var verifiedDevice: VerifiedShowerDevice?
     @Published private(set) var inspectionStatus: String?
     @Published private(set) var inspecting = false
@@ -67,8 +67,8 @@ enum ShowerProfileFiles {
     private let bluetooth = BluetoothTransport()
 
     init() {
-        binding = (try? AppEnvironment.waterVault.binding()) ?? nil
-        if let persisted = (try? AppEnvironment.waterVault.showerState()) ?? nil { state = ShowerReducer.restore(persisted) }
+        binding = (try? AppEnvironment.showerVault.binding()) ?? nil
+        if let persisted = (try? AppEnvironment.showerVault.showerState()) ?? nil { state = ShowerReducer.restore(persisted) }
         Task { await reloadProfile() }
     }
 
@@ -125,19 +125,19 @@ enum ShowerProfileFiles {
         guard !busy else { return }
         observer?.cancel(); observer = nil; engine = nil
         guard binding != nil else {
-            state = ((try? AppEnvironment.waterVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle
+            state = ((try? AppEnvironment.showerVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle
             return
         }
         let bleName: String
         if let profile {
             bleName = profile.bleName
-            gateway.current = LxtClient(http:AppEnvironment.waterHTTP, profile:profile)
+            gateway.current = LxtClient(http:AppEnvironment.showerHTTP, profile:profile)
         } else {
             bleName = ""
             gateway.current = nil
         }
         do {
-            let engine = try ShowerEngine(transport:bluetooth, gateway:gateway, vault:AppEnvironment.waterVault,
+            let engine = try ShowerEngine(transport:bluetooth, gateway:gateway, vault:AppEnvironment.showerVault,
                                           configuration:.init(bleName:bleName,
                                                               reminderMinutes:UserDefaults.standard.integer(forKey:ReminderKey.unsettledMinutes)),
                                           hooks:ShowerModelHooks())
@@ -171,7 +171,7 @@ enum ShowerProfileFiles {
         var value = value
         // Re-binding the same machine keeps the controller already verified for it.
         if value.peripheralID == nil, let old = binding, old.machineId == value.machineId { value.peripheralID = old.peripheralID }
-        try AppEnvironment.waterVault.saveBinding(value)
+        try AppEnvironment.showerVault.saveBinding(value)
         binding = value
         verifiedDevice = nil
         if residenceReviewRequired { setResidenceReview(false) }
@@ -180,7 +180,7 @@ enum ShowerProfileFiles {
 
     func setResidenceReview(_ value: Bool) {
         residenceReviewRequired = value
-        UserDefaults.standard.set(value, forKey:PreferenceKey.waterNeedsResidenceReview)
+        UserDefaults.standard.set(value, forKey:PreferenceKey.showerNeedsResidenceReview)
     }
 
     /// `.waterconfig` import (Settings › 高级). The profile is the shared platform part only.
@@ -215,7 +215,7 @@ enum ShowerProfileFiles {
             apply(result)
             // The engine saves the verified controller into the stored binding; pick it up so the
             // next start goes to it directly instead of after a relaunch.
-            if start, let stored = (try? AppEnvironment.waterVault.binding()) ?? nil, stored.machineId == binding.machineId {
+            if start, let stored = (try? AppEnvironment.showerVault.binding()) ?? nil, stored.machineId == binding.machineId {
                 self.binding = stored
             }
             message = Self.noticeText(result.notice)
@@ -287,10 +287,10 @@ enum ShowerProfileFiles {
 
     /// The check proved this controller's identity: remember it for the next start.
     private func rememberVerified(_ id: String, for checked: ShowerBinding) {
-        guard checked.peripheralID != id, var stored = (try? AppEnvironment.waterVault.binding()) ?? nil,
+        guard checked.peripheralID != id, var stored = (try? AppEnvironment.showerVault.binding()) ?? nil,
               stored.machineId == checked.machineId else { return }
         stored.peripheralID = id
-        guard (try? AppEnvironment.waterVault.saveBinding(stored)) != nil else { return }
+        guard (try? AppEnvironment.showerVault.saveBinding(stored)) != nil else { return }
         binding = stored
     }
 
