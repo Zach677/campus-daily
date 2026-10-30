@@ -14,8 +14,7 @@ struct CampusPowerSetupView: View {
         List {
             AutomaticPowerSection()
             Section {
-                Text(path.isEmpty ? "选择校区、楼栋和宿舍" : path.map(\.name).joined(separator:" · "))
-                    .font(.headline)
+                LocationPathHeader(path:path.map(\.name))
                 Text("电表与热水水控是独立绑定，核对宿舍后再保存。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -70,20 +69,21 @@ struct CampusPowerSetupView: View {
     }
 }
 
-/// Same compact one-choice fallback in onboarding and the meter settings page.
+/// Same same-name choice as onboarding, on the meter settings page.
 struct AutomaticPowerSection: View {
     @EnvironmentObject private var campus: CampusModel
+    @State private var selection: String?
     var body: some View {
         if campus.matchingPower || !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil || campus.powerConfigured {
             Section("电表") {
                 if campus.matchingPower {Label("正在找电表，可以先保存宿舍。",systemImage:"bolt")}
                 else if !campus.powerChoices.isEmpty {
-                    Text("有 \(campus.powerChoices.count) 个同名的电表位置，选你宿舍的那个。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    ForEach(campus.powerChoices) {candidate in
-                        Button(candidate.label) {campus.choosePower(candidate)}
-                            .accessibilityIdentifier("powerApartment-" + candidate.id)
+                    LocationChoiceList(kind:.meter, choices:campus.powerChoices.map(\.choice), selection:$selection)
+                    Button("就是这间") {
+                        if let candidate = campus.powerChoices.first(where:{ $0.id == selection }) { campus.choosePower(candidate) }
                     }
+                    .disabled(selection == nil)
+                    .accessibilityIdentifier("powerApartmentConfirm")
                 } else if campus.powerConfigured {Label("电表已保存",systemImage:"checkmark.circle").foregroundStyle(Theme.ink2)}
                 if let issue = campus.powerMatchIssue {
                     Text(issue).font(.footnote).foregroundStyle(.secondary)

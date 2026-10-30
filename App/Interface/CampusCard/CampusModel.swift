@@ -8,11 +8,8 @@ struct PowerChoice: Identifiable, Equatable {
     let candidate: MeterCandidate
     var meter: Meter { candidate.meter }
     var location: String { candidate.location }
-    var label: String {
-        var parts = [location]
-        if let money = meter.leftMoney { parts.append("电费 " + Theme.yuan(money.yuan)) }
-        return parts.joined(separator:" · ")
-    }
+    /// Row for the shared same-name list: short 「3 栋 108」 over the full location.
+    var choice: LocationChoice { LocationChoice(id:id, title:Theme.dorm(meter.name) ?? meter.name, location:location) }
 }
 
 /// UI state over `SchoolSession` (refresh, electricity resolution, sign-in/out). No school logic here.

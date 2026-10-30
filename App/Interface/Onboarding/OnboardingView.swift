@@ -9,8 +9,8 @@ struct OnboardingView: View {
     struct Preview {
         var dorm: String?
         var laundryConnected = false
-        /// Same-name building choices (labels) for the dorm step's apartment picker.
-        var powerChoices: [String] = []
+        /// Same-name meter locations for the dorm step's picker.
+        var powerChoices: [LocationChoice] = []
         /// Login step: what the form starts with.
         var account = ""
         var password = ""
@@ -183,17 +183,13 @@ struct OnboardingView: View {
     }
 
     /// Upstream 0.8.0-beta.2: the school directory can list two buildings with the same name.
-    /// Automatic meter matching then needs the student to confirm the apartment once.
+    /// Automatic meter matching then needs the student to pick the right one once, by its
+    /// full location (shared single-select list; 「就是这间」 confirms).
     @ViewBuilder private var powerApartment: some View {
         VStack(alignment:.leading, spacing:0) {
             if !campus.powerChoices.isEmpty {
-                apartmentHint
-                ForEach(Array(campus.powerChoices.enumerated()), id:\.element.id) { index, candidate in
-                    if index > 0 { Hairline() }
-                    apartmentRow(candidate.label, selected:apartment == candidate.id) { apartment = candidate.id }
-                        .disabled(campus.matchingPower)
-                        .accessibilityIdentifier("powerApartment-" + candidate.id)
-                }
+                LocationChoiceList(kind:.meter, choices:campus.powerChoices.map(\.choice), selection:$apartment)
+                    .disabled(campus.matchingPower)
             }
             if let issue = campus.powerMatchIssue {
                 Text(issue).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
@@ -205,31 +201,6 @@ struct OnboardingView: View {
         }
     }
 
-    private var apartmentHint: some View {
-        Text("有 \(preview?.powerChoices.count ?? campus.powerChoices.count) 个同名的电表位置，选你宿舍的那个。")
-            .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
-            .fixedSize(horizontal:false, vertical:true).padding(.bottom,6)
-    }
-
-    /// Single-select row: a tap only marks it; 「就是这间」 confirms.
-    private func apartmentRow(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action:action) {
-            HStack(spacing:14) {
-                Text(label).scaledFont(17).foregroundStyle(Theme.ink)
-                    .fixedSize(horizontal:false, vertical:true)
-                Spacer()
-                if selected {
-                    Image(systemName:"checkmark").scaledFont(17, .semibold).foregroundStyle(Theme.accentText)
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(minHeight:50).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label.replacingOccurrences(of:" · ", with:" "))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
     private var waitingForApartment: Bool { choosingApartment && apartment == nil }
 
     /// The dorm step lists same-name apartments; 「就是这间」 waits for a choice.
@@ -239,15 +210,9 @@ struct OnboardingView: View {
         return !campus.powerChoices.isEmpty
     }
 
-    /// DEBUG demo: the same picker with sample labels; tapping does nothing.
-    private func previewApartment(_ choices: [String]) -> some View {
-        VStack(alignment:.leading, spacing:0) {
-            apartmentHint
-            ForEach(Array(choices.enumerated()), id:\.offset) { index, label in
-                if index > 0 { Hairline() }
-                apartmentRow(label, selected:apartment == "preview-\(index)") { apartment = "preview-\(index)" }
-            }
-        }
+    /// DEBUG demo: the same picker with sample locations; confirming does nothing.
+    private func previewApartment(_ choices: [LocationChoice]) -> some View {
+        LocationChoiceList(kind:.meter, choices:choices, selection:$apartment)
     }
 
     // MARK: Bottom

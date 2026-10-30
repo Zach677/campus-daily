@@ -378,7 +378,8 @@ enum OnboardingDemo {
         case "2-missing": preview.dorm = nil; return (.dorm, preview)
         case "2-samename":
             // Upstream 0.8.0-beta.2 same-name building picker, with sample directory labels.
-            preview.powerChoices = ["北校区 · 东苑公寓 · 3 栋 · 108", "北校区 · 西苑公寓 · 3 栋 · 108"]
+            preview.powerChoices = [LocationChoice(id:"preview-0", title:"3 栋 108", location:"北校区 · 东苑公寓 · 3 栋 · 108"),
+                                   LocationChoice(id:"preview-1", title:"3 栋 108", location:"北校区 · 西苑公寓 · 3 栋 · 108")]
             return (.dorm, preview)
         case "1-filled", "1-loading", "1-wrong", "1-fallback":
             preview.account = "99100991"
