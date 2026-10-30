@@ -243,19 +243,28 @@ public struct SecItemKeychainBackend: KeychainBackend {
 }
 #endif
 
-/// In-memory store for tests and previews, with injectable write failures.
+/// In-memory store for tests and previews, with injectable write and read failures.
 public final class InMemorySecureStore: SecureStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [StoreKey: Data] = [:]
     private var failing: Set<StoreKey> = []
+    private var unreadable = false
 
     public init() {}
+
+    /// Every read fails as the Keychain does before the first unlock (`errSecInteractionNotAllowed`).
+    public func failReads(_ fail: Bool = true) { lock.withLock { unreadable = fail } }
 
     public func failWrites(to key: StoreKey, _ fail: Bool = true) {
         lock.withLock { if fail { failing.insert(key) } else { failing.remove(key) } }
     }
 
-    public func read(_ key: StoreKey) throws -> Data? { lock.withLock { items[key] } }
+    public func read(_ key: StoreKey) throws -> Data? {
+        try lock.withLock {
+            if unreadable { throw StorageError(operation: "read \(key.rawValue)", status: -25308) }
+            return items[key]
+        }
+    }
 
     public func write(_ data: Data, for key: StoreKey) throws {
         try lock.withLock {

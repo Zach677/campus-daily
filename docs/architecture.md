@@ -267,7 +267,8 @@ write-back rule above (step 6) keep that from losing a session; it only costs on
 **The widget's own refresh.** `SchoolRefreshStack` builds the school session (with the CAS
 password login) and the refresher with its lease, the same in both processes (`role` "app" /
 "widget" names the lease owner). The timeline provider (`getTimeline`) runs `WidgetRefresh.run`:
-no read when nobody is signed in or the snapshot was checked less than 10 minutes ago (the app
+when the Keychain can't be read (before the first unlock after a restart, or an error) it draws
+nothing new, keeping the last face, and asks again in 5 minutes (`WidgetStoredData`); no read when nobody is signed in or the snapshot was checked less than 10 minutes ago (the app
 just did, or an earlier widget read); else one `refresh(inBackground: true)` through the same
 ladder and write path, waiting at most 5 s for the app's lease and giving up after 20 s (the read
 is cancelled and writes nothing; the stored snapshot is drawn). Policy `.after(now + 30 min)`.

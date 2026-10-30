@@ -16,10 +16,17 @@ struct CampusTimeline: TimelineProvider {
     static let readDeadline: TimeInterval = 20
     static let interval: TimeInterval = 30 * 60
 
-    private static func account() -> SchoolAccount? { (try? StoredSchoolVault(store:SharedKeychain.store).account()) ?? nil }
+    /// The last entry drawn by this process, kept for a moment the Keychain can't be read.
+    private static let last = LastEntry()
 
-    private static func model(_ snapshot: HomeSnapshot?, at date: Date) -> CampusWidgetModel {
-        var model = CampusWidgetModel(snapshot:snapshot, account:account(), now:date)
+    /// The snapshot and account, or nil before the first unlock / on a Keychain error.
+    private static func stored() -> WidgetStoredData? {
+        WidgetStoredData.read(snapshots:SharedSnapshotStore(store:SharedKeychain.store),
+                              vault:StoredSchoolVault(store:SharedKeychain.store))
+    }
+
+    private static func model(_ snapshot: HomeSnapshot?, account: SchoolAccount?, at date: Date) -> CampusWidgetModel {
+        var model = CampusWidgetModel(snapshot:snapshot, account:account, now:date)
         model.lines = ReminderLines.shared()
         return model
     }
@@ -28,7 +35,11 @@ struct CampusTimeline: TimelineProvider {
     /// Transient (gallery, first add): the stored snapshot, no network.
     func getSnapshot(in context: Context, completion: @escaping (CampusEntry) -> Void) {
         let now = Date()
-        let model = Self.model(Self.school.refresher.latest(), at:now)
+        guard let stored = Self.stored() else {
+            completion(Self.last.entry ?? CampusEntry(date:now, model:Self.sample))
+            return
+        }
+        let model = Self.model(stored.snapshot, account:stored.account, at:now)
         completion(CampusEntry(date:now, model:context.isPreview && model.state == .never ? Self.sample : model))
     }
     /// Reads the school data (unless the app just did), then draws; again in 30 minutes. When the
@@ -37,12 +48,21 @@ struct CampusTimeline: TimelineProvider {
         let done = Completion(call:completion)
         Task {
             let now = Date()
-            let snapshot = await WidgetRefresh.run(Self.school.refresher, now:now, deadline:Self.readDeadline)
-            let next = now.addingTimeInterval(Self.interval)
-            var entries = [CampusEntry(date:now, model:Self.model(snapshot, at:now))]
-            if let staleAt = WidgetStatus.staleAt(snapshot:snapshot, account:Self.account(), now:now), staleAt < next {
-                entries.append(CampusEntry(date:staleAt, model:Self.model(snapshot, at:staleAt)))
+            // Locked since a restart, or the Keychain refused: not "signed out". Keep what was
+            // drawn (no entries = the face stays) and ask again soon.
+            guard Self.stored() != nil else {
+                let retry = now.addingTimeInterval(WidgetStoredData.unreadableRetry)
+                done.call(Timeline(entries:Self.last.entry.map { [$0] } ?? [], policy:.after(retry)))
+                return
             }
+            let snapshot = await WidgetRefresh.run(Self.school.refresher, now:now, deadline:Self.readDeadline)
+            let account = Self.stored()?.account
+            let next = now.addingTimeInterval(Self.interval)
+            var entries = [CampusEntry(date:now, model:Self.model(snapshot, account:account, at:now))]
+            if let staleAt = WidgetStatus.staleAt(snapshot:snapshot, account:account, now:now), staleAt < next {
+                entries.append(CampusEntry(date:staleAt, model:Self.model(snapshot, account:account, at:staleAt)))
+            }
+            Self.last.entry = entries.first
             done.call(Timeline(entries:entries, policy:.after(next)))
         }
     }
