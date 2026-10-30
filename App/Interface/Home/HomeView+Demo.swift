@@ -74,6 +74,18 @@ extension HomeView {
                 }
                 return
             }
+            if url.host == "demo", url.lastPathComponent == "sh-under-onboarding" {
+                // The first-run guide up, then a shower ended from the lock screen: the guide
+                // closes and the result comes up.
+                path = []; panel = nil; laundryDemo = nil; settings = false
+                demo = HomeDemo.normal.content().0
+                onboarding = OnboardingRequest(step:.login, preview:OnboardingView.Preview(dorm:"3 栋 108"))
+                Task {
+                    try? await Task.sleep(for:.seconds(1.5))
+                    shower.showDemoPage(ShowerPageDemo.record("sh-done"))
+                }
+                return
+            }
             if url.host == "demo", let record = ShowerPageDemo.record(url.lastPathComponent) {
                 // The shower page over the home demo, on a synthetic record (nothing connects).
                 onboarding = nil; settings = false; path = []; panel = nil; laundryDemo = nil

@@ -23,6 +23,11 @@ struct HomeView: View {
     /// The shower page's cover. Follows `shower.page.presented`, but only once no sheet is up:
     /// a cover asked for over the settings sheet would never appear.
     @State var pageCover = false
+    /// The shower page is on screen (its cover appeared and has not gone).
+    @State var pageShown = false
+    /// When `pageCover` was last set: a cover that should have appeared by now and didn't is
+    /// asked for again.
+    @State var pageCoverAsked = Date.distantPast
     @State var successTick = 0
     @State var errorTick = 0
     @ObservedObject var reminders = Reminders.shared
@@ -58,15 +63,31 @@ struct HomeView: View {
         Task { try? await Task.sleep(for:.milliseconds(600)); openOnboarding() }
     }
 
-    /// The shower page goes up over home. Started or ended from Settings › 热水 (or with the
-    /// sign-in sheet up): that sheet closes first, then the page comes up.
+    /// The shower page goes up over home. Whatever covers home (Settings, the sign-in sheet,
+    /// the first-run guide) closes first, then the page comes up. Called again on every start,
+    /// reopen and page change: a page marked up but not on screen is brought up then.
     func followShowerPage(_ up: Bool) {
         guard up else { pageCover = false; return }
-        guard settings || relogin else { pageCover = true; return }
-        settings = false; relogin = false
+        guard !pageShown else { return }
+        if settings || relogin || onboarding != nil {
+            settings = false; relogin = false; onboarding = nil
+            Task {
+                try? await Task.sleep(for:.milliseconds(600))
+                if shower.page.presented, !pageShown { askForPageCover() }
+            }
+            return
+        }
+        askForPageCover()
+    }
+
+    private func askForPageCover() {
+        if !pageCover { pageCover = true; pageCoverAsked = Date(); return }
+        // Asked for a while ago and still not on screen: ask again.
+        guard Date().timeIntervalSince(pageCoverAsked) > 1.5 else { return }
+        pageCover = false
         Task {
-            try? await Task.sleep(for:.milliseconds(600))
-            if shower.page.presented { pageCover = true }
+            try? await Task.sleep(for:.milliseconds(100))
+            if shower.page.presented, !pageShown { pageCover = true; pageCoverAsked = Date() }
         }
     }
 
@@ -127,8 +148,10 @@ struct HomeView: View {
                                              set:{ if !$0 { pageCover = false; if shower.page.presented { shower.pageEvent(.collapseTapped) } } })) {
             #if DEBUG
             ShowerPageView(room:demo?.dorm ?? campus.room).environmentObject(shower).onOpenURL { handleDemo($0) }
+                .onAppear { pageShown = true }.onDisappear { pageShown = false }
             #else
             ShowerPageView(room:campus.room).environmentObject(shower)
+                .onAppear { pageShown = true }.onDisappear { pageShown = false }
             #endif
         }
         .fullScreenCover(item:$onboarding, onDismiss:{ didSeeQuickSetup = true }) { request in
@@ -180,6 +203,7 @@ struct HomeView: View {
             Task { await campus.refresh(force:true) }
         }
         .onChange(of:shower.page.presented, initial:true) { _, up in followShowerPage(up) }
+        .onChange(of:shower.page.page?.phase) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:shower.reviewRequested) { _, requested in
             guard requested else { return }
             shower.reviewRequested = false
@@ -230,12 +254,15 @@ struct HomeView: View {
         switch kind {
         case .signIn: openOnboarding()
         case .review: path.append(.shower)
-        case .showering, .settling, .starting, .check: shower.pageEvent(.reopen)
+        case .showering, .settling, .starting, .check:
+            shower.pageEvent(.reopen)
+            followShowerPage(shower.page.presented)
         case .start:
             // An unchecked record blocks a new start: show it instead of failing.
             guard shower.mayStart else { path.append(.shower); return }
             startTick += 1
             shower.pageEvent(.startTapped)
+            followShowerPage(shower.page.presented)
         }
     }
 
