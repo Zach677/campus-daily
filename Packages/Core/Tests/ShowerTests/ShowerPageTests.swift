@@ -269,6 +269,30 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertTrue(flow.presented)
     }
 
+    /// 再查一次水控 on the 热水洗澡 screen (the page down): water running again brings the
+    /// timer up; a stopped controller leaves the page down.
+    func testARecheckFromTheShowerScreenBringsTheTimerUpOnlyWhenWaterRuns() {
+        let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)
+        var stopped = ShowerPageFlow(record: check)
+        XCTAssertEqual(reduce(&stopped, .recheckTapped), [.recheck])
+        _ = reduce(&stopped, .record(check))
+        _ = reduce(&stopped, .recheckReturned(.stopped))
+        XCTAssertFalse(stopped.presented)
+        XCTAssertEqual(stopped.recheckResult, .stopped)
+
+        var flowing = ShowerPageFlow(record: check)
+        _ = reduce(&flowing, .recheckTapped)
+        _ = reduce(&flowing, .record(ShowerState(phase: .running, startedAt: t0)))
+        XCTAssertFalse(flowing.presented, "the record alone does not bring it up")
+        _ = reduce(&flowing, .recheckReturned(nil))
+        XCTAssertTrue(flowing.presented)
+        XCTAssertEqual(flowing.page?.phase, .running)
+
+        var idle = ShowerPageFlow(record: ShowerState(phase: .running, startedAt: t0))
+        _ = reduce(&idle, .recheckReturned(nil))
+        XCTAssertFalse(idle.presented, "only an answer to a probe that was running")
+    }
+
     /// What 再查一次水控 says: Bluetooth off, something else busy, an unreadable answer and a
     /// probe that could not start each get their own line, not 「没连上」.
     func testRecheckResultsTellTheFailuresApart() {

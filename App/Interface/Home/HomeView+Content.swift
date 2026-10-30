@@ -157,7 +157,13 @@ extension HomeView {
             CampusRechargeView(kind:.card)
             #endif
         // Not set up yet: hot water is bound by choosing the dorm.
-        case .shower: if shower.configured { ShowerDetail() } else { CampusOnboardingView() }
+        case .shower:
+            #if DEBUG
+            // Demo records have no binding behind them.
+            if shower.configured || demo != nil { ShowerDetail() } else { CampusOnboardingView() }
+            #else
+            if shower.configured { ShowerDetail() } else { CampusOnboardingView() }
+            #endif
         case .laundry:
             #if DEBUG
             LaundryDetail(demo:laundryDemo)

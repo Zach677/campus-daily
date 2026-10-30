@@ -52,6 +52,8 @@ extension ShowerModel {
             Task {
                 let result = await recheckSession()
                 pageEvent(.recheckReturned(result))
+                // Water runs again: the timer comes up wherever the probe was tapped.
+                if result == nil, page.presented { pageWanted += 1 }
             }
         }
     }

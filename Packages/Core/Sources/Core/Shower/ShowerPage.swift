@@ -385,6 +385,9 @@ public struct ShowerPageFlow: Sendable, Equatable {
         case .recheckReturned(let result):
             f.rechecking = false
             f.recheckResult = flow.page?.phase == .needsCheck ? result : nil
+            // Water runs again: the timer comes up, also when the probe ran from the 热水洗澡
+            // screen (the only way back to the page from there).
+            if flow.rechecking, f.page?.phase == .running { f.presented = true }
             return (f, [])
 
         case .reviewTapped:
