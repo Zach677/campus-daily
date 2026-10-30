@@ -142,7 +142,7 @@ struct HomeView: View {
             if demo != nil { return }
             #endif
             // A reset the app was killed in: finished now (then the guide opens), or not, and why.
-            await resetter.resumeIfInterrupted(campus:campus, water:shower, laundry:laundry)
+            await resetter.resumeIfInterrupted(campus:campus, shower:shower, laundry:laundry)
             if resetter.completed > 0 { return }
             if !didSeeQuickSetup && !campus.configured && !shower.configured && !laundry.configured { openOnboarding() }
         }

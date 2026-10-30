@@ -26,7 +26,7 @@ struct SettingsView: View {
     /// DEBUG demo data; nil = live models.
     var preview: HomeData? = nil
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var water: ShowerModel
+    @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
     @AppStorage(ReminderKey.powerLow) private var powerAlert = true
@@ -38,7 +38,7 @@ struct SettingsView: View {
     @ObservedObject private var reminders = Reminders.shared
     @Environment(\.openURL) private var openURL
 
-    private var data: HomeData { preview ?? HomeData(campus:campus, shower:water, laundry:laundry) }
+    private var data: HomeData { preview ?? HomeData(campus:campus, shower:shower, laundry:laundry) }
     /// DEBUG demo: the switch flips locally (seeded from the demo data).
     @State private var previewLaundry: Bool?
     /// 「去设置热水」 after an account switch.
@@ -127,7 +127,7 @@ struct SettingsView: View {
                 }
             }
             .navigationDestination(isPresented:$hotWaterSetup) {
-                if water.configured { ShowerDetail() } else { CampusOnboardingView() }
+                if shower.configured { ShowerDetail() } else { CampusOnboardingView() }
             }
             .navigationDestination(isPresented:$accountPage) { AccountView(preview:preview) }
             .onAppear {
@@ -315,7 +315,7 @@ struct ChevronRow: View {
 struct AdvancedSettingsView: View {
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
     var preview: HomeData? = nil
-    @EnvironmentObject private var water: ShowerModel
+    @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
     @ObservedObject private var resetter = AppResetter.shared
@@ -335,7 +335,7 @@ struct AdvancedSettingsView: View {
         Button { if preview == nil { importing = true } } label: { ChevronRow(title:title) }
     }
     /// Why reset is not offered now (DEBUG demo data, or the live shower).
-    private var resetLock: AppReset.Lock? { preview != nil ? preview?.resetLock : AppResetter.lock(water:water, laundry:laundry) }
+    private var resetLock: AppReset.Lock? { preview != nil ? preview?.resetLock : AppResetter.lock(shower:shower, laundry:laundry) }
 
     /// 重置校日常: its own group at the end; locked, the footer gives the reason.
     private var resetSection: some View {
@@ -363,7 +363,7 @@ struct AdvancedSettingsView: View {
         #endif
         guard preview == nil else { return }
         Task {
-            do { resetBlocked = try await resetter.reset(campus:campus, water:water, laundry:laundry) }
+            do { resetBlocked = try await resetter.reset(campus:campus, shower:shower, laundry:laundry) }
             catch { resetIssue = AppErrorText.text(error) }
         }
     }
@@ -371,7 +371,7 @@ struct AdvancedSettingsView: View {
     var body: some View {
         List {
             Section {
-                importRow("导入热水配置").disabled(preview == nil && !water.mayImport)
+                importRow("导入热水配置").disabled(preview == nil && !shower.mayImport)
             } header: { Text("导入配置") } footer: {
                 VStack(alignment:.leading, spacing:6) {
                     if let importIssue {
@@ -412,11 +412,11 @@ struct AdvancedSettingsView: View {
             importIssue = nil
             do {
                 let url = try result.get()
-                try water.importConfig(url)
+                try shower.importConfig(url)
             } catch {
                 if (error as? CocoaError)?.code == .userCancelled { return }
                 importIssue = (error as? LocalizedError)?.errorDescription ?? "这个文件导入不了，确认是热水配置文件再试。"
-                water.show(error)
+                shower.show(error)
             }
         }
     }

@@ -12,11 +12,11 @@ import Core
 
     /// Not while a shower runs or its settlement still needs checking, with an unfinished
     /// laundry order, while a record can't be read, or while a controller check runs.
-    static func lock(water: ShowerModel, laundry: LaundryModel) -> AppReset.Lock? {
-        if water.busy && !water.storageBlocked && !laundry.storageBlocked { return .showering }
-        return AppReset.lock(shower:water.state, laundry:laundry.checkout?.phase, laundryBusy:laundry.checkoutBusy,
-                             recordsUnreadable:water.storageBlocked || laundry.storageBlocked,
-                             checkingController:water.inspecting)
+    static func lock(shower: ShowerModel, laundry: LaundryModel) -> AppReset.Lock? {
+        if shower.busy && !shower.storageBlocked && !laundry.storageBlocked { return .showering }
+        return AppReset.lock(shower:shower.state, laundry:laundry.checkout?.phase, laundryBusy:laundry.checkoutBusy,
+                             recordsUnreadable:shower.storageBlocked || laundry.storageBlocked,
+                             checkingController:shower.inspecting)
     }
 
     /// Files the app wrote (the imported hot-water file and diagnostics, the laundry and Bluetooth
@@ -41,36 +41,36 @@ import Core
     static var marker: ResetMarker { ResetMarker(store:AppEnvironment.store) }
 
     /// The models' locks, then the stored records (the models may still be loading at launch).
-    static func anyLock(water: ShowerModel, laundry: LaundryModel) -> AppReset.Lock? {
-        lock(water:water, laundry:laundry) ?? AppReset.storedLock(store:AppEnvironment.store)
+    static func anyLock(shower: ShowerModel, laundry: LaundryModel) -> AppReset.Lock? {
+        lock(shower:shower, laundry:laundry) ?? AppReset.storedLock(store:AppEnvironment.store)
     }
 
     /// `AppReset.run`: marker, lock, sign out, clear, reload. Returns the lock that stopped it
     /// (nil = reset done).
     @discardableResult
-    func reset(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async throws -> AppReset.Stop? {
+    func reset(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async throws -> AppReset.Stop? {
         guard !running else { return nil }
         running = true
         defer { running = false }
         let stopped = try await AppReset.run(marker:Self.marker, now:Date(),
-                                             lock:{ Self.anyLock(water:water, laundry:laundry) },
+                                             lock:{ Self.anyLock(shower:shower, laundry:laundry) },
                                              signOut:{ await campus.signOutForReset() },
-                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, water:water, laundry:laundry) })
+                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) })
         if stopped == nil { completed += 1 }
         return stopped
     }
 
     /// At launch: finish a reset the app was killed in the middle of (or say why not).
-    func resumeIfInterrupted(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async {
+    func resumeIfInterrupted(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async {
         guard !running else { return }
         running = true
         defer { running = false }
         let resumed: AppReset.Resumed?
         do {
             resumed = try await AppReset.resume(marker:Self.marker, now:Date(),
-                                                lock:{ Self.anyLock(water:water, laundry:laundry) },
+                                                lock:{ Self.anyLock(shower:shower, laundry:laundry) },
                                                 signOut:{ await campus.signOutForReset() },
-                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, water:water, laundry:laundry) })
+                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) })
         } catch {
             resumeFailed = AppErrorText.text(error)
             return
@@ -90,9 +90,9 @@ import Core
                            preferencesDomain:Bundle.main.bundleIdentifier ?? "", files:files)
     }
 
-    private static func reload(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async {
+    private static func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async {
         campus.reload()
-        await water.reloadAfterReset()
+        await shower.reloadAfterReset()
         laundry.reloadAfterReset()
         Reminders.shared.clearAfterReset()
         ShowerActivityController.shared.endAll()
