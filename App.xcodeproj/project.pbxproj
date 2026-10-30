@@ -72,7 +72,7 @@
 		C0DA000C0000000000000000 /* Exceptions for "App" folder in "App" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Resources/Campus.entitlements,
+				Resources/App.entitlements,
 				"Resources/Fonts/Doto[ROND,wght].ttf",
 				"Resources/Fonts/SpaceGrotesk[wght].ttf",
 				"Resources/Fonts/SpaceMono-Regular.ttf",
@@ -86,8 +86,8 @@
 		C0DA000D0000000000000000 /* Exceptions for "Widget" folder in "Widget" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Campus.entitlements,
 				Info.plist,
+				Widget.entitlements,
 			);
 			target = C0DA00120000000000000000 /* Widget */;
 		};
@@ -389,7 +389,7 @@
 			baseConfigurationReferenceRelativePath = Debug.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = App/Resources/Campus.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/Resources/App.entitlements;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Resources/Info.plist;
@@ -425,7 +425,7 @@
 			baseConfigurationReferenceRelativePath = Release.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = App/Resources/Campus.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/Resources/App.entitlements;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Resources/Info.plist;
@@ -460,7 +460,7 @@
 			baseConfigurationReferenceRelativePath = Debug.xcconfig;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Widget/Campus.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Widget/Widget.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "校园双余额";
@@ -482,7 +482,7 @@
 			baseConfigurationReferenceRelativePath = Release.xcconfig;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Widget/Campus.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Widget/Widget.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "校园双余额";
