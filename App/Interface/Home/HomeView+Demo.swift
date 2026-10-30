@@ -63,6 +63,17 @@ extension HomeView {
                 reminders.demoHomeRead()
                 return
             }
+            if url.host == "demo", url.lastPathComponent == "sh-from-settings" {
+                // Settings up, then a start: the sheet closes and the page comes up.
+                onboarding = nil; path = []; panel = nil; laundryDemo = nil
+                demo = HomeDemo.normal.content().0
+                settings = true
+                Task {
+                    try? await Task.sleep(for:.seconds(1.5))
+                    shower.showDemoPage(ShowerPageDemo.record("sh-connect"))
+                }
+                return
+            }
             if url.host == "demo", let record = ShowerPageDemo.record(url.lastPathComponent) {
                 // The shower page over the home demo, on a synthetic record (nothing connects).
                 onboarding = nil; settings = false; path = []; panel = nil; laundryDemo = nil

@@ -20,6 +20,9 @@ struct HomeView: View {
     @State var scrolledPastDate = false
     @State var panel: SettlementResult?
     @State var startTick = 0
+    /// The shower page's cover. Follows `shower.page.presented`, but only once no sheet is up:
+    /// a cover asked for over the settings sheet would never appear.
+    @State var pageCover = false
     @State var successTick = 0
     @State var errorTick = 0
     @ObservedObject var reminders = Reminders.shared
@@ -53,6 +56,18 @@ struct HomeView: View {
         successTick += 1
         // Let the settings sheet go first, otherwise the cover is not presented.
         Task { try? await Task.sleep(for:.milliseconds(600)); openOnboarding() }
+    }
+
+    /// The shower page goes up over home. Started or ended from Settings › 热水 (or with the
+    /// sign-in sheet up): that sheet closes first, then the page comes up.
+    func followShowerPage(_ up: Bool) {
+        guard up else { pageCover = false; return }
+        guard settings || relogin else { pageCover = true; return }
+        settings = false; relogin = false
+        Task {
+            try? await Task.sleep(for:.milliseconds(600))
+            if shower.page.presented { pageCover = true }
+        }
     }
 
     /// Home is what the user sees: nothing pushed, no sheet, cover or panel on top, app in front.
@@ -108,8 +123,8 @@ struct HomeView: View {
         .sheet(isPresented:$settings) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
         .sheet(isPresented:$relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
         // The shower page: down only by its own buttons, or a swipe while water runs (收起).
-        .fullScreenCover(isPresented:Binding(get:{ shower.page.presented },
-                                             set:{ if !$0, shower.page.presented { shower.pageEvent(.collapseTapped) } })) {
+        .fullScreenCover(isPresented:Binding(get:{ pageCover },
+                                             set:{ if !$0 { pageCover = false; if shower.page.presented { shower.pageEvent(.collapseTapped) } } })) {
             #if DEBUG
             ShowerPageView(room:demo?.dorm ?? campus.room).environmentObject(shower).onOpenURL { handleDemo($0) }
             #else
@@ -164,6 +179,7 @@ struct HomeView: View {
             guard old != .done, value == .done else { return }
             Task { await campus.refresh(force:true) }
         }
+        .onChange(of:shower.page.presented, initial:true) { _, up in followShowerPage(up) }
         .onChange(of:shower.reviewRequested) { _, requested in
             guard requested else { return }
             shower.reviewRequested = false
