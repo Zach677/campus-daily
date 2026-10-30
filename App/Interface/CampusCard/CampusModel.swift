@@ -81,6 +81,10 @@ struct PowerChoice: Identifiable, Equatable {
         // A cancelled refresh (the view went away, the pull was abandoned) reads as offline; that
         // says nothing about the school, so it neither shows an issue nor counts as a refresh.
         guard !Task.isCancelled else { return }
+        // The widget held the lease all along (reading, or suspended while holding it): its
+        // numbers, if any, are in the snapshot above. Nothing failed here, so no issue; the next
+        // pull tries again.
+        guard !report.leaseBusy else { return }
         lastRefresh = Date()
         switch report.outcome {
         case .ok: issue = nil

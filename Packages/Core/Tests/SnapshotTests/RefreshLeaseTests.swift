@@ -120,6 +120,24 @@ final class TwoRefresherTests: XCTestCase {
         XCTAssertNil(try mem.read(.sharedSnapshot))
     }
 
+    /// The app tells "the widget held the lease" apart from a failed read, so it shows the
+    /// stored numbers without an error. A read that ran reports `leaseBusy` false.
+    func testBusyLeaseIsMarkedSoTheAppShowsNoError() async throws {
+        let mem = InMemorySecureStore()
+        let stored = SchoolSnapshotReducer.reduce(.empty, .balance(.success(Money(fen: 700)), at: t1))
+        try SharedSnapshotStore(store: mem).saveSnapshot(stored)
+        let widget = RefreshLease(store: mem, owner: "widget-1", now: { Date(timeIntervalSince1970: 0) })
+        XCTAssertTrue(widget.acquire())
+        let reader = ScriptedSchoolReader(SchoolReading(outcome: .ok, checkedAt: t2))
+        let busy = await refresher(reader, mem, owner: "app-1", wait: 2).refresh(inBackground: false)
+        XCTAssertTrue(busy.leaseBusy)
+        XCTAssertEqual(busy.snapshot, stored)
+        widget.release()
+        let ran = await refresher(reader, mem, owner: "app-1", wait: 2).refresh(inBackground: false)
+        XCTAssertFalse(ran.leaseBusy)
+        XCTAssertTrue(ran.snapshotSaved)
+    }
+
     /// A slow read that finishes after a newer one was stored never overwrites it.
     func testOlderReadingNeverOverwritesANewerSnapshot() async throws {
         let mem = InMemorySecureStore()

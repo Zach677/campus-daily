@@ -19,9 +19,14 @@ public struct RefreshReport: Sendable, Equatable {
     public var snapshot: HomeSnapshot
     public var reexchanged: Bool
     public var snapshotSaved: Bool
+    /// The other process held the lease the whole wait (it is reading, or it was suspended
+    /// while holding it): nothing was read here. `snapshot` is the stored one, and the app
+    /// shows it without an error.
+    public var leaseBusy: Bool
 
-    public init(outcome: Outcome, snapshot: HomeSnapshot, reexchanged: Bool, snapshotSaved: Bool) {
+    public init(outcome: Outcome, snapshot: HomeSnapshot, reexchanged: Bool, snapshotSaved: Bool, leaseBusy: Bool = false) {
         self.outcome = outcome; self.snapshot = snapshot; self.reexchanged = reexchanged; self.snapshotSaved = snapshotSaved
+        self.leaseBusy = leaseBusy
     }
 }
 
@@ -180,7 +185,8 @@ public actor SnapshotRefresher {
             guard await acquireLease(lease) else {
                 // The other process is still reading; its result lands in the shared snapshot.
                 diagnostic("snapshot.leaseBusy")
-                return RefreshReport(outcome: .failed(.timedOut), snapshot: latest(), reexchanged: false, snapshotSaved: false)
+                return RefreshReport(outcome: .failed(.timedOut), snapshot: latest(), reexchanged: false, snapshotSaved: false,
+                                     leaseBusy: true)
             }
         }
         defer { lease?.release() }
