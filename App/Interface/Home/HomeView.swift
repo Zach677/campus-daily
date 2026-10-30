@@ -214,7 +214,7 @@ struct HomeView: View {
         switch kind {
         case .signIn: openOnboarding()
         case .review: path.append(.shower)
-        case .showering, .settling, .starting: shower.pageEvent(.reopen)
+        case .showering, .settling, .starting, .check: shower.pageEvent(.reopen)
         case .start:
             // An unchecked record blocks a new start: show it instead of failing.
             guard shower.mayStart else { path.append(.shower); return }

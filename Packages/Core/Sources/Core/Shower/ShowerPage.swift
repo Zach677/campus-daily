@@ -19,6 +19,32 @@ public enum ShowerPagePhase: String, Sendable, Equatable, CaseIterable {
     /// No answer after the authorization went out: something may be charged. No retry; the
     /// user checks the school's record.
     case unsure
+    /// 结束并结算 found the controller stopped while the record says water runs: nothing was
+    /// settled. The user checks the school's record and marks it done; no end, no start.
+    case needsCheck
+}
+
+/// Why 结束并结算 went back to the timer (the close was not sent; water may still run).
+public enum ShowerEndFailure: Sendable, Equatable {
+    /// The controller was not reached.
+    case noConnection
+    /// The controller that answered is not this dorm's.
+    case wrongController
+    /// Stopped before the close went out.
+    case notSent
+    case other
+
+    /// Nil when the notice is not an end that failed (`notActive` is the needs-check face).
+    public init?(_ notice: ShowerNotice?) {
+        switch notice {
+        case nil, .notActive?: return nil
+        case .wrongDevice?: self = .wrongController
+        case .device(.interrupted)?: self = .notSent
+        case .device(.bluetoothOff)?, .device(.notFound)?, .device(.ambiguous)?, .device(.timedOut)?, .device(.disconnected)?:
+            self = .noConnection
+        case .device(.malformedFrame)?, .device(.busy)?, .writeUnconfirmed?: self = .other
+        }
+    }
 }
 
 /// One of the three steps 连接 · 出水 · 结算.
@@ -57,6 +83,8 @@ public struct ShowerPage: Sendable, Equatable {
             return nil
         case .authorizing:
             phase = .connecting; steps = [.current, .future, .future]
+        case .writePending where s.stateReviewRequired, .running where s.stateReviewRequired:
+            phase = .needsCheck; steps = [.done, .done, .failed]
         case .writePending, .running:
             phase = .running; steps = [.done, .current, .future]
         case .closing, .settling:
@@ -117,13 +145,17 @@ public enum ShowerPageEvent: Sendable, Equatable {
     case endTapped
     /// The end request came back (whatever its outcome; the record says what happened).
     case endReturned
+    /// The engine's end came back to the timer without sending the close, with its notice.
+    case endNotSent(ShowerNotice?)
+    /// 我在学校记录里核对过了 (needs-check face, after its confirmation).
+    case resolveTapped
     /// 再试一次 after a connect failure.
     case retryTapped
     /// 收起 while running.
     case collapseTapped
     /// 好 (done, denied), 取消 or × (connect failed).
     case closeTapped
-    /// 去核对 (unsure).
+    /// 去核对 (unsure, needs check).
     case reviewTapped
     /// 先回首页 (unsure): the record stays for 核对.
     case homeTapped
@@ -138,6 +170,8 @@ public enum ShowerPageEffect: Sendable, Equatable {
     case dismissRecord
     /// The 核对 screen.
     case openReview
+    /// Mark the record checked (`ShowerEngine.resolveManually`).
+    case resolveManually
 }
 
 /// The page's own state: whether it is up, and the taps still waiting on the engine.
@@ -150,6 +184,8 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var cancelling: Bool
     /// 结束并结算 was tapped and the engine has not returned yet.
     public var ending: Bool
+    /// The last 结束并结算 came back to the timer: the line above the button says why.
+    public var endFailed: ShowerEndFailure?
     /// 取消 came before the engine took up the start: it is sent once the start runs.
     public var cancelWaiting: Bool
     /// The engine refused this start's cancel: 取消 stays off until the next start.
@@ -158,7 +194,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
     /// After a relaunch the page starts closed; the home button shows where the record stands.
     public init(record: ShowerState, presented: Bool = false) {
         self.record = record; self.presented = presented; starting = false; cancelling = false; ending = false
-        cancelWaiting = false; cancelRefused = false
+        cancelWaiting = false; cancelRefused = false; endFailed = nil
     }
 
     /// What the page shows. A start just tapped shows 连接 at once, before the record moves
@@ -171,8 +207,10 @@ public struct ShowerPageFlow: Sendable, Equatable {
         return shown
     }
 
-    /// Swipe-down closes the page only while water runs (as 收起 does).
-    public var mayCollapse: Bool { page?.phase == .running }
+    /// Swipe-down closes the page only while water runs (as 收起 does) or a check is waiting.
+    public var mayCollapse: Bool { page?.phase == .running || page?.phase == .needsCheck }
+    /// 我在学校记录里核对过了 on the needs-check face.
+    public var mayResolve: Bool { page?.phase == .needsCheck && record.canResolveManually }
     public var mayCancel: Bool { page?.phase == .connecting && !cancelling && !cancelRefused }
     public var mayEnd: Bool { page?.phase == .running && record.canFinish && !ending }
 
@@ -186,7 +224,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
                 return (f, [])
             }
             f.presented = true; f.starting = true; f.cancelling = false; f.ending = false
-            f.cancelWaiting = false; f.cancelRefused = false
+            f.cancelWaiting = false; f.cancelRefused = false; f.endFailed = nil
             // A finished record is cleared by the start itself.
             return (f, [.start])
 
@@ -219,10 +257,13 @@ public struct ShowerPageFlow: Sendable, Equatable {
                 }
             }
             if next.phase != .writePending, next.phase != .running, next.phase != .closing { f.ending = false }
+            if !next.mayBeFlowing || next.stateReviewRequired { f.endFailed = nil }
             // Ended with the page down (from the lock screen or the Dynamic Island): the result
             // comes up, so the amount or the 不确定 face is seen.
             let wasOn = [ShowerPhase.writePending, .running, .closing, .settling].contains(flow.record.phase)
             if !flow.presented, wasOn, next.phase == .done || next.phase == .failed { f.presented = true }
+            // An end from there found the controller stopped: the check comes up the same way.
+            if !flow.presented, next.mayBeFlowing, next.stateReviewRequired, !flow.record.stateReviewRequired { f.presented = true }
             // Nothing left to show (resolved elsewhere, an authorization that never applied).
             if f.presented, !f.starting, f.page == nil { f.presented = false }
             return (f, [])
@@ -240,8 +281,17 @@ public struct ShowerPageFlow: Sendable, Equatable {
 
         case .endTapped:
             guard flow.mayEnd else { return (flow, []) }
-            f.ending = true
+            f.ending = true; f.endFailed = nil
             return (f, [.finish])
+
+        case .endNotSent(let notice):
+            guard flow.page?.phase == .running else { return (flow, []) }
+            f.endFailed = notice == .notActive ? nil : (ShowerEndFailure(notice) ?? .other)
+            return (f, [])
+
+        case .resolveTapped:
+            guard flow.mayResolve else { return (flow, []) }
+            return (f, [.resolveManually])
 
         case .endReturned:
             f.ending = false
@@ -267,7 +317,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
             }
 
         case .reviewTapped:
-            guard flow.page?.phase == .unsure else { return (flow, []) }
+            guard flow.page?.phase == .unsure || flow.page?.phase == .needsCheck else { return (flow, []) }
             f.presented = false
             return (f, [.openReview])
 

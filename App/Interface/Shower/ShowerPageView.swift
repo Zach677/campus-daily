@@ -20,6 +20,25 @@ enum ShowerPageText {
     static let inUseBody = "附近的水控有人在用，现在开不了水。等它空了再试。这次没扣钱。"
     static let unsure = "不确定结算了没有"
     static let unsureBody = "别再点结算，免得重复扣钱。去学校的热水记录里核对这次洗澡。"
+    static let check = "这次洗澡要核对一下"
+    static let checkBody = "水控显示已经停了，但这次还没结算上。去学校的热水记录里看看扣了没有，核对完才能再洗。"
+    /// The home button while that check waits.
+    static let checkButton = "核对上次洗澡"
+    static let review = "去核对"
+    static let resolve = "我在学校记录里核对过了"
+    static let resolveConfirm = "这次洗澡核对过了吗？"
+    static let resolveConfirmButton = "核对过了"
+    static let resolveConfirmNote = "标记以后，校日常不会再结算这一次。先在学校的热水记录里找到这次洗澡，再点核对过了。"
+
+    /// Above 结束并结算 when the last end came back to the timer.
+    static func endFailed(_ failure: ShowerEndFailure) -> String {
+        switch failure {
+        case .noConnection: return "没连上水控，还没结束。靠近一点再点一次。"
+        case .wrongController: return "连到的不是这间的水控，还没结束。再点一次。"
+        case .notSent: return "还没发出去，没结束。再点一次。"
+        case .other: return "没结束，水可能还在出。再点一次。"
+        }
+    }
 
     static func doneBody(minutes: Int?) -> String {
         guard let minutes else { return "看一眼水停了没。" }
@@ -49,6 +68,7 @@ struct ShowerPageView: View {
     @State private var successTick = 0
     @State private var errorTick = 0
     @State private var pulse = false
+    @State private var confirmResolve = false
 
     private var flow: ShowerPageFlow { shower.page }
 
@@ -83,10 +103,21 @@ struct ShowerPageView: View {
         .onChange(of:page?.phase) { _, phase in
             switch phase {
             case .done?: successTick += 1
-            case .connectFailed?, .denied?, .unsure?: errorTick += 1
+            case .connectFailed?, .denied?, .unsure?, .needsCheck?: errorTick += 1
             default: break
             }
             if let phase { AccessibilityNotification.Announcement(announcement(phase)).post() }
+        }
+        .onChange(of:flow.endFailed) { _, failure in
+            guard let failure else { return }
+            errorTick += 1
+            AccessibilityNotification.Announcement(ShowerPageText.endFailed(failure)).post()
+        }
+        .confirmationDialog(ShowerPageText.resolveConfirm, isPresented:$confirmResolve, titleVisibility:.visible) {
+            Button(ShowerPageText.resolveConfirmButton) { shower.pageEvent(.resolveTapped) }
+            Button("取消", role:.cancel) {}
+        } message: {
+            Text(ShowerPageText.resolveConfirmNote)
         }
         .typesettingLanguage(Theme.typesetting)
     }
@@ -107,6 +138,8 @@ struct ShowerPageView: View {
             HStack {
                 if phase == .running {
                     circleButton("chevron.down", label:"收起，继续洗澡") { shower.pageEvent(.collapseTapped) }
+                } else if phase == .needsCheck {
+                    circleButton("chevron.down", label:"收起") { shower.pageEvent(.collapseTapped) }
                 } else if phase == .connectFailed {
                     circleButton("xmark", label:"关闭") { shower.pageEvent(.closeTapped) }
                 }
@@ -174,6 +207,10 @@ struct ShowerPageView: View {
                 icon("questionmark.circle", Theme.accentText)
                 title(ShowerPageText.unsure)
                 bodyText(ShowerPageText.unsureBody)
+            case .needsCheck:
+                icon("questionmark.circle", Theme.accentText)
+                title(ShowerPageText.check)
+                bodyText(ShowerPageText.checkBody)
             }
         }
         .frame(maxWidth:.infinity, alignment:.leading)
@@ -234,6 +271,17 @@ struct ShowerPageView: View {
             case .connecting:
                 capsule("取消", background:Theme.fill, ink:Theme.ink, enabled:flow.mayCancel) { shower.pageEvent(.cancelTapped) }
             case .running:
+                if let failure = flow.endFailed {
+                    HStack(alignment:.firstTextBaseline, spacing:6) {
+                        Image(systemName:"exclamationmark.circle.fill").scaledFont(17, relativeTo:.body).accessibilityHidden(true)
+                        Text(ShowerPageText.endFailed(failure)).scaledFont(15, relativeTo:.subheadline)
+                            .fixedSize(horizontal:false, vertical:true)
+                    }
+                    .foregroundStyle(Theme.accentText)
+                    .frame(maxWidth:.infinity, alignment:.leading)
+                    .padding(.bottom,10)
+                    .accessibilityElement(children:.combine)
+                }
                 capsule("结束并结算", background:Theme.accent, ink:scheme == .dark ? Color(white:0.07) : .white,
                         enabled:flow.mayEnd) { shower.pageEvent(.endTapped) }
                 Text(ShowerPageText.runningNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
@@ -254,8 +302,12 @@ struct ShowerPageView: View {
                 capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                 textButton("取消") { shower.pageEvent(.closeTapped) }
             case .unsure:
-                capsule("去核对", background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.reviewTapped) }
+                capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.reviewTapped) }
                 textButton("先回首页") { shower.pageEvent(.homeTapped) }
+            case .needsCheck:
+                capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.reviewTapped) }
+                textButton(ShowerPageText.resolve) { confirmResolve = true }
+                    .disabled(!flow.mayResolve)
             }
         }
     }
@@ -289,6 +341,7 @@ struct ShowerPageView: View {
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
         case .unsure: return ShowerPageText.unsure
+        case .needsCheck: return ShowerPageText.check
         }
     }
 }

@@ -259,6 +259,8 @@ enum ShowerProfileFiles {
                 self.binding = stored
             }
             message = Self.noticeText(result.notice)
+            // Back on the timer: the page says why the end did not go through.
+            if !start, result.mayBeFlowing { pageEvent(.endNotSent(result.notice)) }
             if result.phase == .failed { throw ShowerEngineError.notAllowed }
             if !start, result.phase != .done { throw ShowerEngineError.notAllowed }
         } catch {

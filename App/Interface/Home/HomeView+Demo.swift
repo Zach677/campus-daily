@@ -69,7 +69,9 @@ extension HomeView {
                 demo = HomeDemo.normal.content().0
                 // Collapsed while water runs, home shows the showering button, as it would live.
                 if record.phase == .running, let start = record.startedAt { demo?.shower = .showering(start) }
+                if record.stateReviewRequired { demo?.shower = .needsCheck }
                 shower.showDemoPage(record)
+                if url.lastPathComponent == "sh-endfail" { shower.page.endFailed = .noConnection }
                 return
             }
             let settingsDemos: [String:UNAuthorizationStatus] = ["settings":.authorized, "settings-notif-off":.denied,
@@ -90,7 +92,8 @@ extension HomeView {
                 Task { try? await Task.sleep(for:.milliseconds(500)); settings = true }
             }
     }
-    /// campusdaily://demo/sh-<face>: connect, run, settle, done, nocon, denied, busy, unsure.
+    /// campusdaily://demo/sh-<face>: connect, run, settle, done, nocon, denied, busy, unsure, check,
+    /// endfail (back on the timer after an end that didn't go through).
     enum ShowerPageDemo {
         static func record(_ name: String, now: Date = Date()) -> ShowerState? {
             let start = now.addingTimeInterval(-(8 * 60 + 42))
@@ -100,7 +103,8 @@ extension HomeView {
             }
             switch name {
             case "sh-connect": return ShowerState(phase:.authorizing, startedAt:now)
-            case "sh-run": return ShowerState(phase:.running, startedAt:start)
+            case "sh-run", "sh-endfail": return ShowerState(phase:.running, startedAt:start)
+            case "sh-check": return ShowerState(phase:.running, startedAt:start, stateReviewRequired:true, notice:.notActive)
             case "sh-settle": return ShowerState(phase:.settling, startedAt:start)
             case "sh-done":
                 return ShowerState(phase:.done, startedAt:now.addingTimeInterval(-11 * 60),
@@ -145,6 +149,7 @@ extension HomeView {
             }
         case .signIn: openOnboarding()
         case .review, .settling: path.append(.shower)
+        case .check: shower.pageEvent(.reopen)
         case .starting: break
         }
     }

@@ -13,6 +13,8 @@ struct HomeShowerButton: View {
         case settling
         /// 「核对上次结算」 with the accent caption.
         case review
+        /// 「核对上次洗澡」: the controller showed itself stopped, nothing settled. Opens the page.
+        case check
         /// 「登录学校账号」
         case signIn
     }
@@ -62,6 +64,8 @@ struct HomeShowerButton: View {
                 Text("正在结算…")
             case .review:
                 Text("核对上次结算")
+            case .check:
+                Text(ShowerPageText.checkButton)
             case .signIn:
                 Text("登录学校账号")
             }
@@ -101,7 +105,7 @@ struct HomeShowerButton: View {
         case .settling: return ("点一下回到洗澡页", false)
         case .review: return ("上次洗澡不确定结算了没有", true)
         case .signIn: return ("登录后就能看校园卡和电量，也能洗澡。", false)
-        case .start(nil), .starting: return nil
+        case .start(nil), .starting, .check: return nil
         }
     }
 
@@ -119,6 +123,7 @@ struct HomeShowerButton: View {
         case .showering: return "正在洗澡，回到洗澡页"
         case .settling: return "正在结算，回到洗澡页"
         case .review: return "核对上次结算"
+        case .check: return ShowerPageText.checkButton
         case .signIn: return "登录学校账号"
         }
     }

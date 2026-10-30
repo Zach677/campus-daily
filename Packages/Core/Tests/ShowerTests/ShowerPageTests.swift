@@ -169,6 +169,83 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertEqual(flow.page?.phase, .unsure)
     }
 
+    // MARK: Needs check
+
+    /// The record says water runs but the controller showed itself stopped: the needs-check
+    /// face, not the timer. No end, no start; 去核对 and 核对过了 only.
+    func testAStoppedControllerShowsTheNeedsCheckFace() {
+        for phase in [ShowerPhase.running, .writePending] {
+            let page = ShowerPage(ShowerState(phase: phase, startedAt: t0, stateReviewRequired: true))
+            XCTAssertEqual(page?.phase, .needsCheck, "\(phase)")
+            XCTAssertEqual(page?.steps, [.done, .done, .failed])
+        }
+        var flow = ShowerPageFlow(record: ShowerState(phase: .running, machineID: "11223344", startedAt: t0), presented: true)
+        XCTAssertEqual(reduce(&flow, .endTapped), [.finish])
+        _ = reduce(&flow, .record(ShowerState(phase: .closing, machineID: "11223344", startedAt: t0, closingFrom: .running)))
+        let back = ShowerState(phase: .running, machineID: "11223344", startedAt: t0, stateReviewRequired: true, notice: .notActive)
+        _ = reduce(&flow, .record(back))
+        _ = reduce(&flow, .endNotSent(.notActive))
+        _ = reduce(&flow, .endReturned)
+        XCTAssertEqual(flow.page?.phase, .needsCheck)
+        XCTAssertNil(flow.endFailed, "the face says it, not an end-failed line")
+        XCTAssertTrue(flow.presented)
+        XCTAssertFalse(flow.mayEnd)
+        XCTAssertTrue(flow.mayResolve)
+        XCTAssertTrue(flow.mayCollapse)
+        for event in [ShowerPageEvent.endTapped, .startTapped, .retryTapped, .cancelTapped, .closeTapped] {
+            XCTAssertEqual(ShowerPageFlow.reduce(flow, event).1, [], "\(event)")
+        }
+        var review = flow
+        XCTAssertEqual(reduce(&review, .reviewTapped), [.openReview])
+        XCTAssertFalse(review.presented)
+        XCTAssertEqual(reduce(&flow, .resolveTapped), [.resolveManually])
+        _ = reduce(&flow, .record(.idle))
+        XCTAssertFalse(flow.presented, "checked: nothing left to show")
+
+        // A review probe in flight: 核对过了 waits for it.
+        var probing = ShowerPageFlow(record: ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, reviewing: true),
+                                     presented: true)
+        XCTAssertFalse(probing.mayResolve)
+        XCTAssertEqual(reduce(&probing, .resolveTapped), [])
+        XCTAssertEqual(ShowerHomeStatus.needsCheck.asksForSchoolSignIn(signedIn: false), false)
+    }
+
+    /// Ended from the lock screen with the page down, and the controller was stopped: the
+    /// check comes up.
+    func testANeedsCheckFromTheLockScreenComesUp() {
+        var flow = ShowerPageFlow(record: ShowerState(phase: .running, startedAt: t0))
+        _ = reduce(&flow, .record(ShowerState(phase: .closing, startedAt: t0, closingFrom: .running)))
+        _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)))
+        XCTAssertTrue(flow.presented)
+        XCTAssertEqual(flow.page?.phase, .needsCheck)
+    }
+
+    /// 结束并结算 came back to the timer: a line says why, until the next tap.
+    func testAnEndThatWasNotSentSaysWhy() {
+        let cases: [(ShowerNotice?, ShowerEndFailure)] = [
+            (.device(.notFound), .noConnection), (.device(.timedOut), .noConnection), (.device(.bluetoothOff), .noConnection),
+            (.device(.disconnected), .noConnection), (.wrongDevice, .wrongController), (.device(.interrupted), .notSent),
+            (.device(.malformedFrame), .other), (.writeUnconfirmed, .other), (nil, .other),
+        ]
+        for (notice, expected) in cases {
+            var flow = ShowerPageFlow(record: ShowerState(phase: .running, startedAt: t0), presented: true)
+            _ = reduce(&flow, .endTapped)
+            _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, notice: notice)))
+            _ = reduce(&flow, .endNotSent(notice))
+            _ = reduce(&flow, .endReturned)
+            XCTAssertEqual(flow.endFailed, expected, "\(String(describing: notice))")
+            XCTAssertEqual(flow.page?.phase, .running)
+            XCTAssertTrue(flow.mayEnd)
+            _ = reduce(&flow, .endTapped)
+            XCTAssertNil(flow.endFailed, "gone on the next tap")
+        }
+        // Settled after all: no line.
+        var flow = ShowerPageFlow(record: ShowerState(phase: .running, startedAt: t0), presented: true)
+        _ = reduce(&flow, .endNotSent(.device(.notFound)))
+        _ = reduce(&flow, .record(ShowerState(phase: .settling, startedAt: t0)))
+        XCTAssertNil(flow.endFailed)
+    }
+
     /// The settlement timed out: 不确定, with no way to settle again from the page.
     func testASettlementTimeoutIsUnsureWithoutRetry() {
         var flow = ShowerPageFlow(record: ShowerState(phase: .settling, startedAt: t0), presented: true)

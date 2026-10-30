@@ -48,13 +48,13 @@ struct ShowerDetail: View {
                 }
                 if shower.mayResolveManually {
                     // Way out of a record that can't close by itself; only after the user checked the official record.
-                    Button("我在学校记录里核对过了") { confirmResolve = true }
+                    Button(ShowerPageText.resolve) { confirmResolve = true }
                         .font(.subheadline).frame(minHeight:44).accessibilityIdentifier("resolveWaterManually")
-                        .confirmationDialog("这次洗澡核对过了吗？", isPresented:$confirmResolve, titleVisibility:.visible) {
-                            Button("核对过了") { Task { await shower.resolveManually() } }
+                        .confirmationDialog(ShowerPageText.resolveConfirm, isPresented:$confirmResolve, titleVisibility:.visible) {
+                            Button(ShowerPageText.resolveConfirmButton) { Task { await shower.resolveManually() } }
                             Button("取消", role:.cancel) {}
                         } message: {
-                            Text("标记以后，校日常不会再结算这一次。先在学校的热水记录里找到这次洗澡，再点核对过了。")
+                            Text(ShowerPageText.resolveConfirmNote)
                         }
                 }
                 if !shower.configured {

@@ -89,6 +89,7 @@ extension HomeView {
             return .showering(start, caption:data.showerUnconfirmed ? ShowerCopy.writeUnconfirmed : "点一下回到洗澡页")
         case .settling: return .settling
         case .unresolved: return .review
+        case .needsCheck: return .check
         }
     }
 

@@ -37,6 +37,8 @@ extension ShowerModel {
             }
         case .openReview:
             reviewRequested = true
+        case .resolveManually:
+            Task { await resolveManually() }
         }
     }
 
