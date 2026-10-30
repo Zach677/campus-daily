@@ -134,6 +134,21 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
         return true
     }
 
+    /// `SecItemUpdate` alone: it never adds, so an item deleted by another process stays deleted.
+    /// Tried in the key's group, then without a group (where a fallback create may have put it).
+    public func replace(_ data: Data, for key: StoreKey) throws -> Bool {
+        let group = group(for: key)
+        for g in group == nil ? [nil] : [group, nil] {
+            let status = backend.update(service: key.service, account: StoreKey.account, accessGroup: g,
+                                        accessibility: key.accessibility, data: data)
+            if status == KeychainStatus.success { return true }
+            guard status == KeychainStatus.itemNotFound || status == KeychainStatus.missingEntitlement else {
+                throw StorageError(operation: "replace \(key.rawValue)", status: status)
+            }
+        }
+        return false
+    }
+
     public func delete(_ key: StoreKey) throws {
         var statuses = [backend.delete(service: key.service, account: StoreKey.account, accessGroup: nil)]
         for group in [sharedGroup, privateGroup].compactMap({ $0 }) {
@@ -284,6 +299,15 @@ public final class InMemorySecureStore: SecureStore, @unchecked Sendable {
         try lock.withLock {
             if failing.contains(key) { throw StorageError(operation: "create \(key.rawValue)", status: -1) }
             guard items[key] == nil else { return false }
+            items[key] = data
+            return true
+        }
+    }
+
+    public func replace(_ data: Data, for key: StoreKey) throws -> Bool {
+        try lock.withLock {
+            if failing.contains(key) { throw StorageError(operation: "replace \(key.rawValue)", status: -1) }
+            guard items[key] != nil else { return false }
             items[key] = data
             return true
         }

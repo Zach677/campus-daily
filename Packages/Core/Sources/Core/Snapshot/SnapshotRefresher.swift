@@ -200,19 +200,23 @@ public actor SnapshotRefresher {
                                      leaseBusy: true)
             }
         }
-        defer { lease?.release() }
         let lease = self.lease
         // Kept alive for the whole read: a slow chain must not let the other process take over
         // halfway and mint or log in a second time.
         let heartbeat = lease.map { Self.keepAlive($0, every: renewInterval) }
-        defer { heartbeat?.cancel() }
         // The balance and the meter are stored as soon as they are in (a widget that runs out of
         // time while the card records load keeps them); the full reading is stored at the end.
         let reading = await school.refresh(inBackground: inBackground, mayMint: { lease?.renew() ?? true },
                                            numbers: { [weak self] partial in
                                                _ = await self?.write(partial, started: started, lease: lease)
                                            })
-        return write(reading, started: started, lease: lease)
+        let report = write(reading, started: started, lease: lease)
+        // The heartbeat has stopped before the lease is given back: a renewal still running
+        // would otherwise bring it back and hold the other process off for a whole lease.
+        heartbeat?.cancel()
+        await heartbeat?.value
+        lease?.release()
+        return report
     }
 
     /// Stores one reading under the same rules each time. Signed out meanwhile, or nobody

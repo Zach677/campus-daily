@@ -59,6 +59,9 @@ public protocol SecureStore: Sendable {
     func delete(_ key: StoreKey) throws
     /// Writes only when no item exists, atomically across processes. False = one exists.
     func create(_ data: Data, for key: StoreKey) throws -> Bool
+    /// Writes only over an item that exists, atomically across processes. False = none exists
+    /// (it was deleted meanwhile), and nothing is written.
+    func replace(_ data: Data, for key: StoreKey) throws -> Bool
 }
 
 public extension SecureStore {

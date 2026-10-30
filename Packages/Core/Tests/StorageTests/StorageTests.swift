@@ -140,6 +140,34 @@ final class KeychainStoreTests: XCTestCase {
     func appStore(_ kc: FakeKeychain) -> KeychainSecureStore { KeychainSecureStore(backend: kc, accessGroup: group, privateGroup: app) }
     func key(_ k: StoreKey, _ g: String) -> FakeKeychain.Key { .init(service: k.service, group: g) }
 
+    /// Replace only updates: an item deleted by another process is not added back.
+    func testReplaceNeverAddsAnItem() throws {
+        let kc = appKeychain()
+        let store = appStore(kc)
+        XCTAssertFalse(try store.replace(Data("x".utf8), for: .sharedRefreshLease))
+        XCTAssertNil(kc.items[key(.sharedRefreshLease, group)])
+        XCTAssertFalse(kc.calls.contains { $0.hasPrefix("add") })
+        try store.write(Data("a".utf8), for: .sharedRefreshLease)
+        XCTAssertTrue(try store.replace(Data("b".utf8), for: .sharedRefreshLease))
+        XCTAssertEqual(kc.items[key(.sharedRefreshLease, group)], Data("b".utf8))
+    }
+
+    /// An item a fallback create left without a group is still found and replaced.
+    func testReplaceFindsAnItemOutsideTheGroup() throws {
+        let kc = appKeychain()
+        let store = appStore(kc)
+        kc.failing["update \(group)"] = KeychainStatus.missingEntitlement
+        kc.items[key(.sharedRefreshLease, app)] = Data("a".utf8)
+        XCTAssertTrue(try store.replace(Data("b".utf8), for: .sharedRefreshLease))
+        XCTAssertEqual(kc.items[key(.sharedRefreshLease, app)], Data("b".utf8))
+    }
+
+    func testReplaceReportsOtherFailures() {
+        let kc = appKeychain()
+        kc.failing["update \(group)"] = -25308
+        XCTAssertThrowsError(try appStore(kc).replace(Data("b".utf8), for: .sharedRefreshLease))
+    }
+
     func testSharedItemsUseAccessGroupCredentialsNever() throws {
         let kc = appKeychain()
         let store = appStore(kc)

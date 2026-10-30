@@ -181,3 +181,57 @@ final class TwoRefresherTests: XCTestCase {
         XCTAssertTrue(SnapshotRefresher.isOlder(slow, than: stored))
     }
 }
+
+/// Runs a step right after the next read of the lease, as another process would between a
+/// renewal's read and its write.
+final class LeaseRaceStore: SecureStore, @unchecked Sendable {
+    let inner = InMemorySecureStore()
+    private let lock = NSLock()
+    private var afterRead: (() -> Void)?
+    func onNextLeaseRead(_ step: @escaping () -> Void) { lock.withLock { afterRead = step } }
+    func read(_ key: StoreKey) throws -> Data? {
+        let data = try inner.read(key)
+        if key == .sharedRefreshLease, let step = lock.withLock({ () -> (() -> Void)? in defer { afterRead = nil }; return afterRead }) { step() }
+        return data
+    }
+    func write(_ data: Data, for key: StoreKey) throws { try inner.write(data, for: key) }
+    func delete(_ key: StoreKey) throws { try inner.delete(key) }
+    func create(_ data: Data, for key: StoreKey) throws -> Bool { try inner.create(data, for: key) }
+    func replace(_ data: Data, for key: StoreKey) throws -> Bool { try inner.replace(data, for: key) }
+}
+
+final class LeaseRenewRaceTests: XCTestCase {
+    let store = LeaseRaceStore()
+    let clock = TestClock()
+    func lease(_ owner: String) -> RefreshLease { RefreshLease(store: store, owner: owner, now: clock.function) }
+
+    /// A sign-out in the other process removes the lease after the renewal read it: the
+    /// renewal reports it lost and does not put it back.
+    func testRenewDoesNotBringBackALeaseRevokedMeanwhile() throws {
+        let widget = lease("widget-1"), app = lease("app-1")
+        XCTAssertTrue(widget.acquire())
+        store.onNextLeaseRead { try? app.clear() }
+        XCTAssertFalse(widget.renew())
+        XCTAssertNil(try store.inner.read(.sharedRefreshLease))
+        XCTAssertTrue(app.acquire(), "the other process is not held off")
+    }
+
+    /// The holder gives the lease back while its own heartbeat is renewing it.
+    func testRenewDoesNotBringBackALeaseReleasedMeanwhile() throws {
+        let app = lease("app-1"), widget = lease("widget-1")
+        XCTAssertTrue(app.acquire())
+        store.onNextLeaseRead { app.release() }
+        XCTAssertFalse(app.renew())
+        XCTAssertNil(try store.inner.read(.sharedRefreshLease))
+        XCTAssertTrue(widget.acquire())
+    }
+
+    func testInMemoryReplaceNeverAdds() throws {
+        let memory = InMemorySecureStore()
+        XCTAssertFalse(try memory.replace(Data("a".utf8), for: .sharedRefreshLease))
+        XCTAssertNil(try memory.read(.sharedRefreshLease))
+        try memory.write(Data("a".utf8), for: .sharedRefreshLease)
+        XCTAssertTrue(try memory.replace(Data("b".utf8), for: .sharedRefreshLease))
+        XCTAssertEqual(try memory.read(.sharedRefreshLease), Data("b".utf8))
+    }
+}

@@ -50,11 +50,12 @@ public struct RefreshLease: Sendable {
 
     /// Still ours and not run out: push the expiry forward. False = lost (it ran out and another
     /// process took it, or a sign-out removed it): stop before minting, logging in or writing a
-    /// credential.
+    /// credential. The new expiry only replaces a lease that is still there: a sign-out that
+    /// removes it between the read and the write is not undone.
     public func renew() -> Bool {
-        guard let holder = try? read(), holder.owner == owner, holder.expiresAt > now() else { return false }
-        let data = (try? JSONEncoder().encode(Record(owner: owner, expiresAt: now().addingTimeInterval(duration)))) ?? Data()
-        return (try? store.write(data, for: .sharedRefreshLease)) != nil
+        guard let holder = try? read(), holder.owner == owner, holder.expiresAt > now(),
+              let data = try? JSONEncoder().encode(Record(owner: owner, expiresAt: now().addingTimeInterval(duration))) else { return false }
+        return (try? store.replace(data, for: .sharedRefreshLease)) == true
     }
 
     /// Still ours (not taken over, not removed by a sign-out in the other process).
