@@ -1,0 +1,123 @@
+import XCTest
+@testable import Core
+import CoreTestSupport
+
+/// A login that turns out to be a different person clears the previous one's school data;
+/// the same person signing in again keeps it. Saving a password never switches person.
+final class SchoolAccountSwitchTests: XCTestCase {
+    static let otherCard = "TESTid00000000000000000000000099"
+
+    /// Signed in as somebody whose card is `card`, with a dorm, a meter and an account.
+    func signedInHarness(card: String, account: String? = "99100991", password: String? = nil,
+                         login: FakePasswordLogin = FakePasswordLogin()) throws -> Harness {
+        var h = Harness()
+        h.passwordLogin = login
+        try h.signedIn(meter: Harness.roomBinding, residence: "星湖校区98栋8号1层881房")
+        var session = T.session(); session.cardUnionID = card
+        try h.vault.saveEcyktSession(session)
+        if let account { try h.vault.saveAccount(SchoolAccount(account: account, password: password)) }
+        return h
+    }
+
+    func serveExchange(_ h: Harness, token: String = "NEW-TOKEN") throws {
+        h.server.serve(try T.eCardWithTicket())
+        h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: token))
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+    }
+
+    func testPersonMatchPrefersTheCardThenTheAccount() {
+        let before = SignedInPerson(cardUnionID: "A", account: "1")
+        XCTAssertEqual(SignedInPerson.match(before, cardUnionID: "A", account: "2"), .same)
+        XCTAssertEqual(SignedInPerson.match(before, cardUnionID: "B", account: "1"), .different)
+        XCTAssertEqual(SignedInPerson.match(SignedInPerson(cardUnionID: nil, account: "1"), cardUnionID: "B", account: "1"), .same)
+        XCTAssertEqual(SignedInPerson.match(SignedInPerson(cardUnionID: nil, account: "1"), cardUnionID: "B", account: "2"), .different)
+        XCTAssertEqual(SignedInPerson.match(SignedInPerson(cardUnionID: nil, account: nil), cardUnionID: "B", account: "2"), .unknown)
+        XCTAssertEqual(SignedInPerson.match(nil, cardUnionID: "B", account: "2"), .unknown)
+    }
+
+    func testPasswordSignInAsSomeoneElseClearsTheOldDormMeterAndAccount() async throws {
+        for readsDorm in [true, false] {
+            let h = try signedInHarness(card: Self.otherCard, password: "old-pw",
+                                        login: FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken)))
+            if readsDorm { try h.server.serve("portal/getMyInfo-ok") }
+            try serveExchange(h)
+            let summary = try await h.session().signIn(account: "99100992", password: "synthetic-pw-992", savePassword: false)
+            XCTAssertTrue(summary.switchedAccount)
+            let profile = try XCTUnwrap(try h.vault.profile())
+            XCTAssertNil(profile.meter, "the previous person's meter is gone")
+            XCTAssertEqual(profile.residence?.raw, readsDorm ? "星湖校区99栋9号1层991房" : nil,
+                           "without the new dorm, the old one is not kept")
+            XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100992"))
+            XCTAssertEqual(try h.vault.ecyktSession()?.token, "NEW-TOKEN")
+        }
+    }
+
+    func testTheSamePersonSigningInAgainKeepsEverything() async throws {
+        let h = try signedInHarness(card: "TESTid00000000000000000000000001",
+                                    login: FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken)))
+        try serveExchange(h)   // no getMyInfo: the dorm can't be read this time
+        let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: true)
+        XCTAssertFalse(summary.switchedAccount)
+        XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
+        XCTAssertEqual(try h.vault.profile()?.residence?.raw, "星湖校区98栋8号1层881房")
+    }
+
+    func testFirstSignInWithoutTheDormStartsEmpty() async throws {
+        var h = Harness()
+        h.passwordLogin = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+        try serveExchange(h)
+        let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false)
+        XCTAssertFalse(summary.switchedAccount)
+        XCTAssertEqual(try h.vault.profile(), SchoolProfile())
+    }
+
+    func testWebSignInAsSomeoneElseClearsTheOldDormAndMeter() async throws {
+        let h = try signedInHarness(card: Self.otherCard, password: "old-pw")
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil)
+        XCTAssertTrue(summary.switchedAccount)
+        XCTAssertNil(try h.vault.profile())
+        XCTAssertNil(try h.vault.account())
+    }
+
+    func testWebSignInAsTheSamePersonKeepsTheDorm() async throws {
+        let h = try signedInHarness(card: "TESTid00000000000000000000000001", account: nil)
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil)
+        XCTAssertFalse(summary.switchedAccount)
+        XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
+    }
+
+    func testSavingAPasswordForAnotherKnownAccountIsRefusedWithoutALogin() async throws {
+        let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+        let h = try signedInHarness(card: "TESTid00000000000000000000000001", login: login)
+        do { try await h.session().savePassword("synthetic-pw-992", account: "99100992"); XCTFail() }
+        catch { XCTAssertEqual(error as? SchoolLoginFailure, .differentAccount) }
+        XCTAssertTrue(login.calls.isEmpty)
+        XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
+        XCTAssertTrue(h.server.requests.isEmpty)
+    }
+
+    func testAfterAWebSignInTheSavedPasswordMustBeTheSameCard() async throws {
+        // Someone else's account: the login's card is not the signed-in card.
+        let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+        let h = try signedInHarness(card: Self.otherCard, account: nil, login: login)
+        try serveExchange(h)
+        do { try await h.session().savePassword("synthetic-pw-992", account: "99100992"); XCTFail() }
+        catch { XCTAssertEqual(error as? SchoolLoginFailure, .differentAccount) }
+        XCTAssertNil(try h.vault.account())
+        XCTAssertEqual(try h.vault.ecyktSession()?.token, T.session().token, "the signed-in session is untouched")
+        XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
+        XCTAssertNil(try h.vault.portalToken())
+
+        // The signed-in person's own account: saved, and the fresher card session kept.
+        let same = try signedInHarness(card: "TESTid00000000000000000000000001", account: nil,
+                                       login: FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken)))
+        try serveExchange(same, token: "SAME-TOKEN")
+        try await same.session().savePassword("synthetic-pw-991", account: "99100991")
+        XCTAssertEqual(try same.vault.account(), SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        XCTAssertEqual(try same.vault.ecyktSession()?.token, "SAME-TOKEN")
+    }
+}

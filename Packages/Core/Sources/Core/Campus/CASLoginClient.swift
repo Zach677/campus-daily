@@ -14,6 +14,9 @@ public enum SchoolLoginFailure: Error, Sendable, Equatable {
     /// The password was sent and no answer came back (timeout, lost connection, cancelled).
     /// The school may have counted it as an attempt, so automatic logins hold off for a while.
     case noAnswer
+    /// Saving a password for an account other than the signed-in one: nothing was saved and
+    /// nobody was switched (signing out comes first).
+    case differentAccount
 }
 
 /// Account/password sign-in, for tests and the session (the real one is `CASLoginClient`).

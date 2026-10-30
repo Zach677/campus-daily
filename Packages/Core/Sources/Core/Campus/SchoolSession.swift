@@ -46,6 +46,28 @@ public struct SchoolReading: Sendable, Equatable {
 public struct SignInSummary: Sendable, Equatable {
     public var cardholder: String
     public var residence: PortalResidence?
+    /// A different person than the one signed in before: the old dorm, meter and saved
+    /// account were cleared first (the app clears its own per-person data too).
+    public var switchedAccount: Bool
+    public init(cardholder: String, residence: PortalResidence?, switchedAccount: Bool = false) {
+        self.cardholder = cardholder; self.residence = residence; self.switchedAccount = switchedAccount
+    }
+}
+
+/// Who is signed in: the card's stable `custunionid` and, after a form login, the account.
+struct SignedInPerson: Sendable, Equatable {
+    var cardUnionID: String?
+    var account: String?
+
+    enum Match: Sendable, Equatable { case same, different, unknown }
+
+    /// The card decides when both sides have one; else the account; else nobody can tell.
+    static func match(_ before: SignedInPerson?, cardUnionID: String?, account: String?) -> Match {
+        guard let before else { return .unknown }
+        if let a = before.cardUnionID, let b = cardUnionID { return a == b ? .same : .different }
+        if let a = before.account, let b = account { return a == b ? .same : .different }
+        return .unknown
+    }
 }
 
 /// Runs the school session: liveness, silent re-exchange, refresh, electricity resolution,
@@ -75,23 +97,40 @@ public actor SchoolSession {
     /// Throws `SchoolLoginFailure` for the login itself, `ServiceError` for the steps after it.
     public func signIn(account: String, password: String, savePassword: Bool) async throws -> SignInSummary {
         let started = signOutGeneration
+        let before = signedInPerson()
         let token = try await passwordLoginOnce(account: account, password: password)
         try ensureSignedIn(since: started)
-        let summary = try await signIn(portalToken: token)
+        let summary = try await signIn(portalToken: token, account: account, before: before)
         try ensureSignedIn(since: started)
         try vault.saveAccount(SchoolAccount(account: account, password: savePassword ? password : nil))
         return summary
     }
 
-    /// Settings › 学校账号 › 保存密码: checks the password with one login before keeping it.
-    /// The account is the signed-in one when known.
+    /// Settings › 学校账号 › 保存密码 / 重新输入密码: checks the password with one login before
+    /// keeping it. It never switches person: an account other than the signed-in one is refused
+    /// (`differentAccount`) without a login when the account is known, and after a web sign-in
+    /// (account unknown) the login's card must be the signed-in card. A saved password clears
+    /// any pause.
     public func savePassword(_ password: String, account given: String? = nil) async throws {
-        guard let account = given ?? ((try? vault.account()) ?? nil)?.account, !account.isEmpty else {
+        let stored = (try? vault.account()) ?? nil
+        if let known = stored?.account, let given, given != known { throw SchoolLoginFailure.differentAccount }
+        guard let account = given ?? stored?.account, !account.isEmpty else {
             throw SchoolLoginFailure.wrongCredentials
         }
         let started = signOutGeneration
+        let before = signedInPerson()
         let token = try await passwordLoginOnce(account: account, password: password)
         try ensureSignedIn(since: started)
+        if stored?.account == nil, let current = (try? vault.ecyktSession()) ?? nil {
+            // Web sign-in: only the card says whose login this was.
+            let session = try await exchangeSession(portalToken: token, userAgent: current.userAgent, previous: current)
+            let (card, updated) = try await liveCard(session)
+            try ensureSignedIn(since: started)
+            guard SignedInPerson.match(before, cardUnionID: card.unionID, account: nil) == .same else {
+                throw SchoolLoginFailure.differentAccount
+            }
+            try vault.saveEcyktSession(updated)
+        }
         try vault.savePortalToken(token)
         try vault.saveAccount(SchoolAccount(account: account, password: password))
     }
@@ -104,6 +143,23 @@ public actor SchoolSession {
 
     /// The signed-in account (nil after a web sign-in, which never tells us the account).
     public func account() -> SchoolAccount? { (try? vault.account()) ?? nil }
+
+    /// The person signed in now, or nil when nobody is.
+    private func signedInPerson() -> SignedInPerson? {
+        let session = (try? vault.ecyktSession()) ?? nil
+        let account = (try? vault.account()) ?? nil
+        guard session != nil || account != nil else { return nil }
+        return SignedInPerson(cardUnionID: session?.cardUnionID, account: account?.account)
+    }
+
+    /// A different person signed in: drop the previous one's dorm, meter, saved account and
+    /// tokens before the new ones are written. The login device id stays (same phone).
+    private func clearPreviousPerson() throws {
+        try vault.savePortalToken(nil)
+        try vault.saveEcyktSession(nil)
+        try vault.saveProfile(nil)
+        try vault.saveAccount(nil)
+    }
 
     private func passwordLoginOnce(account: String, password: String) async throws -> PortalToken {
         guard let passwordLogin else { throw SchoolLoginFailure.cannotLoginDirectly }
@@ -123,20 +179,31 @@ public actor SchoolSession {
     /// Native path after the CAS WebView produced the portal token: dorm address, ticket,
     /// ecykt exchange, bound card. Saves everything on success.
     public func signIn(portalToken: PortalToken, userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {
+        try await signIn(portalToken: portalToken, account: nil, before: signedInPerson(), userAgent: userAgent)
+    }
+
+    /// A different person clears the previous one's data first. When the dorm address can't be
+    /// read, the old dorm and meter are kept only if the card shows it is the same person.
+    private func signIn(portalToken: PortalToken, account: String?, before: SignedInPerson?,
+                        userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {
         let started = signOutGeneration
         let residence = try? await portal.myInfo(portalToken)
         let session = try await exchangeSession(portalToken: portalToken, userAgent: userAgent, previous: nil)
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
+        let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: account)
+        if match == .different { try clearPreviousPerson() }
         try vault.savePortalToken(portalToken)
         try vault.saveEcyktSession(updated)
         var profile = (try? vault.profile()) ?? SchoolProfile()
         if let residence {
             if profile.residence?.address != residence.address { profile.meter = nil }
             profile.residence = residence
+        } else if match != .same {
+            profile = SchoolProfile()
         }
         try vault.saveProfile(profile)
-        return SignInSummary(cardholder: card.displayName, residence: residence)
+        return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: match == .different)
     }
 
     /// Fallback while the ticket exchange is uncaptured: adopt the
@@ -152,8 +219,11 @@ public actor SchoolSession {
         let session = EcyktSession(token: token, syscustid: sys, custid: root["custInfo"]?["custid"]?.text,
                                    cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: userAgent)
         let started = signOutGeneration
+        let before = signedInPerson()
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
+        let switched = SignedInPerson.match(before, cardUnionID: card.unionID, account: nil) == .different
+        if switched { try clearPreviousPerson() }
         // The web page never tells us the account, so a saved password may belong to someone else.
         try vault.saveAccount(nil)
         if let portalToken { try vault.savePortalToken(portalToken) }
@@ -167,7 +237,7 @@ public actor SchoolSession {
             profile.residence = r
             try vault.saveProfile(profile)
         }
-        return SignInSummary(cardholder: card.displayName, residence: residence)
+        return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: switched)
     }
 
     public func signOut() throws {

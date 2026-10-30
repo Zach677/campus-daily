@@ -8,6 +8,9 @@ enum SchoolLoginText {
     static let webLogin = "用学校网页登录"
     static let saveTitle = "保存密码，让小组件自动刷新"
     static let saveNote = "密码只存在这台 iPhone 的钥匙串里，不会上传。不保存的话，过几个小时小组件就要打开 App 才能更新。"
+    /// B2: saving a password for an account other than the signed-in one (alert title + message).
+    static let differentAccountTitle = "这不是现在登录的账号，没保存。"
+    static let differentAccountMessage = "要换账号，先退出登录。"
 
     /// Anything other than the two login answers (network, storage, the card steps after login).
     static func text(_ error: Error) -> String {
@@ -15,6 +18,7 @@ enum SchoolLoginText {
         case .wrongCredentials?: return wrong
         case .cannotLoginDirectly?: return cannotDirect
         case .offline?, .noAnswer?: return ServiceError.offline.userMessage
+        case .differentAccount?: return differentAccountTitle + differentAccountMessage
         case nil: return AppErrorText.text(error)
         }
     }
