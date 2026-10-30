@@ -1,13 +1,5 @@
 import Foundation
 
-/// Key/value preferences (UserDefaults in the app, a dictionary in tests).
-public protocol PreferenceStorage: AnyObject {
-    func object(forKey key: String) -> Any?
-    func set(_ value: Any?, forKey key: String)
-}
-
-extension UserDefaults: PreferenceStorage {}
-
 /// 「学校洗衣机」: whether the dorm uses the school's U净 washers. Off hides laundry everywhere
 /// (home, reminders, Live Activity, quick setup) but keeps the U净 login and saved machines, so
 /// turning it back on restores everything at once.
