@@ -37,7 +37,8 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     Shower/           lxt6 signed client and signing, BLE frame codec, ShowerEngine + reducer, onboarding, platform profile,
                       ShowerVault + store
     Laundry/          U净 client, order/payment rules, LaundryEngine + reducer, LaundryVault + store, 学校洗衣机 switch
-    Snapshot/         the home snapshot ("latest data") and reminder lines shared with the widget, and their store
+    Snapshot/         the home snapshot ("latest data") and reminder lines shared with the widget, their store,
+                      and the refresher (the only writer of the snapshot)
     Networking/       HTTPClient protocol + URLSession implementation, envelopes, redacting logger
     Storage/          generic Keychain and UserDefaults access only: SecureStore, StoreKey, SharedKeychain
                       (access group shared with the widget), PreferenceStorage, StorageError
@@ -58,6 +59,9 @@ Widget ─→ Shared ──→ Core
 Core: Campus / Shower / Laundry ──→ Networking, Storage, Common
       Snapshot ──→ Campus (balances, electricity), Storage
 ```
+
+Campus never references Snapshot: `SchoolSession.refresh` returns a `SchoolReading` and the
+Snapshot refresher reduces it into the shared snapshot.
 
 - Core imports only Foundation, CryptoKit, Security and os: no SwiftUI, UIKit, WidgetKit,
   ActivityKit or CoreBluetooth. Bluetooth is implemented in `App/Services/Bluetooth` behind the
@@ -181,10 +185,11 @@ Facts the design relies on (from the read-only captures):
   `timestamp`. Do not call it on every refresh (token sprawl); only when building a recharge web
   session (and then use the **fresh** token for `logintoken`, not the old one).
 
-**Refresh algorithm (`SchoolSession.refresh()`, foreground and BG task):**
+**Refresh algorithm (`SnapshotRefresher.refresh()` → `SchoolSession.refresh()`, foreground and BG task):**
 
 1. `boundCards` (liveness check). `code:-1` → `sessionExpired(.ecykt)`; go to step 4.
-2. On success: `balance`, and `meters(nodeID: savedMeterNode)` in parallel. Store snapshot.
+2. On success: `balance`, and `meters(nodeID: savedMeterNode)` in parallel. The session returns
+   what it read; the refresher reduces it into the snapshot and stores it.
 3. Done. Card/power failures are recorded per tile; a liveness failure marks **all** school tiles
    with a "重新登录" state even if old values are shown (values keep their `fetchedAt`).
 4. Silent re-exchange (only when not running in background): if a portal token exists,

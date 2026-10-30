@@ -12,7 +12,12 @@ struct Harness {
     func session() -> SchoolSession {
         let http = server.makeClient()
         return SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http), vault: vault,
-                             snapshots: snapshots, now: clock.function)
+                             now: clock.function)
+    }
+
+    /// The refresher over this harness's session and shared store.
+    func refresher() -> SnapshotRefresher {
+        SnapshotRefresher(school: session(), store: snapshots, now: clock.function)
     }
 
     func signedIn(portal: Bool = false, meter: MeterBinding? = nil, residence: String = "星湖校区9栋9号1层199房") throws {
@@ -34,7 +39,7 @@ final class SchoolRefreshTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-ok")
         try h.server.serve("ecykt/electric-getMeterStatus-room", matchBody: ["server", "buildingID"])
-        let report = await h.session().refresh(inBackground: true)
+        let report = await h.refresher().refresh(inBackground: true)
         XCTAssertEqual(report.outcome, .ok)
         XCTAssertEqual(report.snapshot.card.value, Money(fen: 790))
         XCTAssertEqual(report.snapshot.card.fetchedAt, h.clock.now)
@@ -65,7 +70,7 @@ final class SchoolRefreshTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-badToken")
         try h.server.serve("ecykt/getUserBalance-ok")
 
-        let report = await h.session().refresh(inBackground: true)
+        let report = await h.refresher().refresh(inBackground: true)
         XCTAssertEqual(report.outcome, .needsLogin(.sessionExpired(.ecykt)))
         XCTAssertTrue(report.snapshot.needsLogin)
         XCTAssertEqual(report.snapshot.card.value, Money(fen: 790))
@@ -85,7 +90,7 @@ final class SchoolRefreshTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-ok")
 
-        let report = await h.session().refresh(inBackground: false)
+        let report = await h.refresher().refresh(inBackground: false)
         XCTAssertEqual(report.outcome, .ok)
         XCTAssertTrue(report.reexchanged)
         XCTAssertFalse(report.snapshot.needsLogin)
@@ -103,7 +108,7 @@ final class SchoolRefreshTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-badToken")
         h.server.serve(try T.eCardWithTicket())
         h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "STILL-DEAD"))
-        let report = await h.session().refresh(inBackground: false)
+        let report = await h.refresher().refresh(inBackground: false)
         XCTAssertEqual(report.outcome, .needsLogin(.sessionExpired(.ecykt)))
         XCTAssertEqual(h.livenessCalls(), 2)
         XCTAssertEqual(h.server.requests(path: "/getMyECard").count, 1)
@@ -115,7 +120,7 @@ final class SchoolRefreshTests: XCTestCase {
         try h.signedIn(portal: true)
         try h.server.serve("ecykt/getSysBindCustInfo-badToken")
         h.server.serve(try FixtureLoader.load("portal/getMyInfo-badtoken").withURLPath("/portal-api/v2/personalData/getMyECard"))
-        let report = await h.session().refresh(inBackground: false)
+        let report = await h.refresher().refresh(inBackground: false)
         XCTAssertEqual(report.outcome, .needsLogin(.sessionExpired(.portal)))
         XCTAssertTrue(h.server.requests(path: "/csalogintoken/450010").isEmpty)
     }
@@ -125,7 +130,7 @@ final class SchoolRefreshTests: XCTestCase {
         try h.signedIn()
         try h.snapshots.saveSnapshot(SchoolSnapshotReducer.reduce(.empty, .balance(.success(Money(fen: 5)), at: h.clock.now)))
         h.server.fail("POST", "https://ecykt.gdbtu.edu.cn/ykt-mini/api/customer/getSysBindCustInfo", with: .notConnectedToInternet)
-        let report = await h.session().refresh(inBackground: false)
+        let report = await h.refresher().refresh(inBackground: false)
         XCTAssertEqual(report.outcome, .failed(.offline))
         XCTAssertFalse(report.snapshot.needsLogin)
         XCTAssertEqual(report.snapshot.card.value, Money(fen: 5))
@@ -139,16 +144,33 @@ final class SchoolRefreshTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-missingCustid")
         try h.server.serve("ecykt/electric-getMeterStatus-unknownBuilding")
-        let report = await h.session().refresh(inBackground: true)
+        let report = await h.refresher().refresh(inBackground: true)
         XCTAssertEqual(report.outcome, .ok)
         XCTAssertEqual(report.snapshot.card.error, .badRequest(.ecykt))
         XCTAssertTrue(report.snapshot.power.notFound)
         XCTAssertNil(report.snapshot.power.error)
     }
 
+    /// Campus only reports what it read; the shared snapshot is written by the refresher alone.
+    func testSchoolSessionNeverWritesTheSharedSnapshot() async throws {
+        let h = Harness()
+        try h.signedIn(meter: Harness.roomBinding)
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        try h.server.serve("ecykt/electric-getMeterStatus-room", matchBody: ["server", "buildingID"])
+        let reading = await h.session().refresh(inBackground: true)
+        XCTAssertEqual(reading.outcome, .ok)
+        XCTAssertEqual(reading.balance, .success(Money(fen: 790)))
+        XCTAssertEqual(reading.roomLabel, "9栋 199")
+        XCTAssertEqual(reading.checkedAt, h.clock.now)
+        XCTAssertNil(try h.store.read(.sharedSnapshot))
+        try await h.session().signOut()
+        XCTAssertNil(try h.store.read(.sharedSnapshot))
+    }
+
     func testNotSignedIn() async throws {
         let h = Harness()
-        let report = await h.session().refresh(inBackground: false)
+        let report = await h.refresher().refresh(inBackground: false)
         XCTAssertEqual(report.outcome, .notSignedIn)
         XCTAssertTrue(h.server.requests.isEmpty)
     }

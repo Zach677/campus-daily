@@ -26,6 +26,7 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var powerMatchIssue: String?
     private var lastRefresh: Date?
     private let session = AppEnvironment.school
+    private let refresher = AppEnvironment.refresher
 
     init() { reload() }
 
@@ -33,7 +34,7 @@ struct PowerChoice: Identifiable, Equatable {
     func reload() {
         configured = ((try? AppEnvironment.schoolVault.ecyktSession()) ?? nil) != nil
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
-        snapshot = ((try? AppEnvironment.snapshots.loadSnapshot()) ?? nil) ?? .empty
+        snapshot = refresher.latest()
     }
 
     var address: DormAddress? { profile?.residence?.address }
@@ -53,7 +54,7 @@ struct PowerChoice: Identifiable, Equatable {
         guard configured, !loading else { return }
         if !force, let lastRefresh, Date().timeIntervalSince(lastRefresh) < 60 { return }
         loading = true; defer { loading = false }
-        let report = await session.refresh(inBackground:inBackground)
+        let report = await refresher.refresh(inBackground:inBackground)
         snapshot = report.snapshot
         lastRefresh = Date()
         switch report.outcome {
@@ -87,8 +88,8 @@ struct PowerChoice: Identifiable, Equatable {
     }
 
     func signOut() {
-        let session = session
-        Task { try? await session.signOut() }
+        let session = session, refresher = refresher
+        Task { try? await session.signOut(); try? await refresher.clear() }
         configured = false; snapshot = .empty; profile = nil; issue = nil
         powerChoices = []; powerMatchIssue = nil
     }

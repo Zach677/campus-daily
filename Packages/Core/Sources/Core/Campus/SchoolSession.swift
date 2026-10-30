@@ -11,7 +11,9 @@ public enum ElectricityResolution: Sendable, Equatable {
     case noAddress
 }
 
-public struct RefreshReport: Sendable, Equatable {
+/// What one school read found. Campus only reports; the snapshot refresher turns this into
+/// the shared home snapshot.
+public struct SchoolReading: Sendable, Equatable {
     public enum Outcome: Sendable, Equatable {
         case ok
         /// The user must sign in again (ecykt dead and no silent re-exchange possible/working).
@@ -21,9 +23,24 @@ public struct RefreshReport: Sendable, Equatable {
         case notSignedIn
     }
     public var outcome: Outcome
-    public var snapshot: HomeSnapshot
+    /// When the liveness check answered (or failed).
+    public var checkedAt: Date
+    /// Balance read; nil when it was not attempted.
+    public var balance: Result<Money, ServiceError>?
+    /// Room meter read; nil when no meter is bound or it was not attempted.
+    /// `.success(nil)` = no meter at the saved node.
+    public var meter: Result<Meter?, ServiceError>?
+    public var roomLabel: String?
+    /// When balance and meter answered.
+    public var readAt: Date?
     public var reexchanged: Bool
-    public var snapshotSaved: Bool
+
+    public init(outcome: Outcome, checkedAt: Date, balance: Result<Money, ServiceError>? = nil,
+                meter: Result<Meter?, ServiceError>? = nil, roomLabel: String? = nil, readAt: Date? = nil,
+                reexchanged: Bool = false) {
+        self.outcome = outcome; self.checkedAt = checkedAt; self.balance = balance; self.meter = meter
+        self.roomLabel = roomLabel; self.readAt = readAt; self.reexchanged = reexchanged
+    }
 }
 
 public struct SignInSummary: Sendable, Equatable {
@@ -32,19 +49,19 @@ public struct SignInSummary: Sendable, Equatable {
 }
 
 /// Runs the school session: liveness, silent re-exchange, refresh, electricity resolution,
-/// recharge web sessions. Persists through `SchoolVault` / `SnapshotStoring`.
+/// recharge web sessions. Persists credentials through `SchoolVault`; it never writes the home
+/// snapshot (that is the snapshot refresher's job).
 public actor SchoolSession {
     let portal: PortalClient
     let ecykt: EcyktClient
     let vault: SchoolVault
-    let snapshots: SnapshotStoring
     let now: @Sendable () -> Date
     /// Upper bound on directory calls when locating the room node.
     static let maxDirectoryCalls = 40
 
-    public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, snapshots: SnapshotStoring,
+    public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault,
                 now: @escaping @Sendable () -> Date = Date.init) {
-        self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.snapshots = snapshots; self.now = now
+        self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.now = now
     }
 
     // MARK: Sign-in
@@ -96,22 +113,15 @@ public actor SchoolSession {
         try vault.savePortalToken(nil)
         try vault.saveEcyktSession(nil)
         try vault.saveProfile(nil)
-        try snapshots.saveSnapshot(.empty)
     }
 
     // MARK: Refresh
 
     /// Liveness (`getSysBindCustInfo`), at most one silent re-exchange (foreground only),
     /// then balance + meter in parallel. Never calls `loginBySysId`.
-    public func refresh(inBackground: Bool) async -> RefreshReport {
-        var snapshot = ((try? snapshots.loadSnapshot()) ?? nil) ?? .empty
-        func finish(_ outcome: RefreshReport.Outcome, reexchanged: Bool) -> RefreshReport {
-            let saved = (try? snapshots.saveSnapshot(snapshot)) != nil
-            return RefreshReport(outcome: outcome, snapshot: snapshot, reexchanged: reexchanged, snapshotSaved: saved)
-        }
+    public func refresh(inBackground: Bool) async -> SchoolReading {
         guard let stored = (try? vault.ecyktSession()) ?? nil else {
-            snapshot = SchoolSnapshotReducer.reduce(snapshot, .sessionExpired(.sessionExpired(.ecykt), at: now()))
-            return finish(.notSignedIn, reexchanged: false)
+            return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
 
         var reexchanged = false
@@ -120,48 +130,34 @@ public actor SchoolSession {
             live = try await liveCard(stored)
         } catch let e as ServiceError where e.isSessionExpired {
             guard !inBackground, let portalToken = (try? vault.portalToken()) ?? nil else {
-                snapshot = SchoolSnapshotReducer.reduce(snapshot, .sessionExpired(e, at: now()))
-                return finish(.needsLogin(e), reexchanged: false)
+                return SchoolReading(outcome: .needsLogin(e), checkedAt: now())
             }
             do {
                 reexchanged = true
                 let fresh = try await exchangeSession(portalToken: portalToken, userAgent: stored.userAgent, previous: stored)
                 live = try await liveCard(fresh)
-            } catch let e2 as ServiceError {
-                if e2.isSessionExpired {
-                    snapshot = SchoolSnapshotReducer.reduce(snapshot, .sessionExpired(e2, at: now()))
-                    return finish(.needsLogin(e2), reexchanged: true)
-                }
-                // Re-exchange failed for another reason: the ecykt login is still known dead.
-                snapshot = SchoolSnapshotReducer.reduce(snapshot, .sessionExpired(e, at: now()))
-                return finish(.needsLogin(e), reexchanged: true)
+            } catch let e2 as ServiceError where e2.isSessionExpired {
+                return SchoolReading(outcome: .needsLogin(e2), checkedAt: now(), reexchanged: true)
             } catch {
-                snapshot = SchoolSnapshotReducer.reduce(snapshot, .sessionExpired(e, at: now()))
-                return finish(.needsLogin(e), reexchanged: true)
+                // Re-exchange failed for another reason: the ecykt login is still known dead.
+                return SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true)
             }
         } catch let e as ServiceError {
-            snapshot = SchoolSnapshotReducer.reduce(snapshot, .livenessFailed(e, at: now()))
-            return finish(.failed(e), reexchanged: false)
+            return SchoolReading(outcome: .failed(e), checkedAt: now())
         } catch {
-            let e = ServiceError.offline
-            snapshot = SchoolSnapshotReducer.reduce(snapshot, .livenessFailed(e, at: now()))
-            return finish(.failed(e), reexchanged: false)
+            return SchoolReading(outcome: .failed(.offline), checkedAt: now())
         }
 
         let (card, session) = live
         try? vault.saveEcyktSession(session)
-        snapshot = SchoolSnapshotReducer.reduce(snapshot, .livenessOK(at: now()))
+        let checkedAt = now()
 
         let binding = ((try? vault.profile()) ?? nil)?.meter
         async let balanceResult = capture { try await self.ecykt.balance(session, custid: card.custid) }
         async let meterResult = readMeter(session, binding: binding)
         let (b, m) = await (balanceResult, meterResult)
-        snapshot = SchoolSnapshotReducer.reduce(snapshot, .balance(b, at: now()))
-        if let m {
-            snapshot = SchoolSnapshotReducer.reduce(snapshot, .meter(m, at: now()))
-            snapshot = SchoolSnapshotReducer.reduce(snapshot, .roomLabel(binding?.label))
-        }
-        return finish(.ok, reexchanged: reexchanged)
+        return SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
+                             roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged)
     }
 
     // MARK: Electricity

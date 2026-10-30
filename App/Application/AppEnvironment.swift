@@ -3,7 +3,8 @@ import Security
 import WidgetKit
 import Core
 
-/// Composition root: one Keychain store, one HTTP client per service family, the school session.
+/// Composition root: one Keychain store, one HTTP client per service family, the school session
+/// and the snapshot refresher (the only writer of the widget-shared snapshot).
 /// The hot-water and laundry engines are built by their models (they depend on the binding / login).
 enum AppEnvironment {
     static let store: SecureStore = SharedKeychain.store
@@ -15,12 +16,13 @@ enum AppEnvironment {
     static let schoolVault = StoredSchoolVault(store:store)
     static let waterVault = StoredShowerVault(store:store)
     static let laundryVault = StoredLaundryVault(store:store)
-    static let snapshots = SharedSnapshotStore(store:store) {
+    private static let snapshots = SharedSnapshotStore(store:store) {
         WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind)
     }
 
     static let school = SchoolSession(portal:PortalClient(http:schoolHTTP), ecykt:EcyktClient(http:schoolHTTP),
-                                      vault:schoolVault, snapshots:snapshots)
+                                      vault:schoolVault)
+    static let refresher = SnapshotRefresher(school:school, store:snapshots)
 
     static var userAgent: String {
         let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "dev"
