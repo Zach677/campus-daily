@@ -84,7 +84,7 @@ final class RecentFeedTests: XCTestCase {
     /// the app's (it knows the minutes).
     func testTheSameShowerAppearsOnceAsTheAppsRecord() {
         let card = [record("20261030", "080500", "蓝牙热水(中卡)热水POS01", "1.32"),
-                    record("20261030", "074000", "POS消费(示例饭堂POS)01档口示例面馆", "6.8")]
+                    record("20261030", "074000", "POS消费(示例饭堂POS)01档口示例面馆", "5.4")]
         let shower = AppActivity(id: "s1", kind: .shower(minutes: 11), date: moment(30, 8, 2), amount: Money(fen: 132))
         let items = RecentFeed.items(card: card, app: [shower])
         XCTAssertEqual(items.map(\.title), ["热水 · 11 分钟", "食堂"])
