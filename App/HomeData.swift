@@ -167,7 +167,8 @@ extension HomeData {
 
         let stage = model.stage
         if !model.configured { water = .unconfigured }
-        else if let stage, stage.mayClose, let start = model.sessionStarted { water = model.busy ? .settling(start) : .showering(start) }
+        // Only a confirmed .active is 洗澡中; an unconfirmed authorization write shows as 待核对 (finish stays on the water page).
+        else if stage == .active, let start = model.sessionStarted { water = model.busy ? .settling(start) : .showering(start) }
         else if model.busy && (stage == nil || stage == .settled) { water = .starting }
         else if let stage, stage != .settled {
             water = .unresolved(stage == .closeWritePending || stage == .settlementPending ? "上次结算还没确认" : stage.label)

@@ -88,7 +88,8 @@ struct HomeView: View {
         .sheet(isPresented:$settings) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
         .fullScreenCover(item:$onboarding, onDismiss:{ didSeeQuickSetup = true }) { request in
             // .id: a new request must reset the cover's @State (step), not reuse it.
-            let cover = OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id)
+            // Own device chooser: a sheet from the home root can't show above this cover.
+            let cover = OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id).waterDevicePicker()
             #if DEBUG
             cover.onOpenURL { handleDemo($0) }
             #else

@@ -11,7 +11,7 @@ import WaterCore
     private var activity: Activity<ShowerActivityAttributes>?
     private init() {
         // Reuse an activity left over from a previous launch; drop any duplicates.
-        let existing = Activity<ShowerActivityAttributes>.activities
+        let existing = Activity<ShowerActivityAttributes>.activities.filter { $0.activityState == .active }
         activity = existing.first
         for extra in existing.dropFirst() { Task { await extra.end(nil, dismissalPolicy:.immediate) } }
     }

@@ -13,7 +13,9 @@ private enum ShowerStyle {
         return formatter.string(from:date)
     }
     /// Only ever called with a server-confirmed amount.
-    static func yuan(_ value: Decimal) -> String { "¥" + value.formatted(.number.precision(.fractionLength(2)).grouping(.never)) }
+    static func yuan(_ value: Decimal) -> String {
+        "¥" + value.formatted(.number.precision(.fractionLength(2)).grouping(.never).locale(Locale(identifier:"en_US_POSIX")))
+    }
 }
 
 private typealias ShowerState = ShowerActivityAttributes.ContentState

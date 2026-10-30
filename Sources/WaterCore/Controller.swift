@@ -12,6 +12,33 @@ extension WaterTransport {
     }
 }
 
+/// One pending transport step at a time. Each wait reserves a token; late timers and cancel handlers
+/// pass their token and can only finish the wait they were created for, never the next step.
+@MainActor public final class WaterWaitSlot {
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var generation = 0
+    public init() {}
+    public var isWaiting: Bool { continuation != nil }
+    /// Start a new wait generation; any older token becomes stale.
+    public func reserve() -> Int { generation &+= 1; return generation }
+    /// Attach the continuation for `token`. A stale token (superseded before attaching) is interrupted at once.
+    public func attach(_ continuation: CheckedContinuation<Void, Error>, token: Int) {
+        guard token == generation, self.continuation == nil else {
+            continuation.resume(throwing: WaterError.interrupted); return
+        }
+        self.continuation = continuation
+    }
+    /// Whether a completion carrying `token` (nil = current step, from a device callback) may act.
+    public func accepts(_ token: Int?) -> Bool { token == nil || token == generation }
+    /// Finish the current wait if `token` still matches. Returns whether a continuation was resumed.
+    @discardableResult public func complete(_ result: Result<Void, Error>, token: Int? = nil) -> Bool {
+        guard accepts(token), let continuation else { return false }
+        self.continuation = nil
+        continuation.resume(with: result)
+        return true
+    }
+}
+
 public enum WaterTargetSelection {
     public static func select(_ candidates: [String], required: String?, preferred: String?) throws -> String {
         let ids = Set(candidates)

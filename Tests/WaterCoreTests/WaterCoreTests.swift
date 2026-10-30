@@ -428,6 +428,65 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
     }
 }
 
+/// Item 9: a late timer or cancel handler from one BLE step must never finish the next step.
+@Suite @MainActor struct WaitSlotTests {
+    @MainActor final class Outcome { var value: Result<Void, Error>? }
+    private func waitTask(_ slot: WaterWaitSlot, token: Int, into outcome: Outcome) -> Task<Void, Never> {
+        Task { @MainActor in
+            do { try await withCheckedThrowingContinuation { slot.attach($0, token: token) }; outcome.value = .success(()) }
+            catch { outcome.value = .failure(error) }
+        }
+    }
+    private func settle(_ slot: WaterWaitSlot, _ outcome: Outcome) async {
+        while slot.isWaiting == false && outcome.value == nil { await Task.yield() }
+    }
+    @Test func staleTimerCannotFinishNextStep() async throws {
+        let slot = WaterWaitSlot()
+        let first = slot.reserve(), firstOutcome = Outcome()
+        let one = waitTask(slot, token: first, into: firstOutcome)
+        await settle(slot, firstOutcome)
+        #expect(slot.complete(.success(())))              // device callback finishes step 1
+        await one.value
+        let second = slot.reserve(), secondOutcome = Outcome()
+        let two = waitTask(slot, token: second, into: secondOutcome)
+        await settle(slot, secondOutcome)
+        // Step 1's timer fires late.
+        #expect(slot.accepts(first) == false)
+        #expect(slot.complete(.failure(WaterError.timedOut), token: first) == false)
+        #expect(slot.isWaiting && secondOutcome.value == nil)
+        #expect(slot.complete(.failure(WaterError.timedOut), token: second))
+        await two.value
+        if case .failure(let error)? = secondOutcome.value { #expect(error as? WaterError == .timedOut) }
+        else { Issue.record("second wait should time out") }
+        if case .success? = firstOutcome.value {} else { Issue.record("first wait should succeed") }
+    }
+    @Test func supersededTokenIsInterruptedOnAttach() async throws {
+        let slot = WaterWaitSlot()
+        let old = slot.reserve()
+        _ = slot.reserve()
+        let outcome = Outcome()
+        await waitTask(slot, token: old, into: outcome).value
+        if case .failure(let error)? = outcome.value { #expect(error as? WaterError == .interrupted) }
+        else { Issue.record("stale attach must be interrupted") }
+        #expect(slot.isWaiting == false)
+    }
+    @Test func completingWithoutWaiterIsHarmless() {
+        let slot = WaterWaitSlot()
+        #expect(slot.complete(.success(())) == false)
+        let token = slot.reserve()
+        #expect(slot.complete(.success(()), token: token) == false)
+    }
+}
+
+@Suite @MainActor struct AccessSessionTests {
+    @Test func defaultClientsShareOneURLSession() {
+        let a = WaterAccessClient(), b = WaterAccessClient()
+        #expect(a.transportSession === b.transportSession)
+        let custom = URLSession(configuration:.ephemeral)
+        #expect(WaterAccessClient(session:custom).transportSession === custom)
+    }
+}
+
 @Suite struct SessionCodingTests {
     @Test func sessionSavedByEarlierVersionStillDecodes() throws {
         let old = #"{"stage":"settled","machineID":"11223344","peripheralID":"owned-device","authorizationID":"001122FF","consumption":"VREiM0Q=","startedAt":700000000,"endedAt":700000600,"receipt":{"payFen":9}}"#

@@ -65,6 +65,16 @@ import WaterCore
         finishFoundIdle = false; problem = false
         refresh()
     }
+    /// Why mayStart is false, as the error a Shortcut or Siri reports. Uses existing messages only.
+    private var startBlocker: Error {
+        if controller?.storageBlocked != false { return WaterError.storage }
+        if !configured { return WaterError.invalidConfig }
+        if platformMissing { return OnboardingError.platform }
+        if schoolClosed { return WaterAccessError(status:403, code:"transactions_not_enabled") }
+        if !(stage == nil || stage == .settled) { return WaterError.unresolved }
+        if busy { return WaterError.busy }
+        return OnboardingError.identity
+    }
     var onboardingSeed: WaterConfig? { config }
     var onboardingProfile: WaterPlatformProfile? {
         if let config, config.access == nil { return WaterPlatformProfile(legacy:config) }
@@ -253,6 +263,8 @@ import WaterCore
         guard !start || (!reviewingIdentity && !residenceReviewRequired) else {throw OnboardingError.identity}
         guard let controller, let config else { throw WaterError.invalidConfig }
         guard config.access == nil else {throw OnboardingError.identity}
+        // UI, Shortcuts and Siri share one start rule (mayStart), including 「本校暂未开放」.
+        if start, !mayStart { throw startBlocker }
         busy = true; problem = false; finishFoundIdle = false; selectionAllowed = allowDeviceSelection
         status = start ? "正在连接并申请授权…" : "正在结束并结算…"
         defer { busy = false; selectionAllowed = false }

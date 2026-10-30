@@ -56,14 +56,18 @@ public struct WaterAccessError: Error, LocalizedError, Sendable {
     public init(session: URLSession? = nil, probeService: Bool? = nil) {
         self.probeService = probeService ?? (session == nil)
         useSharedHealth = session == nil
-        if let session {self.session = session}
-        else {
-            let options = URLSessionConfiguration.ephemeral
-            options.timeoutIntervalForRequest = 20;options.timeoutIntervalForResource = 25
-            options.httpShouldSetCookies = false; options.urlCache = nil
-            self.session = URLSession(configuration:options,delegate:NoRedirect(),delegateQueue:nil)
-        }
+        self.session = session ?? Self.sharedSession
     }
+    /// One session for every default client: a URLSession with a delegate is never released until
+    /// invalidated, so building one per call leaked a session (and its delegate) each time.
+    static let sharedSession: URLSession = {
+        let options = URLSessionConfiguration.ephemeral
+        options.timeoutIntervalForRequest = 20;options.timeoutIntervalForResource = 25
+        options.httpShouldSetCookies = false; options.urlCache = nil
+        return URLSession(configuration:options,delegate:NoRedirect(),delegateQueue:nil)
+    }()
+    /// The session this client sends with (tests only).
+    var transportSession: URLSession { session }
     private func origin() async throws -> String {
         guard probeService else {return Self.base}
         if useSharedHealth, let healthy = Self.healthy, healthy.until > Date() {return healthy.origin}
