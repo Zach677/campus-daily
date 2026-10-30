@@ -8,7 +8,11 @@ public struct PortalToken: Sendable, Equatable, Codable, CustomStringConvertible
     public let value: String
     /// From the token's own `exp` claim; nil when unknown (web login).
     public var expiresAt: Date?
-    public init(_ value: String, expiresAt: Date? = nil) { self.value = value; self.expiresAt = expiresAt }
+    /// When this app got it (set when it is first saved); only for the credential-lifetime log.
+    public var obtainedAt: Date?
+    public init(_ value: String, expiresAt: Date? = nil, obtainedAt: Date? = nil) {
+        self.value = value; self.expiresAt = expiresAt; self.obtainedAt = obtainedAt
+    }
     public var description: String { "PortalToken(<redacted>)" }
     public var debugDescription: String { description }
 }
@@ -86,15 +90,21 @@ public struct EcyktSession: Sendable, Equatable, Codable, CustomStringConvertibl
     public var cardUnionID: String?
     public var areacode: String
     public var userAgent: String
+    /// When this token was minted (exchange or web sign-in), and when the liveness check last
+    /// accepted it. Not secret; only for the credential-lifetime log.
+    public var obtainedAt: Date?
+    public var lastAliveAt: Date?
 
     public init(token: String, syscustid: String, custid: String? = nil, cardUnionID: String? = nil,
-                areacode: String = EcyktSession.defaultAreacode, userAgent: String = EcyktSession.defaultUserAgent) {
+                areacode: String = EcyktSession.defaultAreacode, userAgent: String = EcyktSession.defaultUserAgent,
+                obtainedAt: Date? = nil) {
         self.token = token
         self.syscustid = syscustid
         self.custid = custid
         self.cardUnionID = cardUnionID
         self.areacode = areacode
         self.userAgent = userAgent
+        self.obtainedAt = obtainedAt
     }
 
     public static let defaultAreacode = "450010"

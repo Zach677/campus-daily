@@ -44,7 +44,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
             try serveExchange(h)
             let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: save)
             XCTAssertEqual(summary.cardholder, "测试员")
-            XCTAssertEqual(try h.vault.portalToken(), Self.freshToken, "the expiry is kept with the token")
+            XCTAssertEqual(try h.vault.portalToken(), stamped(Self.freshToken, h), "the expiry is kept with the token")
             XCTAssertEqual(try h.vault.ecyktSession()?.token, "PW-TOKEN")
             XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991", password: save ? "synthetic-pw-991" : nil))
             let visitor = try XCTUnwrap(try h.vault.loginDeviceID())
@@ -106,7 +106,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
             XCTAssertTrue(report.reexchanged)
             XCTAssertEqual(login.calls.count, 1)
             XCTAssertEqual(try h.vault.ecyktSession()?.token, "AFTER-PASSWORD")
-            XCTAssertEqual(try h.vault.portalToken(), Self.freshToken)
+            XCTAssertEqual(try h.vault.portalToken(), stamped(Self.freshToken, h))
             XCTAssertEqual(h.server.requests(path: "/getMyECard").count, 1, "the expired portal token is never sent")
         }
     }
@@ -264,4 +264,9 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertFalse("\(a)".contains("synthetic"))
         XCTAssertNil(SchoolAccount(account: "a", password: "p", paused: true).usablePassword)
     }
+}
+
+/// A portal token as saved: stamped with the time this app got it.
+func stamped(_ token: PortalToken, _ h: Harness) -> PortalToken {
+    PortalToken(token.value, expiresAt: token.expiresAt, obtainedAt: h.clock.now)
 }

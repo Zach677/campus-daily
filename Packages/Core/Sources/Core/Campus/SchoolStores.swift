@@ -5,13 +5,13 @@ public struct StoredSchoolVault: SchoolVault {
     let store: SecureStore
     public init(store: SecureStore) { self.store = store }
 
-    private struct PortalBox: Codable { var token: String; var expiresAt: Date? }
+    private struct PortalBox: Codable { var token: String; var expiresAt: Date?; var obtainedAt: Date? }
 
     public func portalToken() throws -> PortalToken? {
-        try store.readJSON(PortalBox.self, .schoolPortal).map { PortalToken($0.token, expiresAt: $0.expiresAt) }
+        try store.readJSON(PortalBox.self, .schoolPortal).map { PortalToken($0.token, expiresAt: $0.expiresAt, obtainedAt: $0.obtainedAt) }
     }
     public func savePortalToken(_ token: PortalToken?) throws {
-        try store.writeJSON(token.map { PortalBox(token: $0.value, expiresAt: $0.expiresAt) }, .schoolPortal)
+        try store.writeJSON(token.map { PortalBox(token: $0.value, expiresAt: $0.expiresAt, obtainedAt: $0.obtainedAt) }, .schoolPortal)
     }
     public func ecyktSession() throws -> EcyktSession? { try store.readJSON(EcyktSession.self, .schoolEcykt) }
     public func saveEcyktSession(_ session: EcyktSession?) throws { try store.writeJSON(session, .schoolEcykt) }

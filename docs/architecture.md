@@ -198,38 +198,63 @@ Facts the design relies on (from the read-only captures):
   `timestamp`. Do not call it on every refresh (token sprawl); only when building a recharge web
   session (and then use the **fresh** token for `logintoken`, not the old one).
 
-**Refresh algorithm (`SnapshotRefresher.refresh()` → `SchoolSession.refresh()`, foreground and BG task):**
+**Refresh algorithm (`SnapshotRefresher.refresh()` → `SchoolSession.refresh()`; the same in the
+foreground, the BG task and the widget):**
 
 1. `boundCards` (liveness check). `code:-1` → `sessionExpired(.ecykt)`; go to step 4.
 2. On success: `balance`, and `meters(nodeID: savedMeterNode)` in parallel. The session returns
    what it read; the refresher reduces it into the snapshot and stores it.
 3. Done. Card/power failures are recorded per tile; a liveness failure marks **all** school tiles
    with a "重新登录" state even if old values are shown (values keep their `fetchedAt`).
-4. Silent re-exchange (only when not running in background): if a portal token exists and its
-   `exp` (known after a password login) has not passed, `eCardTicketURL` → `exchange` → retry
-   step 1 once. Portal `-1001`/`-1` → `sessionExpired(.portal)` → go to step 5.
+4. Before minting, `mayMint` renews the cross-process lease (lost → stop, write nothing), and the
+   stored session is read again: one the other process stored meanwhile is used instead.
+   Silent re-exchange: if a portal token exists and its `exp` (known after a password login) has
+   not passed, `eCardTicketURL` → `exchange` → retry step 1 once. Portal `-1001`/`-1` →
+   `sessionExpired(.portal)` → go to step 5.
 5. Saved password (foreground or background, only if the user chose to save it and it is not
    paused): one CAS login (`CASLoginClient`), then `eCardTicketURL` → `exchange` → step 1. Any
    failure except no network pauses the saved password (`SchoolAccount.paused`) and the UI asks
    the user to sign in again; it is tried again only after the user signs in or saves a password.
    No loops, no retries beyond one.
+6. The live session (latest ciphertexts, `lastAliveAt`) is written back only while the stored one
+   is still the session this read started from: a sign-out or a newer session from the other
+   process is never overwritten.
 
-**One refresh at a time.** Callers today are pull-to-refresh, the app coming to the foreground,
-the background task, and the refreshes after a state change (sign-in, meter choice, recharge).
-The widget does not refresh: it only reads the stored snapshot and the reminder lines. Within the app process the
-refresher runs one read at a time; a caller arriving while one runs awaits that read and gets
-its report (pull-to-refresh awaits it, so the "updated" time or the failure really shows).
-Exceptions to joining:
-- a foreground caller that joined a background read which ended in `needsLogin` runs one
-  foreground read straight after, because only the foreground may silently re-exchange;
+**Credential lifetime log.** `school.ecykt` carries `obtainedAt` (minted) and `lastAliveAt` (last
+liveness OK); `school.portal` carries `obtainedAt` (first saved). When the liveness check or the
+portal says one is dead, one diagnostic line records only the kind and measured minutes:
+`school.credentialExpired kind=card ageMinutes=152 aliveMinutes=92` / `kind=portal ageMinutes=481`
+(once per credential per process). The app also writes it to the diagnostics file; the widget's
+goes to the system log only.
+
+**One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
+the background task, the refreshes after a state change (sign-in, meter choice, recharge), and
+the widget's timeline. Within a process the refresher runs one read at a time; a caller arriving
+while one runs awaits that read and gets its report (pull-to-refresh awaits it, so the "updated"
+time or the failure really shows). Exceptions to joining:
 - after a state change (`noteChange()`), a caller asking for `includingChanges` does not join a
   read that started before the change: it waits for that read to end, then starts (or joins) a
   read that sees the change;
 - when every caller of a read is cancelled (an expiring background task), the read is cancelled
   and writes nothing.
-`clear()` (sign-out) empties the snapshot and drops any read still running, so a late result
-never writes the old values back. A failed read keeps the last good values and records the
-failure and its time per tile.
+`clear()` (sign-out) empties the snapshot, removes the lease and drops any read still running, so
+a late result never writes the old values back. A failed read keeps the last good values and
+records the failure and its time per tile.
+
+**One writer across two processes.** The app and the widget extension each have one
+`SnapshotRefresher` over one Keychain. They take turns
+through `RefreshLease`, the shared item `shared.refreshLease` = `{owner, expiresAt}`:
+- taken with an atomic create (`SecItemAdd` fails with `errSecDuplicateItem` while one exists), so
+  only one process reads the school (and may mint) at a time; the other waits up to 15 s and then
+  reads, by which time the session is fresh, or gives up and shows the stored snapshot;
+- 60 s long, renewed before minting; a holder that died leaves it to run out, and the next process
+  deletes the stale one (only if it is still the one it saw) and creates its own;
+- a read that lost the lease (it ran out and was taken, or a sign-out removed it) writes nothing;
+- snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
+  dropped, and a "nobody signed in" reading leaves an emptied snapshot empty.
+Residual: the Keychain has no compare-and-delete, so two processes that both find the same lease
+stale within microseconds could both delete and create. The read-back before minting and the
+write-back rule above (step 6) keep that from losing a session; it only costs one extra read.
 
 **Electricity resolution.** The power tree contains apartment levels that the dorm address lacks,
 so do not walk it level by level. Onboarding: call `meters(nodeID: <campus node>)` once (≈2.3k

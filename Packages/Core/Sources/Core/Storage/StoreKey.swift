@@ -16,6 +16,9 @@ public enum StoreKey: String, Sendable, CaseIterable {
     case laundryCheckout = "laundry.checkout"
     case sharedSnapshot = "shared.snapshot"
     case sharedReminderLines = "shared.reminderLines"
+    /// Which process (app or widget) is refreshing the school data right now, until when.
+    /// Holds a random owner id and an expiry only.
+    case sharedRefreshLease = "shared.refreshLease"
 
     public static let servicePrefix = "com.beamjason.xiaorichang."
     public static let account = "default"
@@ -38,7 +41,7 @@ public enum StoreKey: String, Sendable, CaseIterable {
     /// laundry items live only in the app's private group, which the widget is not entitled to.
     public var isShared: Bool {
         switch self {
-        case .sharedSnapshot, .sharedReminderLines, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
+        case .sharedSnapshot, .sharedReminderLines, .sharedRefreshLease, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
             return true
         case .showerBinding, .showerSession, .laundryAccount, .laundryCheckout: return false
         }
@@ -50,6 +53,8 @@ public protocol SecureStore: Sendable {
     func read(_ key: StoreKey) throws -> Data?
     func write(_ data: Data, for key: StoreKey) throws
     func delete(_ key: StoreKey) throws
+    /// Writes only when no item exists, atomically across processes. False = one exists.
+    func create(_ data: Data, for key: StoreKey) throws -> Bool
 }
 
 public extension SecureStore {

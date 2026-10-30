@@ -3,9 +3,10 @@ import Foundation
 import os
 #endif
 
-/// The school read the refresher drives (`SchoolSession` in the app, fakes in tests).
+/// The school read the refresher drives (`SchoolSession` in the app and the widget, fakes in
+/// tests). `mayMint` is asked before a new card session is minted.
 public protocol SchoolReader: Sendable {
-    func refresh(inBackground: Bool) async -> SchoolReading
+    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading
 }
 
 extension SchoolSession: SchoolReader {}
@@ -23,24 +24,32 @@ public struct RefreshReport: Sendable, Equatable {
     }
 }
 
-/// The only writer of the home snapshot the app and the widget read.
+/// The only writer of the home snapshot the app and the widget read: each process has one
+/// refresher, and they take turns through `RefreshLease`.
 ///
 /// Reads the school data, reduces it into the stored snapshot and saves it. Refreshes are
 /// single-flight within this process: a caller that arrives while one is running awaits that
 /// same refresh and gets its report, so a pull-to-refresh during a foreground or background
 /// read still ends with the fresh values (or the recorded failure). A failed read keeps the
-/// last good values. Three exceptions to joining:
-/// - a foreground caller that joined a background read which ended in `needsLogin` runs one
-///   foreground read next (only the foreground may silently renew the school login);
+/// last good values. Two exceptions to joining:
 /// - a caller passing `includingChanges` after `noteChange()` (new login, meter chosen) waits
 ///   for the older read to end and then starts, or joins, a read that sees the change;
 /// - when every caller waiting on a read is cancelled (an expiring background task), the read
 ///   is cancelled and writes nothing.
+///
+/// Across processes: a read runs only while this refresher holds the lease (waiting up to
+/// `leaseWait` for the other process to finish first), renews it before minting, and gives it
+/// back at the end. Writes are ordered: a reading older than the stored snapshot's `checkedAt`
+/// is dropped, so a slow read in one process never overwrites a newer one from the other.
 public actor SnapshotRefresher {
     let school: SchoolReader
     let store: SnapshotStoring
     /// Failures worth a look, by event name only (no values), e.g. the snapshot could not be saved.
     let diagnostic: @Sendable (String) -> Void
+    /// Nil = this process is the only refresher (tests of the in-process rules).
+    let lease: RefreshLease?
+    let leaseWait: TimeInterval
+    let sleep: @Sendable (TimeInterval) async -> Void
 
     private struct Run {
         let id: Int
@@ -63,9 +72,11 @@ public actor SnapshotRefresher {
     private(set) var cancelledWaiters = 0
 
     /// Times come from the school reading (`checkedAt`, `readAt`), so the refresher needs no clock.
-    public init(school: SchoolReader, store: SnapshotStoring,
+    public init(school: SchoolReader, store: SnapshotStoring, lease: RefreshLease? = nil, leaseWait: TimeInterval = 15,
+                sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
-        self.school = school; self.store = store; self.diagnostic = diagnostic
+        self.school = school; self.store = store; self.lease = lease; self.leaseWait = leaseWait; self.sleep = sleep
+        self.diagnostic = diagnostic
     }
 
     public static let osLog: @Sendable (String) -> Void = { event in
@@ -95,11 +106,7 @@ public actor SnapshotRefresher {
         }
         if let run = current {
             joinedCount += 1
-            let report = await wait(for: run.id, run.task)
-            if !inBackground, run.inBackground, case .needsLogin = report.outcome, !Task.isCancelled {
-                return await refresh(inBackground: false, includingChanges: includingChanges)
-            }
-            return report
+            return await wait(for: run.id, run.task)
         }
         nextRunID += 1
         let id = nextRunID
@@ -112,10 +119,13 @@ public actor SnapshotRefresher {
         return await wait(for: id, task)
     }
 
-    /// Signed out: the shared snapshot goes back to empty. A refresh still running is dropped.
+    /// Signed out: the shared snapshot goes back to empty and the lease is removed (whoever
+    /// holds it: the other process's read finds nobody signed in and writes nothing). A refresh
+    /// still running here is dropped.
     public func clear() throws {
         generation += 1
         current = nil
+        try? lease?.clear()
         try store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
     }
 
@@ -143,15 +153,41 @@ public actor SnapshotRefresher {
         if current?.id == id { current = nil }
     }
 
+    /// Takes the lease, waiting up to `leaseWait` while the other process holds it.
+    private func acquireLease(_ lease: RefreshLease) async -> Bool {
+        var waited: TimeInterval = 0
+        while !lease.acquire() {
+            guard waited < leaseWait, !Task.isCancelled else { return false }
+            await sleep(1)
+            waited += 1
+        }
+        return true
+    }
+
     private func run(inBackground: Bool) async -> RefreshReport {
         let started = generation
-        let reading = await school.refresh(inBackground: inBackground)
+        if let lease {
+            guard await acquireLease(lease) else {
+                // The other process is still reading; its result lands in the shared snapshot.
+                diagnostic("snapshot.leaseBusy")
+                return RefreshReport(outcome: .failed(.timedOut), snapshot: latest(), reexchanged: false, snapshotSaved: false)
+            }
+        }
+        defer { lease?.release() }
+        let lease = self.lease
+        let reading = await school.refresh(inBackground: inBackground, mayMint: { lease?.renew() ?? true })
         // Signed out meanwhile, or nobody wants this read any more: write nothing.
         guard started == generation, !Task.isCancelled else {
             let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
             return RefreshReport(outcome: outcome, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
         }
-        let snapshot = Self.apply(reading, to: latest())
+        let stored = latest()
+        // Lost the lease meanwhile (taken over after it ran out, or removed by a sign-out in the
+        // other process), or the other process already wrote a newer reading: write nothing.
+        guard lease?.holds() ?? true, !Self.isOlder(reading, than: stored) else {
+            return RefreshReport(outcome: reading.outcome, snapshot: stored, reexchanged: reading.reexchanged, snapshotSaved: false)
+        }
+        let snapshot = Self.apply(reading, to: stored)
         var saved = true
         do { try store.saveSnapshot(snapshot) } catch {
             saved = false
@@ -160,11 +196,20 @@ public actor SnapshotRefresher {
         return RefreshReport(outcome: reading.outcome, snapshot: snapshot, reexchanged: reading.reexchanged, snapshotSaved: saved)
     }
 
-    /// Pure: the snapshot after one school reading.
+    /// A reading checked before the stored snapshot was: the other process wrote a newer one.
+    public static func isOlder(_ reading: SchoolReading, than snapshot: HomeSnapshot) -> Bool {
+        guard let stored = snapshot.checkedAt else { return false }
+        return reading.checkedAt < stored
+    }
+
+    /// Pure: the snapshot after one school reading. A reading older than the snapshot changes
+    /// nothing; nobody signed in leaves an empty snapshot empty (signed out in the other process).
     public static func apply(_ reading: SchoolReading, to snapshot: HomeSnapshot) -> HomeSnapshot {
+        guard !isOlder(reading, than: snapshot) else { return snapshot }
         var s = snapshot
         switch reading.outcome {
         case .notSignedIn:
+            guard s != .empty else { return s }
             s = SchoolSnapshotReducer.reduce(s, .sessionExpired(.sessionExpired(.ecykt), at: reading.checkedAt))
         case .needsLogin(let e):
             s = SchoolSnapshotReducer.reduce(s, .sessionExpired(e, at: reading.checkedAt))

@@ -7,13 +7,14 @@ struct Harness {
     let store = InMemorySecureStore()
     let clock = FakeClock()
     var passwordLogin: SchoolPasswordLogin? = nil
+    var diagnostic: @Sendable (String) -> Void = { _ in }
     var vault: StoredSchoolVault { StoredSchoolVault(store: store) }
     var snapshots: SharedSnapshotStore { SharedSnapshotStore(store: store) }
 
     func session() -> SchoolSession {
         let http = server.makeClient()
         return SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http), vault: vault,
-                             passwordLogin: passwordLogin, now: clock.function)
+                             passwordLogin: passwordLogin, now: clock.function, diagnostic: diagnostic)
     }
 
     /// The refresher over this harness's session and shared store.
@@ -354,7 +355,7 @@ final class SchoolSignInTests: XCTestCase {
         let summary = try await h.session().signIn(portalToken: PortalToken("PORTAL"))
         XCTAssertEqual(summary.cardholder, "测试员")
         XCTAssertEqual(summary.residence?.address?.meterName, "99栋991")
-        XCTAssertEqual(try h.vault.portalToken(), PortalToken("PORTAL"))
+        XCTAssertEqual(try h.vault.portalToken(), stamped(PortalToken("PORTAL"), h))
         XCTAssertEqual(try h.vault.ecyktSession()?.cardUnionID, "TESTid00000000000000000000000001")
         XCTAssertEqual(try h.vault.profile()?.residence?.raw, "星湖校区99栋9号1层991房")
     }

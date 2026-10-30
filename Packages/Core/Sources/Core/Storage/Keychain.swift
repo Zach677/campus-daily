@@ -117,6 +117,23 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
         guard status == KeychainStatus.success else { throw StorageError(operation: "write \(key.rawValue)", status: status) }
     }
 
+    /// `SecItemAdd` alone: it fails with `errSecDuplicateItem` when the item exists, which the
+    /// Keychain decides atomically for every process sharing the group.
+    public func create(_ data: Data, for key: StoreKey) throws -> Bool {
+        var group = group(for: key)
+        var status = backend.add(service: key.service, account: StoreKey.account, accessGroup: group,
+                                 accessibility: key.accessibility, data: data)
+        if status == KeychainStatus.missingEntitlement, let missing = group {
+            lock.withLock { _ = unavailable.insert(missing) }
+            group = nil
+            status = backend.add(service: key.service, account: StoreKey.account, accessGroup: nil,
+                                 accessibility: key.accessibility, data: data)
+        }
+        if status == KeychainStatus.duplicateItem { return false }
+        guard status == KeychainStatus.success else { throw StorageError(operation: "create \(key.rawValue)", status: status) }
+        return true
+    }
+
     public func delete(_ key: StoreKey) throws {
         var statuses = [backend.delete(service: key.service, account: StoreKey.account, accessGroup: nil)]
         for group in [sharedGroup, privateGroup].compactMap({ $0 }) {
@@ -251,6 +268,15 @@ public final class InMemorySecureStore: SecureStore, @unchecked Sendable {
         try lock.withLock {
             if failing.contains(key) { throw StorageError(operation: "delete \(key.rawValue)", status: -1) }
             items[key] = nil
+        }
+    }
+
+    public func create(_ data: Data, for key: StoreKey) throws -> Bool {
+        try lock.withLock {
+            if failing.contains(key) { throw StorageError(operation: "create \(key.rawValue)", status: -1) }
+            guard items[key] == nil else { return false }
+            items[key] = data
+            return true
         }
     }
 }

@@ -79,6 +79,10 @@ public actor SchoolSession {
     let vault: SchoolVault
     let passwordLogin: SchoolPasswordLogin?
     let now: @Sendable () -> Date
+    /// Event names and measured ages only, never values (the credential-lifetime log).
+    let diagnostic: @Sendable (String) -> Void
+    /// Expiries already logged by this process, so a dead credential read again is logged once.
+    private var loggedExpiries: Set<String> = []
     /// Bumped by `signOut()`. Work that awaited the network checks it before writing the
     /// Keychain, so a sign-out in the middle is never undone by a late write.
     private var signOutGeneration = 0
@@ -86,8 +90,9 @@ public actor SchoolSession {
     static let maxDirectoryCalls = 40
 
     public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, passwordLogin: SchoolPasswordLogin? = nil,
-                now: @escaping @Sendable () -> Date = Date.init) {
+                now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in }) {
         self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
+        self.diagnostic = diagnostic
     }
 
     // MARK: Account and password
@@ -131,7 +136,7 @@ public actor SchoolSession {
             }
             try vault.saveEcyktSession(updated)
         }
-        try vault.savePortalToken(token)
+        try vault.savePortalToken(stamped(token))
         try vault.saveAccount(SchoolAccount(account: account, password: password))
     }
 
@@ -193,7 +198,7 @@ public actor SchoolSession {
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: account)
         if match == .different { try clearPreviousPerson() }
-        try vault.savePortalToken(portalToken)
+        try vault.savePortalToken(stamped(portalToken))
         try vault.saveEcyktSession(updated)
         var profile = (try? vault.profile()) ?? SchoolProfile()
         if let residence {
@@ -217,7 +222,8 @@ public actor SchoolSession {
         }
         let areacode = root["schoolid"]?.text ?? EcyktSession.defaultAreacode
         let session = EcyktSession(token: token, syscustid: sys, custid: root["custInfo"]?["custid"]?.text,
-                                   cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: userAgent)
+                                   cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: userAgent,
+                                   obtainedAt: now())
         let started = signOutGeneration
         let before = signedInPerson()
         let (card, updated) = try await liveCard(session)
@@ -226,7 +232,7 @@ public actor SchoolSession {
         if switched { try clearPreviousPerson() }
         // The web page never tells us the account, so a saved password may belong to someone else.
         try vault.saveAccount(nil)
-        if let portalToken { try vault.savePortalToken(portalToken) }
+        if let portalToken { try vault.savePortalToken(stamped(portalToken)) }
         try vault.saveEcyktSession(updated)
         var residence: PortalResidence?
         if let portalToken, let r = try? await portal.myInfo(portalToken) {
@@ -266,55 +272,61 @@ public actor SchoolSession {
 
     // MARK: Refresh
 
-    /// Liveness (`getSysBindCustInfo`); when the card session is dead, at most one way back in:
-    /// the portal token (foreground only, unless it is known to have expired), else the saved
-    /// password (one login, never retried; any refusal pauses it until the user signs in again).
-    /// Then balance + meter in parallel. Never calls `loginBySysId`.
-    public func refresh(inBackground: Bool) async -> SchoolReading {
+    /// Liveness (`getSysBindCustInfo`); when the card session is dead, at most one way back in,
+    /// the same in the app (foreground or background) and in the widget: the portal token
+    /// (unless it is known to have expired), else the saved password (one login, never retried;
+    /// any refusal pauses it until the user signs in again). Then balance + meter in parallel.
+    /// Never calls `loginBySysId`.
+    ///
+    /// Two processes share the stored session. `mayMint` is asked before minting a new one (the
+    /// refresher renews its cross-process lease there; false = another process took over, so this
+    /// read stops without touching anything). With the lease held, a session another process
+    /// stored meanwhile is used instead of minting. The session is written back only while the
+    /// stored one is still the one this read started from: a sign-out or a newer session from
+    /// the other process is never overwritten.
+    public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true }) async -> SchoolReading {
         guard let stored = (try? vault.ecyktSession()) ?? nil else {
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
         let started = signOutGeneration
 
         var reexchanged = false
+        var base = stored
         var live: (BoundCard, EcyktSession)
         do {
             live = try await liveCard(stored)
         } catch let e as ServiceError where e.isSessionExpired {
-            var lastError = e
-            var recovered: (BoundCard, EcyktSession)?
-            if !inBackground, let portalToken = (try? vault.portalToken()) ?? nil,
-               portalToken.expiresAt.map({ $0 > now() }) ?? true {
-                do {
-                    reexchanged = true
-                    let fresh = try await exchangeSession(portalToken: portalToken, userAgent: stored.userAgent, previous: stored)
-                    recovered = try await liveCard(fresh)
-                } catch let e2 as ServiceError where e2.isSessionExpired {
-                    lastError = e2
-                } catch {
-                    // Re-exchange failed for another reason: the ecykt login is still known dead.
-                    return SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true)
+            logExpired(.card, obtainedAt: stored.obtainedAt, lastAliveAt: stored.lastAliveAt)
+            guard await mayMint() else { return SchoolReading(outcome: .failed(.timedOut), checkedAt: now()) }
+            let current: EcyktSession?
+            do { current = try vault.ecyktSession() } catch { return SchoolReading(outcome: .failed(.offline), checkedAt: now()) }
+            guard let current else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
+            if current.token != stored.token, let found = try? await liveCard(current) {
+                // The other process renewed it while this one was reading: no second mint.
+                base = current
+                live = found
+            } else {
+                switch await renew(stored, firstError: e, since: started) {
+                case .renewed(let found): reexchanged = true; live = found
+                case .stopped(let reading): return reading
                 }
             }
-            if recovered == nil {
-                switch await signInWithSavedPassword(previous: stored, since: started) {
-                case .signedIn(let found): reexchanged = true; recovered = found
-                case .offline: return SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: reexchanged)
-                case .unavailable: break
-                }
-            }
-            guard let recovered else { return SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: reexchanged) }
-            live = recovered
         } catch let e as ServiceError {
             return SchoolReading(outcome: .failed(e), checkedAt: now())
         } catch {
             return SchoolReading(outcome: .failed(.offline), checkedAt: now())
         }
 
-        let (card, session) = live
+        let card = live.0
         guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
-        try? vault.saveEcyktSession(session)
         let checkedAt = now()
+        var alive = live.1
+        alive.lastAliveAt = checkedAt
+        switch writeBack(alive, over: base) {
+        case .signedOut: return SchoolReading(outcome: .notSignedIn, checkedAt: now())
+        case .written, .kept: break
+        }
+        let session = alive
 
         let binding = ((try? vault.profile()) ?? nil)?.meter
         async let balanceResult = capture { try await self.ecykt.balance(session, custid: card.custid) }
@@ -323,6 +335,77 @@ public actor SchoolSession {
         guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         return SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
                              roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged)
+    }
+
+    private enum Renewal { case renewed((BoundCard, EcyktSession)), stopped(SchoolReading) }
+
+    /// The card session is dead: the portal token, else the saved password, once each.
+    private func renew(_ stored: EcyktSession, firstError e: ServiceError, since started: Int) async -> Renewal {
+        var lastError = e
+        var triedPortal = false
+        if let portalToken = (try? vault.portalToken()) ?? nil, portalToken.expiresAt.map({ $0 > now() }) ?? true {
+            triedPortal = true
+            do {
+                let fresh = try await exchangeSession(portalToken: portalToken, userAgent: stored.userAgent, previous: stored)
+                return .renewed(try await liveCard(fresh))
+            } catch let e2 as ServiceError where e2.isSessionExpired {
+                if e2 == .sessionExpired(.portal) {
+                    logExpired(.portal, obtainedAt: portalToken.obtainedAt, lastAliveAt: nil)
+                }
+                lastError = e2
+            } catch {
+                // Re-exchange failed for another reason: the ecykt login is still known dead.
+                return .stopped(SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true))
+            }
+        }
+        switch await signInWithSavedPassword(previous: stored, since: started) {
+        case .signedIn(let found): return .renewed(found)
+        case .offline: return .stopped(SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: triedPortal))
+        case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: triedPortal))
+        }
+    }
+
+    private enum WriteBack { case written, kept, signedOut }
+
+    /// Writes the live session back (latest ciphertexts, `lastAliveAt`) only while the stored
+    /// session is still `base`. Signed out in another process: nothing is written. A newer
+    /// session stored by the other process stays; this read used a live one all the same.
+    private func writeBack(_ session: EcyktSession, over base: EcyktSession) -> WriteBack {
+        let current: EcyktSession?
+        do { current = try vault.ecyktSession() } catch { return .kept }
+        guard let current else { return .signedOut }
+        guard current.token == base.token else { return .kept }
+        try? vault.saveEcyktSession(session)
+        return .written
+    }
+
+    // MARK: Credential lifetime
+
+    enum CredentialKind: String { case card, portal }
+
+    /// One line per dead credential: which kind, minutes since it was obtained, and (card) minutes
+    /// from obtaining it to the last time it was seen alive. Never values.
+    static func expiredEvent(_ kind: CredentialKind, obtainedAt: Date?, lastAliveAt: Date?, now: Date) -> String {
+        func minutes(_ from: Date?, _ to: Date) -> String {
+            from.map { String(max(0, Int(to.timeIntervalSince($0) / 60))) } ?? "unknown"
+        }
+        var line = "school.credentialExpired kind=\(kind.rawValue) ageMinutes=\(minutes(obtainedAt, now))"
+        if kind == .card { line += " aliveMinutes=" + (lastAliveAt.map { minutes(obtainedAt, $0) } ?? "unknown") }
+        return line
+    }
+
+    private func logExpired(_ kind: CredentialKind, obtainedAt: Date?, lastAliveAt: Date?) {
+        // A credential without a stamp (saved by an older build) is logged once per process.
+        let id = kind.rawValue + (obtainedAt.map { "@\($0.timeIntervalSince1970)" } ?? "@unknown")
+        guard loggedExpiries.insert(id).inserted else { return }
+        diagnostic(Self.expiredEvent(kind, obtainedAt: obtainedAt, lastAliveAt: lastAliveAt, now: now()))
+    }
+
+    /// A portal token gets its `obtainedAt` when this app first saves it.
+    private func stamped(_ token: PortalToken) -> PortalToken {
+        var t = token
+        if t.obtainedAt == nil { t.obtainedAt = now() }
+        return t
     }
 
     private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable }
@@ -337,7 +420,7 @@ public actor SchoolSession {
             let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)
             let found = try await liveCard(fresh)
             guard started == signOutGeneration else { return .unavailable }
-            try? vault.savePortalToken(token)
+            try? vault.savePortalToken(stamped(token))
             return .signedIn(found)
         } catch SchoolLoginFailure.offline {
             return .offline
@@ -541,7 +624,7 @@ public actor SchoolSession {
             .queryItems?.first { $0.name == "areacode" }?.value ?? previous?.areacode ?? EcyktSession.defaultAreacode
         let login = try await ecykt.exchange(ticket: ticket, areacode: areacode, userAgent: userAgent)
         return EcyktSession(token: login.token, syscustid: login.syscustid, custid: previous?.custid,
-                            cardUnionID: previous?.cardUnionID, areacode: areacode, userAgent: userAgent)
+                            cardUnionID: previous?.cardUnionID, areacode: areacode, userAgent: userAgent, obtainedAt: now())
     }
 
     nonisolated func readMeter(_ session: EcyktSession, binding: MeterBinding?) async -> Result<Meter?, ServiceError>? {

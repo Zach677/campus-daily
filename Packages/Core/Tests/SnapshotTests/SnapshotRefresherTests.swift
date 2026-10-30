@@ -25,7 +25,7 @@ final class ScriptedSchoolReader: SchoolReader, @unchecked Sendable {
     private var reading: SchoolReading
     private(set) var calls = 0
     init(_ reading: SchoolReading) { self.reading = reading }
-    func refresh(inBackground: Bool) async -> SchoolReading {
+    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading {
         lock.withLock { calls += 1; return reading }
     }
     var callCount: Int { lock.withLock { calls } }
@@ -146,7 +146,7 @@ final class GatedSchoolReader: SchoolReader, @unchecked Sendable {
     private var waiting: [CheckedContinuation<SchoolReading, Never>] = []
     private var calls = 0
     private var backgroundFlags: [Bool] = []
-    func refresh(inBackground: Bool) async -> SchoolReading {
+    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading {
         await withCheckedContinuation { c in lock.withLock { calls += 1; backgroundFlags.append(inBackground); waiting.append(c) } }
     }
     var callCount: Int { lock.withLock { calls } }
@@ -229,9 +229,10 @@ final class SnapshotRefresherSingleFlightTests: XCTestCase {
         XCTAssertEqual(store.writeCount, 1)
     }
 
-    /// The background read cannot renew the school login; a foreground caller that joined it
-    /// and got `needsLogin` runs its own foreground read next.
-    func testForegroundJoiningBackgroundNeedsLoginReadsAgainInForeground() async {
+    /// The background read runs the same ladder as a foreground one (the portal token is
+    /// readable after the first unlock), so a foreground caller that joined it takes its answer,
+    /// `needsLogin` included, without a second read.
+    func testForegroundJoiningBackgroundNeedsLoginTakesItsAnswer() async {
         let reader = GatedSchoolReader()
         let refresher = SnapshotRefresher(school: reader, store: RecordingSnapshotStore())
         async let background = refresher.refresh(inBackground: true)
@@ -239,13 +240,10 @@ final class SnapshotRefresherSingleFlightTests: XCTestCase {
         async let foreground = refresher.refresh(inBackground: false)
         await eventually { await refresher.joinedCount == 1 }
         reader.release(SchoolReading(outcome: .needsLogin(.sessionExpired(.ecykt)), checkedAt: t1))
-        await eventually { reader.callCount == 2 && reader.waitingCount == 1 }
-        reader.release(SchoolReading(outcome: .ok, checkedAt: t1, balance: .success(Money(fen: 42)), readAt: t1))
         let (b, f) = await (background, foreground)
-        XCTAssertEqual(reader.inBackground, [true, false])
-        XCTAssertEqual(b.outcome, .needsLogin(.sessionExpired(.ecykt)))
-        XCTAssertEqual(f.outcome, .ok)
-        XCTAssertEqual(f.snapshot.card.value, Money(fen: 42))
+        XCTAssertEqual(reader.inBackground, [true])
+        XCTAssertEqual(b, f)
+        XCTAssertEqual(f.outcome, .needsLogin(.sessionExpired(.ecykt)))
     }
 
     /// A background caller that joins a foreground read keeps that read's answer.
@@ -341,7 +339,7 @@ final class CancellableSchoolReader: SchoolReader, @unchecked Sendable {
     private var started = 0, cancelled = 0, cancelledEarly = false
     var startedCount: Int { lock.withLock { started } }
     var cancelledCount: Int { lock.withLock { cancelled } }
-    func refresh(inBackground: Bool) async -> SchoolReading {
+    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading {
         let offline = SchoolReading(outcome: .failed(.offline), checkedAt: Date(timeIntervalSince1970: 0))
         return await withTaskCancellationHandler {
             await withCheckedContinuation { c in
