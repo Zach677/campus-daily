@@ -39,6 +39,18 @@ public enum AppReset {
         return nil
     }
 
+    /// What stopped a reset, and whether the school sign-out had already run: a lock found on
+    /// the second check, after the sign-out, leaves the user signed out (and the saved password
+    /// deleted) with everything else still there.
+    public struct Stop: Sendable, Equatable {
+        public var lock: Lock
+        public var signedOut: Bool
+        public init(_ lock: Lock, signedOut: Bool) {
+            self.lock = lock
+            self.signedOut = signedOut
+        }
+    }
+
     /// A shower or laundry start refused while a reset runs (what Shortcuts shows, too).
     public struct InProgress: LocalizedError, Sendable, Equatable {
         public init() {}
@@ -52,20 +64,20 @@ public enum AppReset {
     /// user is told the reset did not finish and tries again, and nothing clears later on its
     /// own. Only a reset killed mid-way leaves the marker, for the next launch to finish within
     /// `ResetMarker.staleAfter` (`resume`). Returns the lock that stopped it, or nil when the
-    /// stores were cleared. A marker that can't be written stops it before anything happens
+    /// stores were cleared (`Stop.signedOut` says whether the sign-out had run). A marker that can't be written stops it before anything happens
     /// (thrown).
     ///
     /// The sign-out can outlast the marker (the app suspended for minutes in the middle of it),
     /// and a shower or an order may have started once it went stale. So before the clear the
     /// marker is written again at `clock()` and the locks are checked once more; a lock then
-    /// stops the reset with the sign-out done and nothing cleared.
+    /// stops the reset with the sign-out done and nothing else cleared.
     @MainActor public static func run(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
                                       signOut: () async -> Void, clear: () throws -> Void,
-                                      reload: () async -> Void) async throws -> Lock? {
+                                      reload: () async -> Void) async throws -> Stop? {
         try marker.begin(at: now)
         if let found = lock() {
             try? marker.end()
-            return found
+            return Stop(found, signedOut: false)
         }
         await signOut()
         do { try marker.begin(at: clock()) } catch {
@@ -77,7 +89,7 @@ public enum AppReset {
         if let found = lock() {
             try? marker.end()
             await reload()
-            return found
+            return Stop(found, signedOut: true)
         }
         var failure: Error?
         do { try clear() } catch {
@@ -93,7 +105,7 @@ public enum AppReset {
 
     public enum Resumed: Sendable, Equatable {
         case completed
-        case stopped(Lock)
+        case stopped(Stop)
         /// A stale marker was dropped and nothing cleared: the reset was left half done (signed
         /// out, perhaps, with hot water and laundry still there). The user is told once.
         case abandoned

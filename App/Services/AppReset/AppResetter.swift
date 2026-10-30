@@ -28,8 +28,8 @@ import Core
     }
 
     /// A reset left unfinished by the last run of the app was found at launch and stopped by a
-    /// lock: nothing was cleared. The home screen says so.
-    @Published var resumeStopped: AppReset.Lock?
+    /// lock: nothing was cleared (beyond the sign-out, if it had run). The home screen says so.
+    @Published var resumeStopped: AppReset.Stop?
     /// That reset was finished at launch and failed (something could not be deleted), or was
     /// too old to finish: what the home screen says. The marker is gone, so nothing clears
     /// later on its own.
@@ -48,7 +48,7 @@ import Core
     /// `AppReset.run`: marker, lock, sign out, clear, reload. Returns the lock that stopped it
     /// (nil = reset done).
     @discardableResult
-    func reset(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async throws -> AppReset.Lock? {
+    func reset(campus: CampusModel, water: ShowerModel, laundry: LaundryModel) async throws -> AppReset.Stop? {
         guard !running else { return nil }
         running = true
         defer { running = false }
@@ -77,7 +77,7 @@ import Core
         }
         switch resumed {
         case .completed?: completed += 1
-        case .stopped(let lock)?: resumeStopped = lock
+        case .stopped(let stop)?: resumeStopped = stop
         case .abandoned?: resumeFailed = Self.abandonedText
         case nil: break
         }

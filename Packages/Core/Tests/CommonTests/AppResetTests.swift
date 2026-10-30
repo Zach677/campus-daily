@@ -163,7 +163,7 @@ final class AppResetTests: XCTestCase {
         var steps: [String] = []
         let stopped = try await AppReset.run(marker: marker, now: Date(), lock: { .laundry }, signOut: { steps.append("signOut") },
                                              clear: { steps.append("clear") }, reload: { steps.append("reload") })
-        XCTAssertEqual(stopped, .laundry)
+        XCTAssertEqual(stopped, AppReset.Stop(.laundry, signedOut: false))
         XCTAssertEqual(steps, [])
         XCTAssertNil(marker.startedAt())
         XCTAssertNil(try store.read(.sharedResetMarker))
@@ -187,7 +187,7 @@ final class AppResetTests: XCTestCase {
                                                  showering = true
                                              },
                                              clear: { steps.append("clear") }, reload: { steps.append("reload") })
-        XCTAssertEqual(stopped, .showering)
+        XCTAssertEqual(stopped, AppReset.Stop(.showering, signedOut: true), "told the sign-out happened")
         XCTAssertEqual(steps, ["signOut", "reload"])
         XCTAssertNil(marker.startedAt())
     }

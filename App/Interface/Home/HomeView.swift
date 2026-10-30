@@ -146,7 +146,7 @@ struct HomeView: View {
             if resetter.completed > 0 { return }
             if !didSeeQuickSetup && !campus.configured && !shower.configured && !laundry.configured { openOnboarding() }
         }
-        .alert(ResetLockText.blockedTitle, isPresented:Binding(get:{ resetter.resumeStopped != nil },
+        .alert(ResetLockText.blockedTitle(resetter.resumeStopped), isPresented:Binding(get:{ resetter.resumeStopped != nil },
                                                                set:{ if !$0 { resetter.resumeStopped = nil } })) {
             Button("好", role:.cancel) {}
         } message: {

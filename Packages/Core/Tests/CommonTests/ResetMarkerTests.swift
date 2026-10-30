@@ -104,12 +104,35 @@ final class ResetMarkerTests: XCTestCase {
         try StoredShowerVault(store: store).saveBinding(ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "99栋 991"))
         var steps: [String] = []
         let resumed = try await resume(store, at: t0.addingTimeInterval(30), steps: &steps)
-        guard case .stopped(let lock)? = resumed else { return XCTFail("\(String(describing: resumed))") }
-        XCTAssertEqual(lock, AppReset.storedLock(store: store))
+        guard case .stopped(let stop)? = resumed else { return XCTFail("\(String(describing: resumed))") }
+        XCTAssertEqual(stop.lock, AppReset.storedLock(store: store))
+        XCTAssertFalse(stop.signedOut)
         XCTAssertEqual(steps, [], "nothing signed out, cleared or reloaded")
         XCTAssertEqual(try StoredShowerVault(store: store).showerState(), running)
         XCTAssertNotNil(try StoredShowerVault(store: store).binding())
         XCTAssertNil(marker.startedAt())
+    }
+
+    /// Resumed at launch, and a shower starts while the sign-out runs: stopped on the second
+    /// check, and the caller learns the sign-out already happened (so it doesn't say nothing
+    /// was cleared). The shower record stays.
+    @MainActor func testALockFoundAfterTheSignOutSaysSo() async throws {
+        let store = InMemorySecureStore()
+        try ResetMarker(store: store).begin(at: t0)
+        let running = ShowerState(phase: .running, machineID: "11223344")
+        var steps: [String] = []
+        let resumed = try await AppReset.resume(
+            marker: ResetMarker(store: store), now: t0.addingTimeInterval(30),
+            lock: { AppReset.storedLock(store: store) },
+            signOut: {
+                steps.append("signOut")
+                try? StoredShowerVault(store: store).saveShowerState(running)
+            },
+            clear: { steps.append("clear") }, reload: { steps.append("reload") })
+        XCTAssertEqual(resumed, .stopped(AppReset.Stop(.showering, signedOut: true)))
+        XCTAssertEqual(steps, ["signOut", "reload"])
+        XCTAssertEqual(try StoredShowerVault(store: store).showerState(), running)
+        XCTAssertNil(ResetMarker(store: store).startedAt())
     }
 
     /// Told once: the marker is gone, so the next launch has nothing to say.

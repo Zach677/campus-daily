@@ -13,9 +13,12 @@ enum ResetLockText {
         case .checkingController: return "正在核对水控，核对完再重置。"
         }
     }
-    /// After a reset that found a lock (just now, or resuming one at launch): nothing was touched.
-    static let blockedTitle = "没有重置"
-    static func blockedMessage(_ lock: AppReset.Lock) -> String { text(lock) + "什么都没清掉。" }
+    /// After a reset that found a lock (just now, or resuming one at launch): nothing was touched,
+    /// or, when the lock turned up after the sign-out, only the school account and its password.
+    static func blockedTitle(_ stop: AppReset.Stop?) -> String { stop?.signedOut == true ? "重置停下了" : "没有重置" }
+    static func blockedMessage(_ stop: AppReset.Stop) -> String {
+        text(stop.lock) + (stop.signedOut ? "学校账号已经退出，存的密码也删了，别的都没清掉。" : "什么都没清掉。")
+    }
 }
 
 /// Settings sheet.
@@ -319,7 +322,7 @@ struct AdvancedSettingsView: View {
     @State private var confirmReset = false
     @State private var resetIssue: String?
     /// Set when a lock stopped the reset (nothing was cleared).
-    @State private var resetBlocked: AppReset.Lock?
+    @State private var resetBlocked: AppReset.Stop?
     @State private var importing = false
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
@@ -400,7 +403,7 @@ struct AdvancedSettingsView: View {
         } message: {
             Text("会清掉学校账号和保存的密码、宿舍和电表、记住的水控、U净 登录、洗澡和洗衣记录、小组件上的数字、选的主题，还有导入的热水配置。学校那边的余额和消费记录不受影响。")
         }
-        .alert(ResetLockText.blockedTitle, isPresented:Binding(get:{ resetBlocked != nil }, set:{ if !$0 { resetBlocked = nil } })) {
+        .alert(ResetLockText.blockedTitle(resetBlocked), isPresented:Binding(get:{ resetBlocked != nil }, set:{ if !$0 { resetBlocked = nil } })) {
             Button("好", role:.cancel) {}
         } message: {
             Text(resetBlocked.map(ResetLockText.blockedMessage) ?? "")
