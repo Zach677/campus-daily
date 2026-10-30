@@ -34,6 +34,8 @@ struct HomeShowerButton: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal:false, vertical:true)
                     .frame(maxWidth:.infinity)
+                    // 「上次 11 分钟，1.32 元」: no separator dot or currency sign read aloud.
+                    .accessibilityLabel(Self.spoken(caption.text))
             }
         }
         .padding(.horizontal,20)
@@ -101,6 +103,14 @@ struct HomeShowerButton: View {
         case .signIn: return ("登录后就能看校园卡和电量，也能洗澡。", false)
         case .start(nil), .starting: return nil
         }
+    }
+
+    static func spoken(_ caption: String) -> String {
+        var text = caption.replacingOccurrences(of:" · ", with:"，")
+        if let range = text.range(of:#"¥([0-9.,]+)"#, options:.regularExpression) {
+            text.replaceSubrange(range, with:text[range].dropFirst() + " 元")
+        }
+        return text
     }
 
     private var spokenTitle: String {

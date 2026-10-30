@@ -11,6 +11,7 @@ struct HomeView: View {
     @EnvironmentObject var laundry: LaundryModel
     @Environment(\.scenePhase) var phase
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.dynamicTypeSize) var typeSize
     @State var path: [HomeRoute] = []
     @State var settings = false
     @State var onboarding: OnboardingRequest?

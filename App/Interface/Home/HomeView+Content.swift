@@ -41,9 +41,12 @@ extension HomeView {
                 .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }
         .frame(maxWidth:.infinity)
-        // Pull the date up into the nav-bar row so 「10月28日」 is centred on the gear.
-        .padding(.top,dateLift)
-        .accessibilityElement(children:.combine)
+        // Pull the date up into the nav-bar row so 「10月28日」 is centred on the gear; at
+        // accessibility sizes the taller date would run under the bar, so it stays below it.
+        .padding(.top,typeSize.isAccessibilitySize ? 0 : dateLift)
+        .accessibilityElement(children:.ignore)
+        .accessibilityLabel([dateTitle, Theme.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:"，"))
+        .accessibilityAddTraits(.isHeader)
         .onGeometryChange(for:Bool.self) { $0.frame(in:.global).maxY < 64 } action: { scrolledPastDate = $0 }
     }
 
