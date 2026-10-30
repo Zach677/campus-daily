@@ -378,7 +378,7 @@ public actor SchoolSession {
     private enum WriteBack { case written, kept, signedOut, lostLease }
 
     /// Writes the live session back (latest ciphertexts, `lastAliveAt`) only while the stored
-    /// session is still `base`. Signed out in another process: nothing is written. A newer
+    /// session is still `base` (same token and syscustid). Signed out in another process: nothing is written. A newer
     /// session stored by the other process stays; this read used a live one all the same.
     /// Written only while the lease is still held.
     private func writeBack(_ session: EcyktSession, over base: EcyktSession,
@@ -386,7 +386,9 @@ public actor SchoolSession {
         let current: EcyktSession?
         do { current = try vault.ecyktSession() } catch { return .kept }
         guard let current else { return .signedOut }
-        guard current.token == base.token else { return .kept }
+        // Sign-in, saving a password, recharge and the hot-water handoff store sessions without the
+        // lease; any change to the stored one (token or the rotating syscustid) means it is newer.
+        guard current.token == base.token, current.syscustid == base.syscustid else { return .kept }
         guard await mayMint() else { return .lostLease }
         try? vault.saveEcyktSession(session)
         return .written

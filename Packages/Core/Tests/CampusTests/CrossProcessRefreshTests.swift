@@ -276,3 +276,23 @@ final class CredentialLifetimeStoreTests: XCTestCase {
         XCTAssertTrue(AppReset.keychainItems.contains(.sharedCredentialLog))
     }
 }
+
+/// Paths outside the lease (sign-in, saving a password, recharge, the hot-water handoff) may
+/// store a session with the same token and new ciphertexts: the refresh doesn't overwrite it.
+final class WriteBackComparisonTests: XCTestCase {
+    func testASessionWithTheSameTokenButANewSyscustidIsKept() async throws {
+        let h = Harness()
+        try h.signedIn()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        let vault = h.vault
+        let rotated = T.session(syscustid: "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J" + "-rotated")
+        h.server.gate { r in
+            guard r.url.path.hasSuffix("/getSysBindCustInfo") else { return }
+            try? vault.saveEcyktSession(rotated)
+        }
+        let report = await h.refresher().refresh(inBackground: false)
+        XCTAssertEqual(report.outcome, .ok)
+        XCTAssertEqual(try h.vault.ecyktSession(), rotated, "not overwritten with the older ciphertext")
+    }
+}
