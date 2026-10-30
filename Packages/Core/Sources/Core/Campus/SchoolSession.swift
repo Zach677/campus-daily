@@ -703,15 +703,20 @@ public actor SchoolSession {
     }
 
     /// Walks campus → (apartment) → building → floor → room with name filters. Returns the
-    /// room-level row whose meter has `comAddress`, with its path.
+    /// room-level row whose meter has `comAddress`, with its path. When more than one room
+    /// reports that meter, none is trusted (nil): the campus-wide read by `comAddress` is
+    /// still exact, a guessed room might bill the wrong dorm.
     func locateRoomNode(_ s: EcyktSession, campus: PowerNode, address: DormAddress, comAddress: String) async throws -> MeterCandidate? {
         guard let paths = try await roomPaths(s, campus: campus, address: address) else { return nil }
+        var found: MeterCandidate?
         for path in paths.prefix(4) {
             guard let room = path.last else { continue }
             let meters = try await ecykt.meters(s, nodeID: room.id)
-            if let m = meters.first(where: { $0.comAddress == comAddress }) { return MeterCandidate(meter: m, path: path) }
+            guard let m = meters.first(where: { $0.comAddress == comAddress }) else { continue }
+            if found != nil { return nil }
+            found = MeterCandidate(meter: m, path: path)
         }
-        return nil
+        return found
     }
 
     /// Several same-name meters: each one with the directory path down to its room, found by

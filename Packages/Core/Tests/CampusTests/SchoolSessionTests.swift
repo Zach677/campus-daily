@@ -386,6 +386,30 @@ final class SchoolElectricityTests: XCTestCase {
                                     location: "星湖校区 · 樱花公寓 · 99栋 · 991"))
     }
 
+    /// One campus-wide match, but two same-named rooms both report its meter: neither room is
+    /// guessed, the binding stays campus-wide by comAddress.
+    func testOneMatchInTwoSameNamedRoomsBindsTheCampus() async throws {
+        let h = Harness()
+        try h.signedIn()
+        h.server.serve(try Self.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+        let service = "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service"
+        func level(_ parent: String, _ name: String, _ id: String) {
+            h.server.respond("POST", service, bodyMatch: ["server": "/api/getBuildingInfo", "buildingID": parent],
+                             body: Data(#"{"code":0,"msg":"获取成功","data":"[{\"buildingName\":\"\#(name)\",\"buildingID\":\"\#(id)\"}]"}"#.utf8))
+        }
+        level("991001002", "99栋", "991001002000109")
+        level("991001002000109", "1楼", "991001002000109000001")
+        level("991001002000109000001", "991", "991001002000109000001003")
+        h.server.respond("POST", service, bodyMatch: ["server": "/api/getMeterStatus", "buildingID": "991001002000109000001003"],
+                         body: Data(#"{"code":0,"msg":"获取成功","data":"[{\"comAddress\":\"000000000991\",\"piplineName\":\"99栋991\",\"leftMoney\":\"12.00\"}]"}"#.utf8))
+        try Self.serveTree(h)
+        let result = try await h.session().resolveElectricity()
+        guard case .matched(let binding, _) = result else { return XCTFail("\(result)") }
+        XCTAssertEqual(binding, MeterBinding(nodeID: "991001", comAddress: "000000000991", label: "99栋 991", nodeIsRoom: false,
+                                               location: "星湖校区 · 99栋991"))
+        XCTAssertEqual(try h.vault.profile()?.meter, binding)
+    }
+
     /// Two same-name rows with one comAddress: nothing tells them apart, so the manual picker.
     func testSameNamedMetersWithOneAddressGoToThePicker() async throws {
         let h = Harness()
