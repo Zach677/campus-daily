@@ -341,12 +341,12 @@ enum HomeDemo: String, CaseIterable {
     /// 最近 shows the shower once.
     static let showerAgo: TimeInterval = 20 * 3600
 
-    /// Synthetic balance, meter and card records, each a fixed time before `now` (never later,
-    /// whatever the device's time zone), written in the school's calendar as the school does.
+    /// Synthetic balance, meter and card records, never later than `now` (whatever the device's
+    /// time zone), written in the school's calendar as the school does. Meals sit at meal times
+    /// (07:42, 12:16, 17:58) of the last days, so 最近 reads like a real week.
     static func snapshot(now: Date, read: Date, kwh: String, dailyKWh: String, balance: String = "86.50") -> HomeSnapshot {
         let school = SchoolCalendar.shanghai
-        func record(minutesAgo: Double, _ title: String, _ yuan: String, flag: String? = "1") -> CardRecord {
-            let moment = now.addingTimeInterval(-minutesAgo * 60)
+        func record(at moment: Date, _ title: String, _ yuan: String, flag: String? = "1") -> CardRecord {
             let t = school.dateComponents([.hour, .minute, .second], from:moment)
             return CardRecord(date:SchoolCalendar.dayString(moment, calendar:school),
                               time:String(format:"%02d%02d%02d", t.hour ?? 0, t.minute ?? 0, t.second ?? 0), title:title,
@@ -357,13 +357,18 @@ enum HomeDemo: String, CaseIterable {
         s.card.succeed(Money(yuanString:balance)!, at:read)
         s.power.succeed(Meter(comAddress:"demo-meter", name:"3栋108", remainingKWh:Decimal(string:kwh),
                               dailyUseKWh:Decimal(string:dailyKWh)), at:read)
-        s.activity.succeed(CardActivity(records:[
-            record(minutesAgo:40, "POS消费示例早餐铺", "4.50"),
-            record(minutesAgo:showerAgo / 60 - 1, "蓝牙热水", "1.32"),
-            record(minutesAgo:26 * 60, "POS消费示例面馆", "12.00"),
-            record(minutesAgo:29 * 60, "校园卡充值", "50.00", flag:nil),
-            record(minutesAgo:30 * 60, "POS消费示例早餐铺", "3.50"),
-        ], begin:range.begin, end:range.end, complete:true), at:read)
+        let today = school.startOfDay(for:now)
+        func at(_ hour: Int, _ minute: Int, daysBack: Int) -> Date {
+            let day = school.date(byAdding:.day, value:-daysBack, to:today) ?? today
+            return school.date(bySettingHour:hour, minute:minute, second:0, of:day) ?? day
+        }
+        let meals = [(7, 42, "POS消费示例早餐铺", "4.50"), (12, 16, "POS消费示例面馆", "12.00"), (17, 58, "POS消费示例面馆", "9.00")]
+        var records = (0..<3).flatMap { back in meals.map { meal in record(at:at(meal.0, meal.1, daysBack:back), meal.2, meal.3) } }
+            .filter { ($0.moment(calendar:school) ?? now) <= now.addingTimeInterval(-15 * 60) }
+        records.append(record(at:now.addingTimeInterval(-showerAgo + 60), "蓝牙热水", "1.32"))
+        records.append(record(at:at(13, 5, daysBack:1), "校园卡充值", "50.00", flag:nil))
+        records.sort { ($0.moment(calendar:school) ?? now) > ($1.moment(calendar:school) ?? now) }
+        s.activity.succeed(CardActivity(records:records, begin:range.begin, end:range.end, complete:true), at:read)
         s.roomLabel = "3栋108"
         return s
     }
