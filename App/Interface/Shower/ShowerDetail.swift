@@ -53,6 +53,7 @@ struct ShowerDetail: View {
                     // Way out of a record that can't close by itself; only after the user checked the official record.
                     Button(ShowerPageText.resolve) { confirmResolve = true }
                         .font(.subheadline).frame(minHeight:44).accessibilityIdentifier("resolveWaterManually")
+                        .disabled(shower.busy)
                         .confirmationDialog(ShowerPageText.resolveConfirm, isPresented:$confirmResolve, titleVisibility:.visible) {
                             Button(ShowerPageText.resolveConfirmButton) { Task { await shower.resolveManually() } }
                             Button("取消", role:.cancel) {}
@@ -105,9 +106,10 @@ struct ShowerDetail: View {
     }
 
     /// 我在学校记录里核对过了: black pill, 60 pt, 44 pt above the screen's bottom on Face ID
-    /// phones; fill + ink3 while 再查一次水控 runs.
+    /// phones; fill + ink3 while 再查一次水控 or any other controller work (a check from
+    /// Settings, say) runs, since the tap would do nothing then.
     private var resolveButton: some View {
-        let enabled = shower.page.mayResolve
+        let enabled = shower.page.mayResolve && !shower.busy
         return Button { confirmResolve = true } label: {
             Text(ShowerPageText.resolve).scaledFont(18, .semibold, relativeTo:.headline)
                 .foregroundStyle(enabled ? Theme.pillInk : Theme.ink3)
