@@ -138,6 +138,10 @@ struct HomeView: View {
         } message: {
             Text(resetter.resumeStopped.map(ResetLockText.blockedMessage) ?? "")
         }
+        .alert(resetter.resumeFailed ?? "", isPresented:Binding(get:{ resetter.resumeFailed != nil },
+                                                                set:{ if !$0 { resetter.resumeFailed = nil } })) {
+            Button("好", role:.cancel) {}
+        }
         .onChange(of:phase) { _, value in
             if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
         }

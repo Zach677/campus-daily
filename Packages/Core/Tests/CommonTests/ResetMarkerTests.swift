@@ -72,21 +72,39 @@ final class ResetMarkerTests: XCTestCase {
         for key in StoreKey.allCases { XCTAssertNil(try store.read(key), key.rawValue) }
     }
 
-    /// The marker went stale and a shortcut started a shower; then the app is relaunched: the
-    /// shower is left alone, the marker goes, and the caller is told why (「没有重置」).
-    @MainActor func testAStaleMarkerAndAStartedShowerClearNothingOnRelaunch() async throws {
+    /// A marker older than a few minutes (a reset killed days ago): deleted, and nothing the user
+    /// set up since is signed out or cleared.
+    @MainActor func testAStaleMarkerIsDroppedWithoutClearing() async throws {
         let store = InMemorySecureStore()
         let marker = ResetMarker(store: store)
         try marker.begin(at: t0)
-        let later = t0.addingTimeInterval(ResetMarker.staleAfter + 60)
-        XCTAssertNoThrow(try marker.checkStart(at: later), "stale: the shortcut may start")
+        try StoredSchoolVault(store: store).saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try store.write(Data("x".utf8), for: .sharedSnapshot)
+        for later in [t0.addingTimeInterval(ResetMarker.staleAfter), t0.addingTimeInterval(-ResetMarker.staleAfter - 1),
+                      t0.addingTimeInterval(3 * 86_400)] {
+            try marker.begin(at: t0)
+            var steps: [String] = []
+            let resumed = try await resume(store, at: later, steps: &steps)
+            XCTAssertNil(resumed)
+            XCTAssertEqual(steps, [], "nothing signed out, cleared or reloaded")
+            XCTAssertNil(marker.startedAt())
+            XCTAssertNotNil(try StoredSchoolVault(store: store).account())
+            XCTAssertNotNil(try store.read(.sharedSnapshot))
+        }
+    }
+
+    /// A fresh marker, and a record that locks reset (a shower still to be settled): the record is
+    /// left alone, the marker goes, and the caller is told why (「没有重置」).
+    @MainActor func testAFreshMarkerStoppedByALockClearsNothing() async throws {
+        let store = InMemorySecureStore()
+        let marker = ResetMarker(store: store)
+        try marker.begin(at: t0)
         let running = ShowerState(phase: .running, machineID: "11223344")
         try StoredShowerVault(store: store).saveShowerState(running)
         try StoredShowerVault(store: store).saveBinding(ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "99栋 991"))
         var steps: [String] = []
-        let resumed = try await resume(store, at: later, steps: &steps)
+        let resumed = try await resume(store, at: t0.addingTimeInterval(30), steps: &steps)
         guard case .stopped(let lock)? = resumed else { return XCTFail("\(String(describing: resumed))") }
-        XCTAssertNotNil(AppReset.storedLock(store: store))
         XCTAssertEqual(lock, AppReset.storedLock(store: store))
         XCTAssertEqual(steps, [], "nothing signed out, cleared or reloaded")
         XCTAssertEqual(try StoredShowerVault(store: store).showerState(), running)

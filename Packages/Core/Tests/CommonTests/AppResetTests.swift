@@ -105,7 +105,7 @@ final class AppResetTests: XCTestCase {
         for key in StoreKey.allCases where key != .schoolPassword && key != .sharedResetMarker {
             XCTAssertNil(try store.read(key), key.rawValue)
         }
-        XCTAssertNotNil(try store.read(.sharedResetMarker), "kept, so the next launch finishes the reset")
+        XCTAssertNotNil(try store.read(.sharedResetMarker), "deleted only after everything else (run removes it after a failure)")
     }
 
     /// An unfinished laundry order locks reset too; the shower reasons come first.
@@ -182,7 +182,7 @@ final class AppResetTests: XCTestCase {
         XCTAssertEqual(steps, [])
     }
 
-    /// A failed clear still reloads and reports; the marker stays for the next launch to finish.
+    /// A failed clear still reloads and reports, and the marker goes: nothing clears later.
     @MainActor func testAFailedClearStillReloadsAndReports() async {
         let store = InMemorySecureStore()
         let marker = ResetMarker(store: store)
@@ -193,6 +193,40 @@ final class AppResetTests: XCTestCase {
             XCTFail("expected the failure")
         } catch { XCTAssertEqual(error as? AppReset.Failure, AppReset.Failure(items: ["x"])) }
         XCTAssertTrue(reloaded)
-        XCTAssertNotNil(marker.startedAt())
+        XCTAssertNil(marker.startedAt())
+        XCTAssertNil(try? store.read(.sharedResetMarker))
+    }
+
+    /// A Keychain item that can't be deleted: the user is told, the marker goes, and a relaunch
+    /// (now or days later, after signing in again) clears nothing.
+    @MainActor func testAFailedResetLeavesNothingToFireLater() async throws {
+        let store = InMemorySecureStore()
+        let marker = ResetMarker(store: store)
+        let suite = "reset-failed-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let clear = { try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, files: []) }
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        store.failWrites(to: .schoolPassword)
+        do {
+            _ = try await AppReset.run(marker: marker, now: t0, lock: { nil }, signOut: {}, clear: clear, reload: {})
+            XCTFail("expected the failure")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "重置没做完，有些东西没清掉。再试一次。")
+        }
+        XCTAssertNil(marker.startedAt())
+
+        store.failWrites(to: .schoolPassword, false)
+        try StoredSchoolVault(store: store).saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        for later in [t0.addingTimeInterval(30), t0.addingTimeInterval(3 * 86_400)] {
+            var steps: [String] = []
+            let resumed = try await AppReset.resume(marker: marker, now: later, lock: { nil },
+                                                    signOut: { steps.append("signOut") },
+                                                    clear: { steps.append("clear"); try clear() },
+                                                    reload: { steps.append("reload") })
+            XCTAssertNil(resumed)
+            XCTAssertEqual(steps, [])
+            XCTAssertNotNil(try StoredSchoolVault(store: store).account())
+        }
     }
 }

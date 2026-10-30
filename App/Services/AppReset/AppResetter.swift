@@ -30,6 +30,9 @@ import Core
     /// A reset left unfinished by the last run of the app was found at launch and stopped by a
     /// lock: nothing was cleared. The home screen says so.
     @Published var resumeStopped: AppReset.Lock?
+    /// That reset was finished at launch and failed (something could not be deleted): what the
+    /// home screen says. The marker is gone, so nothing clears later on its own.
+    @Published var resumeFailed: String?
 
     static var marker: ResetMarker { ResetMarker(store:AppEnvironment.store) }
 
@@ -58,10 +61,16 @@ import Core
         guard !running else { return }
         running = true
         defer { running = false }
-        let resumed = try? await AppReset.resume(marker:Self.marker, now:Date(),
-                                                 lock:{ Self.anyLock(water:water, laundry:laundry) },
-                                                 signOut:{ await campus.signOutForReset() },
-                                                 clear:Self.clear, reload:{ await Self.reload(campus:campus, water:water, laundry:laundry) })
+        let resumed: AppReset.Resumed?
+        do {
+            resumed = try await AppReset.resume(marker:Self.marker, now:Date(),
+                                                lock:{ Self.anyLock(water:water, laundry:laundry) },
+                                                signOut:{ await campus.signOutForReset() },
+                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, water:water, laundry:laundry) })
+        } catch {
+            resumeFailed = AppErrorText.text(error)
+            return
+        }
         switch resumed {
         case .completed?: completed += 1
         case .stopped(let lock)?: resumeStopped = lock

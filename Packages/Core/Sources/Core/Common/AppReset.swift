@@ -48,10 +48,12 @@ public enum AppReset {
     /// All or nothing. The marker goes first, so from then on nothing can start; then one check of
     /// the locks. A lock removes the marker and returns, with nothing signed out or cleared.
     /// Otherwise: school sign-out (local deletes happen whatever it meets), clear, reload. The
-    /// marker goes with the clear, and only when the clear succeeded: a failed or interrupted
-    /// clear leaves it, and the next launch finishes the reset (`resume`). Returns the lock that
-    /// stopped it, or nil when the stores were cleared. A marker that can't be written stops it
-    /// before anything happens (thrown).
+    /// marker goes with the clear. A clear that fails removes the marker too and throws: the
+    /// user is told the reset did not finish and tries again, and nothing clears later on its
+    /// own. Only a reset killed mid-way leaves the marker, for the next launch to finish within
+    /// `ResetMarker.staleAfter` (`resume`). Returns the lock that stopped it, or nil when the
+    /// stores were cleared. A marker that can't be written stops it before anything happens
+    /// (thrown).
     @MainActor public static func run(marker: ResetMarker, now: Date, lock: () -> Lock?, signOut: () async -> Void,
                                       clear: () throws -> Void, reload: () async -> Void) async throws -> Lock? {
         try marker.begin(at: now)
@@ -61,7 +63,12 @@ public enum AppReset {
         }
         await signOut()
         var failure: Error?
-        do { try clear() } catch { failure = error }
+        do { try clear() } catch {
+            failure = error
+            // Already reporting the failure; a marker that can't be deleted either goes stale and
+            // is then dropped by `resume` without clearing anything.
+            try? marker.end()
+        }
         await reload()
         if let failure { throw failure }
         return nil
@@ -72,12 +79,19 @@ public enum AppReset {
         case stopped(Lock)
     }
 
-    /// At launch: a marker left by a reset that did not finish. The same steps as `run`, the lock
-    /// check included (a shower may have started once the marker went stale): stopped, the marker
-    /// goes and nothing is cleared. Nil when there is no marker.
+    /// At launch: a marker left by a reset the app was killed in. Only a fresh one (younger than
+    /// `ResetMarker.staleAfter`) is finished, with the same steps as `run`, the lock check
+    /// included: stopped, the marker goes and nothing is cleared. An older one is deleted and
+    /// nothing is cleared: by then the user may have signed in and set things up again. Nil when
+    /// there is no marker or only a stale one.
     @MainActor public static func resume(marker: ResetMarker, now: Date, lock: () -> Lock?, signOut: () async -> Void,
                                          clear: () throws -> Void, reload: () async -> Void) async throws -> Resumed? {
         guard marker.startedAt() != nil else { return nil }
+        guard marker.refusesStarts(at: now) else {
+            // One that can't be deleted is stale again next launch, and dropped again.
+            try? marker.end()
+            return nil
+        }
         let stopped = try await run(marker: marker, now: now, lock: lock, signOut: signOut, clear: clear, reload: reload)
         return stopped.map(Resumed.stopped) ?? .completed
     }
@@ -97,13 +111,15 @@ public enum AppReset {
     /// marker is the last, and only when everything before it went.
     public static var keychainItems: [StoreKey] { StoreKey.allCases.filter { $0 != .sharedResetMarker } + [.sharedResetMarker] }
 
-    public struct Failure: Error, Sendable, Equatable {
+    public struct Failure: LocalizedError, Sendable, Equatable {
         /// Item or file names only (never values).
         public var items: [String]
+        public var errorDescription: String? { "重置没做完，有些东西没清掉。再试一次。" }
     }
 
     /// Deletes everything; keeps going after a failure and reports what could not be deleted.
-    /// After a failure the reset marker stays, so the next launch tries again.
+    /// The reset marker is deleted last, only when everything else went (`run` removes it after
+    /// a failure).
     /// `preferencesDomain` is the app's own preferences domain (its bundle id; a suite name in
     /// tests): the whole domain goes, so a preference added later, `xrc.`-named or not, is
     /// cleared without being listed.
