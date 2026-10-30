@@ -371,6 +371,7 @@ public actor SchoolSession {
         case .offline: return .stopped(SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: triedPortal))
         case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: triedPortal))
         case .lostLease: return .stopped(SchoolReading(outcome: .failed(.timedOut), checkedAt: now(), reexchanged: triedPortal))
+        case .signedOut: return .stopped(SchoolReading(outcome: .notSignedIn, checkedAt: now()))
         }
     }
 
@@ -422,7 +423,7 @@ public actor SchoolSession {
         return t
     }
 
-    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable, lostLease }
+    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable, lostLease, signedOut }
 
     /// The last step of the refresh: one login with the saved password. Anything but success
     /// or no network pauses the password, so a wrong or blocked login is never repeated. A login
@@ -439,6 +440,8 @@ public actor SchoolSession {
             let found = try await liveCard(fresh)
             guard started == signOutGeneration else { return .unavailable }
             guard await mayMint() else { return .lostLease }
+            // Read again just before writing: signed out in the other process meanwhile = nothing kept.
+            guard let still = (try? vault.account()) ?? nil, still.account == saved.account else { return .signedOut }
             try? vault.savePortalToken(stamped(token))
             return .signedIn(found)
         } catch SchoolLoginFailure.offline {

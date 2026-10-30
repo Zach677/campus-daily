@@ -159,6 +159,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// values back afterwards, and the widget snapshot is cleared first so nothing rewrites it.
     func signOutForReset() async {
         signOutGeneration += 1
+        refresher.revokeLease()
         try? await session.signOut()
         try? await refresher.clear()
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
@@ -168,6 +169,8 @@ struct PowerChoice: Identifiable, Equatable {
     func signOut() {
         signOutGeneration += 1
         let session = session, refresher = refresher
+        // The lease goes first: a widget read in the middle of a login loses it and writes nothing.
+        refresher.revokeLease()
         Task { try? await session.signOut(); try? await refresher.clear() }
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         powerChoices = []; powerMatchIssue = nil

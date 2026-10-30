@@ -126,3 +126,50 @@ final class RefreshLeaseChainTests: XCTestCase {
         XCTAssertTrue(h.server.requests(path: "/getUserBalance").isEmpty)
     }
 }
+
+/// A sign-out in one process while the other is in the middle of a password login: nothing the
+/// login produced is written back.
+final class SignOutDuringOtherProcessLoginTests: XCTestCase {
+    func run(revokingLease: Bool) async throws {
+        let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+        let h = try RefreshLeaseChainTests().passwordHarness(login)
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+        h.server.serve(try T.eCardWithTicket())
+        h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        let reached = expectation(description: "login in flight")
+        let release = DispatchSemaphore(value: 0)
+        h.server.gate { r in
+            guard r.url.path.hasSuffix("/csalogintoken/450010") else { return }
+            reached.fulfill()
+            release.wait()
+        }
+        let widget = RefreshLeaseChainTests().refresher(h, owner: "widget-1")
+        async let read = widget.refresh(inBackground: true)
+        await fulfillment(of: [reached], timeout: 5)
+        // The app signs out: lease first (unless an older build), then every school item.
+        let app = RefreshLeaseChainTests().refresher(h, owner: "app-1")
+        if revokingLease { app.revokeLease() }
+        try await h.session().signOut()
+        try await app.clear()
+        if !revokingLease {
+            // An older app build left the lease in place.
+            XCTAssertTrue(RefreshLease(store: h.store, owner: "widget-1", now: h.clock.function).acquire())
+        }
+        release.signal()
+        let report = await read
+        // Without the lease revoked the read may store the same signed-out snapshot again.
+        if revokingLease { XCTAssertFalse(report.snapshotSaved) }
+        XCTAssertEqual(report.outcome, revokingLease ? .failed(.timedOut) : .notSignedIn)
+        XCTAssertNil(try h.vault.portalToken(), "revoking: \(revokingLease)")
+        XCTAssertNil(try h.vault.ecyktSession())
+        XCTAssertNil(try h.vault.account())
+        XCTAssertNil(try h.vault.loginDeviceID())
+        XCTAssertEqual(try h.snapshots.loadSnapshot(), SchoolSnapshotReducer.reduce(.empty, .signedOut))
+    }
+
+    func testRevokedLeaseStopsTheOtherProcessWritingBack() async throws { try await run(revokingLease: true) }
+
+    func testCredentialsAreReadAgainBeforeWritingEvenWithTheLease() async throws { try await run(revokingLease: false) }
+}

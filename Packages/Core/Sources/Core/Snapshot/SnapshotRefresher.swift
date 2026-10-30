@@ -134,6 +134,11 @@ public actor SnapshotRefresher {
         try store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
     }
 
+    /// Sign-out and reset, before anything is deleted: the other process's read in progress
+    /// loses the lease, so its next step (minting, the password login, saving the portal
+    /// token, writing the session back) stops instead of writing a credential back.
+    public nonisolated func revokeLease() { try? lease?.clear() }
+
     private func wait(for id: Int, _ task: Task<RefreshReport, Never>) async -> RefreshReport {
         if current?.id == id { current?.waiters += 1 }
         return await withTaskCancellationHandler {
