@@ -61,6 +61,8 @@ enum ShowerProfileFiles {
     @Published private(set) var verifiedDevice: VerifiedShowerDevice?
     @Published private(set) var inspectionStatus: String?
     @Published private(set) var inspecting = false
+    /// The last check reached a controller that was in use, so it could not say whose it is.
+    @Published private(set) var inspectionFoundBusy = false
     private var engine: ShowerEngine?
     private var observer: Task<Void, Never>?
     private let gateway = ShowerGatewayBox()
@@ -264,7 +266,7 @@ enum ShowerProfileFiles {
         guard let binding, mayImport, !inspecting else { return }
         let bleName = profile?.bleName ?? ""
         guard !bleName.isEmpty else { inspectionStatus = Self.platformMissingText; return }
-        inspecting = true; inspectionStatus = nil; verifiedDevice = nil
+        inspecting = true; inspectionStatus = nil; verifiedDevice = nil; inspectionFoundBusy = false
         defer { inspecting = false }
         do {
             let nearby = try await bluetooth.inspect(bleName:bleName, remembered:binding.peripheralID)
@@ -275,12 +277,16 @@ enum ShowerProfileFiles {
             switch outcome {
             case .unreadable: inspectionStatus = Self.deviceText(.malformedFrame); return
             case .otherMachine: inspectionStatus = "附近的水控不是你宿舍的那台。"; return
-            case .verified(let found), .busy(let found): id = found
+            case .busy:
+                // An in-use controller does not say which machine it is: nothing was verified.
+                inspectionFoundBusy = true
+                inspectionStatus = Self.inspectionBusyText
+                return
+            case .verified(let found): id = found
             }
             verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:binding.machineId.uppercased(), rssi:nil, nearbyCount:nearby, verifiedAt:Date())
-            // An in-use controller (A5) does not say which machine it is: never remember it.
             if let proven = outcome.peripheralToRemember { rememberVerified(proven, for:binding) }
-            inspectionStatus = "找到了你宿舍的水控。"
+            inspectionStatus = Self.inspectionVerifiedText
         } catch {
             await bluetooth.disconnect()
             inspectionStatus = Self.deviceText((error as? ShowerDeviceError) ?? .disconnected)
@@ -311,6 +317,9 @@ enum ShowerProfileFiles {
     func show(_ error: Error) { message = AppErrorText.text(error) }
 
     // MARK: Copy
+
+    static let inspectionVerifiedText = "找到了，是这间的水控。"
+    static let inspectionBusyText = "附近的水控有人在用，现在核对不了是不是这间的。等它空了再试。"
 
     static func noticeText(_ notice: ShowerNotice?) -> String? {
         switch notice {
