@@ -11,6 +11,11 @@ struct OnboardingView: View {
         var laundryConnected = false
         /// Same-name building choices (labels) for the dorm step's apartment picker.
         var powerChoices: [String] = []
+        /// Login step: what the form starts with.
+        var account = ""
+        var password = ""
+        var savePassword = false
+        var loginState = SchoolLoginState.idle
     }
 
     var preview: Preview?
@@ -19,6 +24,10 @@ struct OnboardingView: View {
     init(start: Step = .login, preview: Preview? = nil, close: @escaping () -> Void) {
         self.preview = preview; self.close = close
         _step = State(initialValue:start)
+        _account = State(initialValue:preview?.account ?? "")
+        _password = State(initialValue:preview?.password ?? "")
+        _savePassword = State(initialValue:preview?.savePassword ?? false)
+        _loginState = State(initialValue:preview?.loginState ?? .idle)
     }
 
     @EnvironmentObject private var campus: CampusModel
@@ -40,6 +49,18 @@ struct OnboardingView: View {
     @State private var issue: String?
     /// Same-name apartment picked on the dorm step (candidate id); confirmed by 「就是这间」.
     @State private var apartment: String?
+    @State private var account: String
+    @State private var password: String
+    /// 「保存密码，让小组件自动刷新」, off by default.
+    @State private var savePassword: Bool
+    @State private var loginState: SchoolLoginState
+    @FocusState private var loginFocus: SchoolLoginField?
+
+    /// Keyboard up on the login step: mascot and body make room; the save-password note stays.
+    private var keyboardUp: Bool { step == .login && loginFocus != nil }
+    private var loginReady: Bool {
+        !account.trimmingCharacters(in:.whitespaces).isEmpty && !password.isEmpty
+    }
 
     private var dorm: String? { preview != nil ? preview?.dorm : Theme.dorm(campus.room) }
     private var laundryConnected: Bool { preview?.laundryConnected ?? laundry.accountConnected }
@@ -68,7 +89,7 @@ struct OnboardingView: View {
             CampusLoginSheet { value in
                 do {
                     try await campus.adoptWebState(value)
-                    issue = nil
+                    issue = nil; loginState = .idle; password = ""
                     // The sheet shows 「正在读电量…」 until the card and meter are read.
                     await campus.refresh(force:true)
                     campus.matchPowerAutomatically()
@@ -88,24 +109,24 @@ struct OnboardingView: View {
     @ViewBuilder private var content: some View {
         ScrollView {
         VStack(alignment:.leading, spacing:0) {
-            icon.frame(width:76, height:76, alignment:.leading).padding(.top,typeSize.isAccessibilitySize ? 56 : 120)
-            // Same title style on every step, done screen included (32 bold, line height 40).
-            title.scaledFont(32, .bold, relativeTo:.largeTitle).lineSpacing(2).foregroundStyle(Theme.ink)
+            if !keyboardUp {
+                icon.frame(width:76, height:76, alignment:.leading).padding(.top,typeSize.isAccessibilitySize ? 56 : 120)
+            }
+            // Same title style on every step, done screen included (32 bold, line height 40);
+            // 28 while the login keyboard is up.
+            title.scaledFont(keyboardUp ? 28 : 32, .bold, relativeTo:.largeTitle).lineSpacing(2).foregroundStyle(Theme.ink)
                 .fixedSize(horizontal:false, vertical:true)
-                .padding(.top,26)
+                .padding(.top,keyboardUp ? 40 : 26)
                 .accessibilityAddTraits(.isHeader)
-            if let body = bodyText {
+            if !keyboardUp, let body = bodyText {
                 Text(body).scaledFont(17).foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal:false, vertical:true)
                     .padding(.top,12)
             }
             if step == .login {
-                VStack(spacing:0) {
-                    benefit("⚡", "宿舍电量"); Hairline()
-                    benefit("💳", "校园卡余额"); Hairline()
-                    benefit("🏠", "你的宿舍")
-                }
-                .padding(.top,30)
+                SchoolLoginForm(account:$account, password:$password, savePassword:$savePassword,
+                                state:loginState, focus:$loginFocus, submit:submitLogin)
+                    .padding(.top,keyboardUp ? 20 : 28)
             }
             if step == .dorm, preview == nil, !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil && !campus.powerConfigured {
                 powerApartment.padding(.top,30)
@@ -122,6 +143,8 @@ struct OnboardingView: View {
         if typeSize.isAccessibilitySize { bottom.padding(.top,40) }
         }
         .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(.interactively)
+        .animation(reduceMotion ? .easeInOut(duration:0.2) : Theme.spring, value:keyboardUp)
     }
 
     @ViewBuilder private var icon: some View {
@@ -141,7 +164,7 @@ struct OnboardingView: View {
         let accent = { (word: String) in Text(word).foregroundStyle(Theme.accentLarge) }
         let question = Text("？")   // full-width U+FF1F, per copy
         switch step {
-        case .login: return Text("你好，\n先登录") + accent("学校账号") + Text("。")
+        case .login: return Text("登录") + accent("学校账号")
         case .dorm: return Text("你住在") + accent("哪一间") + question
         // 学校洗衣机 question (laundry-optional spec §1): same page, 「洗衣机」 in the accent colour.
         case .washer: return Text("宿舍用学校的") + accent("洗衣机") + Text("吗") + question
@@ -151,7 +174,7 @@ struct OnboardingView: View {
 
     private var bodyText: String? {
         switch step {
-        case .login: return "在学校官方网页登录，登录后这些会自己出现："
+        case .login: return "用你在学校官网登录时的账号和密码。"
         case .dorm: return dorm.map { "已经从学校账号读到：\($0)。不对就改一下。" } ?? "没读到你的宿舍，手动选一下。"
         case .washer: return SchoolLaundryPreference.Onboarding.subtitle
         case .done: return nil
@@ -226,21 +249,11 @@ struct OnboardingView: View {
         }
     }
 
-    private func benefit(_ emoji: String, _ text: String) -> some View {
-        HStack(spacing:14) {
-            Text(emoji).scaledFont(17).frame(minWidth:24).fixedSize().accessibilityHidden(true)
-            Text(text).scaledFont(17).foregroundStyle(Theme.ink).fixedSize(horizontal:false, vertical:true)
-            Spacer()
-        }
-        .frame(minHeight:50)
-        .accessibilityElement(children:.combine)
-    }
-
     // MARK: Bottom
 
     private var bottom: some View {
         VStack(spacing:0) {
-            if step != .done {
+            if step != .done && !keyboardUp {
                 HStack(spacing:7) {
                     ForEach(0..<3, id:\.self) { index in
                         Circle().fill(index == step.rawValue ? Theme.ink : Theme.ink3).frame(width:7, height:7)
@@ -251,17 +264,22 @@ struct OnboardingView: View {
             }
             Button(action:primary) {
                 // Same pill style on every step (18 semibold, headline-relative).
-                // Waiting for an apartment choice: the home dock's disabled look (「正在结算…」: fill + ink2).
-                Text(primaryTitle)
-                    .scaledFont(18, .semibold, relativeTo:.headline).foregroundStyle(waitingForApartment ? Theme.ink2 : Theme.pillInk)
+                // Waiting for an apartment choice or logging in: the home dock's disabled look
+                // (「正在结算…」: fill + ink2). Login fields not filled yet: fill + ink3.
+                HStack(spacing:10) {
+                    if loggingIn { ProgressView().tint(Theme.ink2) }
+                    Text(primaryTitle)
+                }
+                    .scaledFont(18, .semibold, relativeTo:.headline).foregroundStyle(primaryInk)
                     .lineLimit(2).minimumScaleFactor(0.8).multilineTextAlignment(.center)
                     .padding(.horizontal,20).padding(.vertical,8)
-                    .frame(maxWidth:.infinity, minHeight:60)
-                    .background(waitingForApartment ? Theme.fill : Theme.pill, in:Capsule())
+                    .frame(maxWidth:.infinity, minHeight:keyboardUp ? 52 : 60)
+                    .background(primaryDimmed ? Theme.fill : Theme.pill, in:Capsule())
                     .contentTransition(reduceMotion ? .opacity : .interpolate)
             }
             .buttonStyle(PressScaleStyle())
-            .disabled(waitingForApartment || bindingWater)
+            .disabled(primaryDimmed || bindingWater)
+            .accessibilityIdentifier("onboardingPrimary")
             .accessibilityLabel(primaryTitle)
             // Fixed slot below the pill so the pill doesn't jump between steps.
             ZStack(alignment:.top) {
@@ -289,27 +307,44 @@ struct OnboardingView: View {
                     }
                     .padding(.top,12)
                 }
-                if step == .login {
-                    Label("密码只交给学校，不经过我们", systemImage:"lock.fill")
-                        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                        .fixedSize(horizontal:false, vertical:true)
-                        .padding(.top,12)
+                if step == .login && !keyboardUp && loginState != .cannotDirect {
+                    Button(SchoolLoginText.webLogin) { openWebLogin() }
+                        .scaledFont(17, .medium).foregroundStyle(Theme.ink2)
+                        .frame(minHeight:44).padding(.top,4)
+                        .disabled(loggingIn)
+                        .accessibilityIdentifier("webLogin")
                 }
             }
-            .frame(minHeight:48, alignment:.top)
+            .frame(minHeight:keyboardUp ? 0 : 48, alignment:.top)
         }
         .padding(.horizontal,28)
-        .padding(.bottom,4)
+        .padding(.bottom,keyboardUp ? 12 : 4)
         .animation(reduceMotion ? .easeInOut(duration:0.2) : Theme.spring, value:step)
     }
 
     private var primaryTitle: String {
         switch step {
-        case .login: return "去学校网页登录"
+        case .login:
+            if loggingIn { return "正在登录…" }
+            return loginState == .cannotDirect ? SchoolLoginText.webLogin : "登录"
         case .dorm: return bindingWater ? "正在找宿舍的水控…" : dorm != nil ? "就是这间" : "选宿舍"
         case .washer: return SchoolLaundryPreference.Onboarding.yes
         case .done: return "开始用"
         }
+    }
+
+    private var loggingIn: Bool { step == .login && loginState == .loading }
+
+    /// Login: dimmed until both fields are filled, and while logging in. After 「没法直接登录」
+    /// it is the web login and always available.
+    private var primaryDimmed: Bool {
+        if step == .login { return loginState != .cannotDirect && (loggingIn || !loginReady) }
+        return waitingForApartment
+    }
+
+    private var primaryInk: Color {
+        guard primaryDimmed else { return Theme.pillInk }
+        return step == .login && !loggingIn ? Theme.ink3 : Theme.ink2
     }
 
     // MARK: Actions
@@ -317,7 +352,7 @@ struct OnboardingView: View {
     private func primary() {
         switch step {
         case .login:
-            if preview != nil { advance() } else { login = true }
+            if loginState == .cannotDirect { openWebLogin() } else { submitLogin() }
         case .dorm:
             if choosingApartment {
                 guard let apartment else { return }
@@ -354,6 +389,42 @@ struct OnboardingView: View {
     private func skipLaundry() {
         if preview == nil { laundry.setSchoolEnabled(false) }
         close()
+    }
+
+    /// One login with the form's account and password; never retried (failures count towards
+    /// the school's lock). Wrong → password cleared and focused; anything the school put in the
+    /// way → the primary button becomes the web login.
+    private func submitLogin() {
+        guard step == .login, loginReady, loginState != .loading else { return }
+        if preview != nil { advance(); return }
+        loginFocus = nil
+        loginState = .loading
+        let name = account.trimmingCharacters(in:.whitespaces), secret = password, save = savePassword
+        Task {
+            do {
+                try await campus.signIn(account:name, password:secret, savePassword:save)
+                password = ""
+                await campus.refresh(force:true)
+                campus.matchPowerAutomatically()
+                loginState = .idle
+                if step == .login { advance() }
+            } catch SchoolLoginFailure.wrongCredentials {
+                password = ""
+                loginState = .wrong
+                loginFocus = .password
+            } catch SchoolLoginFailure.cannotLoginDirectly {
+                loginState = .cannotDirect
+            } catch {
+                loginState = .failed(SchoolLoginText.text(error))
+            }
+        }
+    }
+
+    /// The school's own page (with the R2 loading cover); nothing to save on that path.
+    private func openWebLogin() {
+        if preview != nil { advance(); return }
+        loginFocus = nil
+        login = true
     }
 
     private func openDormPicker() {

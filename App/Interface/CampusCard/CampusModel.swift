@@ -24,6 +24,9 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var matchingPower = false
     @Published private(set) var powerChoices: [PowerChoice] = []
     @Published private(set) var powerMatchIssue: String?
+    /// The account signed in with the app's own form (nil after a web sign-in, which never
+    /// tells us the account). Its password is present only when the user chose to save it.
+    @Published private(set) var account: SchoolAccount?
     private var lastRefresh: Date?
     private var refreshesRunning = 0
     /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.
@@ -37,8 +40,12 @@ struct PowerChoice: Identifiable, Equatable {
     func reload() {
         configured = ((try? AppEnvironment.schoolVault.ecyktSession()) ?? nil) != nil
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
+        account = (try? AppEnvironment.schoolVault.account()) ?? nil
         snapshot = refresher.latest()
     }
+
+    /// Settings › 学校账号 › 保存密码.
+    var passwordSaved: Bool { account?.password != nil }
 
     var address: DormAddress? { profile?.residence?.address }
     /// 「99 栋 991」 style label, or 「未配置」.
@@ -100,11 +107,20 @@ struct PowerChoice: Identifiable, Equatable {
         powerChoices = []; powerMatchIssue = nil
     }
 
+    /// The app's own login form. Throws `SchoolLoginFailure` for the login itself (shown on the
+    /// form), or a service / storage error for the steps after it.
+    func signIn(account: String, password: String, savePassword: Bool) async throws {
+        _ = try await session.signIn(account:account, password:password, savePassword:savePassword)
+        await refresher.noteChange()
+        reload(); issue = nil; lastRefresh = nil
+        powerChoices = []; powerMatchIssue = nil
+    }
+
     func signOut() {
         signOutGeneration += 1
         let session = session, refresher = refresher
         Task { try? await session.signOut(); try? await refresher.clear() }
-        configured = false; snapshot = .empty; profile = nil; issue = nil
+        configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         powerChoices = []; powerMatchIssue = nil
     }
 

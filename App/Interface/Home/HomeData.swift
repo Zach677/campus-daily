@@ -342,7 +342,8 @@ enum HomeDemo: String, CaseIterable {
     }
 }
 
-/// campusdaily://demo/onboard/{1,2,2-missing,2-samename,3,done}
+/// campusdaily://demo/onboard/{1,1-filled,1-loading,1-wrong,1-fallback,2,2-missing,2-samename,3,done}
+/// The login states use a synthetic account; tapping 登录 only moves to the next step.
 enum OnboardingDemo {
     static func handle(_ url: URL) -> (OnboardingView.Step, OnboardingView.Preview)? {
         let parts = Array(url.pathComponents.dropFirst())
@@ -355,6 +356,12 @@ enum OnboardingDemo {
             // Upstream 0.8.0-beta.2 same-name building picker, with sample directory labels.
             preview.powerChoices = ["半山公寓 · 3 栋", "兰香公寓 · 3 栋"]
             return (.dorm, preview)
+        case "1-filled", "1-loading", "1-wrong", "1-fallback":
+            preview.account = "99100991"
+            preview.password = parts[1] == "1-wrong" ? "" : "demo-password"
+            preview.savePassword = parts[1] != "1-wrong"
+            preview.loginState = ["1-loading":.loading, "1-wrong":.wrong, "1-fallback":.cannotDirect][parts[1]] ?? .idle
+            return (.login, preview)
         case "3": return (.washer, preview)
         case "done": return (.done, preview)
         default: return (.login, preview)

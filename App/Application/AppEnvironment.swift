@@ -21,7 +21,7 @@ enum AppEnvironment {
     }
 
     static let school = SchoolSession(portal:PortalClient(http:schoolHTTP), ecykt:EcyktClient(http:schoolHTTP),
-                                      vault:schoolVault)
+                                      vault:schoolVault, passwordLogin:CASLoginClient(http:schoolHTTP))
     static let refresher = SnapshotRefresher(school:school, store:snapshots)
 
     static var userAgent: String {
