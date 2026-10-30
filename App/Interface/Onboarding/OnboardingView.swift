@@ -80,7 +80,7 @@ struct OnboardingView: View {
         preview != nil ? preview?.dormLocation : campus.profile?.directoryDormLocation
     }
     /// Footnote under the dorm: where it came from.
-    static let dormSource = "从学校账号里读到的"
+    static let dormSource = "学校账号里登记的"
     private var laundryConnected: Bool { preview?.laundryConnected ?? laundry.accountConnected }
 
     var body: some View {
