@@ -57,7 +57,7 @@ public enum RechargeWebSessionBuilder {
     }
 }
 
-/// WKWebView navigation allow-list for the recharge pages.
+/// WKWebView navigation allow-list for the recharge pages (the page and every frame in it).
 public enum RechargeNavigation {
     public enum Decision: Sendable, Equatable {
         case allow
@@ -69,14 +69,17 @@ public enum RechargeNavigation {
     static let schoolHosts: Set<String> = [SchoolEndpoints.ecyktHost, SchoolEndpoints.portalHost, SchoolEndpoints.casHost]
     static let payApps: Set<String> = ["alipays", "alipay", "weixin"]
 
-    /// - https on ecykt/portal/cas hosts → allow
-    /// - `alipays`/`alipay`/`weixin` only on a user tap from the ecykt origin → open externally
-    /// - anything else → cancel
-    public static func decide(_ url: URL, isUserTap: Bool, sourceHost: String?) -> Decision {
+    /// - https on ecykt/portal/cas hosts → allow, in the page and in its frames
+    /// - `alipays`/`alipay`/`weixin` only on a user tap in the page itself from the ecykt origin
+    ///   → open externally; never from a frame
+    /// - `about:blank` / `about:srcdoc` → allow (an empty or inline frame loads nothing)
+    /// - anything else → cancel, frames included: a frame from another host is a page the
+    ///   allow-list never vetted, shown inside the school's
+    public static func decide(_ url: URL, isUserTap: Bool, sourceHost: String?, isMainFrame: Bool = true) -> Decision {
         let scheme = url.scheme?.lowercased() ?? ""
         if scheme == "https", let host = url.host?.lowercased(), schoolHosts.contains(host) { return .allow }
-        if payApps.contains(scheme), isUserTap, sourceHost?.lowercased() == SchoolEndpoints.ecyktHost { return .openExternal }
-        if scheme == "about", url.absoluteString == "about:blank" { return .allow }
+        if isMainFrame, payApps.contains(scheme), isUserTap, sourceHost?.lowercased() == SchoolEndpoints.ecyktHost { return .openExternal }
+        if scheme == "about", ["about:blank", "about:srcdoc"].contains(url.absoluteString) { return .allow }
         return .cancel
     }
 
@@ -94,5 +97,18 @@ public enum RechargeNavigation {
     private static func sanitized(_ text: String, limit: Int) -> String {
         let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789.-")
         return String(text.lowercased().filter { allowed.contains($0) }.prefix(limit))
+    }
+}
+
+/// WKWebView navigation allow-list for the school login page (the page and every frame in it):
+/// https on the three school hosts, default port, no user info. A frame may also be
+/// `about:blank` / `about:srcdoc`, which loads nothing. Everything else is cancelled.
+public enum SchoolLoginNavigation {
+    public static func allows(_ url: URL, isMainFrame: Bool) -> Bool {
+        if !isMainFrame, url.scheme?.lowercased() == "about", ["about:blank", "about:srcdoc"].contains(url.absoluteString) { return true }
+        guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased(),
+              RechargeNavigation.schoolHosts.contains(host),
+              url.user == nil, url.password == nil, url.port == nil || url.port == 443 else { return false }
+        return true
     }
 }

@@ -458,8 +458,12 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
   document-start user script, ecykt origin only. Card: `/ykt-view/recharge?isbind=1`.
   Electricity: `getPowerUrl?custid&syscustid` (302 → `/ykt-view/powersel?...`; let the WebView
   follow it).
-- Navigation allow-list: https on `ecykt.`, `portal.`, `cas.` school hosts; `alipays`/`alipay`/
-  `weixin` schemes only from a user link tap on the ecykt origin → `UIApplication.open`.
+- Navigation allow-list (`RechargeNavigation`): https on `ecykt.`, `portal.`, `cas.` school hosts;
+  `alipays`/`alipay`/`weixin` schemes only from a user link tap in the page itself on the ecykt
+  origin → `UIApplication.open`. Frames get the same list: a frame on another host is cancelled
+  (and logged by host), a frame never opens a pay app, and only `about:blank`/`about:srcdoc`
+  (which load nothing) are added for frames. The school login sheet does the same through
+  `SchoolLoginNavigation` (three school hosts, https, default port).
 - `confirming`: on return, refresh balance (card) or the room meter (electricity) up to 3 times
   over 30 s and show the delta; no claim of success without a changed value
   ("充值结果以学校记录为准").

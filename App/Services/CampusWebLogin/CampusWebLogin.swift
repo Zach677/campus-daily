@@ -126,19 +126,19 @@ struct OfficialCampusBrowser: UIViewRepresentable {
         }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { connect(webView) }
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy)->Void) {
-            guard navigationAction.targetFrame?.isMainFrame != false else { decisionHandler(.allow); return }
-            guard let url = navigationAction.request.url,
-                  url.scheme == "https", ["portal.gdbtu.edu.cn","cas.gdbtu.edu.cn","ecykt.gdbtu.edu.cn"].contains(url.host ?? ""),
-                  url.user == nil, url.password == nil, url.port == nil || url.port == 443 else {
-                state.issue = "用学校账号密码登录，目前只支持学校官方页面。"
+            let mainFrame = navigationAction.targetFrame?.isMainFrame != false
+            guard let url = navigationAction.request.url, SchoolLoginNavigation.allows(url, isMainFrame:mainFrame) else {
+                // A blocked frame leaves the page usable; only a blocked page needs the notice.
+                if mainFrame { state.issue = "用学校账号密码登录，目前只支持学校官方页面。" }
                 decisionHandler(.cancel); return
             }
+            guard mainFrame else { decisionHandler(.allow); return }
             if url.host == "cas.gdbtu.edu.cn" {state.portalDormAddress = ""}
             decisionHandler(.allow)
         }
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             if navigationAction.targetFrame == nil, let url = navigationAction.request.url,
-               url.scheme == "https", ["portal.gdbtu.edu.cn","cas.gdbtu.edu.cn","ecykt.gdbtu.edu.cn"].contains(url.host ?? "") {
+               SchoolLoginNavigation.allows(url, isMainFrame:true) {
                 webView.load(navigationAction.request)
             }
             return nil

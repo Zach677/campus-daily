@@ -107,12 +107,12 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
                message.body as? String == "expired" { expired() }
         }
         func webView(_ webView: WKWebView,decidePolicyFor action: WKNavigationAction,decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy)->Void) {
-            guard action.targetFrame?.isMainFrame != false else { decisionHandler(.allow); return }
+            let mainFrame = action.targetFrame?.isMainFrame != false
             guard let url = action.request.url, url.user == nil, url.password == nil, url.port == nil || url.port == 443 else {
                 if let url = action.request.url { ShowerDiagnosticReport.record(RechargeNavigation.blockedEvent(url)) }
                 decisionHandler(.cancel); return
             }
-            switch RechargeNavigation.decide(url, isUserTap:action.navigationType == .linkActivated, sourceHost:webView.url?.host) {
+            switch RechargeNavigation.decide(url, isUserTap:action.navigationType == .linkActivated, sourceHost:webView.url?.host, isMainFrame:mainFrame) {
             case .allow: decisionHandler(.allow)
             case .openExternal: UIApplication.shared.open(url); decisionHandler(.cancel)
             case .cancel:
