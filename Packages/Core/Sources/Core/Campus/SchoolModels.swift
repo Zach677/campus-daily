@@ -203,7 +203,9 @@ public struct MeterBinding: Sendable, Equatable, Codable {
 /// One of several meters that carry the dorm's name, with where it sits in the electricity
 /// directory, so same-named buildings in different apartments can be told apart.
 public struct MeterCandidate: Sendable, Equatable, Identifiable {
-    public var id: String { meter.comAddress }
+    /// The node the choice binds (the room, else the campus) plus the meter: two same-name
+    /// rooms can report the same `comAddress`.
+    public var id: String { ((room ?? path.first)?.id ?? "") + "|" + meter.comAddress }
     /// The room-level row when the room was found, else the campus-wide row.
     public var meter: Meter
     /// campus → (apartment) → building → floor → room. Only the campus when the room

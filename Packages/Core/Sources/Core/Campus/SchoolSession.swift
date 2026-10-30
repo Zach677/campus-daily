@@ -613,7 +613,11 @@ public actor SchoolSession {
         let meter: Meter
         switch MeterMatcher.match(rows, address: address) {
         case .none: return .manualPicker
-        case .many(let all): return .chooseAmong(try await candidates(all, session: session, campus: campus, address: address))
+        case .many(let all):
+            // The same comAddress twice: the campus-wide rows can't tell the rooms apart, and a
+            // room found by its meter could be either one. The user picks the room by hand.
+            guard Set(all.map(\.comAddress)).count == all.count else { return .manualPicker }
+            return .chooseAmong(try await candidates(all, session: session, campus: campus, address: address))
         case .one(let m): meter = m
         }
 

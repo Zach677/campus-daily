@@ -280,12 +280,12 @@ final class SchoolRechargeTests: XCTestCase {
 
 final class SchoolElectricityTests: XCTestCase {
     /// Campus-wide rows + one synthetic row for the faked user room.
-    static func campusMeters(extra: [String]) throws -> Fixture {
+    static func campusMeters(extra: [String], comAddresses: [String]? = nil) throws -> Fixture {
         let f = try FixtureLoader.load("ecykt/electric-getMeterStatus-ok")
         return T.editingData(f) { data in
             guard let text = data.text, case .array(var rows)? = try? JSONValue.parse(text) else { return }
             for (i, name) in extra.enumerated() {
-                rows.append(.object(["comAddress": .string("00000000099\(i + 1)"), "piplineName": .string(name),
+                rows.append(.object(["comAddress": .string(comAddresses?[i] ?? "00000000099\(i + 1)"), "piplineName": .string(name),
                                      "type": .string("电表"), "leftMoney": .string("36.92"), "remaining": .string("52.00"),
                                      "onlineStatus": .string("在线")]))
             }
@@ -354,7 +354,7 @@ final class SchoolElectricityTests: XCTestCase {
         XCTAssertEqual(list.map(\.room), [nil, nil])
     }
 
-    /// Tester §1: two 99栋 in different apartments. Each choice carries its apartment, and
+    /// Two 99栋 in different apartments. Each choice carries its apartment, and
     /// picking one binds that room's node (1-row reads), not the campus.
     func testSameNamedBuildingsAreToldApartByTheirApartment() async throws {
         let h = Harness()
@@ -384,6 +384,32 @@ final class SchoolElectricityTests: XCTestCase {
         XCTAssertEqual(try h.vault.profile()?.meter,
                        MeterBinding(nodeID: "991001002000109000001003", comAddress: "000000000992", label: "99栋 991", nodeIsRoom: true,
                                     location: "星湖校区 · 樱花公寓 · 99栋 · 991"))
+    }
+
+    /// Two same-name rows with one comAddress: nothing tells them apart, so the manual picker.
+    func testSameNamedMetersWithOneAddressGoToThePicker() async throws {
+        let h = Harness()
+        try h.signedIn()
+        h.server.serve(try Self.campusMeters(extra: ["99栋991", "99栋991"], comAddresses: ["000000000991", "000000000991"]),
+                       matchBody: ["server", "buildingID"])
+        try Self.serveTree(h)
+        let result = try await h.session().resolveElectricity()
+        XCTAssertEqual(result, .manualPicker)
+        XCTAssertNil(try h.vault.profile()?.meter)
+    }
+
+    /// Candidates in two rooms with one comAddress still have their own ids.
+    func testCandidateIdsIncludeTheRoom() {
+        let meter = Meter(comAddress: "000000000991", name: "99栋991")
+        let campus = PowerNode(id: "991001", name: "星湖校区")
+        func path(_ apartment: String, _ room: String) -> [PowerNode] {
+            [campus, PowerNode(id: apartment, name: "公寓"), PowerNode(id: apartment + "9", name: "99栋"),
+             PowerNode(id: apartment + "91", name: "1楼"), PowerNode(id: room, name: "991")]
+        }
+        let a = MeterCandidate(meter: meter, path: path("991001001", "991001001000109000001003"))
+        let b = MeterCandidate(meter: meter, path: path("991001002", "991001002000109000001003"))
+        XCTAssertNotEqual(a.id, b.id)
+        XCTAssertNotEqual(MeterCandidate(meter: meter, path: [campus]).id, a.id)
     }
 
     func testNoParsedAddress() async throws {
