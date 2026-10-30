@@ -38,12 +38,8 @@ struct CampusRechargeView: View {
             .navigationTitle(kind.title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement:.topBarTrailing) { Button("重试") { revision = UUID() }.disabled(loading) } }
             .task(id:revision) { await prepare() }
-            .sheet(isPresented:$login) {
-                CampusLoginSheet { value in
-                    do { try await campus.adoptWebState(value); await campus.refresh(force:true); revision = UUID() }
-                    catch { issue = "这次没登录上，再试一次。" }
-                }
-            }
+            // Account and password first, the school's web page as the fallback (B3).
+            .sheet(isPresented:$login) { SchoolReloginSheet { revision = UUID() } }
     }
     private func prepare() async {
         context = nil; issue = nil; loading = true

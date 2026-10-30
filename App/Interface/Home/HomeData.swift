@@ -262,6 +262,9 @@ enum HomeDemo: String, CaseIterable {
     case settingsAsk = "settings-ask"
     /// Settings › 学校账号 with the password saved (synthetic account and password).
     case settingsPassword = "settings-password-on"
+    /// Settings › 学校账号 with automatic sign-in paused: password refused / login got no answer.
+    case settingsPaused = "settings-paused"
+    case settingsPausedNoAnswer = "settings-paused-noanswer"
     /// Settings › 高级 › 重置校日常 locked: showering / a settlement to check.
     case settingsResetShower = "settings-reset-shower"
     case settingsResetUnsure = "settings-reset-unsure"
@@ -314,6 +317,12 @@ enum HomeDemo: String, CaseIterable {
             return (data, nil)
         case .settingsPassword:
             data.schoolAccount = SchoolAccount(account:"99100991", password:"demo-password")
+            return (data, nil)
+        case .settingsPaused:
+            data.schoolAccount = SchoolAccount(account:"99100991", password:"demo-password", paused:true)
+            return (data, nil)
+        case .settingsPausedNoAnswer:
+            data.schoolAccount = SchoolAccount(account:"99100991", password:"demo-password", unansweredAt:now)
             return (data, nil)
         case .laundryOff, .settingsLaundryOff:
             data.laundryEnabled = false

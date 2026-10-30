@@ -38,8 +38,8 @@ private struct AccountSwitchAlert: ViewModifier {
             .onDisappear { hosts.remove(id) }
             .alert(AccountSwitchNotice.title, isPresented:presented, presenting:campus.switchNotice) { notice in
                 if notice.hotWaterCleared, let openHotWater {
+                    // No .defaultAction: on iOS 27 it becomes a blue fill that the accent tint can't read on.
                     Button(AccountSwitchNotice.openHotWater) { campus.switchNotice = nil; openHotWater() }
-                        .keyboardShortcut(.defaultAction)
                     Button("好", role:.cancel) { campus.switchNotice = nil }
                 } else {
                     Button("好") { campus.switchNotice = nil }
@@ -51,7 +51,9 @@ private struct AccountSwitchAlert: ViewModifier {
 
     private var presented: Binding<Bool> {
         Binding(get:{ campus.switchNotice != nil && openHotWater != nil && hosts.isTop(id) },
-                set:{ if !$0 && hosts.isTop(id) { campus.switchNotice = nil } })
+                // Only the buttons clear it: a presentation that failed (a sheet still closing)
+                // also reports false here, and the notice must survive for the next screen.
+                set:{ _ in })
     }
 }
 

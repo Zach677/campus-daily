@@ -1,7 +1,31 @@
 import SwiftUI
 import Core
 
-/// 学校账号 detail (design §5): account, status, 保存密码, re-login, sign out.
+/// Copy for 学校账号 while automatic sign-in is paused (Camo flow-copy 「第二段审查 B3」).
+enum AccountText {
+    static let signedIn = "已登录"
+    static let paused = "自动登录已暂停"
+    static let reenter = "重新输入密码"
+    static let reenterTitle = "输入学校密码"
+    static let keychainNote = "密码只存在这台 iPhone 的钥匙串里。"
+    static let wrongPassword = "密码不对，没保存。"
+    static let savedFooter = "小组件会自动刷新。关掉会删掉存着的密码。"
+    static let notSavedFooter = "不保存的话，过几个小时小组件就要打开 App 才能更新。"
+    static let pausedRefused = "存的密码登录不上，自动登录先停了。可能是在学校那边改过密码，重新输入就能恢复。"
+    static let pausedNoAnswer = "上次登录学校没回应，为免账号被锁，自动登录先停几个小时，到时会自己恢复。"
+
+    static func footer(_ state: SchoolAccount.AutoLogin) -> String {
+        switch state {
+        case .off: return notSavedFooter
+        case .on: return savedFooter
+        case .pausedRefused: return pausedRefused
+        case .pausedNoAnswer: return pausedNoAnswer
+        }
+    }
+}
+
+/// 学校账号 detail (design §5, §11): account, status, 保存密码 (and 重新输入密码 while paused),
+/// re-login, sign out.
 struct AccountView: View {
     var preview: HomeData? = nil
     @EnvironmentObject private var campus: CampusModel
@@ -13,12 +37,24 @@ struct AccountView: View {
     @State private var saveIssue: String?
     /// The typed account isn't the signed-in one: nothing saved, nobody switched (B2).
     @State private var differentAccount = false
+    /// 重新输入密码 (only while automatic sign-in is paused).
+    @State private var askReenter = false
+    /// 重新登录学校账号: the account-and-password sheet.
+    @State private var relogin = false
     /// DEBUG demo: the switch flips locally (seeded from the demo data).
     @State private var previewSaved: Bool?
     private var signedIn: Bool { preview?.signedIn ?? campus.configured }
     private var dorm: String? { preview?.dorm ?? Theme.dorm(campus.room) }
     private var account: SchoolAccount? { preview != nil ? preview?.schoolAccount : campus.account }
     private var passwordSaved: Bool { preview != nil ? (previewSaved ?? preview?.passwordSaved ?? false) : campus.passwordSaved }
+    /// Off / on / paused (refused or no answer). Re-read on every redraw, so a hold that ran
+    /// out shows as on the next time the page draws.
+    private var autoLogin: SchoolAccount.AutoLogin {
+        if preview != nil, previewSaved == false { return .off }
+        if preview != nil, previewSaved == true, account?.password == nil { return .on }
+        return account?.autoLogin(at:Date()) ?? .off
+    }
+    private var paused: Bool { autoLogin == .pausedRefused || autoLogin == .pausedNoAnswer }
     private var passwordSwitch: Binding<Bool> {
         Binding(get:{ passwordSaved || askPassword || saving }, set:{ on in
             saveIssue = nil
@@ -37,7 +73,15 @@ struct AccountView: View {
         List {
             Section {
                 if let account { LabeledContent("账号") { Text(account.masked).monospacedDigit() } }
-                LabeledContent("状态", value:signedIn ? "已登录" : "未登录")
+                if signedIn && paused {
+                    // Not red: red only means something is running out.
+                    LabeledContent("状态") {
+                        Text(AccountText.paused).scaledFont(16, .medium).foregroundStyle(Theme.accentText)
+                    }
+                    .accessibilityIdentifier("accountStatusPaused")
+                } else {
+                    LabeledContent("状态", value:signedIn ? AccountText.signedIn : "未登录")
+                }
                 if signedIn, let dorm { LabeledContent("宿舍", value:dorm) }
             }.listRowBackground(Theme.group)
             if signedIn {
@@ -51,19 +95,35 @@ struct AccountView: View {
                     .tint(.green)
                     .disabled(saving)
                     .accessibilityIdentifier("savePasswordSwitch")
+                    if paused {
+                        Button {
+                            saveIssue = nil; typedPassword = ""; askReenter = true
+                        } label: {
+                            Text(AccountText.reenter).scaledFont(16, .medium).foregroundStyle(Theme.accentText)
+                                .frame(maxWidth:.infinity, alignment:.leading).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(saving)
+                        .accessibilityIdentifier("reenterPassword")
+                    }
                 } footer: {
                     VStack(alignment:.leading, spacing:6) {
                         if let saveIssue {
                             Label(saveIssue, systemImage:"exclamationmark.circle.fill").foregroundStyle(Theme.accentText)
                                 .accessibilityIdentifier("savePasswordIssue")
                         }
-                        Text(passwordSaved ? "小组件会自动刷新。关掉会删掉存着的密码。" : "不保存的话，过几个小时小组件就要打开 App 才能更新。")
+                        Text(AccountText.footer(autoLogin))
                             .foregroundStyle(Theme.ink2)
                     }
                 }.listRowBackground(Theme.group)
             }
             Section {
-                NavigationLink(signedIn ? "重新登录学校账号" : "登录学校账号") { CampusOnboardingView() }
+                // Account and password first, the school's web page as the fallback (B3).
+                Button { relogin = true } label: {
+                    ChevronRow(title:signedIn ? "重新登录学校账号" : "登录学校账号")
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("relogin")
             } footer: {
                 Text("密码只交给学校，不经过我们。").foregroundStyle(Theme.ink2)
             }.listRowBackground(Theme.group)
@@ -94,6 +154,15 @@ struct AccountView: View {
         } message: {
             Text("密码只存在这台 iPhone 的钥匙串里。")
         }
+        .alert(AccountText.reenterTitle, isPresented:$askReenter) {
+            SecureField("密码", text:$typedPassword).textContentType(.password)
+            Button("取消", role:.cancel) { typedPassword = "" }
+            // No .defaultAction: on iOS 27 it becomes a blue fill that the accent tint can't read on.
+            Button("保存") { save() }
+        } message: {
+            Text(AccountText.keychainNote + "\n账号 " + (account?.masked ?? ""))
+        }
+        .sheet(isPresented:$relogin) { SchoolReloginSheet(preview:preview.map { _ in account ?? SchoolAccount(account:"") }) }
         .alert(SchoolLoginText.differentAccountTitle, isPresented:$differentAccount) {
             Button("好", role:.cancel) {}
         } message: {
@@ -121,7 +190,7 @@ struct AccountView: View {
             do {
                 try await campus.savePassword(password, account:account == nil ? name : nil)
             } catch SchoolLoginFailure.wrongCredentials {
-                saveIssue = askedAccount ? "账号或密码不对，没保存。" : "密码不对，没保存。"
+                saveIssue = askedAccount ? "账号或密码不对，没保存。" : AccountText.wrongPassword
             } catch SchoolLoginFailure.differentAccount {
                 differentAccount = true
             } catch {

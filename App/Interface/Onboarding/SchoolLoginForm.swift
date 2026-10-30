@@ -8,6 +8,8 @@ enum SchoolLoginText {
     static let webLogin = "用学校网页登录"
     static let saveTitle = "保存密码，让小组件自动刷新"
     static let saveNote = "密码只存在这台 iPhone 的钥匙串里，不会上传。不保存的话，过几个小时小组件就要打开 App 才能更新。"
+    /// B3: under the web-login link in the re-login sheet, when a password is saved.
+    static let webDropsPassword = "用学校网页登录的话，存的密码会删掉。"
     /// B2: saving a password for an account other than the signed-in one (alert title + message).
     static let differentAccountTitle = "这不是现在登录的账号，没保存。"
     static let differentAccountMessage = "要换账号，先退出登录。"
