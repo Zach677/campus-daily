@@ -269,26 +269,17 @@ enum ShowerProfileFiles {
         do {
             let nearby = try await bluetooth.inspect(bleName:bleName, remembered:binding.peripheralID)
             guard nearby > 0 else { inspectionStatus = Self.deviceText(.notFound); return }
-            var preferred = binding.peripheralID
-            var id: String, check: ShowerFrames.IdentityCheck
-            while true {
-                id = try await bluetooth.connect(bleName:bleName, machineID:binding.machineId, required:nil, preferred:preferred)
-                let frame = try await bluetooth.exchange(ShowerFrames.probeCommand)
-                await bluetooth.disconnect()
-                check = ShowerFrames.check(frame, machineID:binding.machineId)
-                // The remembered controller answered as another machine: forget it, scan once without it.
-                guard check == .otherMachine, let remembered = preferred, id == remembered else { break }
-                forgetRemembered(remembered, for:binding)
-                preferred = nil
-            }
-            switch check {
+            let outcome = try await ShowerInspection.run(transport:bluetooth, bleName:bleName, machineID:binding.machineId,
+                                                         remembered:binding.peripheralID) { forgetRemembered($0, for:binding) }
+            let id: String
+            switch outcome {
             case .unreadable: inspectionStatus = Self.deviceText(.malformedFrame); return
             case .otherMachine: inspectionStatus = "附近的水控不是你宿舍的那台。"; return
-            case .verified, .busy: break
+            case .verified(let found), .busy(let found): id = found
             }
             verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:binding.machineId.uppercased(), rssi:nil, nearbyCount:nearby, verifiedAt:Date())
             // An in-use controller (A5) does not say which machine it is: never remember it.
-            if check == .verified { rememberVerified(id, for:binding) }
+            if let proven = outcome.peripheralToRemember { rememberVerified(proven, for:binding) }
             inspectionStatus = "找到了你宿舍的水控。"
         } catch {
             await bluetooth.disconnect()
