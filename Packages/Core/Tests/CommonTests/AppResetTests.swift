@@ -21,7 +21,11 @@ final class AppResetTests: XCTestCase {
         defaults.set(true, forKey: PreferenceKey.schoolLaundry)
         defaults.set(20, forKey: PreferenceKey.reminder("cardLine"))
         defaults.set("x", forKey: PreferenceKey.prefix + "laundry.machines")
-        defaults.set("kept", forKey: "AppleLanguages-test")
+        defaults.set(true, forKey: "didSeeQuickSetup")
+        let otherSuite = suite + "-other"
+        let otherDefaults = try XCTUnwrap(UserDefaults(suiteName: otherSuite))
+        defer { otherDefaults.removePersistentDomain(forName: otherSuite) }
+        otherDefaults.set("kept", forKey: "unrelated")
 
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true)
         let water = folder.appendingPathComponent("Water", isDirectory: true)
@@ -31,14 +35,15 @@ final class AppResetTests: XCTestCase {
         try Data("bundled".utf8).write(to: other)
         defer { try? FileManager.default.removeItem(at: folder) }
 
-        try AppReset.clear(store: store, preferences: defaults, files: [water, folder.appendingPathComponent("missing")])
+        try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, files: [water, folder.appendingPathComponent("missing")])
 
         for key in StoreKey.allCases { XCTAssertNil(try store.read(key), key.rawValue) }
         XCTAssertNil(try school.account(), "the saved password is gone")
         XCTAssertNil(defaults.object(forKey: PreferenceKey.schoolLaundry))
         XCTAssertNil(defaults.object(forKey: PreferenceKey.reminder("cardLine")))
         XCTAssertNil(defaults.object(forKey: PreferenceKey.prefix + "laundry.machines"))
-        XCTAssertEqual(defaults.string(forKey: "AppleLanguages-test"), "kept")
+        XCTAssertNil(defaults.object(forKey: "didSeeQuickSetup"), "a preference without the xrc. prefix goes too")
+        XCTAssertEqual(otherDefaults.string(forKey: "unrelated"), "kept")
         XCTAssertFalse(FileManager.default.fileExists(atPath: water.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: other.path))
     }
@@ -53,8 +58,9 @@ final class AppResetTests: XCTestCase {
         let store = InMemorySecureStore()
         for key in StoreKey.allCases { try store.write(Data("x".utf8), for: key) }
         store.failWrites(to: .schoolPassword)
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "reset-fail-" + UUID().uuidString))
-        XCTAssertThrowsError(try AppReset.clear(store: store, preferences: defaults, files: [])) {
+        let suite = "reset-fail-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        XCTAssertThrowsError(try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, files: [])) {
             XCTAssertEqual(($0 as? AppReset.Failure)?.items, ["school.password"])
         }
         for key in StoreKey.allCases where key != .schoolPassword { XCTAssertNil(try store.read(key), key.rawValue) }

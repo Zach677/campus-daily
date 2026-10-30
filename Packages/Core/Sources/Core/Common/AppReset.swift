@@ -3,7 +3,7 @@ import Foundation
 /// Settings › 高级 › 重置校日常: everything this app stored, back to a fresh install.
 /// Clears every Keychain item (school login and saved password, login device id, dorm and
 /// meter, hot-water binding and remembered controller, shower record, U净 login and device,
-/// laundry record, widget snapshot and reminder lines), every `xrc.` preference, and the files
+/// laundry record, widget snapshot and reminder lines), every preference the app set, and the files
 /// the app wrote (imported hot-water file, records, diagnostics). The hot-water parameters
 /// bundled with the app are read-only resources and stay.
 public enum AppReset {
@@ -33,15 +33,16 @@ public enum AppReset {
     }
 
     /// Deletes everything; keeps going after a failure and reports what could not be deleted.
-    public static func clear(store: SecureStore, preferences: UserDefaults, files: [URL],
+    /// `preferencesDomain` is the app's own preferences domain (its bundle id; a suite name in
+    /// tests): the whole domain goes, so a preference added later, `xrc.`-named or not, is
+    /// cleared without being listed.
+    public static func clear(store: SecureStore, preferences: UserDefaults, preferencesDomain: String, files: [URL],
                              fileManager: FileManager = .default) throws {
         var failed: [String] = []
         for key in keychainItems {
             do { try store.delete(key) } catch { failed.append(key.rawValue) }
         }
-        for name in preferences.dictionaryRepresentation().keys where name.hasPrefix(PreferenceKey.prefix) {
-            preferences.removeObject(forKey: name)
-        }
+        preferences.removePersistentDomain(forName: preferencesDomain)
         for url in files where fileManager.fileExists(atPath: url.path) {
             do { try fileManager.removeItem(at: url) } catch { failed.append(url.lastPathComponent) }
         }
