@@ -301,7 +301,7 @@ struct AdvancedSettingsView: View {
             Section {
                 if waterConfigured {
                     Button { if preview == nil { Task { await water.inspectBluetooth() } } } label: {
-                        Label(water.inspecting ? "正在核对…" : "扫描并核对本宿舍水控", systemImage:"antenna.radiowaves.left.and.right")
+                        Label(water.inspecting ? "正在核对…" : "核对宿舍的水控", systemImage:"antenna.radiowaves.left.and.right")
                     }.disabled(preview == nil && !water.mayImport).accessibilityIdentifier("inspectWaterBluetooth")
                     if let message = water.inspectionStatus {
                         Text(message).font(.subheadline).foregroundStyle(Theme.ink2).accessibilityIdentifier("waterInspectionStatus")
