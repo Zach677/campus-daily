@@ -271,6 +271,12 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertEqual(SchoolAccount(account: "a", unansweredAt: t).autoLogin(at: t), .off)
     }
 
+    /// Settings says more than 「已登录」 for both pauses, and only for them.
+    func testOnlyThePausesCountAsPaused() {
+        XCTAssertEqual([SchoolAccount.AutoLogin.off, .on, .pausedRefused, .pausedNoAnswer].map(\.isPaused),
+                       [false, false, true, true])
+    }
+
     /// 重新输入密码: a checked password lifts both kinds of pause.
     func testEnteringThePasswordAgainEndsThePause() async throws {
         for stored in [SchoolAccount(account: "99100991", password: "old", paused: true),

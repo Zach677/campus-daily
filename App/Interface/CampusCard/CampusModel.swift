@@ -50,6 +50,13 @@ struct PowerChoice: Identifiable, Equatable {
         snapshot = refresher.latest()
     }
 
+    /// Only the saved account: a refresh in this or the widget's process may have paused or
+    /// held the password since the last `reload()`.
+    func reloadAccount() {
+        let stored = (try? AppEnvironment.schoolVault.account()) ?? nil
+        if stored != account { account = stored }
+    }
+
     /// Settings › 学校账号 › 保存密码.
     var passwordSaved: Bool { account?.password != nil }
 
@@ -78,6 +85,7 @@ struct PowerChoice: Identifiable, Equatable {
         let report = await refresher.refresh(inBackground:inBackground, includingChanges:force)
         guard started == signOutGeneration else { return }
         snapshot = report.snapshot
+        reloadAccount()
         // A cancelled refresh (the view went away, the pull was abandoned) reads as offline; that
         // says nothing about the school, so it neither shows an issue nor counts as a refresh.
         guard !Task.isCancelled else { return }

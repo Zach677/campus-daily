@@ -14,6 +14,12 @@ enum AccountText {
     static let pausedRefused = "存的密码登录不上，自动登录先停了。可能是在学校那边改过密码，重新输入就能恢复。"
     static let pausedNoAnswer = "上次登录学校没回应，为免账号被锁，自动登录先停几个小时，到时会自己恢复。"
 
+    /// The 学校账号 row on the settings page.
+    static func row(signedIn: Bool, account: SchoolAccount?, at now: Date = Date()) -> String {
+        guard signedIn else { return "去登录" }
+        return account?.autoLogin(at:now).isPaused == true ? paused : AccountText.signedIn
+    }
+
     static func footer(_ state: SchoolAccount.AutoLogin) -> String {
         switch state {
         case .off: return notSavedFooter
@@ -54,7 +60,7 @@ struct AccountView: View {
         if preview != nil, previewSaved == true, account?.password == nil { return .on }
         return account?.autoLogin(at:Date()) ?? .off
     }
-    private var paused: Bool { autoLogin == .pausedRefused || autoLogin == .pausedNoAnswer }
+    private var paused: Bool { autoLogin.isPaused }
     private var passwordSwitch: Binding<Bool> {
         Binding(get:{ passwordSaved || askPassword || saving }, set:{ on in
             saveIssue = nil
@@ -172,6 +178,8 @@ struct AccountView: View {
                 .tint(nil)
         }
         .sheet(isPresented:$relogin) { SchoolReloginSheet(preview:preview.map { _ in account ?? SchoolAccount(account:"") }) }
+        // A pause written by a refresh (foreground, background or the widget) shows on arrival.
+        .onAppear { if preview == nil { campus.reloadAccount() } }
         .confirmationDialog("退出学校账号？", isPresented:$confirmSignOut, titleVisibility:.visible) {
             // DEBUG demo data: the dialog shows, nothing is signed out.
             Button("退出登录", role:.destructive) { if preview == nil { campus.signOut() } }

@@ -61,7 +61,7 @@ struct SettingsView: View {
             reminderHandlers(List {
                 Section("我的") {
                     NavigationLink { AccountView(preview:preview) } label: {
-                        SettingsRow(emoji:"🎓", title:"学校账号", value:data.signedIn ? "已登录" : "去登录")
+                        SettingsRow(emoji:"🎓", title:"学校账号", value:AccountText.row(signedIn:data.signedIn, account:data.schoolAccount))
                     }
                     NavigationLink { CampusOnboardingView() } label: {
                         SettingsRow(emoji:"🏠", title:"宿舍", value:data.dorm ?? "去设置")
@@ -125,6 +125,7 @@ struct SettingsView: View {
             }
             .navigationDestination(isPresented:$accountPage) { AccountView(preview:preview) }
             .onAppear {
+                if preview == nil { campus.reloadAccount() }
                 if campus.hotWaterSetupRequested { campus.hotWaterSetupRequested = false; hotWaterSetup = true }
                 openAccountPageIfRequested()
             }

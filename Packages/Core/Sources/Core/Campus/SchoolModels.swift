@@ -60,6 +60,9 @@ public struct SchoolAccount: Sendable, Equatable, Codable, CustomStringConvertib
         case pausedRefused
         /// A login got no answer; automatic logins resume by themselves after the hold.
         case pausedNoAnswer
+
+        /// Either pause: Settings must not say only 「已登录」 then.
+        public var isPaused: Bool { self == .pausedRefused || self == .pausedNoAnswer }
     }
 
     public func autoLogin(at now: Date) -> AutoLogin {
