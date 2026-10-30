@@ -242,11 +242,10 @@ enum HomeDemo: String, CaseIterable {
         data.snapshot = Self.snapshot(now:now, read:read, kwh:"42.6", dailyKWh:"4.6")
         data.lastShowerMinutes = 11; data.lastShowerCost = Decimal(string:"1.32")
         data.laundryBound = true; data.laundryMachine = "3"; data.laundry = .idle
-        let yesterday = calendar.date(bySettingHour:22, minute:14, second:0, of:calendar.date(byAdding:.day, value:-1, to:now)!)!
-        let twoDays = calendar.date(bySettingHour:19, minute:2, second:0, of:calendar.date(byAdding:.day, value:-2, to:now)!)!
         data.appActivities = [
-            AppActivity(id:"demo-shower", kind:.shower(minutes:11), date:yesterday, amount:Money(fen:132)),
-            AppActivity(id:"demo-laundry", kind:.laundry(program:"标准洗"), date:twoDays, amount:Money(fen:400), detail:"3 号机"),
+            AppActivity(id:"demo-shower", kind:.shower(minutes:11), date:now.addingTimeInterval(-Self.showerAgo), amount:Money(fen:132)),
+            AppActivity(id:"demo-laundry", kind:.laundry(program:"标准洗"), date:now.addingTimeInterval(-44 * 3600),
+                        amount:Money(fen:400), detail:"3 号机"),
         ]
         switch self {
         case .normal, .settings, .settingsOff, .settingsAsk: return (data, nil)
@@ -336,12 +335,19 @@ enum HomeDemo: String, CaseIterable {
         }
     }
 
-    /// Synthetic balance, meter and card records (yesterday and today in the school's calendar).
+    /// The demo shower ended this long before now; its card record follows a minute later, so
+    /// 最近 shows the shower once.
+    static let showerAgo: TimeInterval = 20 * 3600
+
+    /// Synthetic balance, meter and card records, each a fixed time before `now` (never later,
+    /// whatever the device's time zone), written in the school's calendar as the school does.
     static func snapshot(now: Date, read: Date, kwh: String, dailyKWh: String, balance: String = "86.50") -> HomeSnapshot {
         let school = SchoolCalendar.shanghai
-        func record(daysAgo: Int, _ time: String, _ title: String, _ yuan: String, flag: String? = "1") -> CardRecord {
-            let day = school.date(byAdding:.day, value:-daysAgo, to:now)!
-            return CardRecord(date:SchoolCalendar.dayString(day, calendar:school), time:time, title:title,
+        func record(minutesAgo: Double, _ title: String, _ yuan: String, flag: String? = "1") -> CardRecord {
+            let moment = now.addingTimeInterval(-minutesAgo * 60)
+            let t = school.dateComponents([.hour, .minute, .second], from:moment)
+            return CardRecord(date:SchoolCalendar.dayString(moment, calendar:school),
+                              time:String(format:"%02d%02d%02d", t.hour ?? 0, t.minute ?? 0, t.second ?? 0), title:title,
                               amount:Money(yuanString:yuan)!, balanceAfter:nil, direction:flag)
         }
         let range = CardActivity.range(at:now)
@@ -350,11 +356,11 @@ enum HomeDemo: String, CaseIterable {
         s.power.succeed(Meter(comAddress:"demo-meter", name:"3栋108", remainingKWh:Decimal(string:kwh),
                               dailyUseKWh:Decimal(string:dailyKWh)), at:read)
         s.activity.succeed(CardActivity(records:[
-            record(daysAgo:0, "073000", "POS消费示例早餐铺", "4.50"),
-            record(daysAgo:1, "221500", "蓝牙热水", "1.32"),
-            record(daysAgo:1, "120500", "POS消费示例面馆", "12.00"),
-            record(daysAgo:1, "090000", "校园卡充值", "50.00", flag:nil),
-            record(daysAgo:1, "081000", "POS消费示例早餐铺", "3.50"),
+            record(minutesAgo:40, "POS消费示例早餐铺", "4.50"),
+            record(minutesAgo:showerAgo / 60 - 1, "蓝牙热水", "1.32"),
+            record(minutesAgo:26 * 60, "POS消费示例面馆", "12.00"),
+            record(minutesAgo:29 * 60, "校园卡充值", "50.00", flag:nil),
+            record(minutesAgo:30 * 60, "POS消费示例早餐铺", "3.50"),
         ], begin:range.begin, end:range.end, complete:true), at:read)
         s.roomLabel = "3栋108"
         return s

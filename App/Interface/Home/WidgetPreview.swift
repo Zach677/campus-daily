@@ -16,12 +16,14 @@ struct WidgetPreview: View {
     }
     var page = 1
     @Environment(\.colorScheme) private var scheme
-    private var updated: Date {
-        Calendar.current.date(bySettingHour:10, minute:32, second:0, of:Date()) ?? Date()
+    /// Today at `hour:minute`, or a little before now when that is still to come.
+    private func today(_ hour: Int, _ minute: Int, else minutesAgo: Double) -> Date {
+        let now = Date()
+        let time = Calendar.current.date(bySettingHour:hour, minute:minute, second:0, of:now) ?? now
+        return time < now ? time : now.addingTimeInterval(-minutesAgo * 60)
     }
-    private var staleTime: Date {
-        Calendar.current.date(bySettingHour:8, minute:10, second:0, of:Date()) ?? Date()
-    }
+    private var updated: Date { today(10, 32, else:5) }
+    private var staleTime: Date { today(8, 10, else:150) }
     /// 22:10 yesterday / 22:10 two days ago, for the footers that must name the day.
     private func daysAgo(_ days: Int) -> Date {
         let day = Calendar.current.date(byAdding:.day, value:-days, to:Date()) ?? Date()
