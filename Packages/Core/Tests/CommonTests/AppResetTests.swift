@@ -52,6 +52,43 @@ final class AppResetTests: XCTestCase {
     func testResetCoversEveryKeychainItem() {
         XCTAssertEqual(Set(AppReset.keychainItems), Set(StoreKey.allCases))
         XCTAssertEqual(AppReset.keychainItems.count, 12, "a new item: check reset clears it, then update this count")
+        // Stage 3: the refresh lease is an item of its own; the credential times live inside the
+        // card session and portal token items, so they go with them.
+        XCTAssertTrue(AppReset.keychainItems.contains(.sharedRefreshLease))
+        XCTAssertTrue(AppReset.keychainItems.contains(.schoolEcykt))
+        XCTAssertTrue(AppReset.keychainItems.contains(.schoolPortal))
+    }
+
+    /// What stage 3 stores (a live lease, stamped credentials) is gone after a reset, and after
+    /// a sign-out (school session first, then the refresher).
+    func testResetAndSignOutLeaveNoLeaseOrCredentialTimes() async throws {
+        func seed(_ store: InMemorySecureStore) throws {
+            let school = StoredSchoolVault(store: store)
+            var session = EcyktSession(token: "t", syscustid: "s", obtainedAt: Date(timeIntervalSince1970: 1_800_000_000))
+            session.lastAliveAt = Date(timeIntervalSince1970: 1_800_003_600)
+            try school.saveEcyktSession(session)
+            try school.savePortalToken(PortalToken("PORTAL", obtainedAt: Date(timeIntervalSince1970: 1_800_000_000)))
+            XCTAssertTrue(RefreshLease(store: store, owner: "widget-1").acquire())
+            try SharedSnapshotStore(store: store).saveSnapshot(HomeSnapshot(needsLogin: true, checkedAt: Date()))
+        }
+        let resetStore = InMemorySecureStore()
+        try seed(resetStore)
+        let suite = "reset-s3-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        try AppReset.clear(store: resetStore, preferences: defaults, preferencesDomain: suite, files: [])
+        for key in StoreKey.allCases { XCTAssertNil(try resetStore.read(key), key.rawValue) }
+
+        let signOutStore = InMemorySecureStore()
+        try seed(signOutStore)
+        let http = URLSessionHTTPClient(allowedHosts: [])
+        let stack = SchoolRefreshStack(store: signOutStore, http: http, role: "app", leaseWait: 0, diagnostic: { _ in })
+        try await stack.session.signOut()
+        try await stack.refresher.clear()
+        XCTAssertNil(try signOutStore.read(.schoolEcykt), "card session and its times")
+        XCTAssertNil(try signOutStore.read(.schoolPortal), "portal token and its time")
+        XCTAssertNil(try signOutStore.read(.sharedRefreshLease), "the other process's lease too")
+        XCTAssertEqual(try SharedSnapshotStore(store: signOutStore).loadSnapshot(), .empty)
     }
 
     func testFailedDeleteIsReportedAndTheRestStillCleared() throws {

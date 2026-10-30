@@ -252,10 +252,12 @@ public actor SchoolSession {
     }
 
     /// Deletes the saved password first (it sits in the shared group the widget reads), then
-    /// everything else. A failed deletion doesn't stop the rest; the failures are reported
+    /// everything else; the credentials' obtained/alive times go with their items. (The refresh
+    /// lease is the refresher's: `SnapshotRefresher.clear()`.) A failed deletion doesn't stop the rest; the failures are reported
     /// together at the end.
     public func signOut() throws {
         signOutGeneration += 1
+        loggedExpiries = []
         var failed: [String] = []
         let steps: [(String, () throws -> Void)] = [
             ("account", { try self.vault.saveAccount(nil) }),
