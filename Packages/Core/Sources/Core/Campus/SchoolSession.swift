@@ -470,14 +470,16 @@ public actor SchoolSession {
             _ = updateSavedAccount(saved, since: started) { $0.paused = true; $0.unansweredAt = nil }
             return .unavailable
         }
-        liftHold(saved, sentAt: sentAt, since: started)
-        // Kept at once: a read given up after this point (the widget's deadline) still leaves the
-        // next one a portal token to exchange instead of another password login.
-        guard await mayMint() else { return .lostLease }
+        // The school accepted the password: the portal token is kept at once, lease or not, so
+        // neither this process nor the other one sends the password again (a read given up or a
+        // lease lost after this point leaves a token to exchange). Only a sign-out in between
+        // (this process, or the account gone from the Keychain) drops it. The hold is lifted
+        // only once the token is stored.
         guard started == signOutGeneration else { return .unavailable }
-        // Read again just before writing: signed out in the other process meanwhile = nothing kept.
-        guard let still = (try? vault.account()) ?? nil, still.account == saved.account else { return .signedOut }
-        try? vault.savePortalToken(stamped(token))
+        guard let still = (try? vault.account()) ?? nil else { return .signedOut }
+        guard still.account == saved.account else { return .unavailable }
+        guard (try? vault.savePortalToken(stamped(token))) != nil else { return .unavailable }
+        liftHold(saved, sentAt: sentAt, since: started)
         do {
             guard await mayMint() else { return .lostLease }
             let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)
