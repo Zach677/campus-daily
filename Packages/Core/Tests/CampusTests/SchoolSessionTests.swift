@@ -266,7 +266,7 @@ final class SchoolRechargeTests: XCTestCase {
 
 final class SchoolElectricityTests: XCTestCase {
     /// Campus-wide rows + one synthetic row for the faked user room.
-    func campusMeters(extra: [String]) throws -> Fixture {
+    static func campusMeters(extra: [String]) throws -> Fixture {
         let f = try FixtureLoader.load("ecykt/electric-getMeterStatus-ok")
         return T.editingData(f) { data in
             guard let text = data.text, case .array(var rows)? = try? JSONValue.parse(text) else { return }
@@ -279,7 +279,7 @@ final class SchoolElectricityTests: XCTestCase {
         }
     }
 
-    func serveTree(_ h: Harness) throws {
+    static func serveTree(_ h: Harness) throws {
         for n in ["root", "level1", "level2", "level3", "level4"] {
             try h.server.serve("ecykt/electric-getBuildingInfo-" + n, matchBody: ["server", "buildingID"])
         }
@@ -292,8 +292,8 @@ final class SchoolElectricityTests: XCTestCase {
     func testMatchesByPiplineNameAndSavesRoomNode() async throws {
         let h = Harness()
         try h.signedIn()
-        h.server.serve(try campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
-        try serveTree(h)
+        h.server.serve(try Self.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+        try Self.serveTree(h)
         let result = try await h.session().resolveElectricity()
         guard case .matched(let binding, let meter) = result else { return XCTFail("\(result)") }
         XCTAssertEqual(binding, Harness.roomBinding)
@@ -307,7 +307,7 @@ final class SchoolElectricityTests: XCTestCase {
     func testFallsBackToCampusNodeWhenRoomNodeNotFound() async throws {
         let h = Harness()
         try h.signedIn()
-        h.server.serve(try campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+        h.server.serve(try Self.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try h.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
         h.server.respond("POST", "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service",
                          bodyMatch: ["server": "/api/getBuildingInfo"], body: Data(#"{"code":0,"msg":"获取成功","data":"[]"}"#.utf8))
@@ -319,7 +319,7 @@ final class SchoolElectricityTests: XCTestCase {
     func testZeroOrManyMatchesGoToPicker() async throws {
         let none = Harness()
         try none.signedIn()
-        none.server.serve(try campusMeters(extra: []), matchBody: ["server", "buildingID"])
+        none.server.serve(try Self.campusMeters(extra: []), matchBody: ["server", "buildingID"])
         try none.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
         let r0 = try await none.session().resolveElectricity()
         XCTAssertEqual(r0, .manualPicker)
@@ -327,7 +327,7 @@ final class SchoolElectricityTests: XCTestCase {
 
         let many = Harness()
         try many.signedIn()
-        many.server.serve(try campusMeters(extra: ["99栋991", "99栋 991"]), matchBody: ["server", "buildingID"])
+        many.server.serve(try Self.campusMeters(extra: ["99栋991", "99栋 991"]), matchBody: ["server", "buildingID"])
         try many.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
         let r2 = try await many.session().resolveElectricity()
         guard case .chooseAmong(let list) = r2 else { return XCTFail("\(r2)") }

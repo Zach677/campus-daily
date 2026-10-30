@@ -72,9 +72,11 @@ public actor SchoolSession {
     /// Native path after the CAS WebView produced the portal token: dorm address, ticket,
     /// ecykt exchange, bound card. Saves everything on success.
     public func signIn(portalToken: PortalToken, userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {
+        let started = signOutGeneration
         let residence = try? await portal.myInfo(portalToken)
         let session = try await exchangeSession(portalToken: portalToken, userAgent: userAgent, previous: nil)
         let (card, updated) = try await liveCard(session)
+        try ensureSignedIn(since: started)
         try vault.savePortalToken(portalToken)
         try vault.saveEcyktSession(updated)
         var profile = (try? vault.profile()) ?? SchoolProfile()
@@ -98,11 +100,14 @@ public actor SchoolSession {
         let areacode = root["schoolid"]?.text ?? EcyktSession.defaultAreacode
         let session = EcyktSession(token: token, syscustid: sys, custid: root["custInfo"]?["custid"]?.text,
                                    cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: userAgent)
+        let started = signOutGeneration
         let (card, updated) = try await liveCard(session)
+        try ensureSignedIn(since: started)
         if let portalToken { try vault.savePortalToken(portalToken) }
         try vault.saveEcyktSession(updated)
         var residence: PortalResidence?
         if let portalToken, let r = try? await portal.myInfo(portalToken) {
+            try ensureSignedIn(since: started)
             residence = r
             var profile = (try? vault.profile()) ?? SchoolProfile()
             if profile.residence?.address != r.address { profile.meter = nil }
@@ -174,9 +179,11 @@ public actor SchoolSession {
     /// be found, the campus node + `comAddress` is saved instead (wide read).
     public func resolveElectricity() async throws -> ElectricityResolution {
         guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
+        let started = signOutGeneration
         var profile = try vault.profile() ?? SchoolProfile()
         if profile.residence?.address == nil, let token = try vault.portalToken() {
             profile.residence = try await portal.myInfo(token)
+            try ensureSignedIn(since: started)
             try vault.saveProfile(profile)
         }
         guard let address = profile.residence?.address else { return .noAddress }
@@ -198,6 +205,7 @@ public actor SchoolSession {
             found = located.1
         }
         profile.meter = binding
+        try ensureSignedIn(since: started)
         try vault.saveProfile(profile)
         return .matched(binding, found)
     }
@@ -213,11 +221,13 @@ public actor SchoolSession {
     /// (wide read, picked by `comAddress`).
     public func chooseMatchedMeter(_ meter: Meter) async throws {
         guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
+        let started = signOutGeneration
         var profile = try vault.profile() ?? SchoolProfile()
         guard let address = profile.residence?.address else { throw ServiceError.malformed(.portal, "data.gydz") }
         let campuses = try await ecykt.buildings(session, parent: nil).filter { address.matchesCampus($0.name) }
         guard campuses.count == 1, let campus = campuses.first else { throw ServiceError.malformed(.ecykt, "campus") }
         profile.meter = MeterBinding(nodeID: campus.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: false)
+        try ensureSignedIn(since: started)
         try vault.saveProfile(profile)
     }
 
@@ -240,7 +250,7 @@ public actor SchoolSession {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = signOutGeneration
         let (card, live) = try await liveCard(stored)
-        guard started == signOutGeneration else { throw ServiceError.sessionExpired(.ecykt) }
+        try ensureSignedIn(since: started)
         try? vault.saveEcyktSession(live)
         return try await ecykt.signData(live, custid: card.custid)
     }
@@ -293,7 +303,7 @@ public actor SchoolSession {
         let fresh = try await ecykt.freshLogin(live)
         var updated = live
         updated.syscustid = fresh.syscustid   // latest ciphertext, valid as input next time
-        guard started == signOutGeneration else { throw ServiceError.sessionExpired(.ecykt) }
+        try ensureSignedIn(since: started)
         try? vault.saveEcyktSession(updated)
         return try RechargeWebSessionBuilder.build(kind: kind, session: updated, fresh: fresh, card: card)
     }
@@ -311,6 +321,12 @@ public actor SchoolSession {
     }
 
     // MARK: Helpers
+
+    /// Work that awaited the network checks this before writing: a sign-out in the meantime
+    /// wins, and the late result is dropped as if the session had expired.
+    func ensureSignedIn(since started: Int) throws {
+        guard started == signOutGeneration else { throw ServiceError.sessionExpired(.ecykt) }
+    }
 
     /// `boundCards` + pick the saved card (by stable `custunionid`) or the first one.
     /// Updates the session with the latest `custid` ciphertext.
