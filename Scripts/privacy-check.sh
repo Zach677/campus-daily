@@ -1,5 +1,5 @@
 #!/bin/sh
-# The two privacy checks to run before every commit. They read the staged
+# The privacy checks to run before every commit. They read the staged
 # content (the Git index), not the working tree, and print counts and
 # file:line locations only, never the values themselves.
 #
@@ -9,6 +9,9 @@
 #   2. Value scan: every line of your private value list (your own real
 #      student id, phone, room, device ids, tokens, platform secret...) must
 #      not appear in any tracked file, ignoring case.
+#   3. Marker scan: lines matching any extended regex in MARKER_PATTERNS
+#      (one per line), except the path:line locations listed in MARKER_ALLOW.
+#      Both files live outside Git, like the value list.
 #
 # Allowlists match the complete value, never a prefix or the rest of the
 # line. Synthetic values in fixtures are therefore written in shapes no real
@@ -17,9 +20,11 @@
 #
 # The value list lives outside Git. Its path comes from LEAKCHECK_FILE
 # (default: private/capture/secrets/leakcheck.txt in the checkout). A missing
-# list is a failure; pass --allow-missing to run only the pattern scan.
+# list is a failure, and so is an unset MARKER_PATTERNS; pass --allow-missing
+# to skip what is missing (reported as skipped).
 #
-#   LEAKCHECK_FILE=/path/to/leakcheck.txt sh Scripts/privacy-check.sh [--allow-missing] [repo]
+#   LEAKCHECK_FILE=/path/to/leakcheck.txt MARKER_PATTERNS=/path/to/patterns.txt \
+#   MARKER_ALLOW=/path/to/allow.txt sh Scripts/privacy-check.sh [--allow-missing] [repo]
 #
 # Exit 0: clean. Exit 1: something found. Exit 2: the check could not run
 # (not a repo, git grep failed, nothing to scan, empty value list...), which
@@ -154,6 +159,33 @@ elif [ "$allow_missing" -eq 1 ]; then
   echo "value scan: skipped (no list at LEAKCHECK_FILE; --allow-missing)"
 else
   echo "value scan: list not found (set LEAKCHECK_FILE, or pass --allow-missing)" >&2
+  exit 2
+fi
+
+
+# 3. Marker scan
+markers=${MARKER_PATTERNS:-}
+if [ -n "$markers" ] && [ -f "$markers" ]; then
+  grep -v '^[[:space:]]*$' "$markers" > "$tmp/markers"
+  if ! grep -q . "$tmp/markers"; then echo "privacy-check: marker pattern list is empty" >&2; exit 2; fi
+  gitgrep "$tmp/markraw" --cached -z -I -n -E -f "$tmp/markers" -- . ':(exclude)Vendor' \
+    ':(exclude)*.png' ':(exclude)*.jpg' ':(exclude)*.jpeg' ':(exclude)*.webp'
+  tr '\0' '\t' < "$tmp/markraw" | awk -F'\t' 'NF >= 3 { print $1 ":" $2 }' | sort -u > "$tmp/marks"
+  if [ -n "${MARKER_ALLOW:-}" ] && [ -f "$MARKER_ALLOW" ]; then
+    grep -v '^[[:space:]]*$' "$MARKER_ALLOW" > "$tmp/allow"
+    grep -vxF -f "$tmp/allow" "$tmp/marks" > "$tmp/marks2"; mv "$tmp/marks2" "$tmp/marks"
+  fi
+  n=$(grep -c . "$tmp/marks")
+  echo "marker scan: $n lines"
+  [ "$n" -gt 0 ] && head -50 "$tmp/marks"
+  hits=$((hits+n))
+elif [ -n "$markers" ]; then
+  echo "marker scan: pattern list not found at MARKER_PATTERNS" >&2
+  exit 2
+elif [ "$allow_missing" -eq 1 ]; then
+  echo "marker scan: skipped (MARKER_PATTERNS not set; --allow-missing)"
+else
+  echo "marker scan: MARKER_PATTERNS not set (set it, or pass --allow-missing)" >&2
   exit 2
 fi
 

@@ -3,7 +3,10 @@
 # `mise test-scripts` also needs node, `mise android` needs JDK 21.
 #
 # Override defaults with environment variables, for example
-# `CONFIGURATION=Release mise build` or `SIMULATOR="iPhone 17" mise test-app`.
+# `SIMULATOR="iPhone 17" mise test-app`. `mise run check` runs every check a
+# commit must pass (build, test, scan). BUILD_CMD and TEST_CMD replace the
+# xcodebuild and swift test commands (to run them on another machine);
+# BUILD_CMD gets the configuration as its last argument.
 
 [task_config]
 dir = "{{config_root}}"
@@ -18,13 +21,21 @@ set -euo pipefail
 '''
 
 [tasks.build]
-description = "Build App and Widget for iOS Simulator"
+description = "Build App and Widget for iOS Simulator, Debug and Release"
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-xcodebuild build -workspace XiaoRiChang.xcworkspace -scheme App \
-  -configuration "${CONFIGURATION:-Debug}" -destination "generic/platform=iOS Simulator" \
-  -derivedDataPath .DerivedData
+cmd=${BUILD_CMD:-"xcodebuild build -workspace XiaoRiChang.xcworkspace -scheme App -destination 'generic/platform=iOS Simulator' -derivedDataPath .DerivedData -configuration"}
+eval "$cmd Debug"
+# Release only compiles with a hot-water profile. Without the real one
+# (private/distribution/, or CAMPUS_WATER_PROFILE_PATH), this check build gets a
+# synthetic platform-only profile; package-ipa still requires the real one.
+if [ -z "${CAMPUS_WATER_PROFILE_PATH:-}" ] && [ ! -f private/distribution/WaterPlatformProfile.json ]; then
+  CAMPUS_WATER_PROFILE_PATH=$(mktemp -d)/SyntheticWaterProfile.json
+  printf '{"secret":"synthetic-release-check","sid":"synthetic","bleName":"SYNTHETIC","typeID":0,"version":1}\n' > "$CAMPUS_WATER_PROFILE_PATH"
+  export CAMPUS_WATER_PROFILE_PATH
+fi
+eval "$cmd Release"
 '''
 
 [tasks.build-device]
@@ -43,7 +54,7 @@ run = [{ task = "test-core" }, { task = "test-scripts" }]
 
 [tasks.test-core]
 description = "Run the Core package tests on macOS"
-run = "swift test --package-path Packages/Core --scratch-path .build-tests"
+run = 'eval "${TEST_CMD:-swift test --package-path Packages/Core --scratch-path .build-tests}"'
 
 [tasks.test-app]
 description = "Run the App.xctestplan on an iOS Simulator"
@@ -62,9 +73,14 @@ run = [
     "node --test Scripts/Tests/campus-login-automation.test.cjs",
 ]
 
-[tasks.privacy-check]
-description = "Both privacy checks on staged files (pattern scan + value scan of $LEAKCHECK_FILE; fails if the list is missing)"
+[tasks.scan]
+description = "Privacy checks on staged files: patterns, values in $LEAKCHECK_FILE, markers in $MARKER_PATTERNS (except $MARKER_ALLOW); a missing list fails"
 run = "sh Scripts/privacy-check.sh"
+
+[tasks.check]
+description = "Every check before a commit: Debug and Release builds, all tests, privacy scans"
+depends = ["build", "test", "scan"]
+run = "echo 'all checks passed'"
 
 [tasks.check-widget-signature]
 description = "Check a signed app and its widget share one keychain group (APP=path/to/XiaoRiChang.app)"

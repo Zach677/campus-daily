@@ -30,8 +30,8 @@ Hot-water signing, BLE commands, and how school and U净 responses are parsed mu
 
 ## Privacy
 
-The repo is public. Real student ids, phone numbers, rooms, device ids, keys and raw captures never go in it. Fixtures in `Packages/Core/Tests/Fixtures` are captured replies with every personal value replaced by a fake one, plus synthetic replies for calls that were never captured (redaction rules in docs/architecture.md). Run `mise privacy-check` on the staged files before every commit. It needs your private value list: set `LEAKCHECK_FILE` (default `private/capture/secrets/leakcheck.txt`), otherwise it fails.
+The repo is public. Real student ids, phone numbers, rooms, device ids, keys and raw captures never go in it. Fixtures in `Packages/Core/Tests/Fixtures` are captured replies with every personal value replaced by a fake one, plus synthetic replies for calls that were never captured (redaction rules in docs/architecture.md). `mise scan` checks the staged files. It needs two lists kept outside the repo: your private values (`LEAKCHECK_FILE`, default `private/capture/secrets/leakcheck.txt`) and marker patterns (`MARKER_PATTERNS`, with optional `MARKER_ALLOW` of `path:line` exceptions); a missing list fails.
 
 ## Before committing
 
-Run `mise test` (the test count may only grow; explain any drop), `mise privacy-check`, and `mise build` for App and Widget. Each commit does one thing; keep pure moves separate from logic changes. Docs are this file, `README.md`, `docs/architecture.md`, `docs/privacy.md` and `CHANGELOG.md`. Do not add process notes.
+Run `mise run check`: Debug and Release builds, all tests, and `mise scan`. The test count may only grow; explain any drop. To build or test on another machine, set `BUILD_CMD` / `TEST_CMD`. Each commit does one thing; keep pure moves separate from logic changes. Docs are this file, `README.md`, `docs/architecture.md`, `docs/privacy.md` and `CHANGELOG.md`. Do not add process notes.
