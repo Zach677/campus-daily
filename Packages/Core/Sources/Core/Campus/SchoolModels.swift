@@ -240,9 +240,17 @@ public struct CardRecord: Sendable, Equatable, Codable {
 }
 
 public struct CardRecordPage: Sendable, Equatable {
-    public var total: Int
+    /// Records in the whole range; nil when the reply did not say.
+    public var total: Int?
     public var rows: [CardRecord]
-    public init(total: Int, rows: [CardRecord]) { self.total = total; self.rows = rows }
+    public init(total: Int?, rows: [CardRecord]) { self.total = total; self.rows = rows }
+
+    /// Every record in the range is on this page. Without a total, only a page with room left
+    /// over is known to be the last one.
+    public func isComplete(pageSize: Int) -> Bool {
+        guard let total else { return rows.count < pageSize }
+        return total <= rows.count
+    }
 }
 
 // MARK: - Profile

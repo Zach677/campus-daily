@@ -275,6 +275,28 @@ final class EcyktBalanceTests: XCTestCase {
         XCTAssertEqual(page.rows.first?.balanceAfter, Money(fen: 790))
         XCTAssertEqual(page.rows.first?.date, "20260110")
         XCTAssertEqual(server.requests.first?.bodyField("pageSize"), "5")
+        XCTAssertFalse(page.isComplete(pageSize: 5))
+    }
+
+    /// A reply without a total is complete only when the page was not filled.
+    func testCardRecordsWithoutATotal() async throws {
+        let ok = try FixtureLoader.load("ecykt/card-getRecordList-ok")
+        let server = StubServer()
+        server.serve(T.editingData(ok) { if case .object(var d) = $0 { d["total"] = nil; $0 = .object(d) } })
+        let page = try await EcyktClient(http: server.makeClient()).cardRecords(T.session(), custid: T.custid, begin: "20260930", end: "20261030", pageSize: 5)
+        XCTAssertNil(page.total)
+        XCTAssertEqual(page.rows.count, 5)
+        XCTAssertFalse(page.isComplete(pageSize: 5), "a full page may have more after it")
+        XCTAssertTrue(page.isComplete(pageSize: 6))
+    }
+
+    func testRecordPageCompleteness() {
+        let row = CardRecord(date: "20261030", time: "120000", title: "x", amount: Money(fen: 1), balanceAfter: nil, direction: "1")
+        XCTAssertTrue(CardRecordPage(total: 2, rows: [row, row]).isComplete(pageSize: 2))
+        XCTAssertFalse(CardRecordPage(total: 3, rows: [row, row]).isComplete(pageSize: 2))
+        XCTAssertTrue(CardRecordPage(total: nil, rows: [row]).isComplete(pageSize: 2))
+        XCTAssertTrue(CardRecordPage(total: nil, rows: []).isComplete(pageSize: 2))
+        XCTAssertFalse(CardRecordPage(total: nil, rows: [row, row]).isComplete(pageSize: 2))
     }
 }
 

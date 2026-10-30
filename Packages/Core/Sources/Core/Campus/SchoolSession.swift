@@ -371,7 +371,7 @@ public actor SchoolSession {
                     let page = try await ecykt.cardRecords(session, custid: card.custid, begin: range.begin, end: range.end,
                                                            page: 1, pageSize: CardActivity.pageSize, timeout: timeout)
                     return CardActivity(records: page.rows, begin: range.begin, end: range.end,
-                                        complete: page.total <= page.rows.count)
+                                        complete: page.isComplete(pageSize: CardActivity.pageSize))
                 }
             }
         }

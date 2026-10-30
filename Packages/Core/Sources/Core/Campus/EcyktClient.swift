@@ -110,7 +110,7 @@ public struct EcyktClient: Sendable {
                               balanceAfter: row["balance"]?.text.flatMap(Money.init(yuanString:)),
                               direction: row["dcflag"]?.text)
         }
-        return CardRecordPage(total: data["total"]?.intValue ?? records.count, rows: records)
+        return CardRecordPage(total: data["total"]?.intValue, rows: records)
     }
 
     /// `electricnew/service server=/api/getBuildingInfo`. `parent == nil` → campuses.
