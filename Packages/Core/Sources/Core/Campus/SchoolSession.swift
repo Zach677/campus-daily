@@ -428,46 +428,75 @@ public actor SchoolSession {
     /// The last step of the refresh: one login with the saved password. Anything but success
     /// or no network pauses the password, so a wrong or blocked login is never repeated. A login
     /// that was sent but got no answer holds automatic logins off for a few hours instead.
+    ///
+    /// The widget can be suspended or killed at any await, so each fact is stored as soon as it
+    /// is known: the hold is written before the password goes out and lifted once an answer (or
+    /// a failure before sending) comes back; the portal token is saved as soon as the login
+    /// returns it, before the exchange that follows.
     private func signInWithSavedPassword(previous: EcyktSession, since started: Int,
                                          mayMint: @Sendable () async -> Bool) async -> PasswordStep {
         guard let saved = (try? vault.account()) ?? nil, let password = saved.automaticPassword(at: now()) else { return .unavailable }
         // The portal exchange may have taken most of the lease: confirm it before the password goes out.
         guard await mayMint() else { return .lostLease }
+        let sentAt = now()
+        guard updateSavedAccount(saved, since: started, { $0.unansweredAt = sentAt }) else { return .signedOut }
+        let token: PortalToken
         do {
-            let token = try await passwordLoginOnce(account: saved.account, password: password)
+            token = try await passwordLoginOnce(account: saved.account, password: password)
+        } catch SchoolLoginFailure.noAnswer {
+            // The school may have counted this one: the hold written above stays.
+            return .offline
+        } catch SchoolLoginFailure.offline {
+            liftHold(saved, sentAt: sentAt, since: started)
+            return .offline
+        } catch is CancellationError {
+            // Cancelled before the password was sent (after it, the login reports noAnswer).
+            liftHold(saved, sentAt: sentAt, since: started)
+            return .unavailable
+        } catch {
+            // Only the password that was tried: one saved meanwhile (保存密码 / 重新输入密码) stays usable.
+            _ = updateSavedAccount(saved, since: started) { $0.paused = true; $0.unansweredAt = nil }
+            return .unavailable
+        }
+        liftHold(saved, sentAt: sentAt, since: started)
+        // Kept at once: a read given up after this point (the widget's deadline) still leaves the
+        // next one a portal token to exchange instead of another password login.
+        guard await mayMint() else { return .lostLease }
+        guard started == signOutGeneration else { return .unavailable }
+        // Read again just before writing: signed out in the other process meanwhile = nothing kept.
+        guard let still = (try? vault.account()) ?? nil, still.account == saved.account else { return .signedOut }
+        try? vault.savePortalToken(stamped(token))
+        do {
             guard await mayMint() else { return .lostLease }
             let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)
             let found = try await liveCard(fresh)
             guard started == signOutGeneration else { return .unavailable }
-            guard await mayMint() else { return .lostLease }
-            // Read again just before writing: signed out in the other process meanwhile = nothing kept.
-            guard let still = (try? vault.account()) ?? nil, still.account == saved.account else { return .signedOut }
-            try? vault.savePortalToken(stamped(token))
             return .signedIn(found)
-        } catch SchoolLoginFailure.offline {
-            return .offline
-        } catch SchoolLoginFailure.noAnswer {
-            // The school may have counted this one: no automatic login for a while.
-            if started == signOutGeneration, var held = (try? vault.account()) ?? nil,
-               held.account == saved.account, held.password == saved.password {
-                held.unansweredAt = now()
-                try? vault.saveAccount(held)
-            }
-            return .offline
         } catch let e as ServiceError where e == .offline || e == .timedOut {
             // The password was accepted; only the steps after it lost the network.
             return .offline
         } catch is CancellationError {
             return .unavailable
         } catch {
-            // Only the password that was tried: one saved meanwhile (保存密码 / 重新输入密码) stays usable.
-            if started == signOutGeneration, var paused = (try? vault.account()) ?? nil,
-               paused.account == saved.account, paused.password == saved.password {
-                paused.paused = true
-                try? vault.saveAccount(paused)
-            }
+            // The password worked but the card login after it did not: paused as before, so the
+            // next refresh does not log in again (the saved portal token is still tried first).
+            _ = updateSavedAccount(saved, since: started) { $0.paused = true }
             return .unavailable
         }
+    }
+
+    /// Changes the saved account only while it is still the one this login started from (same
+    /// account and password, not signed out). False = it has gone or changed.
+    private func updateSavedAccount(_ saved: SchoolAccount, since started: Int, _ change: (inout SchoolAccount) -> Void) -> Bool {
+        guard started == signOutGeneration, var current = (try? vault.account()) ?? nil,
+              current.account == saved.account, current.password == saved.password else { return false }
+        change(&current)
+        return (try? vault.saveAccount(current)) != nil
+    }
+
+    /// An answer came back (or the password never left): the hold written for this login goes.
+    private func liftHold(_ saved: SchoolAccount, sentAt: Date, since started: Int) {
+        _ = updateSavedAccount(saved, since: started) { if $0.unansweredAt == sentAt { $0.unansweredAt = nil } }
     }
 
     // MARK: Electricity

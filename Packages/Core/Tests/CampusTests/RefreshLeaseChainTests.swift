@@ -87,9 +87,9 @@ final class RefreshLeaseChainTests: XCTestCase {
         XCTAssertEqual(try h.vault.account()?.paused, false, "a login that was never sent pauses nothing")
     }
 
-    /// The lease was lost after the password was accepted: the new portal token is not saved and
-    /// the session is not written back; the holder's own login is the one that counts.
-    func testLostLeaseAfterThePasswordWritesNoCredential() async throws {
+    /// The lease was lost during the exchange after the login: the portal token the login
+    /// returned (saved while the lease was still held) stays, the session is not written back.
+    func testLostLeaseDuringTheExchangeWritesNoSession() async throws {
         let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
         let h = try passwordHarness(login)
         try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
@@ -104,7 +104,7 @@ final class RefreshLeaseChainTests: XCTestCase {
         }
         let report = await refresher(h, owner: "widget-1").refresh(inBackground: true)
         XCTAssertFalse(report.snapshotSaved)
-        XCTAssertEqual(try h.vault.portalToken()?.value, "OLD")
+        XCTAssertEqual(try h.vault.portalToken()?.value, SchoolPasswordSignInTests.freshToken.value)
         XCTAssertEqual(try h.vault.ecyktSession()?.token, T.session().token)
     }
 
@@ -161,7 +161,7 @@ final class SignOutDuringOtherProcessLoginTests: XCTestCase {
         let report = await read
         // Without the lease revoked the read may store the same signed-out snapshot again.
         if revokingLease { XCTAssertFalse(report.snapshotSaved) }
-        XCTAssertEqual(report.outcome, revokingLease ? .failed(.timedOut) : .notSignedIn)
+        XCTAssertEqual(report.outcome, .notSignedIn)
         XCTAssertNil(try h.vault.portalToken(), "revoking: \(revokingLease)")
         XCTAssertNil(try h.vault.ecyktSession())
         XCTAssertNil(try h.vault.account())
