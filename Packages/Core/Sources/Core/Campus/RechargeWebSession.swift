@@ -86,12 +86,14 @@ public enum RechargeNavigation {
     /// Diagnostic line for a cancelled navigation: for http(s) the host only, for any other scheme
     /// the scheme only (an app link's "host" can be an identifier), never the path, query or
     /// fragment, which can carry order ids or tokens.
-    public static func blockedEvent(_ url: URL) -> String {
+    public static func blockedEvent(_ url: URL) -> String { blockedEvent(url, event: "recharge.blocked") }
+
+    static func blockedEvent(_ url: URL, event: String) -> String {
         let scheme = sanitized(url.scheme ?? "", limit: 16)
         if scheme == "http" || scheme == "https", let host = url.host, !host.isEmpty {
-            return "recharge.blocked " + scheme + "://" + sanitized(host, limit: 50)
+            return event + " " + scheme + "://" + sanitized(host, limit: 50)
         }
-        return "recharge.blocked " + (scheme.isEmpty ? "unknown" : scheme + ":")
+        return event + " " + (scheme.isEmpty ? "unknown" : scheme + ":")
     }
 
     private static func sanitized(_ text: String, limit: Int) -> String {
@@ -104,6 +106,12 @@ public enum RechargeNavigation {
 /// https on the three school hosts, default port, no user info. A frame may also be
 /// `about:blank` / `about:srcdoc`, which loads nothing. Everything else is cancelled.
 public enum SchoolLoginNavigation {
+    /// Diagnostic line for a cancelled navigation on the login page (the page or a frame in it),
+    /// written like the recharge one: host or scheme only.
+    public static func blockedEvent(_ url: URL, isMainFrame: Bool) -> String {
+        RechargeNavigation.blockedEvent(url, event: isMainFrame ? "login.blocked" : "login.blockedFrame")
+    }
+
     public static func allows(_ url: URL, isMainFrame: Bool) -> Bool {
         if !isMainFrame, url.scheme?.lowercased() == "about", ["about:blank", "about:srcdoc"].contains(url.absoluteString) { return true }
         guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased(),

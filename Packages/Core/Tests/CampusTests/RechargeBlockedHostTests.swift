@@ -28,4 +28,13 @@ final class RechargeBlockedHostTests: XCTestCase {
         XCTAssertEqual(event, "recharge.blocked examplepay:")
         XCTAssertFalse(event.lowercased().contains("synth"))
     }
+
+    /// The school login page logs its cancelled navigations, frames included, the same way.
+    func testTheLoginPageLogsHostsOnly() {
+        let url = URL(string: "https://tracker.example.invalid/p?uid=SYNTH-99001")!
+        XCTAssertEqual(SchoolLoginNavigation.blockedEvent(url, isMainFrame: false), "login.blockedFrame https://tracker.example.invalid")
+        XCTAssertEqual(SchoolLoginNavigation.blockedEvent(url, isMainFrame: true), "login.blocked https://tracker.example.invalid")
+        XCTAssertEqual(SchoolLoginNavigation.blockedEvent(URL(string: "examplepay://SYNTH-ID/x")!, isMainFrame: false),
+                       "login.blockedFrame examplepay:")
+    }
 }
