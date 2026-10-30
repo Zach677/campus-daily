@@ -191,6 +191,16 @@ final class HomeFiguresTests: XCTestCase {
         XCTAssertEqual(HomeUpdateLine.signInTarget(SchoolAccount(account: "99100991", password: "synthetic-pw-991", paused: true)), .account)
     }
 
+    /// The age of the numbers is written as on the widget: the day and the clock once not today.
+    func testNumbersTimeSaysTheDayAsTheWidgetDoes() {
+        XCTAssertEqual(HomeUpdateLine.failed(lastGood: date(10, 26, 7, 5)).text(now: now, calendar: calendar),
+                       "没更新上，下拉再试 · 数字是 10月26日 7:05 的")
+        XCTAssertEqual(HomeUpdateLine.expired(lastGood: date(10, 29, 22, 10)).text(now: now, calendar: calendar),
+                       "登录过期了，点这里重新登录 · 数字是 昨天 22:10 的")
+        XCTAssertEqual(HomeUpdateLine.failed(lastGood: date(10, 26, 7, 5)).text(now: now, calendar: calendar),
+                       "没更新上，下拉再试 · 数字是 " + UpdateTimeText.widgetUpdated(date(10, 26, 7, 5), now: now, calendar: calendar).replacingOccurrences(of: " 更新", with: "") + " 的")
+    }
+
     func testStampOlderThanYesterdayIsTheDayOnly() {
         XCTAssertEqual(HomeUpdateLine.updated(date(10, 26, 7, 5)).text(now: now, calendar: calendar), "10月26日 更新")
         XCTAssertEqual(HomeUpdateLine.updated(date(10, 29, 7, 5)).text(now: now, calendar: calendar), "昨天 7:05 更新")

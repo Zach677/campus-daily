@@ -99,7 +99,8 @@ public enum HomeUpdateLine: Sendable, Equatable {
     case refreshing
     /// 「10:32 更新」
     case updated(Date)
-    /// 「没更新上，下拉再试 · 数字是 10:32 的」; the date is nil when nothing was ever read.
+    /// 「没更新上，下拉再试 · 数字是 10:32 的」 (「昨天 10:32」, 「10月26日 10:32」 as on the widget);
+    /// the date is nil when nothing was ever read.
     case failed(lastGood: Date?)
     /// 「登录过期了，点这里重新登录 · 数字是 10:32 的」: pulling again can't help, signing in can.
     case expired(lastGood: Date?)
@@ -153,9 +154,9 @@ public enum HomeUpdateLine: Sendable, Equatable {
         case .hidden: return nil
         case .refreshing: return "正在更新…"
         case .updated(let date): return Self.stamp(date, now: now, calendar: calendar) + " 更新"
-        case .failed(let date?): return "没更新上，下拉再试 · 数字是 " + Self.stamp(date, now: now, calendar: calendar) + " 的"
+        case .failed(let date?): return "没更新上，下拉再试 · 数字是 " + UpdateTimeText.stamp(date, now: now, calendar: calendar) + " 的"
         case .failed(nil): return "没更新上，下拉再试"
-        case .expired(let date?): return "登录过期了，点这里重新登录 · 数字是 " + Self.stamp(date, now: now, calendar: calendar) + " 的"
+        case .expired(let date?): return "登录过期了，点这里重新登录 · 数字是 " + UpdateTimeText.stamp(date, now: now, calendar: calendar) + " 的"
         case .expired(nil): return "登录过期了，点这里重新登录"
         }
     }
