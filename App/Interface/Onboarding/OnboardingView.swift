@@ -171,6 +171,8 @@ struct OnboardingView: View {
         let question = Text("？")   // full-width U+FF1F, per copy
         switch step {
         case .login: return Text("登录") + accent("学校账号")
+        case .dorm where choosingApartment:
+            return Text(SameNameText.titleLead) + accent(SameNameText.titleAccent) + Text(SameNameText.titleTail)
         case .dorm: return Text("你住在") + accent("哪一间") + question
         // 学校洗衣机 question: same page, 「洗衣机」 in the accent colour.
         case .washer: return Text("宿舍用学校的") + accent("洗衣机") + Text("吗") + question
@@ -181,6 +183,7 @@ struct OnboardingView: View {
     private var bodyText: String? {
         switch step {
         case .login: return "用你在学校官网登录时的账号和密码。"
+        case .dorm where choosingApartment: return SameNameText.hint(apartmentChoices)
         case .dorm: return dorm.map { "已经从学校账号读到：\($0)。不对就改一下。" } ?? "没读到你的宿舍，手动选一下。"
         case .washer: return SchoolLaundryPreference.Onboarding.subtitle
         case .done: return nil
@@ -193,7 +196,7 @@ struct OnboardingView: View {
     @ViewBuilder private var powerApartment: some View {
         VStack(alignment:.leading, spacing:0) {
             if !campus.powerChoices.isEmpty {
-                LocationChoiceList(kind:.meter, choices:campus.powerChoices.map(\.choice), selection:$apartment)
+                LocationChoiceList(choices:campus.powerChoices.map(\.choice), selection:$apartment)
                     .disabled(campus.matchingPower)
                     // A new list: an earlier pick may no longer be in it.
                     .onChange(of:campus.powerChoices) { _, _ in apartment = nil }
@@ -208,6 +211,8 @@ struct OnboardingView: View {
         }
     }
 
+    private var apartmentChoices: [LocationChoice] { preview?.powerChoices ?? campus.powerChoices.map(\.choice) }
+
     private var waitingForApartment: Bool { choosingApartment && apartment == nil }
 
     /// The dorm step lists same-name apartments; 「就是这间」 waits for a choice.
@@ -219,7 +224,7 @@ struct OnboardingView: View {
 
     /// DEBUG demo: the same picker with sample locations; confirming does nothing.
     private func previewApartment(_ choices: [LocationChoice]) -> some View {
-        LocationChoiceList(kind:.meter, choices:choices, selection:$apartment)
+        LocationChoiceList(choices:choices, selection:$apartment)
     }
 
     // MARK: Bottom

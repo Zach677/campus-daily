@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 
 /// One dorm or meter location offered for a choice: the short name people know
 /// (「3 栋 108」) and the full location that tells same-named places apart
@@ -12,39 +13,32 @@ struct LocationChoice: Identifiable, Equatable {
     var spoken: String { title + "，" + location.replacingOccurrences(of:" · ", with:"，") }
 }
 
-/// Body text above a same-name list: 「有 {n} 间同名的宿舍，选你住的那间。」 or, for the meter
-/// step, 「有 {n} 个同名的电表位置，选你宿舍的那个。」.
-enum LocationChoiceKind {
-    case dorm, meter
-
-    func hint(count: Int) -> String {
-        switch self {
-        case .dorm: return "有 \(count) 间同名的宿舍，选你住的那间。"
-        case .meter: return "有 \(count) 个同名的电表位置，选你宿舍的那个。"
-        }
+/// The screen text for a same-name choice (meter step and dorm step alike): title
+/// 「哪个是你宿舍的电表？」 with 「电表」 accented, and 「学校有 {n} 间都叫 {name}，选你住的那间。」.
+enum SameNameText {
+    static let titleLead = "哪个是你宿舍的"
+    static let titleAccent = "电表"
+    static let titleTail = "？"
+    static func hint(_ choices: [LocationChoice]) -> String {
+        LocationNaming.sameNameHint(count:choices.count, name:choices.first?.title ?? "")
     }
 }
 
 /// Single-select list of same-name candidates: top hairline, rows of a 24 pt circle check,
-/// the short title and the full location (wraps, never truncates). A tap only marks a row;
+/// the first location level that tells the rows apart (「西苑公寓」) and the full location
+/// (wraps, never truncates). A tap only marks a row;
 /// the screen's 「就是这间」 confirms. Shared by onboarding and Settings.
 struct LocationChoiceList: View {
-    let kind: LocationChoiceKind
     let choices: [LocationChoice]
     @Binding var selection: String?
-    var showsHint = true
 
     var body: some View {
+        let titles = LocationNaming.titles(locations:choices.map(\.location))
         VStack(alignment:.leading, spacing:0) {
-            if showsHint {
-                Text(kind.hint(count:choices.count))
-                    .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
-                    .fixedSize(horizontal:false, vertical:true).padding(.bottom,12)
-            }
             Hairline()
             ForEach(Array(choices.enumerated()), id:\.element.id) { index, choice in
                 if index > 0 { Hairline().padding(.leading,38) }
-                LocationChoiceRow(choice:choice, selected:selection == choice.id) { selection = choice.id }
+                LocationChoiceRow(choice:choice, title:titles[index], selected:selection == choice.id) { selection = choice.id }
                     .accessibilityIdentifier("locationChoice-" + choice.id)
             }
         }
@@ -54,6 +48,8 @@ struct LocationChoiceList: View {
 /// One row of `LocationChoiceList`.
 struct LocationChoiceRow: View {
     let choice: LocationChoice
+    /// The level that tells this row apart from the others.
+    let title: String
     let selected: Bool
     let action: () -> Void
 
@@ -62,7 +58,7 @@ struct LocationChoiceRow: View {
             HStack(alignment:.center, spacing:14) {
                 LocationCheck(selected:selected)
                 VStack(alignment:.leading, spacing:3) {
-                    Text(choice.title).scaledFont(17, .medium).foregroundStyle(Theme.ink)
+                    Text(title).scaledFont(17, .medium).foregroundStyle(Theme.ink)
                     Text(choice.location).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                         .fixedSize(horizontal:false, vertical:true)
                 }

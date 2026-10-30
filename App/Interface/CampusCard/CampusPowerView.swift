@@ -75,10 +75,12 @@ struct AutomaticPowerSection: View {
     @State private var selection: String?
     var body: some View {
         if campus.matchingPower || !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil || campus.powerConfigured {
-            Section("电表") {
+            Section(campus.powerChoices.isEmpty ? "电表" : SameNameText.titleLead + SameNameText.titleAccent + SameNameText.titleTail) {
                 if campus.matchingPower {Label("正在找电表，可以先保存宿舍。",systemImage:"bolt")}
                 else if !campus.powerChoices.isEmpty {
-                    LocationChoiceList(kind:.meter, choices:campus.powerChoices.map(\.choice), selection:$selection)
+                    Text(SameNameText.hint(campus.powerChoices.map(\.choice)))
+                        .font(.subheadline).foregroundStyle(Theme.ink2)
+                    LocationChoiceList(choices:campus.powerChoices.map(\.choice), selection:$selection)
                     Button("就是这间") {
                         if let candidate = campus.powerChoices.first(where:{ $0.id == selection }) {
                             Task { await campus.choosePower(candidate) }
