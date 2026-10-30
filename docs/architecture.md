@@ -265,7 +265,9 @@ just did, or an earlier widget read); else one `refresh(inBackground: true)` thr
 ladder and write path, waiting at most 5 s for the app's lease and giving up after 20 s (the read
 is cancelled and writes nothing; the stored snapshot is drawn). Policy `.after(now + 30 min)`.
 The state drawn (fresh / stale / expired / never) is `WidgetStatus.freshness(snapshot, account,
-now)` in Core, from the stored `fetchedAt`, `needsLogin` and whether a password is saved; when
+now)` in Core, from the stored `fetchedAt`, `needsLogin` and whether a password is saved (a
+saved password held off after a login with no answer is stale, not expired: it resumes by
+itself); when
 the numbers will turn stale by time alone before the next timeline, a second entry switches at
 that second (`WidgetStatus.staleAt`). Tap: expired / never → `campusdaily://login` (the login
 step), else `campusdaily://home`. Red is only for low electricity. The footer time

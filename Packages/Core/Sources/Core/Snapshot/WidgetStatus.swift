@@ -6,7 +6,8 @@ public enum WidgetFreshness: String, Sendable, Equatable, CaseIterable {
     /// Numbers in ink, 「10:32 更新」.
     case fresh
     /// No saved password, and the card session could not be renewed or the last good update is
-    /// over two hours old: numbers kept, time in ink3, 「打开 App 更新」.
+    /// over two hours old; or the saved password is held off after a login with no answer:
+    /// numbers kept, time in ink3, 「打开 App 更新」.
     case stale
     /// A password is saved but the one automatic login with it failed: 「登录过期了」.
     case expired
@@ -36,13 +37,18 @@ public enum WidgetStatus {
 
     /// - never: no snapshot, or the empty one a sign-out leaves.
     /// - expired: a saved password and the snapshot says the login is dead (the refresh ladder
-    ///   ends with the saved password, so it was tried, refused, paused or held off).
-    /// - stale: no saved password, and the login is dead, nothing was ever read, or the last
-    ///   good update is more than `staleAfter` before `now` (exactly `staleAfter` is still fresh).
+    ///   ends with the saved password, so it was tried and refused or paused).
+    /// - stale: the login is dead while a saved password is held off after a login that got no
+    ///   answer (it resumes by itself, nothing is wrong with the password); or no saved password,
+    ///   and the login is dead, nothing was ever read, or the last good update is more than
+    ///   `staleAfter` before `now` (exactly `staleAfter` is still fresh).
     /// - fresh: otherwise.
     public static func freshness(snapshot: HomeSnapshot?, account: SchoolAccount?, now: Date) -> WidgetFreshness {
         guard let snapshot, snapshot != .empty else { return .never }
-        if hasSavedPassword(account) { return snapshot.needsLogin ? .expired : .fresh }
+        if hasSavedPassword(account) {
+            guard snapshot.needsLogin else { return .fresh }
+            return account?.autoLogin(at: now) == .pausedNoAnswer ? .stale : .expired
+        }
         if snapshot.needsLogin { return .stale }
         guard let last = lastUpdated(snapshot) else { return .stale }
         return now.timeIntervalSince(last) > staleAfter ? .stale : .fresh

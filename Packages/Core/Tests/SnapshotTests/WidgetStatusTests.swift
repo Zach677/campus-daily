@@ -63,9 +63,24 @@ final class WidgetStatusTests: XCTestCase {
         XCTAssertEqual(state(snapshot(updatedAgo: 60, needsLogin: true), withPassword), .expired)
         XCTAssertEqual(state(snapshot(updatedAgo: 60, needsLogin: true), pausedPassword), .expired)
         XCTAssertEqual(state(snapshot(updatedAgo: nil, needsLogin: true), pausedPassword), .expired)
+    }
+
+    /// A login with the saved password got no answer: automatic logins hold off and resume by
+    /// themselves, so the widget asks to open the app instead of saying the login expired.
+    func testNoAnswerHoldIsStaleNotExpired() {
         var held = withPassword
         held.unansweredAt = now.addingTimeInterval(-60)
-        XCTAssertEqual(state(snapshot(updatedAgo: 60, needsLogin: true), held), .expired)
+        XCTAssertEqual(state(snapshot(updatedAgo: 60, needsLogin: true), held), .stale)
+        XCTAssertEqual(state(snapshot(updatedAgo: 5 * 3600, needsLogin: true), held), .stale)
+        XCTAssertEqual(state(snapshot(updatedAgo: 60), held), .fresh, "a hold with a live session changes nothing")
+        // The password was refused: expired, hold or not.
+        var refusedAndHeld = held
+        refusedAndHeld.paused = true
+        XCTAssertEqual(state(snapshot(updatedAgo: 60, needsLogin: true), refusedAndHeld), .expired)
+        // The hold is over and the session still dead: the password is tried next; until then expired as before.
+        var over = withPassword
+        over.unansweredAt = now.addingTimeInterval(-SchoolAccount.holdAfterNoAnswer - 1)
+        XCTAssertEqual(state(snapshot(updatedAgo: 60, needsLogin: true), over), .expired)
     }
 
     /// With a saved password the widget renews by itself: old numbers alone are not stale.
