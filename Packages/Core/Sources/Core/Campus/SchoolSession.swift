@@ -21,6 +21,10 @@ public struct SchoolReading: Sendable, Equatable {
         /// The liveness check failed for another reason (offline, …).
         case failed(ServiceError)
         case notSignedIn
+        /// The saved password was changed while this read ran (保存密码, 重新输入密码), or the
+        /// Keychain refused a write or a read: nothing is known about the login. Not an error to
+        /// show: the stored numbers stay as they are and the next refresh goes ahead.
+        case interrupted
     }
     public var outcome: Outcome
     /// When the liveness check answered (or failed).
@@ -374,6 +378,7 @@ public actor SchoolSession {
         switch await signInWithSavedPassword(previous: stored, since: started, mayMint: mayMint) {
         case .signedIn(let found): return .renewed(found)
         case .offline: return .stopped(SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: triedPortal))
+        case .retryLater: return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: triedPortal))
         case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: triedPortal))
         case .lostLease: return .stopped(SchoolReading(outcome: .failed(.timedOut), checkedAt: now(), reexchanged: triedPortal))
         case .signedOut: return .stopped(SchoolReading(outcome: .notSignedIn, checkedAt: now()))
@@ -430,7 +435,7 @@ public actor SchoolSession {
         return t
     }
 
-    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable, lostLease, signedOut }
+    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable, retryLater, lostLease, signedOut }
 
     /// The last step of the refresh: one login with the saved password. Anything but success
     /// or no network pauses the password, so a wrong or blocked login is never repeated. A login
@@ -451,7 +456,12 @@ public actor SchoolSession {
         // The portal exchange may have taken most of the lease: confirm it before the password goes out.
         guard await mayMint() else { return .lostLease }
         let sentAt = now()
-        guard updateSavedAccount(saved, since: started, { $0.unansweredAt = sentAt }) else { return .signedOut }
+        // Not written: signed out only when the account is really gone. Changed meanwhile (保存密码,
+        // 重新输入密码) or a write that failed leave the user signed in, with nothing to report;
+        // nothing is sent this time and the next refresh tries again.
+        guard updateSavedAccount(saved, since: started, { $0.unansweredAt = sentAt }) else {
+            return accountGone ? .signedOut : .retryLater
+        }
         let token: PortalToken
         do {
             token = try await passwordLoginOnce(account: saved.account, password: password)
@@ -476,9 +486,9 @@ public actor SchoolSession {
         // (this process, or the account gone from the Keychain) drops it. The hold is lifted
         // only once the token is stored.
         guard started == signOutGeneration else { return .unavailable }
-        guard let still = (try? vault.account()) ?? nil else { return .signedOut }
-        guard still.account == saved.account else { return .unavailable }
-        guard (try? vault.savePortalToken(stamped(token))) != nil else { return .unavailable }
+        guard let still = (try? vault.account()) ?? nil else { return accountGone ? .signedOut : .retryLater }
+        guard still.account == saved.account else { return .retryLater }
+        guard (try? vault.savePortalToken(stamped(token))) != nil else { return .retryLater }
         liftHold(saved, sentAt: sentAt, since: started)
         do {
             guard await mayMint() else { return .lostLease }
@@ -506,6 +516,11 @@ public actor SchoolSession {
               current.account == saved.account, current.password == saved.password else { return false }
         change(&current)
         return (try? vault.saveAccount(current)) != nil
+    }
+
+    /// The saved account was read and is not there (a read that fails says nothing).
+    private var accountGone: Bool {
+        do { return try vault.account() == nil } catch { return false }
     }
 
     /// An answer came back (or the password never left): the hold written for this login goes.

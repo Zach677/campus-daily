@@ -304,3 +304,96 @@ final class SchoolPasswordSignInTests: XCTestCase {
 func stamped(_ token: PortalToken, _ h: Harness) -> PortalToken {
     PortalToken(token.value, expiresAt: token.expiresAt, obtainedAt: h.clock.now)
 }
+
+/// The hold can't be written before the password login: the user is still signed in unless the
+/// account is really gone.
+final class PasswordHoldNotWrittenTests: XCTestCase {
+    /// `change` runs once, at the lease check just before the hold is written (after the saved
+    /// account was read for the login). After the dead session, the lease is checked once on
+    /// finding it dead (its renewal reads the clock twice), then before the password step: the
+    /// third clock read.
+    func refresh(_ change: @escaping @Sendable (StoredSchoolVault) -> Void,
+                 failWrites: Bool = false) async throws -> (RefreshReport, FakePasswordLogin, Harness) {
+        let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+        var h = Harness()
+        h.passwordLogin = login
+        try h.signedIn()
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+        let reads = OSAllocatedUnfairLock<Int?>(initialState: nil)
+        h.server.gate { r in if r.url.path.contains("getSysBindCustInfo") { reads.withLock { $0 = 0 } } }
+        let vault = h.vault, store = h.store, clock = h.clock
+        let now: @Sendable () -> Date = {
+            let third = reads.withLock { (n: inout Int?) -> Bool in
+                guard let count = n else { return false }
+                n = count + 1
+                return count + 1 == 3
+            }
+            if third {
+                change(vault)
+                if failWrites { store.failWrites(to: .schoolPassword) }
+            }
+            return clock.now
+        }
+        let refresher = SnapshotRefresher(school: h.session(), store: h.snapshots,
+                                          lease: RefreshLease(store: h.store, owner: "app-1", now: now))
+        let report = await refresher.refresh(inBackground: true)
+        return (report, login, h)
+    }
+
+    /// 保存密码 / 重新输入密码 while the refresh ran: nothing is sent this time, the user is not
+    /// signed out, nothing says the login expired (app or widget), the stored numbers stay, and
+    /// the next refresh logs in with the new password.
+    func testAPasswordChangedMeanwhileIsNotSignedOut() async throws {
+        let (report, login, h) = try await refresh { try? $0.saveAccount(SchoolAccount(account: "99100991", password: "new-pw-992")) }
+        XCTAssertEqual(report.outcome, .interrupted)
+        XCTAssertFalse(report.snapshot.needsLogin)
+        XCTAssertEqual(report.snapshot, .empty, "nothing written over the stored numbers")
+        XCTAssertEqual(try h.snapshots.loadSnapshot()?.needsLogin ?? false, false)
+        XCTAssertNil(try h.vault.account()?.unansweredAt)
+        XCTAssertEqual(try h.vault.account()?.paused, false)
+        XCTAssertTrue(login.calls.isEmpty, "nothing sent this time")
+        XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991", password: "new-pw-992"))
+        XCTAssertNotNil(try h.vault.ecyktSession())
+    }
+
+    /// The Keychain refuses the write: no password sent, not signed out.
+    func testAHoldThatCanNotBeWrittenIsNotSignedOut() async throws {
+        let (report, login, h) = try await refresh({ _ in }, failWrites: true)
+        XCTAssertEqual(report.outcome, .interrupted)
+        XCTAssertFalse(report.snapshot.needsLogin)
+        XCTAssertTrue(login.calls.isEmpty)
+        XCTAssertNotNil(try h.vault.account())
+    }
+
+    /// The account really is gone (signed out in the other process): signed out.
+    func testAnAccountGoneMeanwhileIsSignedOut() async throws {
+        let (report, login, _) = try await refresh { try? $0.saveAccount(nil) }
+        XCTAssertEqual(report.outcome, .notSignedIn)
+        XCTAssertTrue(login.calls.isEmpty)
+    }
+
+    /// The next refresh after the change logs in once, with the new password.
+    func testTheNextRefreshUsesTheNewPassword() async throws {
+        let (_, login, h) = try await refresh { try? $0.saveAccount(SchoolAccount(account: "99100991", password: "new-pw-992")) }
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+        h.server.serve(try T.eCardWithTicket())
+        h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        let next = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(next.outcome, .ok)
+        XCTAssertEqual(login.calls.map(\.password), ["new-pw-992"])
+        XCTAssertEqual(next.snapshot.card.value, Money(fen: 790))
+    }
+}
+
+final class InterruptedReadingTests: XCTestCase {
+    /// An interrupted reading leaves the snapshot exactly as stored: no error, no expired login.
+    func testAnInterruptedReadingChangesNothing() {
+        let t0 = Date(timeIntervalSince1970: 1_000), t1 = Date(timeIntervalSince1970: 2_000)
+        let stored = HomeSnapshot(card: Tile(value: Money(fen: 790), fetchedAt: t0), checkedAt: t0)
+        XCTAssertEqual(SnapshotRefresher.apply(SchoolReading(outcome: .interrupted, checkedAt: t1), to: stored), stored)
+    }
+}
+

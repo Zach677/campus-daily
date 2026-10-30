@@ -246,6 +246,8 @@ public actor SnapshotRefresher {
         guard !isOlder(reading, than: snapshot) else { return snapshot }
         var s = snapshot
         switch reading.outcome {
+        case .interrupted:
+            return s
         case .notSignedIn:
             guard s != .empty else { return s }
             s = SchoolSnapshotReducer.reduce(s, .sessionExpired(.sessionExpired(.ecykt), at: reading.checkedAt))

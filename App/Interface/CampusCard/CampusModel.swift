@@ -96,12 +96,16 @@ struct PowerChoice: Identifiable, Equatable {
         // numbers, if any, are in the snapshot above. Nothing failed here, so no issue; the next
         // pull tries again.
         guard !report.leaseBusy else { return }
+        // The saved password changed while this read ran (or the Keychain refused a write):
+        // nothing to report, the numbers stay, and the next refresh is not held off.
+        guard report.outcome != .interrupted else { issue = nil; return }
         lastRefresh = Date()
         switch report.outcome {
         case .ok: issue = nil
         case .needsLogin: issue = "学校登录过期了，重新登录一下。"
         case .failed(let e): issue = e.userMessage
         case .notSignedIn: configured = false; issue = nil
+        case .interrupted: issue = nil
         }
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         Reminders.shared.evaluateCampus(snapshot)
