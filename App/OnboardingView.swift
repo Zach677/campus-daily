@@ -23,6 +23,13 @@ struct OnboardingView: View {
 
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
+    @EnvironmentObject private var water: WaterModel
+    /// Binds the dorm's hot-water controller when 「就是这间」 confirms the dorm.
+    @StateObject private var dormFlow = DormSetupFlow()
+    @State private var bindingWater = false
+    /// Automatic binding already needed the dorm screen once; the next 「就是这间」 just continues
+    /// (hot water can be finished later from 设置 › 热水).
+    @State private var bindTried = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var step: Step
@@ -63,7 +70,8 @@ struct OnboardingView: View {
                     try campus.acceptLogin(config)
                     issue = nil
                     Task { await campus.refresh(force:true) }
-                    advance()
+                    // Only from the login step: a repeated delivery must not skip the dorm step.
+                    if step == .login { advance() }
                 } catch { issue = "这次没登录上，再试一次。" }
             }
         }
@@ -250,7 +258,7 @@ struct OnboardingView: View {
                     .contentTransition(reduceMotion ? .opacity : .interpolate)
             }
             .buttonStyle(PressScaleStyle())
-            .disabled(waitingForApartment)
+            .disabled(waitingForApartment || bindingWater)
             .accessibilityLabel(primaryTitle)
             // Fixed slot below the pill so the pill doesn't jump between steps.
             ZStack(alignment:.top) {
@@ -276,7 +284,7 @@ struct OnboardingView: View {
     private var primaryTitle: String {
         switch step {
         case .login: return "去学校网页登录"
-        case .dorm: return dorm != nil ? "就是这间" : "选宿舍"
+        case .dorm: return bindingWater ? "正在找宿舍的水控…" : dorm != nil ? "就是这间" : "选宿舍"
         case .washer: return laundryConnected ? "扫码绑定" : "登录 U净"
         case .done: return "开始用"
         }
@@ -292,13 +300,29 @@ struct OnboardingView: View {
             if choosingApartment {
                 guard let apartment else { return }
                 if let candidate = campus.powerChoices.first(where:{ $0.id == apartment }) { campus.choosePowerApartment(candidate) }
-                advance()
-            } else if dorm != nil { advance() } else { openDormPicker() }
+                bindWaterThenAdvance()
+            } else if dorm != nil { bindWaterThenAdvance() } else { openDormPicker() }
         case .washer:
             if preview != nil { advance() }
             else if laundryConnected { washer = true }
             else { ujing = true }
         case .done: close()
+        }
+    }
+
+    /// The dorm is confirmed: bind its hot-water controller too (one room, one controller), or open
+    /// the dorm screen once when that needs a choice. Never blocks the guide.
+    private func bindWaterThenAdvance() {
+        guard preview == nil, !bindTried, !water.configured else { advance(); return }
+        guard !bindingWater else { return }
+        bindingWater = true
+        Task {
+            let result = await dormFlow.autoBind(campus:campus, water:water)
+            bindingWater = false
+            switch result {
+            case .bound, .unavailable: advance()
+            case .needsChoice: bindTried = true; openDormPicker()
+            }
         }
     }
 

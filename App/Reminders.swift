@@ -78,6 +78,11 @@ enum ReminderKey {
         return authorization
     }
     var denied: Bool { effectiveStatus == .denied }
+    /// The 「洗衣洗好时」 reminder is on and notifications are allowed, so a running wash will notify.
+    var laundryDoneWillNotify: Bool {
+        let allowed = [.authorized, .provisional, .ephemeral].contains(effectiveStatus)
+        return allowed && defaults.bool(forKey:ReminderKey.laundryDone)
+    }
     /// The system hasn't asked yet: settings shows the 「打开提醒」 row.
     var notAsked: Bool { effectiveStatus == .notDetermined }
 

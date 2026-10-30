@@ -296,4 +296,66 @@ private actor CheckoutAPI: LaundryOrdering {
         let count = await api.cancelCount; XCTAssertEqual(count,1)
     }
 
+    func testFailedPaymentRequestCanBeRetriedOnlyAfterALaterUnpaidRead() async throws {
+        let store = CheckoutStore(); let api = CheckoutAPI(); let c = try LaundryCheckoutController(store:store,api:api); let quote = try evidence()
+        try await c.create(config:config(),snapshot:quote,program:quote.programs[0])
+        await api.failures(payment:true)
+        do { _ = try await c.payment(config:config()); XCTFail() } catch {}
+        XCTAssertNotNil(c.record?.paymentRequestedAt)
+        // An immediate re-read is not trusted: Alipay's result may not have reached U净 yet.
+        try await c.refresh(config:config())
+        XCTAssertFalse(c.record?.mayRetryPayment() ?? true)
+        do { _ = try await c.payment(config:config()); XCTFail() } catch { XCTAssertEqual(error as? LaundryCheckoutError,.pending) }
+        // A minute later, a fresh read still says unpaid: one more confirmed request is allowed.
+        store.record?.paymentRequestedAt = Date().addingTimeInterval(-90)
+        let restarted = try LaundryCheckoutController(store:store,api:api)
+        try await restarted.refresh(config:config())
+        XCTAssertTrue(restarted.record?.mayRetryPayment() ?? false)
+        await api.failures()
+        _ = try await restarted.payment(config:config())
+        let count = await api.paymentCount; XCTAssertEqual(count,2)
+        XCTAssertEqual(restarted.record?.stage,.paymentRequested)
+        XCTAssertFalse(restarted.record?.mayRetryPayment() ?? true)
+    }
+    func testPaidOrStaleReadNeverOffersPaymentAgain() async throws {
+        let store = CheckoutStore(); let api = CheckoutAPI(); let c = try LaundryCheckoutController(store:store,api:api); let quote = try evidence()
+        try await c.create(config:config(),snapshot:quote,program:quote.programs[0])
+        await api.failures(payment:true)
+        do { _ = try await c.payment(config:config()); XCTFail() } catch {}
+        store.record?.paymentRequestedAt = Date().addingTimeInterval(-90)
+        let restarted = try LaundryCheckoutController(store:store,api:api)
+        await api.setOrderState(status:"20",payFlag:1)
+        try await restarted.refresh(config:config())
+        XCTAssertFalse(restarted.record?.mayRetryPayment() ?? true)
+        // Unpaid but the read is old: needs a fresh read first.
+        await api.setOrderState(status:"17",payFlag:0)
+        try await restarted.refresh(config:config())
+        XCTAssertTrue(restarted.record?.mayRetryPayment() ?? false)
+        XCTAssertFalse(restarted.record?.mayRetryPayment(now:Date().addingTimeInterval(600)) ?? true)
+    }
+    func testOldRecordWithoutRequestTimeDecodes() throws {
+        let raw = #"{"deviceId":"fixture","programId":47,"programName":"普通洗","expectedPrice":1.9,"createdAt":700000000,"stage":"paymentRequested","orderId":"12345"}"#
+        let value = try JSONDecoder().decode(LaundryCheckoutRecord.self,from:Data(raw.utf8))
+        XCTAssertNil(value.paymentRequestedAt)
+        XCTAssertFalse(value.mayRetryPayment())
+    }
+    func testEmptyOrZeroOrderIDMeansNoOrder() throws {
+        XCTAssertNil(LaundryOrderID.normalize(""))
+        XCTAssertNil(LaundryOrderID.normalize(" "))
+        XCTAssertNil(LaundryOrderID.normalize("0"))
+        XCTAssertNil(LaundryOrderID.normalize(nil))
+        XCTAssertEqual(LaundryOrderID.normalize("12345"),"12345")
+        let scan = Data(#"{"code":0,"data":{"result":{"deviceId":"fixture","moduleType":7,"status":0,"createOrderEnabled":true,"orderId":""}}}"#.utf8)
+        let info = Data(#"{"code":0,"data":{"deviceId":"fixture","deviceNo":"test","deviceTypeName":"test","storeName":"test","storeId":"store","deviceTypeId":11,"moduleType":7,"deviceWashModel":[]}}"#.utf8)
+        let snapshot = try LaundryProvider.decodeEvidence(scanData:scan,infoData:info,expectedDeviceId:"fixture")
+        XCTAssertNil(snapshot.activeOrderId)
+        XCTAssertEqual(snapshot.stateLabel,"空闲")
+        // A snapshot cached by an older build with "" decodes as no order.
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with:JSONEncoder().encode(snapshot)) as? [String:Any])
+        object["activeOrderId"] = ""
+        let cached = try JSONDecoder().decode(LaundrySnapshot.self,from:JSONSerialization.data(withJSONObject:object))
+        XCTAssertNil(cached.activeOrderId)
+        object["activeOrderId"] = "777"
+        XCTAssertEqual(try JSONDecoder().decode(LaundrySnapshot.self,from:JSONSerialization.data(withJSONObject:object)).activeOrderId,"777")
+    }
 }

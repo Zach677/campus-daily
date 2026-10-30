@@ -17,7 +17,8 @@ public struct CampusWebSession: Sendable {
         // The official bridge rotates encrypted identifiers. Compare neither ciphertext
         // with the saved input nor ciphertext from separate responses. These values
         // come only from the authenticated login and bound-card endpoints.
-        guard let owner = text(login["syscustid"]), text(login["isbind"]) == "1" else { throw CampusError.expired }
+        guard let owner = text(login["syscustid"]) else { throw CampusError.response }
+        guard text(login["isbind"]) == "1" else { throw CampusError.unbound }
         let matches = cards.filter { text($0["custid"]) == config.custid }
         let card: [String:Any]
         if !config.custid.isEmpty {
@@ -31,7 +32,7 @@ public struct CampusWebSession: Sendable {
             card = cards[0]
         }
         guard let custid = text(card["custid"]) else { throw CampusError.response }
-        if let cardOwner = text(card["syscustid"]), cardOwner != owner { throw CampusError.expired }
+        if let cardOwner = text(card["syscustid"]), cardOwner != owner { throw CampusError.accountMismatch }
         var info = login
         if info["timestamp"] == nil, !config.timestamp.isEmpty { info["timestamp"] = config.timestamp }
         // AuthMini's official implementation preserves the verified input token.
@@ -40,6 +41,12 @@ public struct CampusWebSession: Sendable {
         let data = try JSONSerialization.data(withJSONObject:object)
         guard data.count <= 262144 else { throw CampusError.response }
         return CampusWebSession(state:data,syscustid:owner,custid:custid,areacode:config.areacode,userAgent:config.userAgent)
+    }
+    /// The login identity saved at the official login, for when `loginBySysId` refuses but the
+    /// same token still reads the bound cards (see `CampusProvider.webSession`). `isbind` is
+    /// asserted because the authenticated cards read returned a bound card.
+    static func savedLogin(_ config: CampusConfig) -> [String:Any] {
+        ["syscustid":config.syscustid,"isbind":"1"]
     }
     public func rechargeURL(power: Bool) -> URL {
         if !power { return URL(string:CampusProvider.base + "/ykt-view/recharge?isbind=1")! }

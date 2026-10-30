@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import Security
 import WidgetKit
+import UIKit
 import WaterCore
 
 private enum CampusConfigStore {
@@ -49,6 +50,10 @@ private enum CampusConfigStore {
     private var lastAttempt: Date?
     private let provider = CampusProvider()
     private let cacheURL: URL
+    /// The keychain couldn't be read at launch (typically a background launch while the phone is
+    /// locked: the item is WhenUnlocked). Retried on unlock and before the next refresh.
+    private var needsReload = false
+    private var unlockObserver: NSObjectProtocol?
     init() {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("CampusCache",isDirectory:true)
@@ -59,11 +64,27 @@ private enum CampusConfigStore {
             var excluded = directory
             var values = URLResourceValues(); values.isExcludedFromBackup = true
             try excluded.setResourceValues(values)
-            config = try CampusConfigStore.load(); configured = config != nil
-            if let config, let data = try? Data(contentsOf: cacheURL),
-               let cached = try? JSONDecoder().decode(CampusSnapshot.self, from:data),
-               cached.owner == config.cacheIdentity { snapshot = cached }
-        } catch { issue = "校园配置暂时无法读取，请解锁后重新打开 App" }
+            #if !DEBUG
+            // Recharge diagnostics are DEBUG-only now; remove what earlier Release builds wrote.
+            try? FileManager.default.removeItem(at:directory.appendingPathComponent("recharge-diagnostics.json"))
+            #endif
+            try loadStored()
+        } catch { needsReload = true; issue = "校园配置暂时无法读取，请解锁后重新打开 App" }
+        unlockObserver = NotificationCenter.default.addObserver(forName:UIApplication.protectedDataDidBecomeAvailableNotification,
+                                                                object:nil, queue:.main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadIfNeeded() }
+        }
+    }
+    private func loadStored() throws {
+        config = try CampusConfigStore.load(); configured = config != nil
+        if let config, let data = try? Data(contentsOf: cacheURL),
+           let cached = try? JSONDecoder().decode(CampusSnapshot.self, from:data),
+           cached.owner == config.cacheIdentity { snapshot = cached }
+    }
+    /// Reads the keychain again if the launch-time read failed (phone was locked).
+    func reloadIfNeeded() {
+        guard needsReload, !loading else { return }
+        do { try loadStored(); needsReload = false; issue = nil; lastAttempt = nil } catch {}
     }
     var room: String {
         let full = snapshot?.room ?? config?.dormRoom.nonEmpty ?? "未配置"
@@ -104,7 +125,9 @@ private enum CampusConfigStore {
         saveSnapshot()
     }
     private func saveSnapshot() {
-        guard let snapshot else { return }
+        // The widget refreshes on its own: keep whichever copy of each part is newer.
+        guard let snapshot = snapshot?.merged(with:CampusSharedCache.read(CampusSnapshot.self)) else { return }
+        self.snapshot = snapshot
         do {
             try JSONEncoder().encode(snapshot).write(to:cacheURL,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
             try CampusSharedCache.save(snapshot)
@@ -199,6 +222,7 @@ private enum CampusConfigStore {
         }
     }
     func refresh(force: Bool = false) async {
+        reloadIfNeeded()
         guard let config, !loading else { return }
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < 300 { return }
         loading = true; lastAttempt = Date(); issue = nil
@@ -206,8 +230,9 @@ private enum CampusConfigStore {
             loading = false
             if self.config?.cacheIdentity != config.cacheIdentity {Task {await refresh(force:true)}}
         }
-        if let shared = CampusSharedCache.read(CampusSnapshot.self), shared.owner == config.cacheIdentity,
-           (shared.balanceFetchedAt ?? .distantPast) > (snapshot?.balanceFetchedAt ?? .distantPast) { snapshot = shared }
+        if let shared = CampusSharedCache.read(CampusSnapshot.self), shared.owner == config.cacheIdentity {
+            snapshot = snapshot?.owner == config.cacheIdentity ? snapshot?.merged(with:shared) : shared
+        }
         var next = snapshot?.owner == config.cacheIdentity ? snapshot! : CampusSnapshot(owner:config.cacheIdentity)
         do { next.recordBalance(.success(try await provider.balance(config:config))) }
         catch { next.recordBalance(.failure((error as? CampusError) ?? .network)) }
@@ -227,8 +252,8 @@ private enum CampusConfigStore {
         }
         guard self.config?.cacheIdentity == config.cacheIdentity else {return}
         snapshot = next
-        issue = next.cardError?.rawValue
-        if issue == nil, next.room == nil, config.dormRoom.isEmpty { issue = next.roomError?.rawValue }
+        issue = next.cardError?.message
+        if issue == nil, next.room == nil, config.dormRoom.isEmpty { issue = next.roomError?.message }
         saveSnapshot()
         Reminders.shared.evaluateCampus(next)
         // First read with both numbers: home may explain reminders (shown once home is visible).
@@ -302,7 +327,7 @@ private enum CampusConfigStore {
         WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances")
         config = nil; configured = false; snapshot = nil; issue = nil; lastAttempt = nil
     }
-    func importFailed(_ error: Error) { issue = (error as? CampusError)?.rawValue ?? "这个文件导入不了，确认是校园卡配置文件再试。" }
+    func importFailed(_ error: Error) { issue = (error as? CampusError)?.message ?? "这个文件导入不了，确认是校园卡配置文件再试。" }
 }
 
 private extension String { var nonEmpty: String? { isEmpty ? nil : self } }

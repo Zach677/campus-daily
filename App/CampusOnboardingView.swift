@@ -137,7 +137,14 @@ struct CampusLoginSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var browser = CampusBrowserState()
     @State private var manual = false
+    /// The automatic read and the manual 读取 button can both produce a login: deliver it once.
+    @State private var delivered = false
     let receive: (CampusConfig) -> Void
+    private func deliver(_ config: CampusConfig) {
+        guard !delivered else { return }
+        delivered = true
+        receive(config); dismiss()
+    }
     var body: some View {
         NavigationStack {
             VStack(spacing:0) {
@@ -155,14 +162,14 @@ struct CampusLoginSheet: View {
                     .buttonStyle(.borderedProminent).padding().disabled(browser.reading) }
                 if browser.stalled || manual {Button("备用方式") { manual.toggle() }.font(.footnote).padding(.vertical,4)}
                 if manual { Button {
-                    Task { do { let config = try await browser.read(); receive(config); dismiss() }
+                    Task { do { let config = try await browser.read(); deliver(config) }
                         catch { browser.issue = (error as? LocalizedError)?.errorDescription ?? "登录信息读取失败，请重试" } }
                 } label: { Text(browser.reading ? "正在读取…" : "从当前一卡通页面读取").frame(maxWidth:.infinity,minHeight:44) }
                     .buttonStyle(.borderedProminent).padding().disabled(browser.reading).accessibilityIdentifier("readCampusLogin")
                 }
             }.background(NativeTheme.background).navigationTitle("连接校园卡").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() } } }
-                .onReceive(browser.$connected.compactMap { $0 }) { config in receive(config); dismiss() }
+                .onReceive(browser.$connected.compactMap { $0 }) { config in deliver(config) }
         }
     }
 }
@@ -172,18 +179,9 @@ struct CampusOnboardingView: View {
     @EnvironmentObject private var water: WaterModel
     @State private var login = false
     @State private var offeredLogin = false
-    @State private var draft: CampusConfig?
-    @State private var identity: (student: String, school: String)?
-    @State private var options: [[DormOption]] = [[],[],[],[]]
-    @State private var selected: [DormOption] = []
-    @State private var machines: [DormMachine] = []
-    @State private var serviceEnabled: Bool?
-    @State private var autoMatched = false
     @State private var importingPlatform = false
-    @State private var busy = false
-    @State private var saved = false
-    @State private var issue: String?
-    private let provider = DormOnboardingProvider()
+    /// Dorm → hot-water controller binding; shared with the first-run guide's dorm step.
+    @StateObject private var flow = DormSetupFlow()
     private let levels = ["校区","楼栋","楼层","宿舍"]
     var body: some View {
         Form {
@@ -191,58 +189,58 @@ struct CampusOnboardingView: View {
                 Section("热水") {
                     Text("登录学校账号后会自动读到宿舍和水控，不用导入文件。")
                         .font(.footnote).foregroundStyle(.secondary)
-                    if draft != nil {Button("再连一次") {Task {await prepare()}}.disabled(busy || !water.mayImport || campus.loading)}
+                    if flow.draft != nil {Button("再连一次") {Task {await flow.prepare(campus:campus,water:water)}}.disabled(flow.busy || !water.mayImport || campus.loading)}
                     DisclosureGroup("导入热水配置") {
                         Button("选择配置文件") {importingPlatform = true}
-                            .disabled(busy || !water.mayImport).accessibilityIdentifier("importWaterPlatform")
+                            .disabled(flow.busy || !water.mayImport).accessibilityIdentifier("importWaterPlatform")
                         Text("平时用不到，只在从旧版迁移或排查问题时用。")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
             }
-            if let address = draft?.portalDormAddress, !address.isEmpty {
+            if let address = flow.draft?.portalDormAddress, !address.isEmpty {
                 Section("学校登记宿舍") {
                     Text(address).font(.subheadline)
-                    if autoMatched {Text(campus.powerConfigured ? "宿舍和电表都找到了。" : "找到你的宿舍了，核对一下再保存。")
+                    if flow.autoMatched {Text(campus.powerConfigured ? "宿舍和电表都找到了。" : "找到你的宿舍了，核对一下再保存。")
                         .font(.footnote).foregroundStyle(.secondary)}
                 }
             }
             AutomaticPowerSection()
             Section {
-                Button { login = true } label: { Label(draft == nil ? "登录并连接校园卡" : "重新登录",systemImage:"person.crop.circle") }
-                    .accessibilityIdentifier("officialCampusLogin").disabled(busy)
-                if draft != nil {
+                Button { login = true } label: { Label(flow.draft == nil ? "登录并连接校园卡" : "重新登录",systemImage:"person.crop.circle") }
+                    .accessibilityIdentifier("officialCampusLogin").disabled(flow.busy)
+                if flow.draft != nil {
                     Label("已读取学校账号",systemImage:"checkmark.circle").foregroundStyle(.green)
-                    Button(identity == nil ? "继续读取宿舍" : "重新读取宿舍") { Task { await prepare() } }
-                        .disabled(busy || !water.mayImport || campus.loading).accessibilityIdentifier("prepareDormOnboarding")
+                    Button(flow.identity == nil ? "继续读取宿舍" : "重新读取宿舍") { Task { await flow.prepare(campus:campus,water:water) } }
+                        .disabled(flow.busy || !water.mayImport || campus.loading).accessibilityIdentifier("prepareDormOnboarding")
                 }
             } header: { Text("学校账号") } footer: { Text("密码只交给学校，不经过我们。登录后会读到你的校园卡和宿舍。") }
-            if serviceEnabled == false {
+            if flow.serviceEnabled == false {
                 Section {Text("宿舍已经设好了，热水开放后就能用。")
                     .font(.footnote).foregroundStyle(.orange)}
             }
-            if identity != nil {
+            if flow.identity != nil {
                 Section("热水宿舍") {
-                    if autoMatched, let address = draft.flatMap({PortalDormAddress.parse($0.portalDormAddress)}) {
+                    if flow.autoMatched, let address = flow.draft.flatMap({PortalDormAddress.parse($0.portalDormAddress)}) {
                         LabeledContent("已匹配宿舍",value:Theme.dorm(address.shortRoom) ?? address.shortRoom)
                         DisclosureGroup("更换宿舍") {dormMenus}
                     } else {dormMenus}
-                    ForEach(machines) { machine in
+                    ForEach(flow.machines) { machine in
                         VStack(alignment:.leading,spacing:10) {
                             Label(machine.name,systemImage:"drop").font(.headline)
                             Text("水控编号 " + machine.id).font(.caption.monospaced()).foregroundStyle(.secondary)
                             Text("核对是你的宿舍后保存。保存不会出水，也不会更改学校绑定。")
                                 .font(.footnote).foregroundStyle(.secondary)
-                            Button("就是这间") {Task {await save(machine)}}
+                            Button("就是这间") {Task {await flow.save(machine,campus:campus,water:water)}}
                                 .buttonStyle(.borderedProminent).frame(minHeight:44)
-                                .disabled(busy || !water.mayImport || campus.loading || saved).accessibilityIdentifier("saveDormBinding")
+                                .disabled(flow.busy || !water.mayImport || campus.loading || flow.saved).accessibilityIdentifier("saveDormBinding")
                         }.padding(.vertical,6)
                     }
                 }
             }
-            if busy { Section { HStack { ProgressView(); Text("正在读取学校信息…") } } }
-            if let issue { Section { Text(issue).foregroundStyle(.orange).font(.footnote) } }
-            if saved {
+            if flow.busy { Section { HStack { ProgressView(); Text("正在读取学校信息…") } } }
+            if let issue = flow.issue { Section { Text(issue).foregroundStyle(.orange).font(.footnote) } }
+            if flow.saved {
                 Section {
                     Label("宿舍已保存",systemImage:"checkmark.circle.fill").foregroundStyle(.green)
                     NavigationLink("前往选择附近水控") { WaterDetail() }
@@ -253,21 +251,20 @@ struct CampusOnboardingView: View {
         }.navigationTitle("学校账号与宿舍").navigationBarTitleDisplayMode(.inline)
             .fileImporter(isPresented:$importingPlatform,allowedContentTypes:[.json,.data]) {result in
                 do {
-                    try water.importPlatform(result.get()); issue = nil
-                    if draft != nil {Task {await prepare()}}
+                    try water.importPlatform(result.get()); flow.issue = nil
+                    if flow.draft != nil {Task {await flow.prepare(campus:campus,water:water)}}
                     else {login = true}
-                } catch {issue = "没导入成功。选热水平台给的配置文件，别用别人的完整配置。"}
+                } catch {flow.issue = "没导入成功。选热水平台给的配置文件，别用别人的完整配置。"}
             }
             .sheet(isPresented:$login) { CampusLoginSheet { value in
-                draft = value; identity = nil; options = [[],[],[],[]]; selected = []; machines = []; saved = false; issue = nil
-                autoMatched = false;serviceEnabled = nil
-                Task { await prepare() }
+                flow.reset(draft:value)
+                Task { await flow.prepare(campus:campus,water:water) }
             } }
             .task {
-                if draft == nil, let existing = campus.onboardingLogin {
-                    draft = existing
-                    if !water.configured { await prepare() }
-                } else if draft == nil && !offeredLogin {
+                if flow.draft == nil, let existing = campus.onboardingLogin {
+                    flow.draft = existing
+                    if !water.configured { await flow.prepare(campus:campus,water:water) }
+                } else if flow.draft == nil && !offeredLogin {
                     offeredLogin = true
                     login = true
                 }
@@ -276,23 +273,76 @@ struct CampusOnboardingView: View {
     }
     private var dormMenus: some View {
         ForEach(0..<4,id:\.self) {level in
-            if !options[level].isEmpty {
+            if !flow.options[level].isEmpty {
                 Menu {
-                    ForEach(options[level]) {option in
-                        Button(option.name) {Task {await choose(option,at:level)}}
+                    ForEach(flow.options[level]) {option in
+                        Button(option.name) {Task {await flow.choose(option,at:level,water:water)}}
                     }
-                } label: {LabeledContent(levels[level],value:selected.count > level ? selected[level].name : "请选择")}
-                    .disabled(busy).accessibilityIdentifier("dormLevel\(level)")
+                } label: {LabeledContent(levels[level],value:flow.selected.count > level ? flow.selected[level].name : "请选择")}
+                    .disabled(flow.busy).accessibilityIdentifier("dormLevel\(level)")
             }
         }
     }
-    private func prepare() async {
+}
+
+/// Dorm → hot-water controller binding (read school identity, walk campus/building/floor/room,
+/// list the room's controllers, save one). Used by the dorm screen and by the first-run guide.
+/// Only existing WaterModel / CampusModel API; saving never starts water or changes school data.
+@MainActor final class DormSetupFlow: ObservableObject {
+    @Published var draft: CampusConfig?
+    @Published private(set) var identity: (student: String, school: String)?
+    @Published private(set) var options: [[DormOption]] = [[],[],[],[]]
+    @Published private(set) var selected: [DormOption] = []
+    @Published private(set) var machines: [DormMachine] = []
+    @Published private(set) var serviceEnabled: Bool?
+    @Published private(set) var autoMatched = false
+    @Published private(set) var busy = false
+    @Published private(set) var saved = false
+    @Published var issue: String?
+    private let provider = DormOnboardingProvider()
+
+    func reset(draft value: CampusConfig) {
+        draft = value; identity = nil; options = [[],[],[],[]]; selected = []; machines = []; saved = false; issue = nil
+        autoMatched = false; serviceEnabled = nil
+    }
+
+    enum AutoBind: Equatable {
+        /// Saved: the portal address matched exactly one room with exactly one controller.
+        case bound
+        /// This build has no hot-water platform profile: nothing to bind.
+        case unavailable
+        /// Needs the user: several rooms/controllers, nothing matched, or a read failed (`issue`).
+        case needsChoice
+    }
+    /// First-run guide: the user confirmed the dorm read from the school account. Bind its
+    /// controller when the match is unambiguous; otherwise the caller opens the dorm screen.
+    func autoBind(campus: CampusModel, water: WaterModel) async -> AutoBind {
+        if water.configured { return .bound }
+        guard water.onboardingProfile?.access == nil, water.onboardingProfile != nil else { return .unavailable }
+        guard let login = campus.onboardingLogin else { return .needsChoice }
+        if draft == nil { reset(draft:login) }
+        await prepare(campus:campus, water:water, saveLogin:false)
+        guard autoMatched, machines.count == 1, let machine = machines.first else { return .needsChoice }
+        // Let the first card read and any apartment/meter lookup finish: the dorm save waits
+        // for them (and must not cancel the meter lookup the user just confirmed).
+        for _ in 0..<100 where campus.loading || campus.matchingPower {
+            try? await Task.sleep(for:.milliseconds(200))
+        }
+        await save(machine, campus:campus, water:water)
+        return saved ? .bound : .needsChoice
+    }
+
+    /// - Parameter saveLogin: false when the login was just accepted (first-run guide), so the
+    ///   running power-meter match isn't restarted.
+    func prepare(campus: CampusModel, water: WaterModel, saveLogin: Bool = true) async {
         guard !busy, let draft, water.mayImport else { return }
-        do { try campus.acceptLogin(draft) }
-        catch { issue = "学校账号暂未保存，请稍后重试"; return }
-        // The card is ready independently of hot-water platform provisioning
-        // or whether the user finishes choosing a dorm in this visit.
-        Task { await campus.refresh(force:true) }
+        if saveLogin {
+            do { try campus.acceptLogin(draft) }
+            catch { issue = "学校账号暂未保存，请稍后重试"; return }
+            // The card is ready independently of hot-water platform provisioning
+            // or whether the user finishes choosing a dorm in this visit.
+            Task { await campus.refresh(force:true) }
+        }
         busy = true; issue = nil; saved = false;serviceEnabled = nil
         defer { busy = false }
         do {
@@ -310,15 +360,15 @@ struct CampusOnboardingView: View {
                     if selected.count > level {continue}
                     let matches = options[level].filter {address.matches($0.name,level:level)}
                     guard matches.count == 1, let option = matches.first else {break}
-                    await choose(option,at:level)
+                    await choose(option,at:level,water:water)
                 }
                 if selected.count == 4 && selected.enumerated().allSatisfy({address.matches($0.element.name,level:$0.offset)}) {
                     autoMatched = true
                 }
-            } else if values.count == 1, let only = values.first { await choose(only,at:0) }
+            } else if values.count == 1, let only = values.first { await choose(only,at:0,water:water) }
         } catch { issue = (error as? LocalizedError)?.errorDescription ?? "暂时无法读取宿舍，请稍后重试" }
     }
-    private func choose(_ option: DormOption, at level: Int) async {
+    func choose(_ option: DormOption, at level: Int, water: WaterModel) async {
         guard !busy, selected.count >= level, let seed = water.onboardingProfile, let identity else { return }
         autoMatched = false
         selected = Array(selected.prefix(level)) + [option]
@@ -331,11 +381,11 @@ struct CampusOnboardingView: View {
             } else {
                 options[level+1] = try await provider.options(parent:option.id,rooms:level == 2,seed:seed)
                 busy = false
-                if options[level+1].count == 1, let only = options[level+1].first { await choose(only,at:level+1) }
+                if options[level+1].count == 1, let only = options[level+1].first { await choose(only,at:level+1,water:water) }
             }
         } catch { issue = (error as? LocalizedError)?.errorDescription ?? "宿舍列表读取失败，请重新选择" }
     }
-    private func save(_ machine: DormMachine) async {
+    func save(_ machine: DormMachine, campus: CampusModel, water: WaterModel) async {
         guard selected.count == 4, let seed = water.onboardingProfile, let identity, water.mayImport, !campus.loading else { return }
         busy = true;defer {busy = false}
         // Existing model's BLE profile is reused; hardware identity is still checked before every authorization.

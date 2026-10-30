@@ -19,7 +19,7 @@ import WaterCore
             try JSONEncoder().encode(snapshot).write(to:url,options:.atomic)
             try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:url.path)
             print("Card balance confirmed: \(snapshot.balance != nil). Dorm configured: \(snapshot.room != nil).")
-            if let error = snapshot.cardError { print(error.rawValue) }
+            if let error = snapshot.cardError { print(error.message) }
             print("Water authorization/settlement requests: 0. Bluetooth writes: 0.")
         } catch {
             fputs("Read-only campus check failed; private values were not printed.\n",stderr)

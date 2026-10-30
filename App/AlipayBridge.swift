@@ -4,7 +4,17 @@ import WaterCore
 
 @MainActor final class AlipayBridge {
     static let shared = AlipayBridge()
-    static let scheme = "com.beamjason.campushotwater.alipay"
+    /// Alipay returns to `<this build's bundle id>.alipay` (Info.plist: `$(PRODUCT_BUNDLE_IDENTIFIER).alipay`),
+    /// so two builds with different bundle ids installed side by side each get their own result.
+    /// For the default bundle id this is still `com.beamjason.campushotwater.alipay`.
+    static let scheme: String = {
+        let types = Bundle.main.object(forInfoDictionaryKey:"CFBundleURLTypes") as? [[String:Any]] ?? []
+        let declared = types.flatMap { ($0["CFBundleURLSchemes"] as? [String]) ?? [] }
+        let expected = (Bundle.main.bundleIdentifier ?? "com.beamjason.campushotwater") + ".alipay"
+        // Prefer the exact expected value; otherwise whatever .alipay scheme Info.plist declares.
+        return declared.first { $0.caseInsensitiveCompare(expected) == .orderedSame }
+            ?? declared.first { $0.hasSuffix(".alipay") } ?? expected
+    }()
     private var completion: ((String, String) -> Void)?
     func openCheckout(_ url: URL, completion: @escaping (Bool) -> Void) {
         guard LaundryPayment.isAllowedCheckoutURL(url) else { completion(false); return }
@@ -25,7 +35,7 @@ import WaterCore
         }
     }
     func handle(_ url: URL) {
-        guard url.scheme == Self.scheme, url.host == "safepay" else { return }
+        guard url.scheme?.caseInsensitiveCompare(Self.scheme) == .orderedSame, url.host == "safepay" else { return }
         AlipaySDK.defaultService().processOrder(withPaymentResult:url) { [weak self] result in
             let values = result as NSDictionary?
             let status = values?["resultStatus"] as? String ?? "unknown"
@@ -38,10 +48,12 @@ import WaterCore
         let callback = completion; completion = nil; callback?(status,memo)
     }
     private func record(status: String, memo: String) {
+        #if DEBUG
         let folder = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("LaundryCache",isDirectory:true)
         let object = ["status":status,"memo":String(memo.prefix(512)),"receivedAt":ISO8601DateFormatter().string(from:Date())]
         if let data = try? JSONSerialization.data(withJSONObject:object) {
             try? data.write(to:folder.appendingPathComponent("last-payment-launch.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
         }
+        #endif
     }
 }

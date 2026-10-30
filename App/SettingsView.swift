@@ -35,8 +35,9 @@ struct SettingsView: View {
                 }.listRowBackground(Theme.group)
                 Section("设备") {
                     if data.water == .unconfigured {
-                        NavigationLink { AdvancedSettingsView() } label: {
-                            SettingsRow(emoji:"🚿", title:"热水", value:"未导入")
+                        // Hot water is set up by choosing the dorm (controller binding), not by a file.
+                        NavigationLink { CampusOnboardingView() } label: {
+                            SettingsRow(emoji:"🚿", title:"热水", value:"去设置宿舍")
                         }
                     } else {
                         NavigationLink { WaterDetail() } label: {
@@ -270,6 +271,8 @@ struct AdvancedSettingsView: View {
     @EnvironmentObject private var laundry: LaundryModel
     @State private var importing = false
     @State private var importKind = ConfigImport.campus
+    /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
+    @State private var importIssue: String?
     private var version: String { (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + " · 内测" }
     private func importRow(_ title: String, _ kind: ConfigImport) -> some View {
         Button { importKind = kind; importing = true } label: { ChevronRow(title:title) }
@@ -281,7 +284,13 @@ struct AdvancedSettingsView: View {
                 importRow("导入热水配置", .water).disabled(!water.mayImport)
                 importRow("导入洗衣配置", .laundry).disabled(!laundry.mayImport)
             } header: { Text("导入配置") } footer: {
-                Text("通常无需导入文件。有未结算记录时请勿卸载或更换配置。操作未确认时，先核对现场及官方记录。")
+                VStack(alignment:.leading, spacing:6) {
+                    if let importIssue {
+                        Label(importIssue, systemImage:"exclamationmark.circle").foregroundStyle(Theme.ink2)
+                            .accessibilityIdentifier("importIssue")
+                    }
+                    Text("通常无需导入文件。有未结算记录时请勿卸载或更换配置。操作未确认时，先核对现场及官方记录。")
+                }
             }.listRowBackground(Theme.group)
             Section {
                 if water.configured {
@@ -321,6 +330,7 @@ struct AdvancedSettingsView: View {
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("高级").navigationBarTitleDisplayMode(.inline)
         .fileImporter(isPresented:$importing, allowedContentTypes:[.json, .data]) { result in
+            importIssue = nil
             do {
                 let url = try result.get()
                 switch importKind {
@@ -329,6 +339,14 @@ struct AdvancedSettingsView: View {
                 case .laundry: try laundry.importConfig(url); Task { await laundry.refresh(force:true) }
                 }
             } catch {
+                if (error as? CocoaError)?.code == .userCancelled { return }
+                let fallback: String
+                switch importKind {
+                case .water: fallback = "这个文件导入不了，确认是热水配置文件再试。"
+                case .campus: fallback = "这个文件导入不了，确认是校园卡配置文件再试。"
+                case .laundry: fallback = "这个文件导入不了，确认是洗衣配置文件再试。"
+                }
+                importIssue = (error as? LocalizedError)?.errorDescription ?? fallback
                 switch importKind {
                 case .water: water.show(error)
                 case .campus: campus.importFailed(error)
