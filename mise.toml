@@ -1,0 +1,83 @@
+# Routine commands for 校日常. Run `mise tasks` to list them.
+# Xcode, git and python3 come from the Xcode command line tools;
+# `mise test-scripts` also needs node, `mise android` needs JDK 21.
+#
+# Override defaults with environment variables, for example
+# `CONFIGURATION=Release mise build` or `SIMULATOR="iPhone 17" mise test-app`.
+
+[task_config]
+dir = "{{config_root}}"
+
+[tasks.setup]
+description = "Fetch the pinned Alipay SDK and the shared hot-water profile (both Git-ignored)"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+[ -d Vendor/AlipaySDK-15.8.30/AlipaySDK.xcframework ] || python3 Scripts/fetch-alipay-sdk.py
+[ -f private/distribution/WaterPlatformProfile.json ] || python3 Scripts/stage-water-profile.py fetch
+'''
+
+[tasks.build]
+description = "Build App and Widget for iOS Simulator"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+xcodebuild build -workspace XiaoRiChang.xcworkspace -scheme App \
+  -configuration "${CONFIGURATION:-Debug}" -destination "generic/platform=iOS Simulator" \
+  -derivedDataPath .DerivedData
+'''
+
+[tasks.build-device]
+description = "Build App and Widget for a generic iOS device"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+xcodebuild build -workspace XiaoRiChang.xcworkspace -scheme App \
+  -configuration "${CONFIGURATION:-Debug}" -destination "generic/platform=iOS" \
+  -derivedDataPath .DerivedData
+'''
+
+[tasks.test]
+description = "Run every test: Core package and scripts"
+run = [{ task = "test-core" }, { task = "test-scripts" }]
+
+[tasks.test-core]
+description = "Run the Core package tests on macOS"
+run = "swift test --package-path Packages/Core --scratch-path .build-tests"
+
+[tasks.test-app]
+description = "Run the App.xctestplan on an iOS Simulator"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+xcodebuild test -workspace XiaoRiChang.xcworkspace -scheme App \
+  -destination "platform=iOS Simulator,name=${SIMULATOR:-iPhone 17}" \
+  -derivedDataPath .DerivedData
+'''
+
+[tasks.test-scripts]
+description = "Run the Python script tests and the school-login automation test"
+run = [
+    "python3 -m unittest discover -s Scripts/Tests -p 'test_*.py'",
+    "node --test Scripts/Tests/campus-login-automation.test.cjs",
+]
+
+[tasks.privacy-check]
+description = "Both privacy checks (pattern scan + private/leakcheck.txt value scan)"
+run = "sh Scripts/privacy-check.sh"
+
+[tasks.check-widget-signature]
+description = "Check a signed app and its widget share one keychain group (APP=path/to/XiaoRiChang.app)"
+run = 'python3 Scripts/check-widget-signature.py --app "$APP"'
+
+[tasks.package-ipa]
+description = "Package an unsigned Release build (APP=..., OUTPUT=..., PROFILE=...)"
+run = 'python3 Scripts/package-ipa.py --app "$APP" --output "$OUTPUT" --platform-profile "$PROFILE"'
+
+[tasks.android]
+description = "Build, unit-test and lint the Android app"
+run = 'bash Android/build-android.sh -PcampusWaterProfile="$PWD/private/distribution/WaterPlatformProfile.json"'
+
+[tasks.clean]
+description = "Remove derived data and SwiftPM build output"
+run = "rm -rf .DerivedData .build-tests Packages/Core/.build"
