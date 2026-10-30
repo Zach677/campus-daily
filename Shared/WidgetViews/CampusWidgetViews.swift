@@ -50,7 +50,7 @@ struct CampusWidgetModel: Sendable {
                              : UpdateTimeText.dayOrClock($0, now:now, calendar:.current) }
     }
 
-    /// Signed in but no number read yet (and not expired): 「打开校日常⏎刷新一下」.
+    /// Signed in but no number read yet (and not expired): 「打开 App 更新」.
     var waitingForFirstRead: Bool {
         state != .never && state != .expired && remainingKWh == nil && balance == nil
     }
@@ -64,11 +64,11 @@ struct CampusWidgetModel: Sendable {
 
     func accessibilityLabel(medium: Bool) -> String {
         switch state {
-        case .never: return "登录后显示余额和电量，打开校日常，登录学校账号"
-        case .expired: return "登录过期了，打开校日常重新登录"
+        case .never: return "登录后显示余额和电量，打开 App，登录学校账号"
+        case .expired: return "登录过期了，打开 App 重新登录"
         case .fresh, .stale: break
         }
-        guard !waitingForFirstRead else { return "打开校日常，刷新一下" }
+        guard !waitingForFirstRead else { return "打开 App 更新" }
         var parts: [String] = []
         if let remainingKWh { parts.append("宿舍电量 \(CampusFormat.kwh(remainingKWh)) 度") }
         if let balance { parts.append("校园卡余额 \(CampusFormat.plainYuan(balance)) 元") }
@@ -130,14 +130,14 @@ struct CampusWidgetFace: View {
                 Text("登录后显示余额和电量").font(.system(size:15, weight:.semibold)).foregroundStyle(P.ink)
                     .fixedSize(horizontal:false, vertical:true)
                 if medium {
-                    Text("打开校日常，登录学校账号").font(.system(size:13)).foregroundStyle(P.ink2).lineLimit(1)
+                    Text("打开 App，登录学校账号").font(.system(size:13)).foregroundStyle(P.ink2).lineLimit(1)
                 }
             }
         }
     }
 
     private var firstRead: some View {
-        Text("打开校日常\n刷新一下")
+        Text("打开 App 更新")
             .font(.system(size:17, weight:.semibold)).foregroundStyle(P.ink)
             .fixedSize(horizontal:false, vertical:true)
     }
@@ -159,7 +159,7 @@ struct CampusWidgetFace: View {
             Spacer(minLength:0)
             VStack(alignment:.leading, spacing:2) {
                 Text("登录过期了").font(.system(size:15, weight:.semibold)).foregroundStyle(P.ink).lineLimit(1)
-                Text("打开校日常重新登录").font(.system(size:13)).foregroundStyle(P.ink2).lineLimit(1).minimumScaleFactor(0.8)
+                Text("打开 App 重新登录").font(.system(size:13)).foregroundStyle(P.ink2).lineLimit(1).minimumScaleFactor(0.8)
             }
         }
     }
@@ -230,12 +230,12 @@ struct CampusWidgetFace: View {
     }
 
     /// fresh: 「10:32 更新」 ink2; stale: 「昨天 8:10 · 打开 App 更新」 (small: 「昨天 · 打开 App 更新」) (time ink3, action accentText);
-    /// expired (medium): 「登录过期了 · 打开校日常重新登录」.
+    /// expired (medium): 「登录过期了 · 打开 App 重新登录」.
     @ViewBuilder private var footer: some View {
         switch model.state {
         case .expired:
             let lead = Text("登录过期了").fontWeight(.semibold).foregroundStyle(P.accentText)
-            let tail = Text(" · 打开校日常重新登录").foregroundStyle(P.ink2)
+            let tail = Text(" · 打开 App 重新登录").foregroundStyle(P.ink2)
             Text("\(lead)\(tail)").font(.system(size:11)).lineLimit(1).minimumScaleFactor(0.8)
         case .stale:
             let time = Text(model.staleStamp(medium:medium).map { $0 + " · " } ?? "").foregroundStyle(P.ink3)
