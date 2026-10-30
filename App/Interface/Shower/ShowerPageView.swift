@@ -369,16 +369,16 @@ struct ShowerPageView: View {
         }
     }
 
+    /// Disabled: the app's standard disabled pill (fill + ink3), as on the login button.
     private func capsule(_ label: String, background: Color, ink: Color, enabled: Bool = true,
                          action: @escaping () -> Void) -> some View {
         Button(action:action) {
-            Text(label).scaledFont(18, .semibold, relativeTo:.headline).foregroundStyle(ink)
+            Text(label).scaledFont(18, .semibold, relativeTo:.headline).foregroundStyle(enabled ? ink : Theme.ink3)
                 .frame(maxWidth:.infinity).frame(minHeight:60)
-                .background(background, in:Capsule())
+                .background(enabled ? background : Theme.fill, in:Capsule())
         }
         .buttonStyle(PressScaleStyle())
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.5)
     }
 
     private func textButton(_ label: String, action: @escaping () -> Void) -> some View {
