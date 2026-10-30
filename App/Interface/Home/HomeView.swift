@@ -147,8 +147,14 @@ struct HomeView: View {
         .modifier(ReminderHooks(settings:$settings, path:$path, homeClear:homeClear))
         .onOpenURL { url in
             // Widget tap: campusdaily://home back to the home screen; campusdaily://login (login
-            // expired, never signed in) straight to the login step.
+            // expired, never signed in) straight to the login step; campusdaily://settings/account
+            // (automatic login held off) to Settings › 学校账号.
             if url.scheme == "campusdaily", url.host == "home" { settings = false; path = []; return }
+            // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
+            if url.scheme == "campusdaily", url.host == "settings", url.path == "/account" {
+                path = []; campus.accountPageRequested = true; settings = true
+                return
+            }
             if url.scheme == "campusdaily", url.host == "login" {
                 let sheetUp = settings
                 settings = false; path = []

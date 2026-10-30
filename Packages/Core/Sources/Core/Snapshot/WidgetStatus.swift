@@ -18,6 +18,24 @@ public enum WidgetFreshness: String, Sendable, Equatable, CaseIterable {
     public var opensLogin: Bool { self == .expired || self == .never }
 }
 
+/// Where a tap on the widget goes.
+public enum WidgetTap: String, Sendable, Equatable, CaseIterable {
+    /// The home screen.
+    case home
+    /// The login step (expired, never signed in).
+    case login
+    /// Settings › 学校账号, which explains the paused automatic login.
+    case account
+
+    public var url: URL {
+        switch self {
+        case .home: return URL(string: "campusdaily://home")!
+        case .login: return URL(string: "campusdaily://login")!
+        case .account: return URL(string: "campusdaily://settings/account")!
+        }
+    }
+}
+
 public enum WidgetStatus {
     /// Without a saved password, numbers older than this are stale.
     public static let staleAfter: TimeInterval = 2 * 3600
@@ -52,6 +70,16 @@ public enum WidgetStatus {
         if snapshot.needsLogin { return .stale }
         guard let last = lastUpdated(snapshot) else { return .stale }
         return now.timeIntervalSince(last) > staleAfter ? .stale : .fresh
+    }
+
+    /// Expired and never open the login step. Stale because a saved password is held off after
+    /// a login with no answer opens Settings › 学校账号, where the hold is explained (logging in
+    /// again would not help). Everything else opens the home screen.
+    public static func tap(snapshot: HomeSnapshot?, account: SchoolAccount?, now: Date) -> WidgetTap {
+        let state = freshness(snapshot: snapshot, account: account, now: now)
+        if state.opensLogin { return .login }
+        if state == .stale, account?.autoLogin(at: now) == .pausedNoAnswer { return .account }
+        return .home
     }
 
     /// When a fresh state turns stale with time alone (for a second timeline entry), or nil

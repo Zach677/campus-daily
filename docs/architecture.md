@@ -269,8 +269,9 @@ now)` in Core, from the stored `fetchedAt`, `needsLogin` and whether a password 
 saved password held off after a login with no answer is stale, not expired: it resumes by
 itself); when
 the numbers will turn stale by time alone before the next timeline, a second entry switches at
-that second (`WidgetStatus.staleAt`). Tap: expired / never → `campusdaily://login` (the login
-step), else `campusdaily://home`. Red is only for low electricity. The footer time
+that second (`WidgetStatus.staleAt`). Tap (`WidgetStatus.tap`): expired / never →
+`campusdaily://login` (the login step); stale during a no-answer hold →
+`campusdaily://settings/account` (Settings › 学校账号 explains the pause); else `campusdaily://home`. Red is only for low electricity. The footer time
 (`UpdateTimeText` in Core) is relative to the entry's date: 「22:10 更新」, 「昨天 22:10 更新」,
 「10月29日 22:10 更新」, so an old reading never looks like today's.
 The small stale line keeps one line at full size: 「8:10 · 打开 App 更新」 today, else the day alone

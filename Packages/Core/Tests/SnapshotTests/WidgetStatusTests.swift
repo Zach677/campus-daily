@@ -96,6 +96,22 @@ final class WidgetStatusTests: XCTestCase {
         XCTAssertEqual(WidgetFreshness.allCases.filter(\.opensLogin), [.expired, .never])
     }
 
+    func testTapOpensTheAccountPageDuringANoAnswerHold() {
+        func tap(_ s: HomeSnapshot?, _ a: SchoolAccount?) -> WidgetTap { WidgetStatus.tap(snapshot: s, account: a, now: now) }
+        var held = withPassword
+        held.unansweredAt = now.addingTimeInterval(-60)
+        XCTAssertEqual(tap(snapshot(updatedAgo: 60, needsLogin: true), held), .account)
+        XCTAssertEqual(tap(snapshot(updatedAgo: 60), held), .home, "a hold with a live session is fresh")
+        XCTAssertEqual(tap(snapshot(updatedAgo: 60, needsLogin: true), pausedPassword), .login)
+        XCTAssertEqual(tap(snapshot(updatedAgo: 60, needsLogin: true), withPassword), .login)
+        XCTAssertEqual(tap(nil, nil), .login)
+        XCTAssertEqual(tap(snapshot(updatedAgo: 3 * 3600), nil), .home, "stale without a password opens home")
+        XCTAssertEqual(tap(snapshot(updatedAgo: 60), nil), .home)
+        XCTAssertEqual(WidgetTap.account.url.absoluteString, "campusdaily://settings/account")
+        XCTAssertEqual(WidgetTap.login.url.absoluteString, "campusdaily://login")
+        XCTAssertEqual(WidgetTap.home.url.absoluteString, "campusdaily://home")
+    }
+
     func testStaleAtIsTheFirstSecondPastTwoHours() {
         let s = snapshot(updatedAgo: 3600)
         let at = WidgetStatus.staleAt(snapshot: s, account: nil, now: now)

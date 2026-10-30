@@ -31,6 +31,8 @@ struct PowerChoice: Identifiable, Equatable {
     @Published var switchNotice: AccountSwitchNotice?
     /// 「去设置热水」 from a screen outside Settings: Settings opens 热水 when it appears.
     @Published var hotWaterSetupRequested = false
+    /// The widget's 「打开 App 更新」 during a paused automatic login: Settings opens 学校账号.
+    @Published var accountPageRequested = false
     private var lastRefresh: Date?
     private var refreshesRunning = 0
     /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.

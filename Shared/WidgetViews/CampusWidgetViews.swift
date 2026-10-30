@@ -27,6 +27,7 @@ struct CampusWidgetModel: Sendable {
          powerBalance: Decimal? = nil, updated: Date? = nil, now: Date = Date()) {
         self.state = state; self.remainingKWh = remainingKWh; self.balance = balance
         self.yesterdayKWh = yesterdayKWh; self.powerBalance = powerBalance; self.updated = updated; self.now = now
+        tap = state.opensLogin ? .login : .home
     }
 
     /// A failed read keeps the last numbers and their time (the snapshot keeps them).
@@ -37,6 +38,7 @@ struct CampusWidgetModel: Sendable {
         self.init(state:state, remainingKWh:meter?.remainingKWh, balance:snapshot.card.value?.yuan,
                   yesterdayKWh:meter?.dailyUseKWh, powerBalance:meter?.leftMoney?.yuan,
                   updated:WidgetStatus.lastUpdated(snapshot), now:now)
+        tap = WidgetStatus.tap(snapshot:snapshot, account:account, now:now)
     }
 
     /// 「22:10 更新」/「昨天 22:10 更新」/「10月29日 22:10 更新」.
@@ -56,8 +58,9 @@ struct CampusWidgetModel: Sendable {
     /// Red only for low electricity, and not on numbers an expired login greys out.
     var powerLow: Bool { state != .expired && (remainingKWh.map { $0 < lines.power } ?? false) }
 
-    /// Expired and never open the login step; the rest open the home screen.
-    var url: URL { URL(string:state.opensLogin ? "campusdaily://login" : "campusdaily://home")! }
+    /// From `WidgetStatus.tap` (Core): login step, Settings › 学校账号 or home.
+    var tap: WidgetTap = .home
+    var url: URL { tap.url }
 
     func accessibilityLabel(medium: Bool) -> String {
         switch state {

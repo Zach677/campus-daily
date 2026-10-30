@@ -30,6 +30,8 @@ struct SettingsView: View {
     @State private var previewLaundry: Bool?
     /// 「去设置热水」 after an account switch.
     @State private var hotWaterSetup = false
+    /// 学校账号, pushed when the widget asked for it.
+    @State private var accountPage = false
 
     /// 「学校洗衣机」 switch.
     var laundryOn: Bool { preview != nil ? (previewLaundry ?? preview?.laundryEnabled ?? true) : laundry.schoolEnabled }
@@ -111,7 +113,12 @@ struct SettingsView: View {
             .navigationDestination(isPresented:$hotWaterSetup) {
                 if water.configured { ShowerDetail() } else { CampusOnboardingView() }
             }
-            .onAppear { if campus.hotWaterSetupRequested { campus.hotWaterSetupRequested = false; hotWaterSetup = true } }
+            .navigationDestination(isPresented:$accountPage) { AccountView(preview:preview) }
+            .onAppear {
+                if campus.hotWaterSetupRequested { campus.hotWaterSetupRequested = false; hotWaterSetup = true }
+                openAccountPageIfRequested()
+            }
+            .onChange(of:campus.accountPageRequested) { _, _ in openAccountPageIfRequested() }
         }
         .tint(Theme.accentText)
         // On the stack, not its root: pushing a page must not hand the alert to the screen below.
@@ -121,6 +128,12 @@ struct SettingsView: View {
 }
 
 extension SettingsView {
+    func openAccountPageIfRequested() {
+        guard campus.accountPageRequested else { return }
+        campus.accountPageRequested = false
+        accountPage = true
+    }
+
     /// 提醒 (design-r2 §6). With system notifications off: switches off and disabled, plus a row to Settings.
     @ViewBuilder var reminderSection: some View {
         let off = reminders.denied
