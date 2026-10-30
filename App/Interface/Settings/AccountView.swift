@@ -12,6 +12,7 @@ enum AccountText {
     static let savedFooter = "小组件会自动刷新。关掉会删掉存着的密码。"
     static let notSavedFooter = "不保存的话，过几个小时小组件就要打开 App 才能更新。"
     static let pausedRefused = "存的密码登录不上，自动登录先停了。可能是在学校那边改过密码，重新输入就能恢复。"
+    static let signOutFailed = "退出没完成，再试一次。"
     static let pausedNoAnswer = "上次登录学校没回应，为免账号被锁，自动登录先停几个小时，到时会自己恢复。"
 
     /// The 学校账号 row on the settings page.
@@ -169,6 +170,9 @@ struct AccountView: View {
                     Button("保存") { save() }
                 } message: {
                     Text(AccountText.keychainNote + "\n账号 " + (account?.masked ?? ""))
+                }
+                .alert(AccountText.signOutFailed, isPresented:$campus.signOutFailed) {
+                    Button("好", role:.cancel) {}
                 }
                 .alert(SchoolLoginText.differentAccountTitle, isPresented:$differentAccount) {
                     Button("好", role:.cancel) {}

@@ -33,6 +33,9 @@ struct PowerChoice: Identifiable, Equatable {
     @Published var hotWaterSetupRequested = false
     /// The widget's 「打开 App 更新」 during a paused automatic login: Settings opens 学校账号.
     @Published var accountPageRequested = false
+    /// Sign-out left something behind (a Keychain item or the widget snapshot could not be
+    /// deleted): Settings › 学校账号 says so, and shows what is still stored.
+    @Published var signOutFailed = false
     private var lastRefresh: Date?
     private var refreshesRunning = 0
     /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.
@@ -185,7 +188,15 @@ struct PowerChoice: Identifiable, Equatable {
         let session = session, refresher = refresher
         // The lease goes first: a widget read in the middle of a login loses it and writes nothing.
         refresher.revokeLease()
-        Task { try? await session.signOut(); try? await refresher.clear() }
+        Task {
+            var failed = false
+            do { try await session.signOut() } catch { failed = true }
+            do { try await refresher.clear() } catch { failed = true }
+            guard failed else { return }
+            // Show what is still stored, so 退出登录 can be tried again.
+            reload()
+            signOutFailed = true
+        }
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         powerChoices = []; powerMatchIssue = nil
     }
