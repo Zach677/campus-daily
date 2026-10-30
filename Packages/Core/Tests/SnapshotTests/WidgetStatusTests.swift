@@ -1,7 +1,7 @@
 import XCTest
 @testable import Core
 
-/// The four widget states come from stored data only (design §4).
+/// The four widget states come from stored data only.
 final class WidgetStatusTests: XCTestCase {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let withPassword = SchoolAccount(account: "99100991", password: "synthetic-pw-991")

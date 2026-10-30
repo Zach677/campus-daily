@@ -1,6 +1,6 @@
 import Foundation
 
-/// Which of the four widget states (design §4) the stored data is in. Decided here from what
+/// Which of the four widget states the stored data is in. Decided here from what
 /// is stored (the shared snapshot and the saved account), never by the view.
 public enum WidgetFreshness: String, Sendable, Equatable, CaseIterable {
     /// Numbers in ink, 「10:32 更新」.

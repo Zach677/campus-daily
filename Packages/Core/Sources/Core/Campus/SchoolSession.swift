@@ -588,7 +588,7 @@ public actor SchoolSession {
     /// room node whose meter has `comAddress`.
     func locateRoomNode(_ s: EcyktSession, campus: PowerNode, address: DormAddress, comAddress: String) async throws -> (PowerNode, Meter)? {
         var calls = 0
-        // Stage 0: find building nodes, allowing one intermediate (apartment) level.
+        // First find building nodes, allowing one intermediate (apartment) level.
         var buildingNodes: [PowerNode] = []
         guard let level1 = try await directoryChildren(s, campus.id, calls: &calls) else { return nil }
         let direct = level1.filter { address.matchesBuilding($0.name) }

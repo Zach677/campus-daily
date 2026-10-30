@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settlement result panel (design §4.7): custom bottom panel over a 0.2 dim.
+/// Settlement result panel: custom bottom panel over a 0.2 dim.
 struct SettlementPanel: View {
     let result: SettlementResult
     let dismiss: () -> Void

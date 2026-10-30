@@ -388,7 +388,7 @@ are `[A-Za-z0-9]{1,80}`. Only module type 7 is ordered from the app.
 per-install `x-mobile-id` UUID. Expiry: **HTTP 401** `{code:401, message:"Token is invalid" |
 "JWT token is missing"}` → `sessionExpired(.ujing)`; no silent refresh, user repeats SMS login
 (60 s UI cooldown, never auto-requested). `x-app-code`: `ZI` on captcha/login, `BI` on every
-authenticated call (what the existing iOS and Android clients send; to be confirmed on device). `x-mobile-id`
+authenticated call (what the existing iOS and Android clients send; not yet verified on a device). `x-mobile-id`
 is created once per install and kept in `laundry.account` across logouts. Signed-in calls without
 a token fail locally with `sessionExpired` (nothing sent).
 
@@ -462,7 +462,7 @@ attention` (Keychain `laundry.checkout`). Relaunch (`LaundryReducer.restore`) ne
 anything: `creating` → `reconcile`, `paying` → `verifying`, `cancelling` before the POST →
 `created`; the rest stay.
 
-Server status codes (from current code, to be confirmed on device): `10` reserved/unpaid, `17` unpaid,
+Server status codes (from current code, not yet verified on a device): `10` reserved/unpaid, `17` unpaid,
 `20` paid/waiting start, `21` starting, `40` washing, `50` done, `51` payment timed out,
 `52` machine didn't start (check charge in U净), `53` cancelled.
 

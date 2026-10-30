@@ -4,7 +4,7 @@ import Core
 
 enum HomeRoute: Hashable { case power, powerSetup, card, water, laundry, washerSetup }
 
-/// Single home screen (design §4): date · hero sentence · status rows · 最近 · bottom dock.
+/// Single home screen: date · hero sentence · status rows · 最近 · bottom dock.
 struct HomeView: View {
     @EnvironmentObject private var water: ShowerModel
     @EnvironmentObject private var campus: CampusModel

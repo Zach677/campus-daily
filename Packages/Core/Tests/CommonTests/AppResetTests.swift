@@ -52,7 +52,7 @@ final class AppResetTests: XCTestCase {
     func testResetCoversEveryKeychainItem() {
         XCTAssertEqual(Set(AppReset.keychainItems), Set(StoreKey.allCases))
         XCTAssertEqual(AppReset.keychainItems.count, 13, "a new item: check reset clears it, then update this count")
-        // Stage 3: the refresh lease is an item of its own; the credential times live inside the
+        // The refresh lease is an item of its own; the credential times live inside the
         // card session and portal token items, so they go with them.
         XCTAssertTrue(AppReset.keychainItems.contains(.sharedRefreshLease))
         XCTAssertTrue(AppReset.keychainItems.contains(.sharedCredentialLog))
@@ -60,7 +60,7 @@ final class AppResetTests: XCTestCase {
         XCTAssertTrue(AppReset.keychainItems.contains(.schoolPortal))
     }
 
-    /// What stage 3 stores (a live lease, stamped credentials) is gone after a reset, and after
+    /// A live lease and stamped credentials is gone after a reset, and after
     /// a sign-out (school session first, then the refresher).
     func testResetAndSignOutLeaveNoLeaseOrCredentialTimes() async throws {
         func seed(_ store: InMemorySecureStore) throws {

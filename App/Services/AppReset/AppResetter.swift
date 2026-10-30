@@ -2,7 +2,7 @@ import Foundation
 import WidgetKit
 import Core
 
-/// Settings › 高级 › 重置校日常 (design §10). The clear list itself is `AppReset` in Core; this
+/// Settings › 高级 › 重置校日常. The clear list itself is `AppReset` in Core; this
 /// puts the running models in step before and after it, and tells the home screen to start over.
 @MainActor final class AppResetter: ObservableObject {
     static let shared = AppResetter()

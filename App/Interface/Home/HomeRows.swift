@@ -21,7 +21,7 @@ func minuteSchedule(to end: Date) -> PeriodicTimelineSchedule {
 /// Emoji column width shared by StatusRow and RecentRow (scaled like .title2) so text edges line up.
 enum RowMetrics { static let emojiColumn: CGFloat = 28 }
 
-/// Home status row (design §4.3): emoji · title/subtitle · value. Min height 66.
+/// Home status row: emoji · title/subtitle · value. Min height 66.
 struct StatusRow: View {
     let emoji: String
     let title: String
@@ -95,7 +95,7 @@ struct StatusRow: View {
     }
 }
 
-/// 「最近」 row (design §4.4): min height 56, emoji 18, 16pt text.
+/// 「最近」 row: min height 56, emoji 18, 16pt text.
 struct RecentRow: View {
     let item: HomeData.Recent
     /// Replaces the amount with an accentText word (laundry 「待核对」).
@@ -194,7 +194,7 @@ struct ShowerClock: View {
     }
 }
 
-/// Hero while showering (design §4.5). No estimated price.
+/// Hero while showering. No estimated price.
 struct ShowerHero: View {
     let start: Date
     let dorm: String?

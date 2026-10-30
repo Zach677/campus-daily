@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Core
 
-/// Footer of 重置校日常 for the two newer lock reasons (wording to be confirmed by the copywriter).
+/// Footer of 重置校日常 for the two newer lock reasons.
 enum ResetLockText {
     static let recordsUnreadable = "洗澡或洗衣记录现在读不出来，重启 App 以后再重置。"
     static let checkingController = "正在核对水控，核对完再重置。"
@@ -307,7 +307,7 @@ struct AdvancedSettingsView: View {
     /// Why reset is not offered now (DEBUG demo data, or the live shower).
     private var resetLock: AppReset.Lock? { preview != nil ? preview?.resetLock : AppResetter.lock(water:water, laundry:laundry) }
 
-    /// 重置校日常 (design §10): its own group at the end; locked, the footer gives the reason.
+    /// 重置校日常: its own group at the end; locked, the footer gives the reason.
     private var resetSection: some View {
         let lock = resetLock
         return Section {

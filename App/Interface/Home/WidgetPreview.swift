@@ -39,7 +39,7 @@ struct WidgetPreview: View {
         VStack(spacing:8) {
             switch page {
             case 1:
-                // The four states (design §4), small and medium.
+                // The four states, small and medium.
                 HStack(spacing:24) {
                     tile(model(), caption:"正常")
                     tile(model(.stale), caption:"没存密码 · 过期")
