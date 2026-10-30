@@ -43,9 +43,18 @@ public enum WidgetStatus {
     /// by an earlier widget read): the numbers are as new as a read would make them.
     public static let minimumRefreshInterval: TimeInterval = 10 * 60
 
-    /// The last successful update: the newer of the two tiles' `fetchedAt`.
+    /// The last successful update: the newer of the two tiles' `fetchedAt` (staleness).
     public static func lastUpdated(_ snapshot: HomeSnapshot) -> Date? {
         [snapshot.card.fetchedAt, snapshot.power.fetchedAt].compactMap { $0 }.max()
+    }
+
+    /// The time the 「… 更新」 footer shows: the oldest of the tiles that show a number, so a card
+    /// balance read just now doesn't pass off a meter reading from days ago as new. Without any
+    /// number, the newest update.
+    public static func shownUpdated(_ snapshot: HomeSnapshot) -> Date? {
+        let shown = [snapshot.card.value == nil ? nil : snapshot.card.fetchedAt,
+                     snapshot.power.value == nil ? nil : snapshot.power.fetchedAt].compactMap { $0 }
+        return shown.min() ?? lastUpdated(snapshot)
     }
 
     /// A password is saved (paused or not: either way the user chose automatic sign-in).

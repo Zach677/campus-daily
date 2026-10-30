@@ -37,7 +37,7 @@ struct CampusWidgetModel: Sendable {
         let meter = snapshot.power.value
         self.init(state:state, remainingKWh:meter?.remainingKWh, balance:snapshot.card.value?.yuan,
                   yesterdayKWh:meter?.dailyUseKWh, powerBalance:meter?.leftMoney?.yuan,
-                  updated:WidgetStatus.lastUpdated(snapshot), now:now)
+                  updated:WidgetStatus.shownUpdated(snapshot), now:now)
         tap = WidgetStatus.tap(snapshot:snapshot, account:account, now:now)
     }
 

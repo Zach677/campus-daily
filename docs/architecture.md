@@ -282,6 +282,9 @@ that second (`WidgetStatus.staleAt`). Tap (`WidgetStatus.tap`): expired / never 
 `campusdaily://settings/account` (Settings › 学校账号 explains the pause); else `campusdaily://home`. Red is only for low electricity. The footer time
 (`UpdateTimeText` in Core) is relative to the entry's date: 「22:10 更新」, 「昨天 22:10 更新」,
 「10月29日 22:10 更新」, so an old reading never looks like today's.
+The time is the oldest of the tiles that show a number (`WidgetStatus.shownUpdated`), so a card
+balance read now doesn't make a meter that kept failing look new; staleness still follows the
+newest update.
 The small stale line keeps one line at full size: 「8:10 · 打开 App 更新」 today, else the day alone
 (「昨天 · 打开 App 更新」).
 

@@ -39,7 +39,23 @@ final class WidgetStatusTests: XCTestCase {
         XCTAssertEqual(state(snapshot(updatedAgo: 2 * 3600 + 1), accountOnly), .stale, "an account without a password is no saved password")
     }
 
-    /// The newer tile decides (the meter here is 10 minutes older than the card).
+    /// The footer shows the older of the tiles with a number: a fresh card balance doesn't make
+    /// a meter that kept failing for days look new.
+    func testTheFooterShowsTheOldestNumberShown() {
+        var s = snapshot(updatedAgo: 60)
+        s.power.fetchedAt = now.addingTimeInterval(-3 * 86400)
+        s.power.fail(.timedOut, at: now)
+        XCTAssertEqual(WidgetStatus.shownUpdated(s), now.addingTimeInterval(-3 * 86400))
+        var cardOnly = HomeSnapshot(checkedAt: now)
+        cardOnly.card.succeed(Money(fen: 100), at: now.addingTimeInterval(-60))
+        cardOnly.power.fail(.timedOut, at: now)
+        XCTAssertEqual(WidgetStatus.shownUpdated(cardOnly), now.addingTimeInterval(-60), "a tile without a number doesn't count")
+        var noNumbers = HomeSnapshot(checkedAt: now)
+        noNumbers.power.succeed(nil, at: now.addingTimeInterval(-60))
+        XCTAssertEqual(WidgetStatus.shownUpdated(noNumbers), now.addingTimeInterval(-60))
+    }
+
+    /// The newer tile decides staleness (the meter here is 10 minutes older than the card).
     func testLastUpdatedIsTheNewerTile() {
         let s = snapshot(updatedAgo: 3600)
         XCTAssertEqual(WidgetStatus.lastUpdated(s), now.addingTimeInterval(-3600))
