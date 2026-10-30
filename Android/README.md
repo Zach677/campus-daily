@@ -49,7 +49,7 @@ settlement, U净 login, saved washers, reservation, Alipay SDK/checkout handoff,
 server order refresh/countdown and unpaid cancellation. First-time water setup uses the bundled platform-only profile and the user's own school login. No self-hosted access service or manual import is required. Shared platform parameters in the APK are extractable; no personal identity or controller is bundled. Android launcher widgets are not
 included. alpha22 is confirmed on one vivo device; Huawei nova 10, Samsung Galaxy S24 Ultra and full hot-water transactions remain unverified.
 
-See [migration design, sources and acceptance notes](../docs/android-migration.md).
+See [migration design, sources and acceptance notes](https://github.com/JasonBeam/campus-daily/blob/v0.8.0/docs/android-migration.md).
 Build from the repository root using JDK 21:
 
 ```sh
@@ -67,7 +67,7 @@ setup with the current iPhone implementation. Backdrop 1.0.0 provides optional
 navigation glass: refraction on API 33+, blur-only on 31–32, simple capsule on
 older/low-RAM/power-save devices. Devices includes a glass toggle. System fonts,
 icons and official web/payment screens remain platform-specific. Local acceptance
-is documented in `docs/android-migration.md`; it is not physical-device sign-off.
+is documented in `docs/android-migration.md` (kept at tag v0.8.0); it is not physical-device sign-off.
 
 ### Beta 2 Android 候选
 
