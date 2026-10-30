@@ -302,7 +302,7 @@ struct AccountView: View {
             Section {
                 NavigationLink(signedIn ? "重新登录学校账号" : "登录学校账号") { CampusOnboardingView() }
             } footer: {
-                Text("密码只交给学校，不经过我们").foregroundStyle(Theme.ink2)
+                Text("密码只交给学校，不经过我们。").foregroundStyle(Theme.ink2)
             }.listRowBackground(Theme.group)
             if signedIn {
                 Section {
