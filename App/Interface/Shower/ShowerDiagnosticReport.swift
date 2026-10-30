@@ -4,6 +4,8 @@ import UIKit
 import Core
 
 /// Hot-water diagnostics: event names and times only (no ids, frames or tokens), kept on this phone.
+/// The export also carries the school credential-lifetime lines (kind and minutes only), kept
+/// apart in `CredentialLifetimeLog` so they don't use up the 300 hot-water lines.
 @MainActor enum ShowerDiagnosticReport {
     struct Entry: Codable { let at: Date; let event: String }
     private static let limit = 300
@@ -37,9 +39,10 @@ import Core
     static func clearMemory() { entries = [] }
 
     static func export(phase: ShowerPhase, needsReview: Bool, manualSettleAttempts: Int) throws -> URL {
-        guard !entries.isEmpty else { throw Empty() }
+        let lifetimes = CredentialLifetimeLog(store:AppEnvironment.store).entries()
+        guard !entries.isEmpty || !lifetimes.isEmpty else { throw Empty() }
         struct Report: Encodable {
-            let schema = 2
+            let schema = 3
             let generatedAt = Date()
             let appVersion: String
             let build: String
@@ -49,6 +52,7 @@ import Core
             let needsReview: Bool
             let manualSettleAttempts: Int
             let events: [Entry]
+            let credentialLifetime: [CredentialLifetimeLog.Entry]
         }
         var hardware = utsname(); uname(&hardware)
         let model = withUnsafeBytes(of: &hardware.machine) { bytes in
@@ -57,7 +61,8 @@ import Core
         let report = Report(appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
                             build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
                             deviceModel: model, systemVersion: UIDevice.current.systemVersion,
-                            phase: phase, needsReview: needsReview, manualSettleAttempts: manualSettleAttempts, events: entries)
+                            phase: phase, needsReview: needsReview, manualSettleAttempts: manualSettleAttempts, events: entries,
+                            credentialLifetime: lifetimes)
         let folder = exportFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let file = folder.appendingPathComponent("XiaoRiChang-water-diagnostics.json")

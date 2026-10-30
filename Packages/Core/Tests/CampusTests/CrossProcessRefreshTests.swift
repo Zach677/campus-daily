@@ -230,3 +230,49 @@ final class CredentialLifetimeLogTests: XCTestCase {
                        "school.credentialExpired kind=portal ageMinutes=unknown")
     }
 }
+
+/// The lifetime lines are also kept in the shared Keychain for the in-app diagnostics export.
+final class CredentialLifetimeStoreTests: XCTestCase {
+    func testExpiredLinesAreKeptForTheExportWithoutValues() async throws {
+        var h = Harness()
+        h.keepsCredentialLog = true
+        try h.signedIn()
+        let obtained = h.clock.now
+        try h.vault.savePortalToken(PortalToken("PORTAL", obtainedAt: obtained))
+        h.clock.advance(481 * 60)
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken")
+        h.server.serve(try FixtureLoader.load("portal/getMyInfo-badtoken").withURLPath("/portal-api/v2/personalData/getMyECard"))
+        _ = await h.refresher().refresh(inBackground: true)
+        let kept = CredentialLifetimeLog(store: h.store).entries()
+        XCTAssertEqual(kept.map(\.event), ["school.credentialExpired kind=card ageMinutes=unknown aliveMinutes=unknown",
+                                           "school.credentialExpired kind=portal ageMinutes=481"])
+        XCTAssertEqual(kept.last?.at, h.clock.now)
+        let raw = String(decoding: try XCTUnwrap(h.store.read(.sharedCredentialLog)), as: UTF8.self)
+        for value in ["PORTAL", "REDACTED_TOKEN_2", T.syscustid] {
+            XCTAssertFalse(raw.contains(value), "never a credential value")
+        }
+        for line in kept {
+            XCTAssertNotNil(line.event.range(of: CredentialLifetimeLogTests.pattern, options: .regularExpression), line.event)
+        }
+    }
+
+    func testOnlyTheLatestLinesAreKept() {
+        let store = InMemorySecureStore()
+        let log = CredentialLifetimeLog(store: store)
+        for i in 0..<(CredentialLifetimeLog.limit + 5) {
+            log.append("school.credentialExpired kind=card ageMinutes=\(i) aliveMinutes=0", at: Date(timeIntervalSince1970: Double(i)))
+        }
+        let kept = log.entries()
+        XCTAssertEqual(kept.count, CredentialLifetimeLog.limit)
+        XCTAssertEqual(kept.first?.event, "school.credentialExpired kind=card ageMinutes=5 aliveMinutes=0")
+    }
+
+    func testSignOutKeepsTheLinesAndResetDeletesThem() async throws {
+        let h = Harness()
+        try h.signedIn()
+        CredentialLifetimeLog(store: h.store).append("school.credentialExpired kind=portal ageMinutes=3", at: h.clock.now)
+        try await h.session().signOut()
+        XCTAssertEqual(CredentialLifetimeLog(store: h.store).entries().count, 1)
+        XCTAssertTrue(AppReset.keychainItems.contains(.sharedCredentialLog))
+    }
+}

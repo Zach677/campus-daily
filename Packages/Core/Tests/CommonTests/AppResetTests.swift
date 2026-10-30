@@ -51,10 +51,11 @@ final class AppResetTests: XCTestCase {
     /// A new Keychain item is cleared by reset too; this count makes adding one a conscious step.
     func testResetCoversEveryKeychainItem() {
         XCTAssertEqual(Set(AppReset.keychainItems), Set(StoreKey.allCases))
-        XCTAssertEqual(AppReset.keychainItems.count, 12, "a new item: check reset clears it, then update this count")
+        XCTAssertEqual(AppReset.keychainItems.count, 13, "a new item: check reset clears it, then update this count")
         // Stage 3: the refresh lease is an item of its own; the credential times live inside the
         // card session and portal token items, so they go with them.
         XCTAssertTrue(AppReset.keychainItems.contains(.sharedRefreshLease))
+        XCTAssertTrue(AppReset.keychainItems.contains(.sharedCredentialLog))
         XCTAssertTrue(AppReset.keychainItems.contains(.schoolEcykt))
         XCTAssertTrue(AppReset.keychainItems.contains(.schoolPortal))
     }

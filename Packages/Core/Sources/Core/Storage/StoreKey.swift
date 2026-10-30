@@ -19,6 +19,8 @@ public enum StoreKey: String, Sendable, CaseIterable {
     /// Which process (app or widget) is refreshing the school data right now, until when.
     /// Holds a random owner id and an expiry only.
     case sharedRefreshLease = "shared.refreshLease"
+    /// The credential-lifetime lines (kind and minutes only) for the exported diagnostics.
+    case sharedCredentialLog = "shared.credentialLog"
 
     public static let servicePrefix = "com.beamjason.xiaorichang."
     public static let account = "default"
@@ -36,12 +38,12 @@ public enum StoreKey: String, Sendable, CaseIterable {
     public var accessibility: Accessibility { .afterFirstUnlockThisDeviceOnly }
 
     /// Written to the shared access group so the widget extension can read them: the snapshot and
-    /// reminder lines it shows, and everything its own school refresh needs (card session, portal
+    /// reminder lines it shows, the lifetime lines its refresh writes, and everything its own school refresh needs (card session, portal
     /// token, dorm/meter profile, saved account and password, login device id). Hot-water and
     /// laundry items live only in the app's private group, which the widget is not entitled to.
     public var isShared: Bool {
         switch self {
-        case .sharedSnapshot, .sharedReminderLines, .sharedRefreshLease, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
+        case .sharedSnapshot, .sharedReminderLines, .sharedRefreshLease, .sharedCredentialLog, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
             return true
         case .showerBinding, .showerSession, .laundryAccount, .laundryCheckout: return false
         }

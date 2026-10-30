@@ -225,8 +225,11 @@ foreground, the BG task and the widget):**
 liveness OK); `school.portal` carries `obtainedAt` (first saved). When the liveness check or the
 portal says one is dead, one diagnostic line records only the kind and measured minutes:
 `school.credentialExpired kind=card ageMinutes=152 aliveMinutes=92` / `kind=portal ageMinutes=481`
-(once per credential per process). Both processes write it to the system log only
-(subsystem `com.beamjason.xiaorichang`, category `snapshot`).
+(once per credential per process). Both processes write it to the system log (subsystem
+`com.beamjason.xiaorichang`, category `snapshot`) and append it to the shared Keychain item
+`shared.credentialLog` (`CredentialLifetimeLog`: the last 50 lines with their times), which the
+app's 导出热水诊断 report carries as `credentialLifetime`, apart from the 300 hot-water lines.
+Sign-out keeps it (nothing personal in it); reset deletes it.
 
 **One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
 the background task, the refreshes after a state change (sign-in, meter choice, recharge), and
@@ -530,6 +533,7 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
+| credential-lifetime lines (kind, minutes, time; last 50) | Keychain `shared.credentialLog` | same | **yes** (the widget's refresh appends) |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard), keys prefixed `xrc.` | – | no |
 
 All Keychain items use service `com.beamjason.xiaorichang.<name>.v1`, account `default`.
@@ -544,7 +548,7 @@ iOS puts an item written without a group into the first listed group. Items mark
 written to the shared group; all others are written to the private group, which the widget is
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
 registration. The widget reads the school items above for its own refresh, and `shared.snapshot`,
-`shared.reminderLines` and `shared.refreshLease`. An item can still sit in its old group: builds before the private group existed kept
+`shared.reminderLines` and `shared.refreshLease`, and appends to `shared.credentialLog`. An item can still sit in its old group: builds before the private group existed kept
 every item in the shared group, and builds before the widget refreshed by itself kept the portal
 token (then WhenUnlocked) and the login device id in the private group. At launch
 (`migrateItemGroups()`) and on any read that finds one there, the item is written to its group

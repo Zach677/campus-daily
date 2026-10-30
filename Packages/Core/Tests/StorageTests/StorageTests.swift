@@ -103,7 +103,7 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.schoolEcykt.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(StoreKey.allCases.filter(\.isShared),
                        [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice, .sharedSnapshot, .sharedReminderLines,
-                        .sharedRefreshLease])
+                        .sharedRefreshLease, .sharedCredentialLog])
         XCTAssertEqual(StoreKey.schoolPassword.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(PreferenceKey.reminder("card"), "xrc.reminder.card")
         XCTAssertEqual(PreferenceKey.laundryAckFailedOrder, "xrc.laundry.ackFailedOrder")
@@ -121,7 +121,8 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.schoolPassword.service, "com.beamjason.xiaorichang.school.password.v1")
         XCTAssertEqual(StoreKey.schoolDevice.service, "com.beamjason.xiaorichang.school.device.v1")
         XCTAssertEqual(StoreKey.sharedRefreshLease.service, "com.beamjason.xiaorichang.shared.refreshLease.v1")
-        XCTAssertEqual(StoreKey.allCases.count, 12, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.sharedCredentialLog.service, "com.beamjason.xiaorichang.shared.credentialLog.v1")
+        XCTAssertEqual(StoreKey.allCases.count, 13, "a new item needs its stored name pinned here")
     }
 
     /// The Swift names say shower; the stored names stay what installed builds already wrote.
@@ -261,7 +262,7 @@ final class KeychainStoreTests: XCTestCase {
     /// changes what the widget can see or when an item can be read; update docs/privacy.md too.
     func testEveryItemsGroupAndAccessibilityArePinned() throws {
         let shared: Set<StoreKey> = [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice,
-                                     .sharedSnapshot, .sharedReminderLines, .sharedRefreshLease]
+                                     .sharedSnapshot, .sharedReminderLines, .sharedRefreshLease, .sharedCredentialLog]
         let kc = appKeychain()
         let store = appStore(kc)
         for k in StoreKey.allCases {

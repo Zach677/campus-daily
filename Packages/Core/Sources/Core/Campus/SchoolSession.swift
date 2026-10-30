@@ -81,6 +81,8 @@ public actor SchoolSession {
     let now: @Sendable () -> Date
     /// Event names and measured ages only, never values (the credential-lifetime log).
     let diagnostic: @Sendable (String) -> Void
+    /// Where the same lifetime lines are kept for the in-app diagnostics export.
+    let credentialLog: CredentialLifetimeLog?
     /// Expiries already logged by this process, so a dead credential read again is logged once.
     private var loggedExpiries: Set<String> = []
     /// Bumped by `signOut()`. Work that awaited the network checks it before writing the
@@ -90,9 +92,10 @@ public actor SchoolSession {
     static let maxDirectoryCalls = 40
 
     public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, passwordLogin: SchoolPasswordLogin? = nil,
-                now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in }) {
+                now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in },
+                credentialLog: CredentialLifetimeLog? = nil) {
         self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
-        self.diagnostic = diagnostic
+        self.diagnostic = diagnostic; self.credentialLog = credentialLog
     }
 
     // MARK: Account and password
@@ -400,7 +403,9 @@ public actor SchoolSession {
         // A credential without a stamp (saved by an older build) is logged once per process.
         let id = kind.rawValue + (obtainedAt.map { "@\($0.timeIntervalSince1970)" } ?? "@unknown")
         guard loggedExpiries.insert(id).inserted else { return }
-        diagnostic(Self.expiredEvent(kind, obtainedAt: obtainedAt, lastAliveAt: lastAliveAt, now: now()))
+        let line = Self.expiredEvent(kind, obtainedAt: obtainedAt, lastAliveAt: lastAliveAt, now: now())
+        diagnostic(line)
+        credentialLog?.append(line, at: now())
     }
 
     /// A portal token gets its `obtainedAt` when this app first saves it.

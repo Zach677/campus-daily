@@ -17,7 +17,7 @@ public struct SchoolRefreshStack: Sendable {
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
         session = SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http),
                                 vault: StoredSchoolVault(store: store), passwordLogin: CASLoginClient(http: http),
-                                diagnostic: diagnostic)
+                                diagnostic: diagnostic, credentialLog: CredentialLifetimeLog(store: store))
         refresher = SnapshotRefresher(school: session, store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot),
                                       lease: RefreshLease(store: store, owner: RefreshLease.owner(role)),
                                       leaseWait: leaseWait, diagnostic: diagnostic)
