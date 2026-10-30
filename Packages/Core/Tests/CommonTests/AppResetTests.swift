@@ -140,7 +140,8 @@ final class AppResetTests: XCTestCase {
         XCTAssertNil(AppReset.lock(shower: .idle, recordsUnreadable: false, checkingController: false))
     }
 
-    /// marker → lock → sign out → clear → reload; the marker goes with a successful clear.
+    /// marker → lock → sign out → marker again → lock → clear → reload; the marker goes with a
+    /// successful clear.
     @MainActor func testResetRunsItsStepsInOrder() async throws {
         let store = InMemorySecureStore()
         let marker = ResetMarker(store: store)
@@ -151,7 +152,7 @@ final class AppResetTests: XCTestCase {
                                              clear: { steps.append("clear"); try marker.end() },
                                              reload: { steps.append("reload") })
         XCTAssertNil(stopped)
-        XCTAssertEqual(steps, ["lock", "signOut", "clear", "reload"], "one lock check, after the marker")
+        XCTAssertEqual(steps, ["lock", "signOut", "lock", "clear", "reload"], "each lock check after the marker")
         XCTAssertNil(marker.startedAt())
     }
 
@@ -166,6 +167,42 @@ final class AppResetTests: XCTestCase {
         XCTAssertEqual(steps, [])
         XCTAssertNil(marker.startedAt())
         XCTAssertNil(try store.read(.sharedResetMarker))
+    }
+
+    /// The sign-out took longer than the marker lasts and a shower started meanwhile: the marker
+    /// is written again before the clear, the second check finds the shower, nothing is cleared.
+    @MainActor func testAShowerStartedDuringALongSignOutStopsTheClear() async throws {
+        let store = InMemorySecureStore()
+        let marker = ResetMarker(store: store)
+        let t0 = Date(timeIntervalSince1970: 1_793_300_000)
+        var now = t0
+        var showering = false
+        var steps: [String] = []
+        let stopped = try await AppReset.run(marker: marker, now: t0, clock: { now },
+                                             lock: { showering ? .showering : nil },
+                                             signOut: {
+                                                 steps.append("signOut")
+                                                 now = t0.addingTimeInterval(ResetMarker.staleAfter + 60)
+                                                 XCTAssertFalse(marker.refusesStarts(at: now), "stale by now")
+                                                 showering = true
+                                             },
+                                             clear: { steps.append("clear") }, reload: { steps.append("reload") })
+        XCTAssertEqual(stopped, .showering)
+        XCTAssertEqual(steps, ["signOut", "reload"])
+        XCTAssertNil(marker.startedAt())
+    }
+
+    /// The marker is fresh again for the clear, however long the sign-out took.
+    @MainActor func testTheMarkerIsFreshAgainForTheClear() async throws {
+        let store = InMemorySecureStore()
+        let marker = ResetMarker(store: store)
+        let t0 = Date(timeIntervalSince1970: 1_793_300_000)
+        var now = t0
+        var refusedDuringClear = false
+        _ = try await AppReset.run(marker: marker, now: t0, clock: { now }, lock: { nil },
+                                   signOut: { now = t0.addingTimeInterval(ResetMarker.staleAfter + 60) },
+                                   clear: { refusedDuringClear = marker.refusesStarts(at: now); try marker.end() }, reload: {})
+        XCTAssertTrue(refusedDuringClear)
     }
 
     /// A marker that can't be written: the reset does not start at all.

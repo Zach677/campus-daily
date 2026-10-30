@@ -54,14 +54,31 @@ public enum AppReset {
     /// `ResetMarker.staleAfter` (`resume`). Returns the lock that stopped it, or nil when the
     /// stores were cleared. A marker that can't be written stops it before anything happens
     /// (thrown).
-    @MainActor public static func run(marker: ResetMarker, now: Date, lock: () -> Lock?, signOut: () async -> Void,
-                                      clear: () throws -> Void, reload: () async -> Void) async throws -> Lock? {
+    ///
+    /// The sign-out can outlast the marker (the app suspended for minutes in the middle of it),
+    /// and a shower or an order may have started once it went stale. So before the clear the
+    /// marker is written again at `clock()` and the locks are checked once more; a lock then
+    /// stops the reset with the sign-out done and nothing cleared.
+    @MainActor public static func run(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
+                                      signOut: () async -> Void, clear: () throws -> Void,
+                                      reload: () async -> Void) async throws -> Lock? {
         try marker.begin(at: now)
         if let found = lock() {
             try? marker.end()
             return found
         }
         await signOut()
+        do { try marker.begin(at: clock()) } catch {
+            // Without a fresh marker a start could slip in during the clear: stop here.
+            try? marker.end()
+            await reload()
+            throw error
+        }
+        if let found = lock() {
+            try? marker.end()
+            await reload()
+            return found
+        }
         var failure: Error?
         do { try clear() } catch {
             failure = error
@@ -84,15 +101,16 @@ public enum AppReset {
     /// included: stopped, the marker goes and nothing is cleared. An older one is deleted and
     /// nothing is cleared: by then the user may have signed in and set things up again. Nil when
     /// there is no marker or only a stale one.
-    @MainActor public static func resume(marker: ResetMarker, now: Date, lock: () -> Lock?, signOut: () async -> Void,
-                                         clear: () throws -> Void, reload: () async -> Void) async throws -> Resumed? {
+    @MainActor public static func resume(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
+                                         signOut: () async -> Void, clear: () throws -> Void,
+                                         reload: () async -> Void) async throws -> Resumed? {
         guard marker.startedAt() != nil else { return nil }
         guard marker.refusesStarts(at: now) else {
             // One that can't be deleted is stale again next launch, and dropped again.
             try? marker.end()
             return nil
         }
-        let stopped = try await run(marker: marker, now: now, lock: lock, signOut: signOut, clear: clear, reload: reload)
+        let stopped = try await run(marker: marker, now: now, clock: clock, lock: lock, signOut: signOut, clear: clear, reload: reload)
         return stopped.map(Resumed.stopped) ?? .completed
     }
 
