@@ -53,6 +53,15 @@ struct LaundryDetail: View {
         }
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("洗衣").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if Self.scanInToolbar(phase) {
+                ToolbarItem(placement:.topBarTrailing) {
+                    NavigationLink(value:HomeRoute.washerSetup) { Image(systemName:"qrcode.viewfinder") }
+                        .accessibilityLabel("扫洗衣机")
+                        .accessibilityIdentifier("laundryScan")
+                }
+            }
+        }
         .safeAreaInset(edge:.bottom, spacing:0) { dock(facts, phase:phase, busy:busy) }
         .refreshable { await reload() }
         .task {
@@ -89,6 +98,15 @@ struct LaundryDetail: View {
         switch phase {
         case .idle, .done, .unpaid, .check: return true
         default: return false
+        }
+    }
+
+    /// Scanning another washer lives on this page now that the home dock is gone. The pages
+    /// whose dock already offers 扫洗衣机 (nothing bound, machine busy or unavailable) don't repeat it.
+    static func scanInToolbar(_ phase: LaundryFacts.Phase) -> Bool {
+        switch phase {
+        case .empty, .inUse, .unavailable: return false
+        default: return true
         }
     }
 
