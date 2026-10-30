@@ -141,7 +141,7 @@ extension HomeView {
                                                            date:Date(), amount:Money(fen:132)), at:0)
                 }
                 successTick += 1
-                panel = .settled(minutes:minutes, amount:Decimal(string:"1.32"))
+                if let record = ShowerPageDemo.record("sh-done") { shower.showDemoPage(record) }
             }
         case .signIn: openOnboarding()
         case .review, .settling: path.append(.shower)

@@ -182,10 +182,8 @@ extension HomeData {
     }
 }
 
-/// Settlement result panel content.
+/// Settlement result panel content (a finished laundry order; the shower has its own page).
 enum SettlementResult: Equatable {
-    case settled(minutes: Int?, amount: Decimal?)
-    case unconfirmed
     /// Laundry order 50: 「衣服洗好了」 · amount · 「标准洗 · 45 分钟 · 3 号机」.
     case laundryDone(amount: Decimal?, detail: String)
 }
@@ -194,7 +192,7 @@ enum SettlementResult: Equatable {
 // MARK: - DEBUG demo data (campusdaily://demo/<state>); never compiled into Release.
 
 enum HomeDemo: String, CaseIterable {
-    case normal, low, empty, shower, settled, unconfirmed, off, settings
+    case normal, low, empty, shower, off, settings
     /// 学校洗衣机 off: home without laundry / settings with the switch off / switch locked by an order.
     case laundryOff = "home-laundry-off"
     case settingsLaundryOff = "settings-laundry-off"
@@ -325,11 +323,6 @@ enum HomeDemo: String, CaseIterable {
             data.shower = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
             data.showerUnconfirmed = true
             return (data, nil)
-        case .settled:
-            data.appActivities.insert(AppActivity(id:"demo-new", kind:.shower(minutes:11), date:now, amount:Money(fen:132)), at:0)
-            return (data, .settled(minutes:11, amount:Decimal(string:"1.32")))
-        case .unconfirmed:
-            return (data, .unconfirmed)
         case .off:
             data.shower = .unconfigured
             return (data, nil)
