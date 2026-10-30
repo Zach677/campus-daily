@@ -25,6 +25,8 @@ struct OnboardingView: View {
         /// Controller step: checking, or what the check found.
         var waterChecking = false
         var waterOutcome: ShowerModel.InspectionOutcome?
+        /// Controller step: why the check can't run now.
+        var waterBlocked: String?
     }
 
     var preview: Preview?
@@ -226,15 +228,22 @@ struct OnboardingView: View {
     // MARK: Controller check
 
     private var waterChecking: Bool { preview?.waterChecking ?? water.inspecting }
+    /// A shower is open or waits for its check: no check now, the step can be skipped.
+    private var waterBlocked: String? { preview != nil ? preview?.waterBlocked : water.inspectionBlockedText }
     private var waterOutcome: ShowerModel.InspectionOutcome? {
-        guard waterChecked, !waterChecking else { return nil }
+        guard waterChecked, !waterChecking, waterBlocked == nil else { return nil }
         return preview != nil ? preview?.waterOutcome : water.inspectionOutcome
     }
 
     /// 28 pt under the body: nothing before the first check, a spinner while it runs, then
     /// what it found (errors in the login's error style).
     @ViewBuilder private var waterStatus: some View {
-        if waterChecking {
+        if let waterBlocked, !waterChecking {
+            Label { Text(waterBlocked).scaledFont(15, relativeTo:.subheadline) }
+                icon: { Image(systemName:"info.circle").font(.system(size:17)) }
+                .foregroundStyle(Theme.accentText)
+                .fixedSize(horizontal:false, vertical:true)
+        } else if waterChecking {
             HStack(spacing:10) {
                 ProgressView().tint(Theme.ink2).frame(width:20, height:20)
                 Text("正在找水控…").scaledFont(17, .medium).foregroundStyle(Theme.ink2)
@@ -346,7 +355,7 @@ struct OnboardingView: View {
                             .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
                     }
                 }
-                if step == .water && waterOutcome != .verified {
+                if step == .water && waterOutcome != .verified && waterBlocked == nil {
                     secondary("以后再核对") { advance() }
                         .accessibilityIdentifier("waterLater")
                 }
@@ -379,6 +388,7 @@ struct OnboardingView: View {
         case .washer: return SchoolLaundryPreference.Onboarding.yes
         case .water:
             if waterChecking { return "正在核对…" }
+            if waterBlocked != nil { return "先跳过" }
             switch waterOutcome {
             case nil, .bluetoothOff?: return "开始核对"
             case .verified?: return "下一步"
@@ -394,7 +404,7 @@ struct OnboardingView: View {
     /// it is the web login and always available.
     private var primaryDimmed: Bool {
         if step == .login { return loginState != .cannotDirect && (loggingIn || !loginReady) }
-        if step == .water { return waterChecking }
+        if step == .water { return waterChecking && waterBlocked == nil }
         return waitingForApartment
     }
 
@@ -425,7 +435,7 @@ struct OnboardingView: View {
             if laundryConnected { washer = true }
             else { ujing = true }
         case .water:
-            if waterOutcome == .verified || preview != nil { advance(); return }
+            if waterOutcome == .verified || waterBlocked != nil || preview != nil { advance(); return }
             waterChecked = true
             Task { await water.inspectBluetooth() }
         case .done: close()

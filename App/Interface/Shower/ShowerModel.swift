@@ -106,6 +106,14 @@ enum ShowerProfileFiles {
     var mayImport: Bool {
         !busy && !storageBlocked && (state.phase == .idle || state.phase == .done || (state.phase == .failed && state.failure?.needsReview == false))
     }
+    /// Why the controller check can't run now (a shower open, or one waiting for its check);
+    /// nil when it can.
+    var inspectionBlockedText: String? {
+        if mayImport { return nil }
+        if storageBlocked { return status }
+        if state.stateReviewRequired || state.failure?.needsReview == true { return Self.inspectionAwaitingCheckText }
+        return Self.inspectionShoweringText
+    }
     var problem: Bool { state.failure?.needsReview == true || state.stateReviewRequired || storageBlocked }
     /// The close was sent or the settlement is unconfirmed: money may have moved.
     var unresolvedClose: Bool {
@@ -320,7 +328,10 @@ enum ShowerProfileFiles {
 
     /// Read-only: connect, ask the identity (0xAA), disconnect. Never sent during a session.
     func inspectBluetooth() async {
-        guard let binding, mayImport, !inspecting else { return }
+        guard !inspecting else { return }
+        // Only this check's answer counts: an earlier one must not read as found.
+        inspectionOutcome = nil
+        guard let binding, mayImport else { return }
         let bleName = profile?.bleName ?? ""
         guard !bleName.isEmpty else { inspectionStatus = Self.platformMissingText; inspectionOutcome = .failed(Self.platformMissingText); return }
         inspecting = true; inspectionStatus = nil; verifiedDevice = nil; inspectionFoundBusy = false; inspectionOutcome = nil
@@ -385,6 +396,8 @@ enum ShowerProfileFiles {
     // MARK: Copy
 
     static let inspectionVerifiedText = "找到了，是这间的水控。"
+    nonisolated static let inspectionShoweringText = "正在洗澡，洗完再核对水控。"
+    nonisolated static let inspectionAwaitingCheckText = "上次洗澡还没核对，核对完再来。"
     static let inspectionBusyText = "附近的水控有人在用，现在核对不了是不是这间的。等它空了再试。"
 
     static func noticeText(_ notice: ShowerNotice?) -> String? {
