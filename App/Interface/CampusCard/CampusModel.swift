@@ -54,13 +54,15 @@ struct PowerChoice: Identifiable, Equatable {
 
     /// Foreground refresh; `force` skips the 60 s throttle. While a refresh is running, a second
     /// call (pull-to-refresh, foreground, background task) waits for it and shows its result.
+    /// A forced call never takes the result of a read that started before a sign-in or meter
+    /// change (`SnapshotRefresher.noteChange`): it waits for that read and reads again.
     func refresh(force: Bool = false, inBackground: Bool = false) async {
         guard configured else { return }
         if !force, refreshesRunning == 0, let lastRefresh, Date().timeIntervalSince(lastRefresh) < 60 { return }
         refreshesRunning += 1; loading = true
         defer { refreshesRunning -= 1; loading = refreshesRunning > 0 }
         let started = signOutGeneration
-        let report = await refresher.refresh(inBackground:inBackground)
+        let report = await refresher.refresh(inBackground:inBackground, includingChanges:force)
         guard started == signOutGeneration else { return }
         snapshot = report.snapshot
         lastRefresh = Date()
@@ -81,6 +83,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// dorm address the portal page showed (read by the same sign-in).
     func adoptWebState(_ login: CampusWebLogin) async throws {
         _ = try await session.adoptWebState(login.state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
+        await refresher.noteChange()
         let raw = login.dormAddress.trimmingCharacters(in:.whitespacesAndNewlines)
         if !raw.isEmpty {
             var stored = (try? AppEnvironment.schoolVault.profile()) ?? nil ?? SchoolProfile()
@@ -112,7 +115,10 @@ struct PowerChoice: Identifiable, Equatable {
             defer { matchingPower = false }
             do {
                 switch try await session.resolveElectricity() {
-                case .matched: profile = (try? AppEnvironment.schoolVault.profile()) ?? nil; await refresh(force:true)
+                case .matched:
+                    profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
+                    await refresher.noteChange()
+                    await refresh(force:true)
                 case .chooseAmong(let meters): powerChoices = meters.map(PowerChoice.init)
                 case .manualPicker: powerMatchIssue = "没自动找到电表，去「绑定电表」里选一下。"
                 case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「绑定电表」里选一下。"
@@ -128,6 +134,7 @@ struct PowerChoice: Identifiable, Equatable {
             defer { matchingPower = false }
             do {
                 try await session.chooseMatchedMeter(choice.meter)
+                await refresher.noteChange()
                 powerChoices = []; powerMatchIssue = nil
                 profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
                 await refresh(force:true)
@@ -140,6 +147,7 @@ struct PowerChoice: Identifiable, Equatable {
     func meterRows(nodeID: String) async throws -> [Meter] { try await session.meterRows(nodeID:nodeID) }
     func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool) async throws {
         try await session.chooseMeter(nodeID:nodeID, meter:meter, nodeIsRoom:nodeIsRoom)
+        await refresher.noteChange()
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         powerChoices = []; powerMatchIssue = nil
         await refresh(force:true)

@@ -120,10 +120,13 @@ final class GatedSchoolReader: SchoolReader, @unchecked Sendable {
     private let lock = NSLock()
     private var waiting: [CheckedContinuation<SchoolReading, Never>] = []
     private var calls = 0
+    private var backgroundFlags: [Bool] = []
     func refresh(inBackground: Bool) async -> SchoolReading {
-        await withCheckedContinuation { c in lock.withLock { calls += 1; waiting.append(c) } }
+        await withCheckedContinuation { c in lock.withLock { calls += 1; backgroundFlags.append(inBackground); waiting.append(c) } }
     }
     var callCount: Int { lock.withLock { calls } }
+    /// `inBackground` of every read, in order.
+    var inBackground: [Bool] { lock.withLock { backgroundFlags } }
     var waitingCount: Int { lock.withLock { waiting.count } }
     func release(_ reading: SchoolReading) {
         let all = lock.withLock { let w = waiting; waiting = []; return w }
@@ -199,5 +202,138 @@ final class SnapshotRefresherSingleFlightTests: XCTestCase {
         XCTAssertFalse(report.snapshotSaved)
         XCTAssertEqual(refresher.latest(), .empty)
         XCTAssertEqual(store.writeCount, 1)
+    }
+
+    /// The background read cannot renew the school login; a foreground caller that joined it
+    /// and got `needsLogin` runs its own foreground read next.
+    func testForegroundJoiningBackgroundNeedsLoginReadsAgainInForeground() async {
+        let reader = GatedSchoolReader()
+        let refresher = SnapshotRefresher(school: reader, store: RecordingSnapshotStore())
+        async let background = refresher.refresh(inBackground: true)
+        await eventually { reader.waitingCount == 1 }
+        async let foreground = refresher.refresh(inBackground: false)
+        await eventually { await refresher.joinedCount == 1 }
+        reader.release(SchoolReading(outcome: .needsLogin(.sessionExpired(.ecykt)), checkedAt: t1))
+        await eventually { reader.callCount == 2 && reader.waitingCount == 1 }
+        reader.release(SchoolReading(outcome: .ok, checkedAt: t1, balance: .success(Money(fen: 42)), readAt: t1))
+        let (b, f) = await (background, foreground)
+        XCTAssertEqual(reader.inBackground, [true, false])
+        XCTAssertEqual(b.outcome, .needsLogin(.sessionExpired(.ecykt)))
+        XCTAssertEqual(f.outcome, .ok)
+        XCTAssertEqual(f.snapshot.card.value, Money(fen: 42))
+    }
+
+    /// A background caller that joins a foreground read keeps that read's answer.
+    func testBackgroundJoiningNeverStartsASecondRead() async {
+        let reader = GatedSchoolReader()
+        let refresher = SnapshotRefresher(school: reader, store: RecordingSnapshotStore())
+        async let foreground = refresher.refresh(inBackground: false)
+        await eventually { reader.waitingCount == 1 }
+        async let background = refresher.refresh(inBackground: true)
+        await eventually { await refresher.joinedCount == 1 }
+        reader.release(SchoolReading(outcome: .needsLogin(.sessionExpired(.ecykt)), checkedAt: t1))
+        let (f, b) = await (foreground, background)
+        XCTAssertEqual(f, b)
+        XCTAssertEqual(reader.callCount, 1)
+    }
+
+    /// A meter was chosen while a read was running: a caller asking for changes does not get
+    /// the old read's result; it waits and reads again, and two such callers share that read.
+    func testChangeDuringReadIsReadAgainNotJoined() async {
+        let reader = GatedSchoolReader()
+        let store = RecordingSnapshotStore()
+        let refresher = SnapshotRefresher(school: reader, store: store)
+        async let old = refresher.refresh(inBackground: false)
+        await eventually { reader.waitingCount == 1 }
+        await refresher.noteChange()
+        async let a = refresher.refresh(inBackground: false, includingChanges: true)
+        async let b = refresher.refresh(inBackground: false, includingChanges: true)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(reader.callCount, 1, "nothing starts while the old read runs")
+        reader.release(SchoolReading(outcome: .ok, checkedAt: t1, balance: .success(Money(fen: 1)), readAt: t1))
+        await eventually { reader.callCount == 2 && reader.waitingCount == 1 }
+        reader.release(SchoolReading(outcome: .ok, checkedAt: t1, balance: .success(Money(fen: 2)), readAt: t1))
+        let (o, x, y) = await (old, a, b)
+        XCTAssertEqual(o.snapshot.card.value, Money(fen: 1))
+        XCTAssertEqual(x.snapshot.card.value, Money(fen: 2))
+        XCTAssertEqual(y.snapshot.card.value, Money(fen: 2))
+        XCTAssertEqual(reader.callCount, 2, "the two callers after the change share one read")
+        XCTAssertEqual(store.writeCount, 2)
+    }
+
+    /// Without a change, asking for changes still joins.
+    func testIncludingChangesJoinsWhenNothingChanged() async {
+        let reader = GatedSchoolReader()
+        let refresher = SnapshotRefresher(school: reader, store: RecordingSnapshotStore())
+        async let first = refresher.refresh(inBackground: false)
+        await eventually { reader.waitingCount == 1 }
+        async let second = refresher.refresh(inBackground: false, includingChanges: true)
+        await eventually { await refresher.joinedCount == 1 }
+        reader.release(SchoolReading(outcome: .ok, checkedAt: t1))
+        _ = await (first, second)
+        XCTAssertEqual(reader.callCount, 1)
+    }
+
+    /// The background task expired: its only caller is cancelled, so the read is cancelled
+    /// down to the network and nothing is written.
+    func testCancellingEveryWaiterCancelsTheRead() async {
+        let reader = CancellableSchoolReader()
+        let store = RecordingSnapshotStore()
+        let refresher = SnapshotRefresher(school: reader, store: store)
+        let caller = Task { await refresher.refresh(inBackground: true) }
+        await eventually { reader.startedCount == 1 }
+        caller.cancel()
+        _ = await caller.value
+        XCTAssertEqual(reader.cancelledCount, 1, "the read saw the cancellation")
+        XCTAssertEqual(store.writeCount, 0)
+    }
+
+    /// The first caller goes away; the caller that joined still gets the read and it is written.
+    func testFirstCallerCancelledDoesNotAffectTheJoinedCaller() async {
+        let reader = GatedSchoolReader()
+        let store = RecordingSnapshotStore()
+        let refresher = SnapshotRefresher(school: reader, store: store)
+        let first = Task { await refresher.refresh(inBackground: true) }
+        await eventually { reader.waitingCount == 1 }
+        async let joined = refresher.refresh(inBackground: true)
+        await eventually { await refresher.joinedCount == 1 }
+        first.cancel()
+        await eventually { await refresher.cancelledWaiters == 1 }
+        reader.release(SchoolReading(outcome: .ok, checkedAt: t1, balance: .success(Money(fen: 7)), readAt: t1))
+        let report = await joined
+        XCTAssertEqual(report.outcome, .ok)
+        XCTAssertTrue(report.snapshotSaved)
+        XCTAssertEqual(store.writeCount, 1)
+        XCTAssertEqual(refresher.latest().card.value, Money(fen: 7))
+        _ = await first.value
+    }
+}
+
+/// School reader that waits until cancelled (or released) and records the cancellation.
+final class CancellableSchoolReader: SchoolReader, @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: CheckedContinuation<SchoolReading, Never>?
+    private var started = 0, cancelled = 0, cancelledEarly = false
+    var startedCount: Int { lock.withLock { started } }
+    var cancelledCount: Int { lock.withLock { cancelled } }
+    func refresh(inBackground: Bool) async -> SchoolReading {
+        let offline = SchoolReading(outcome: .failed(.offline), checkedAt: Date(timeIntervalSince1970: 0))
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { c in
+                let resumeNow = lock.withLock { () -> Bool in
+                    started += 1
+                    if cancelledEarly { return true }
+                    waiting = c
+                    return false
+                }
+                if resumeNow { c.resume(returning: offline) }
+            }
+        } onCancel: {
+            let c = lock.withLock { () -> CheckedContinuation<SchoolReading, Never>? in
+                cancelled += 1; cancelledEarly = true
+                let w = waiting; waiting = nil; return w
+            }
+            c?.resume(returning: offline)
+        }
     }
 }

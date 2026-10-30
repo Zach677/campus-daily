@@ -23,19 +23,40 @@ public struct RefreshReport: Sendable, Equatable {
 /// The only writer of the home snapshot the app and the widget read.
 ///
 /// Reads the school data, reduces it into the stored snapshot and saves it. Refreshes are
-/// single-flight: a caller that arrives while one is running awaits that same refresh and gets
-/// its report, so a pull-to-refresh during a foreground or background read still ends with the
-/// fresh values (or the recorded failure). A failed read keeps the last good values.
+/// single-flight within this process: a caller that arrives while one is running awaits that
+/// same refresh and gets its report, so a pull-to-refresh during a foreground or background
+/// read still ends with the fresh values (or the recorded failure). A failed read keeps the
+/// last good values. Three exceptions to joining:
+/// - a foreground caller that joined a background read which ended in `needsLogin` runs one
+///   foreground read next (only the foreground may silently renew the school login);
+/// - a caller passing `includingChanges` after `noteChange()` (new login, meter chosen) waits
+///   for the older read to end and then starts, or joins, a read that sees the change;
+/// - when every caller waiting on a read is cancelled (an expiring background task), the read
+///   is cancelled and writes nothing.
 public actor SnapshotRefresher {
     let school: SchoolReader
     let store: SnapshotStoring
     let now: @Sendable () -> Date
 
-    private var inFlight: Task<RefreshReport, Never>?
+    private struct Run {
+        let id: Int
+        let task: Task<RefreshReport, Never>
+        let inBackground: Bool
+        let changes: Int
+        var waiters = 0
+        var cancelled = 0
+    }
+
+    private var current: Run?
+    private var nextRunID = 0
+    /// Bumped by `noteChange()`.
+    private var changes = 0
     /// Bumped by `clear()` so a refresh that was running during sign-out does not write back.
     private var generation = 0
     /// Callers that joined a running refresh (for tests).
     private(set) var joinedCount = 0
+    /// Waiters whose task was cancelled (for tests).
+    private(set) var cancelledWaiters = 0
 
     public init(school: SchoolReader, store: SnapshotStoring, now: @escaping @Sendable () -> Date = Date.init) {
         self.school = school; self.store = store; self.now = now
@@ -46,31 +67,72 @@ public actor SnapshotRefresher {
         ((try? store.loadSnapshot()) ?? nil) ?? .empty
     }
 
-    /// Runs a refresh, or joins the one already running.
-    public func refresh(inBackground: Bool) async -> RefreshReport {
-        if let inFlight {
-            joinedCount += 1
-            return await inFlight.value
+    /// Something the next read depends on changed (sign-in, meter choice). A refresh asked
+    /// with `includingChanges` will not join a read that started before this.
+    public func noteChange() { changes += 1 }
+
+    /// Runs a refresh, or joins the one already running (see the type's rules).
+    public func refresh(inBackground: Bool, includingChanges: Bool = false) async -> RefreshReport {
+        while includingChanges, let run = current, run.changes != changes {
+            _ = await wait(for: run.id, run.task)
         }
-        let task = Task { await self.run(inBackground: inBackground) }
-        inFlight = task
-        let report = await task.value
-        if inFlight == task { inFlight = nil }
-        return report
+        if let run = current {
+            joinedCount += 1
+            let report = await wait(for: run.id, run.task)
+            if !inBackground, run.inBackground, case .needsLogin = report.outcome, !Task.isCancelled {
+                return await refresh(inBackground: false, includingChanges: includingChanges)
+            }
+            return report
+        }
+        nextRunID += 1
+        let id = nextRunID
+        let task = Task { () -> RefreshReport in
+            let report = await self.run(inBackground: inBackground)
+            await self.finished(id)
+            return report
+        }
+        current = Run(id: id, task: task, inBackground: inBackground, changes: changes)
+        return await wait(for: id, task)
     }
 
     /// Signed out: the shared snapshot goes back to empty. A refresh still running is dropped.
     public func clear() throws {
         generation += 1
-        inFlight = nil
+        current = nil
         try store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
+    }
+
+    private func wait(for id: Int, _ task: Task<RefreshReport, Never>) async -> RefreshReport {
+        if current?.id == id { current?.waiters += 1 }
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            Task { await self.waiterCancelled(id) }
+        }
+    }
+
+    private func waiterCancelled(_ id: Int) {
+        cancelledWaiters += 1
+        guard var run = current, run.id == id else { return }
+        run.cancelled += 1
+        current = run
+        if run.cancelled >= run.waiters {
+            run.task.cancel()
+            current = nil
+        }
+    }
+
+    private func finished(_ id: Int) {
+        if current?.id == id { current = nil }
     }
 
     private func run(inBackground: Bool) async -> RefreshReport {
         let started = generation
         let reading = await school.refresh(inBackground: inBackground)
-        guard started == generation else {
-            return RefreshReport(outcome: .notSignedIn, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
+        // Signed out meanwhile, or nobody wants this read any more: write nothing.
+        guard started == generation, !Task.isCancelled else {
+            let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
+            return RefreshReport(outcome: outcome, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
         }
         let snapshot = Self.apply(reading, to: latest())
         let saved = (try? store.saveSnapshot(snapshot)) != nil
