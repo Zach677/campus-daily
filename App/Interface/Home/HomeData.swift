@@ -347,7 +347,7 @@ enum HomeDemo: String, CaseIterable {
         func record(daysAgo: Int, _ time: String, _ title: String, _ yuan: String) -> CardRecord {
             let day = school.date(byAdding:.day, value:-daysAgo, to:now)!
             return CardRecord(date:SchoolCalendar.dayString(day, calendar:school), time:time, title:title,
-                              amount:Money(yuanString:yuan)!, balanceAfter:nil, direction:nil)
+                              amount:Money(yuanString:yuan)!, balanceAfter:nil, direction:"1")
         }
         let range = CardActivity.range(at:now)
         var s = HomeSnapshot()
@@ -355,11 +355,11 @@ enum HomeDemo: String, CaseIterable {
         s.power.succeed(Meter(comAddress:"demo-meter", name:"3栋108", remainingKWh:Decimal(string:kwh),
                               dailyUseKWh:Decimal(string:dailyKWh)), at:read)
         s.activity.succeed(CardActivity(records:[
-            record(daysAgo:0, "073000", "POS消费示例早餐铺", "-4.50"),
-            record(daysAgo:1, "221500", "蓝牙热水", "-1.32"),
-            record(daysAgo:1, "120500", "POS消费示例面馆", "-12.00"),
+            record(daysAgo:0, "073000", "POS消费示例早餐铺", "4.50"),
+            record(daysAgo:1, "221500", "蓝牙热水", "1.32"),
+            record(daysAgo:1, "120500", "POS消费示例面馆", "12.00"),
             record(daysAgo:1, "090000", "校园卡充值", "50.00"),
-            record(daysAgo:1, "081000", "POS消费示例早餐铺", "-3.50"),
+            record(daysAgo:1, "081000", "POS消费示例早餐铺", "3.50"),
         ], begin:range.begin, end:range.end, complete:true), at:read)
         s.roomLabel = "3栋108"
         return s

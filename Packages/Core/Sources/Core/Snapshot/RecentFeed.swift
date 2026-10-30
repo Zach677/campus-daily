@@ -38,26 +38,39 @@ public struct RecentItem: Sendable, Equatable, Identifiable {
     public var detail: String?
     public var amount: Money?
     public var source: Source
+    /// For a card record, from its name, sign and flag; otherwise in for a top-up, else out.
+    public var flow: CardFlow
 
-    public init(id: String, kind: CardRecordKind, title: String, date: Date, detail: String?, amount: Money?, source: Source) {
+    public init(id: String, kind: CardRecordKind, title: String, date: Date, detail: String?, amount: Money?,
+                source: Source, flow: CardFlow? = nil) {
         self.id = id; self.kind = kind; self.title = title; self.date = date
         self.detail = detail; self.amount = amount; self.source = source
+        self.flow = flow ?? (kind == .topUp ? .moneyIn : .moneyOut)
     }
 
     public var emoji: String { kind.emoji }
 
-    /// 「−¥12.00」 for money out, 「+¥50.00」 for a top-up; nil without an amount.
+    /// 「−¥12.00」 for money out, 「+¥50.00」 for money in, 「¥3.00」 (no sign) when that can't be told;
+    /// nil without an amount.
     public var amountText: String? {
         guard let amount else { return nil }
         let value = Money(fen: abs(amount.fen))
-        return (kind.isIncome ? "+¥" : "−¥") + value.yuanText
+        switch flow {
+        case .moneyOut: return "−¥" + value.yuanText
+        case .moneyIn: return "+¥" + value.yuanText
+        case .unknown: return "¥" + value.yuanText
+        }
     }
 
-    /// VoiceOver: 「花了 12 元」 / 「充了 50 元」.
+    /// VoiceOver: 「花了 12 元」 / 「进账 50 元」 / 「12 元」.
     public var spokenAmount: String? {
         guard let amount else { return nil }
         let value = Money(fen: abs(amount.fen))
-        return (kind.isIncome ? "充了 " : "花了 ") + Self.spokenYuan(value) + " 元"
+        switch flow {
+        case .moneyOut: return "花了 " + Self.spokenYuan(value) + " 元"
+        case .moneyIn: return (kind == .topUp ? "充了 " : "进账 ") + Self.spokenYuan(value) + " 元"
+        case .unknown: return Self.spokenYuan(value) + " 元"
+        }
     }
 
     /// 「12」, 「1.32」, 「0.5」: no trailing zeros.
@@ -83,7 +96,7 @@ public enum RecentFeed {
             let kind = record.kind
             let item = RecentItem(id: "card-\(record.date)\(record.time)-\(record.amount.fen)-\(index)", kind: kind,
                                   title: kind.title, date: moment, detail: MerchantName.clean(record.title),
-                                  amount: record.amount, source: .card)
+                                  amount: record.amount, source: .card, flow: record.flow)
             cardItems.append((item, false))
         }
         var out: [RecentItem] = []
@@ -121,7 +134,9 @@ public enum RecentFeed {
 /// 「昨天花了 ¥12.00」 / 「昨天没花钱」: the school calendar's yesterday, money out only.
 public enum CardSpending {
     /// Nil when the records can't say: never read, read before today began (yesterday was not
-    /// over yet), a range without yesterday, or a page that did not hold every record.
+    /// over yet), a range without yesterday, a page that did not hold every record, or a
+    /// record of yesterday that may be money in or out. Money in (top-ups, refunds, grants)
+    /// is left out; a payment's amount counts with its sign.
     public static func yesterday(_ activity: Tile<CardActivity>?, now: Date,
                                  calendar: Calendar = SchoolCalendar.shanghai) -> Money? {
         guard let activity, let read = activity.value, read.complete, let fetchedAt = activity.fetchedAt,
@@ -130,9 +145,15 @@ public enum CardSpending {
         let yesterday = SchoolCalendar.dayString(yesterdayDate, calendar: calendar)
         guard read.begin <= yesterday, yesterday <= read.end else { return nil }
         var total = Money.zero
-        for record in read.records where !record.kind.isIncome {
+        for record in read.records {
             guard let moment = record.moment(calendar: calendar) else { return nil }
-            if calendar.isDate(moment, inSameDayAs: yesterdayDate) { total = total + Money(fen: abs(record.amount.fen)) }
+            guard calendar.isDate(moment, inSameDayAs: yesterdayDate) else { continue }
+            switch record.flow {
+            case .moneyOut: total = total + record.amount
+            case .moneyIn: continue
+            // A record that may be money in or out: no total rather than a wrong one.
+            case .unknown: return nil
+            }
         }
         return total
     }

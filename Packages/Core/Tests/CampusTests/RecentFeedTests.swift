@@ -32,7 +32,6 @@ final class RecentFeedTests: XCTestCase {
         ]
         for (name, kind) in cases { XCTAssertEqual(CardRecordKind.of(name: name), kind, name) }
         XCTAssertEqual(CardRecordKind.allCases.map(\.title), ["食堂", "热水", "洗衣", "电费", "充值", "其他"])
-        XCTAssertEqual(CardRecordKind.allCases.filter(\.isIncome), [.topUp])
     }
 
     func testTheFixtureRecordsAreClassified() throws {
@@ -162,6 +161,41 @@ final class RecentFeedTests: XCTestCase {
         XCTAssertNil(CardSpending.yesterday(activity(records, fetchedAt: noon, begin: "20261030"), now: noon), "range without it")
         let unreadable = records + [record("20261029", "xx", "示例超市", "1")]
         XCTAssertNil(CardSpending.yesterday(activity(unreadable, fetchedAt: noon), now: noon), "a time that can't be read")
+    }
+
+    /// A refund, a reversal or a grant is money in: a 12 元 meal refunded the same day is
+    /// 「昨天花了 ¥12.00」, not 24; a 100 元 grant is not spending.
+    func testRefundsAndGrantsAreMoneyIn() {
+        let records = [record("20261029", "120000", "POS消费(示例饭堂POS)01档口示例面馆", "12"),
+                       record("20261029", "121000", "POS消费退款", "12"),
+                       record("20261029", "080000", "伙食补贴", "100"),
+                       record("20261029", "090000", "消费冲正", "3"),
+                       record("20261029", "091000", "撤销交易", "2")]
+        XCTAssertEqual(CardSpending.yesterday(activity(records, fetchedAt: noon), now: noon), Money(fen: 1200))
+        let items = RecentFeed.items(card: records, app: [], limit: 10)
+        XCTAssertEqual(items.first { $0.date == moment(29, 12, 10) }?.amountText, "+¥12.00")
+        XCTAssertEqual(items.first { $0.date == moment(29, 12, 10) }?.spokenAmount, "进账 12 元")
+        XCTAssertEqual(items.first { $0.date == moment(29, 8) }?.amountText, "+¥100.00")
+        XCTAssertEqual(items.first { $0.date == moment(29, 12) }?.amountText, "−¥12.00")
+    }
+
+    /// A record that may be money in or out (a negative amount, an unseen direction flag)
+    /// hides yesterday's total and shows its amount without a sign.
+    func testARecordOfUnknownDirectionHidesTheTotal() {
+        let negative = [record("20261029", "120000", "示例超市", "12"), record("20261029", "130000", "示例超市", "-12")]
+        XCTAssertNil(CardSpending.yesterday(activity(negative, fetchedAt: noon), now: noon), "negative amount")
+        var flagged = record("20261029", "130000", "示例超市", "5")
+        flagged.direction = "2"
+        XCTAssertNil(CardSpending.yesterday(activity([flagged], fetchedAt: noon), now: noon), "another flag")
+        var noFlag = record("20261029", "130000", "示例超市", "5")
+        noFlag.direction = nil
+        XCTAssertEqual(CardSpending.yesterday(activity([noFlag], fetchedAt: noon), now: noon), Money(fen: 500))
+        let items = RecentFeed.items(card: negative, app: [], limit: 10)
+        XCTAssertEqual(items.first { $0.date == moment(29, 13) }?.amountText, "¥12.00")
+        XCTAssertEqual(items.first { $0.date == moment(29, 13) }?.spokenAmount, "12 元")
+        // Unknown records of other days don't matter.
+        let otherDay = [record("20261029", "120000", "示例超市", "12"), record("20261030", "090000", "示例超市", "-3")]
+        XCTAssertEqual(CardSpending.yesterday(activity(otherDay, fetchedAt: noon), now: noon), Money(fen: 1200))
     }
 
     func testTheRangeIsThreeSchoolDays() {

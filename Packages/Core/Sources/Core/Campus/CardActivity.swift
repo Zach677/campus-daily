@@ -69,9 +69,6 @@ public enum CardRecordKind: String, Sendable, Codable, CaseIterable {
         }
     }
 
-    /// Money coming in. Only names that say so count: the record's direction flag is not
-    /// documented, so it is not used.
-    public var isIncome: Bool { self == .topUp }
 
     /// Classifies by the record name (`transname`). Order matters: a hot-water name contains
     /// 「POS」 too.
@@ -106,6 +103,26 @@ public extension CardRecord {
     }
 
     var kind: CardRecordKind { CardRecordKind.of(self) }
+
+    /// Money in or out. A name that says money came back or in (充值, 退款, 冲正, 补贴 …) is
+    /// in. Otherwise the record is out only when it looks like every payment the school was
+    /// seen to send: a positive amount with direction flag 「1」 or none. Anything else (a
+    /// negative amount, another flag) can't be told apart and is `.unknown`.
+    var flow: CardFlow {
+        let n = title.filter { !$0.isWhitespace }
+        if CardFlow.incomeWords.contains(where: n.contains) { return .moneyIn }
+        let flag = direction?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard flag.isEmpty || flag == "1" else { return .unknown }
+        return amount.fen >= 0 ? .moneyOut : .unknown
+    }
+}
+
+/// Which way a card record moved money.
+public enum CardFlow: Sendable, Equatable {
+    case moneyOut, moneyIn, unknown
+
+    /// Names of money coming in: top-ups, and money given back or granted.
+    static let incomeWords = ["充值", "圈存", "转入", "退款", "退费", "撤销", "冲正", "补助", "补贴"]
 }
 
 /// The useful part of a merchant name: 「POS消费(示例饭堂POS)(示例饭堂POS)01档口示例面馆」 →

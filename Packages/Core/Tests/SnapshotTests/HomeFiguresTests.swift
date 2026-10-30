@@ -96,14 +96,14 @@ final class HomeFiguresTests: XCTestCase {
     // MARK: 校园卡
 
     func testCardYesterdaySpent() {
-        let f = card(snapshot(records: [record("20261029", "120500", "POS消费示例面馆", "-12.00"),
+        let f = card(snapshot(records: [record("20261029", "120500", "POS消费示例面馆", "12.00"),
                                         record("20261029", "180000", "校园卡充值", "50.00")]))
         XCTAssertEqual(f, HomeFigure(value: Decimal(string: "86.5"), low: false, subline: .spent(Money(fen: 1200))))
         XCTAssertEqual(f.subline?.text, "昨天花了 ¥12.00")
     }
 
     func testCardNothingSpentYesterday() {
-        let f = card(snapshot(records: [record("20261030", "081000", "POS消费示例面馆", "-5.00")]))
+        let f = card(snapshot(records: [record("20261030", "081000", "POS消费示例面馆", "5.00")]))
         XCTAssertEqual(f.subline?.text, "昨天没花钱")
     }
 
