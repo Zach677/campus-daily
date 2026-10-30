@@ -21,7 +21,7 @@ package `Packages/Core`. Build settings live in `Configuration/*.xcconfig`; a pe
 ```
 App/
   Application/        XiaoRiChangApp (entry, scene), AppEnvironment (builds the services)
-  Interface/<Feature>/ Home, CampusCard, Shower, Laundry, Onboarding, Settings, Common
+  Interface/<Feature>/ Home, CampusCard, Shower, Laundry, Onboarding, Settings, Location (shared dorm/meter pickers), Common
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders
   Resources/          Assets, Fonts, Info.plist, App.entitlements
@@ -38,7 +38,8 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
                       ShowerVault + store
     Laundry/          U净 client, order/payment rules, LaundryEngine + reducer, LaundryVault + store, 学校洗衣机 switch
     Snapshot/         the home snapshot ("latest data") and reminder lines shared with the widget, their store,
-                      and the refresher (the only writer of the snapshot)
+                      and the refresher (the only writer of the snapshot); the home's two numbers and
+                      their low rules (HomeFigures) and the 最近 merge (RecentFeed)
     Networking/       HTTPClient protocol + URLSession implementation, envelopes, redacting logger
     Storage/          generic Keychain and UserDefaults access only: SecureStore, StoreKey, SharedKeychain
                       (app-private and widget-shared access groups), PreferenceStorage, StorageError
@@ -204,7 +205,10 @@ foreground, the BG task and the widget):**
 
 1. `boundCards` (liveness check). `code:-1` → `sessionExpired(.ecykt)`; go to step 4.
 2. On success: `balance`, and `meters(nodeID: savedMeterNode)` in parallel. The session returns
-   what it read; the refresher reduces it into the snapshot and stores it.
+   what it read; the refresher reduces it into the snapshot and stores it. The card records of
+   the last three school days (`getRecordList`, same live session, nothing minted) are read
+   alongside but never hold the numbers back: they get `CardActivity.timeout` (6 s), land as a
+   second write under the same ordering rules, and a slow or failed read keeps the stored ones.
 3. Done. Card/power failures are recorded per tile; a liveness failure marks **all** school tiles
    with a "重新登录" state even if old values are shown (values keep their `fetchedAt`).
 4. Before minting, `mayMint` renews the cross-process lease (lost → stop, write nothing), and the
@@ -291,8 +295,16 @@ The small stale line keeps one line at full size: 「8:10 · 打开 App 更新�
 **Electricity resolution.** The power tree contains apartment levels that the dorm address lacks,
 so do not walk it level by level. Onboarding: call `meters(nodeID: <campus node>)` once (≈2.3k
 rows, needs the 1 MiB cap), match `piplineName == "<building>栋<room>"` from the parsed dorm
-address; exactly one match → save `comAddress` + the room-level node id; zero or many → manual
-picker over `buildings(parent:)`. Daily refresh queries the room-level node only (1 row).
+address; exactly one match → save `comAddress` + the room-level node id; zero → manual
+picker over `buildings(parent:)`. Several matches (same-named buildings in different apartments)
+→ walk campus → apartment → building → floor → room by name, keeping the whole path, and read the
+matching rooms' meters (1 row each, at most 8) to pair them by `comAddress`; each
+`MeterCandidate` carries its location 「校区 · 公寓 · 楼栋 · 房间」 and binds its room node. A
+candidate whose room isn't found binds the campus node (wide read, picked by `comAddress`).
+Every binding keeps that location (`MeterBinding.location`; floors are left out of picker
+paths); Settings shows it, and the dorm row uses it when it is the same room
+(`SchoolProfile.dormLocation`), else the portal address. Daily refresh queries the room-level
+node only (1 row).
 `data` is a JSON **string**; all numeric fields are strings → parse with `Decimal` in POSIX locale.
 
 **Error mapping (school):**
@@ -638,7 +650,7 @@ Every endpoint gets at least: success, expired/unauthorized, refused with messag
 | electricity web entry | `getPowerUrl-ok` (302 not followed) |
 | water hand-off | `getSignData-ok`, `-badToken` |
 | recharge web session state | `localStorage-elecampus_state-csaLogin` |
-| card records (not used yet) | `card-getRecordList-ok` |
+| card records (最近, 昨天花了) | `card-getRecordList-ok` |
 | portal | `getMyInfo-ok`, `-badtoken` (-1001), `-notoken` (-1), `getMyECard-ok`, `me-user-ok` |
 | lxt6 reads | `getUserMsg-ok`, `-badSign` (-301, JSON-in-string); `areaInfo-level0..3`, `-badSign`/`-missingId` (4002), `-unknownParent` (4034); `getMachineMacAddress-ok`, `-unknownRoom` (5000) |
 | U净 auth errors | `ujing/programInfo-noAuth`, `orderDetail-badAuth` (401 shapes, captured); `scanWasherCode-badAuth`, `orderCreate-badAuth` |

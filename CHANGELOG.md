@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- Show 最近 on the home screen: the card's records from the last three school days merged with the app's own showers and laundry orders, newest first, at most four.
+- Show the full location 「校区 · 公寓 · 楼栋 · 房间」 of the dorm and the electricity meter in Settings.
+- Add a 扫洗衣机 button to the laundry page's navigation bar.
+
+### Fixed
+
+- Offer same-named electricity meters (one building name in two apartments) with their full location instead of identical names, and bind the chosen one at room level.
+- Do not count refunds, reversals and grants as money spent yesterday.
+- Do not send a password login when the other process (app or widget) stored new school credentials meanwhile.
+
 ### Removed
 
 - Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `Android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
@@ -11,6 +23,8 @@
 
 ### Changed
 
+- Redesign the home screen: the date, the card balance and electricity as two numbers (昨天花了 / 够用约 N 天 underneath, red when running low), an update line, one shower button, the 洗衣 row and 最近. The hero sentence and the bottom dock are gone.
+- Read the balance and electricity without waiting for the card records; the records get 6 seconds and arrive in a second write.
 - Reorganize the repository by feature: `App/` (Application, Interface, Services, Resources), `Shared/`, `Widget/`, one `Packages/Core` package, `Android/`, `Configuration/`, `Scripts/`. The Xcode project is committed (`XiaoRiChang.xcworkspace`), and routine commands run through `mise`.
 - Name the hot-water feature "Shower" throughout the code. User-facing text is unchanged.
 - Fold the release notes from `docs/release-*.md` into this file.
