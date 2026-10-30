@@ -55,7 +55,8 @@ import Core
         let stopped = try await AppReset.run(marker:Self.marker, now:Date(),
                                              lock:{ Self.anyLock(shower:shower, laundry:laundry) },
                                              signOut:{ await campus.signOutForReset() },
-                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) })
+                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) },
+                                             resync:{ Self.resync(campus:campus, shower:shower) })
         if stopped == nil { completed += 1 }
         return stopped
     }
@@ -70,7 +71,8 @@ import Core
             resumed = try await AppReset.resume(marker:Self.marker, now:Date(),
                                                 lock:{ Self.anyLock(shower:shower, laundry:laundry) },
                                                 signOut:{ await campus.signOutForReset() },
-                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) })
+                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) },
+                                                resync:{ Self.resync(campus:campus, shower:shower) })
         } catch {
             resumeFailed = AppErrorText.text(error)
             return
@@ -96,6 +98,16 @@ import Core
         laundry.reloadAfterReset()
         Reminders.shared.clearAfterReset()
         ShowerActivityController.shared.endAll()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Stopped after the sign-out: only the school side changed. The shower may be running, so
+    /// its Live Activity and 「还没结束洗澡？」 follow its record; laundry reminders stay.
+    private static func resync(campus: CampusModel, shower: ShowerModel) {
+        campus.reload()
+        let state = shower.state
+        ShowerActivityController.shared.sync(state:state)
+        Reminders.shared.syncShower(started:state.mayBeFlowing ? state.startedAt : nil)
         WidgetCenter.shared.reloadAllTimelines()
     }
 

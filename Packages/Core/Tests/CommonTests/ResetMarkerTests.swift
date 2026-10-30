@@ -128,9 +128,9 @@ final class ResetMarkerTests: XCTestCase {
                 steps.append("signOut")
                 try? StoredShowerVault(store: store).saveShowerState(running)
             },
-            clear: { steps.append("clear") }, reload: { steps.append("reload") })
+            clear: { steps.append("clear") }, reload: { steps.append("reload") }, resync: { steps.append("resync") })
         XCTAssertEqual(resumed, .stopped(AppReset.Stop(.showering, signedOut: true)))
-        XCTAssertEqual(steps, ["signOut", "reload"])
+        XCTAssertEqual(steps, ["signOut", "resync"])
         XCTAssertEqual(try StoredShowerVault(store: store).showerState(), running)
         XCTAssertNil(ResetMarker(store: store).startedAt())
     }

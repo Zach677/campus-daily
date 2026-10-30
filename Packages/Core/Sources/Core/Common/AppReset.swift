@@ -71,9 +71,13 @@ public enum AppReset {
     /// and a shower or an order may have started once it went stale. So before the clear the
     /// marker is written again at `clock()` and the locks are checked once more; a lock then
     /// stops the reset with the sign-out done and nothing else cleared.
+    ///
+    /// `reload` follows a clear (it may end every Live Activity and reminder: nothing is left
+    /// for them). A stop after the sign-out runs `resync` instead: the shower may be running, so
+    /// its Live Activity and reminder are put back in step with the record, not removed.
     @MainActor public static func run(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
                                       signOut: () async -> Void, clear: () throws -> Void,
-                                      reload: () async -> Void) async throws -> Stop? {
+                                      reload: () async -> Void, resync: () async -> Void = {}) async throws -> Stop? {
         try marker.begin(at: now)
         if let found = lock() {
             try? marker.end()
@@ -83,12 +87,12 @@ public enum AppReset {
         do { try marker.begin(at: clock()) } catch {
             // Without a fresh marker a start could slip in during the clear: stop here.
             try? marker.end()
-            await reload()
+            await resync()
             throw error
         }
         if let found = lock() {
             try? marker.end()
-            await reload()
+            await resync()
             return Stop(found, signedOut: true)
         }
         var failure: Error?
@@ -118,14 +122,15 @@ public enum AppReset {
     /// is `abandoned`, so the user learns the reset never finished. Nil when there is no marker.
     @MainActor public static func resume(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
                                          signOut: () async -> Void, clear: () throws -> Void,
-                                         reload: () async -> Void) async throws -> Resumed? {
+                                         reload: () async -> Void, resync: () async -> Void = {}) async throws -> Resumed? {
         guard marker.startedAt() != nil else { return nil }
         guard marker.refusesStarts(at: now) else {
             // One that can't be deleted is stale again next launch, and dropped (and told) again.
             try? marker.end()
             return .abandoned
         }
-        let stopped = try await run(marker: marker, now: now, clock: clock, lock: lock, signOut: signOut, clear: clear, reload: reload)
+        let stopped = try await run(marker: marker, now: now, clock: clock, lock: lock, signOut: signOut, clear: clear, reload: reload,
+                                  resync: resync)
         return stopped.map(Resumed.stopped) ?? .completed
     }
 

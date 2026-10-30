@@ -186,9 +186,10 @@ final class AppResetTests: XCTestCase {
                                                  XCTAssertFalse(marker.refusesStarts(at: now), "stale by now")
                                                  showering = true
                                              },
-                                             clear: { steps.append("clear") }, reload: { steps.append("reload") })
+                                             clear: { steps.append("clear") }, reload: { steps.append("reload") },
+                                             resync: { steps.append("resync") })
         XCTAssertEqual(stopped, AppReset.Stop(.showering, signedOut: true), "told the sign-out happened")
-        XCTAssertEqual(steps, ["signOut", "reload"])
+        XCTAssertEqual(steps, ["signOut", "resync"], "the running shower's Live Activity and reminder are not ended")
         XCTAssertNil(marker.startedAt())
     }
 
@@ -203,6 +204,22 @@ final class AppResetTests: XCTestCase {
                                    signOut: { now = t0.addingTimeInterval(ResetMarker.staleAfter + 60) },
                                    clear: { refusedDuringClear = marker.refusesStarts(at: now); try marker.end() }, reload: {})
         XCTAssertTrue(refusedDuringClear)
+    }
+
+    /// The marker can't be written again after the sign-out: stopped, and the running models
+    /// are put back in step (resync), not reloaded as after a clear.
+    @MainActor func testAMarkerLostAfterTheSignOutResyncsWithoutReload() async {
+        let store = InMemorySecureStore()
+        let marker = ResetMarker(store: store)
+        var steps: [String] = []
+        do {
+            _ = try await AppReset.run(marker: marker, now: Date(), lock: { nil },
+                                       signOut: { steps.append("signOut"); store.failWrites(to: .sharedResetMarker) },
+                                       clear: { steps.append("clear") }, reload: { steps.append("reload") },
+                                       resync: { steps.append("resync") })
+            XCTFail("expected the storage error")
+        } catch { XCTAssertTrue(error is StorageError) }
+        XCTAssertEqual(steps, ["signOut", "resync"])
     }
 
     /// A marker that can't be written: the reset does not start at all.
