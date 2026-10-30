@@ -36,7 +36,6 @@ public struct RefreshReport: Sendable, Equatable {
 public actor SnapshotRefresher {
     let school: SchoolReader
     let store: SnapshotStoring
-    let now: @Sendable () -> Date
 
     private struct Run {
         let id: Int
@@ -58,8 +57,9 @@ public actor SnapshotRefresher {
     /// Waiters whose task was cancelled (for tests).
     private(set) var cancelledWaiters = 0
 
-    public init(school: SchoolReader, store: SnapshotStoring, now: @escaping @Sendable () -> Date = Date.init) {
-        self.school = school; self.store = store; self.now = now
+    /// Times come from the school reading (`checkedAt`, `readAt`), so the refresher needs no clock.
+    public init(school: SchoolReader, store: SnapshotStoring) {
+        self.school = school; self.store = store
     }
 
     /// The stored snapshot, or `.empty`. Reading never waits for a running refresh.

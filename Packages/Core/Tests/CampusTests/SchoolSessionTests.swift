@@ -17,7 +17,7 @@ struct Harness {
 
     /// The refresher over this harness's session and shared store.
     func refresher() -> SnapshotRefresher {
-        SnapshotRefresher(school: session(), store: snapshots, now: clock.function)
+        SnapshotRefresher(school: session(), store: snapshots)
     }
 
     func signedIn(portal: Bool = false, meter: MeterBinding? = nil, residence: String = "星湖校区9栋9号1层199房") throws {
