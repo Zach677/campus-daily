@@ -65,7 +65,7 @@ struct PowerChoice: Identifiable, Equatable {
     }
 
     /// Settings › 学校账号 › 保存密码.
-    var passwordSaved: Bool { account?.password != nil }
+    var passwordSaved: Bool { SchoolAccount.savesPasswordByDefault(account) }
 
     var address: DormAddress? { profile?.residence?.address }
     /// 「99 栋 991」 style label, or 「未配置」.

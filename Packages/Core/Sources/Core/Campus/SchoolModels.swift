@@ -36,6 +36,10 @@ public struct SchoolAccount: Sendable, Equatable, Codable, CustomStringConvertib
     public init(account: String, password: String? = nil, paused: Bool = false, unansweredAt: Date? = nil) {
         self.account = account; self.password = password; self.paused = paused; self.unansweredAt = unansweredAt
     }
+    /// The login form's 保存密码 starts ticked when a password is saved, so signing in again
+    /// keeps it; only unticking it deletes the saved one.
+    public static func savesPasswordByDefault(_ saved: SchoolAccount?) -> Bool { saved?.password != nil }
+
     /// The saved password, unless automatic sign-in is paused.
     public var usablePassword: String? { paused ? nil : password.flatMap { $0.isEmpty ? nil : $0 } }
     /// The saved password for an automatic login at `now`: none while paused or while holding

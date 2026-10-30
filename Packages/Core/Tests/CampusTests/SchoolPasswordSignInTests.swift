@@ -59,6 +59,30 @@ final class SchoolPasswordSignInTests: XCTestCase {
         }
     }
 
+    func testSigningInAgainKeepsASavedPasswordUnlessUnticked() async throws {
+        let login = FakePasswordLogin(.success(Self.freshToken), .success(Self.freshToken), .success(Self.freshToken))
+        let h = harness(login)
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-old"))
+        func signInWithTheFormDefault(_ password: String, untick: Bool = false) async throws {
+            try h.server.serve("portal/getMyInfo-ok")
+            try serveExchange(h)
+            let ticked = SchoolAccount.savesPasswordByDefault(try h.vault.account()) && !untick
+            _ = try await h.session().signIn(account: "99100991", password: password, savePassword: ticked)
+        }
+
+        XCTAssertTrue(SchoolAccount.savesPasswordByDefault(try h.vault.account()))
+        try await signInWithTheFormDefault("synthetic-pw-991")
+        XCTAssertEqual(try h.vault.account()?.password, "synthetic-pw-991", "left ticked: still saved")
+
+        try await signInWithTheFormDefault("synthetic-pw-991", untick: true)
+        XCTAssertNil(try h.vault.account()?.password, "unticked: deleted")
+        XCTAssertFalse(SchoolAccount.savesPasswordByDefault(try h.vault.account()))
+
+        try await signInWithTheFormDefault("synthetic-pw-991")
+        XCTAssertNil(try h.vault.account()?.password, "nothing saved: the box starts unticked")
+        XCTAssertFalse(SchoolAccount.savesPasswordByDefault(nil))
+    }
+
     func testRefusedSignInSavesNothingAndIsNotRetried() async throws {
         for failure in [SchoolLoginFailure.wrongCredentials, .cannotLoginDirectly, .offline] {
             let login = FakePasswordLogin(.failure(failure))

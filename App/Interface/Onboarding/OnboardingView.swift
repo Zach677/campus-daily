@@ -122,6 +122,12 @@ struct OnboardingView: View {
             }
         }
         .sheet(isPresented:$ujing) { UjingLoginView() }
+        .onAppear {
+            // A password already saved stays saved on a new sign-in unless the box is unticked.
+            guard preview == nil else { return }
+            campus.reloadAccount()
+            savePassword = campus.passwordSaved
+        }
         .onChange(of:laundry.savedMachines.count) { old, new in
             if preview == nil, step == .washer, new > old { advance() }
         }
