@@ -20,25 +20,28 @@ package `Packages/Core`. Build settings live in `Configuration/*.xcconfig`; a pe
 
 ```
 App/
-  Application/        XiaoRiChangApp (entry, scene, background refresh), AppEnvironment (builds the services)
+  Application/        XiaoRiChangApp (entry, scene), AppEnvironment (builds the services)
   Interface/<Feature>/ Home, CampusCard, Shower, Laundry, Onboarding, Settings, Common
-  Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (WKWebView login script),
-                      Alipay, LiveActivities, Intents, Reminders
+  Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
+                      BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders
   Resources/          Assets, Fonts, Info.plist, App.entitlements
 Shared/               compiled into App and Widget
   WidgetViews/        widget views (also used by the in-app preview)
   LiveActivityViews/  ActivityAttributes and Live Activity views
-  Theme/              colours, fonts, formatting shared with the widget
+  Theme/              formatting and the mascot shape the widget also draws (app colours and fonts
+                      are in App/Interface/Common: Theme, NothingTheme)
 Widget/               XiaoRiChangWidget, ShowerLiveActivity, LaundryLiveActivity, Info.plist, Widget.entitlements
 Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macOS 14, Swift 6 mode)
   Sources/Core/
-    Campus/           CAS/portal/ecykt session, dorm address, balance and electricity, meter matching, recharge
-    Shower/           lxt6 signed client and signing, BLE frame codec, ShowerEngine + reducer, onboarding, platform profile
-    Laundry/          U净 client, order/payment rules, LaundryEngine + reducer
-    Snapshot/         the home snapshot ("latest data") shown by the app and the widget
+    Campus/           CAS/portal/ecykt session, balance and electricity, meter matching, recharge, SchoolVault + store
+    Shower/           lxt6 signed client and signing, BLE frame codec, ShowerEngine + reducer, onboarding, platform profile,
+                      ShowerVault + store
+    Laundry/          U净 client, order/payment rules, LaundryEngine + reducer, LaundryVault + store, 学校洗衣机 switch
+    Snapshot/         the home snapshot ("latest data") and reminder lines shared with the widget, and their store
     Networking/       HTTPClient protocol + URLSession implementation, envelopes, redacting logger
-    Storage/          Keychain stores (shared with the widget through the access group), per-feature stores
-    Common/           Money, ServiceError, JSONValue
+    Storage/          generic Keychain and UserDefaults access only: SecureStore, StoreKey, SharedKeychain
+                      (access group shared with the widget), PreferenceStorage, StorageError
+    Common/           Money, ServiceError, JSONValue, DormAddress, ShowerHandoff (used by Campus and Shower)
   Tests/
     CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport
@@ -59,7 +62,8 @@ Core: Campus / Shower / Laundry ──→ Networking, Storage, Common
 - Core imports only Foundation, CryptoKit, Security and os: no SwiftUI, UIKit, WidgetKit,
   ActivityKit or CoreBluetooth. Bluetooth is implemented in `App/Services/Bluetooth` behind the
   Core `ShowerTransport` protocol, so tests drive the state machine with a fake transport.
-- The three features do not reference each other; shared pieces go in Common.
+- The three features do not reference each other; shared pieces go in Common. Each feature owns
+  its persistence protocol and Keychain store; Storage knows no feature types.
 - The widget never touches the shower or laundry state machines; it reads the snapshot only.
 - Only Networking creates URL sessions.
 
@@ -72,8 +76,18 @@ Pure / testable vs platform:
 | Engines (`ShowerEngine`, `LaundryEngine`, `SchoolSession`) | actors that run reducers, persist before each side effect, call clients/transport through protocols | fakes for transport/store/clock + fixtures |
 | Platform (App/Widget) | CoreBluetooth, WKWebView, AlipaySDK, ActivityKit, WidgetKit, BGTask, Keychain access-group entitlement | device/simulator only, kept thin |
 
-Rules: clients are `Sendable` structs, engines are actors, UI observes `AsyncStream<State>` via
-an `@Observable` adapter in App; no singletons; time is injected; only Networking makes sessions.
+Rules: clients are `Sendable` structs, engines are actors, time is injected in Core, only
+Networking makes sessions.
+
+**Current state of the App layer.** The screen models are `ObservableObject` classes passed down
+with `@EnvironmentObject`. `ShowerModel.shared`, `CampusModel.shared` and `Reminders.shared` are
+singletons (the Live Activity intent, background refresh and notification delegate reach them
+outside the view tree); `LaundryModel` is created by the app scene. The App and Widget targets
+build in Swift 5 language mode; Core builds in Swift 6 mode.
+
+**After R2 (target).** The App and Widget targets move to Swift 6. Models become `@Observable`
+adapters that observe the engines' `AsyncStream<State>`, created in `AppEnvironment` and passed
+through initializers or the environment, with no singletons.
 
 ### Networking
 
@@ -120,7 +134,7 @@ the password. The app opens the CAS login for the portal service in a non-persis
 3. Exchange: `POST ecykt /ykt-mini/verify/csalogintoken/{areacode}` `{ticket}` →
    `{syscustid, isbind, token}` → **ecykt token**. Then `getSysBindCustInfo` → bound card
    (`custid`, display name for the owner check).
-4. Fallback while step 3 is uncaptured (gap G6): let the WebView follow `pcUrl` and read
+4. Fallback while step 3 is not verified on device: let the WebView follow `pcUrl` and read
    `localStorage.elecampus_state` on the ecykt origin (what the current app does).
 
 The ticket is single-use and must never be logged; nor may the CAS redirect URL (its JWT carries
@@ -134,7 +148,7 @@ struct PortalClient { // X-Id-Token, X-Device-Info: PC, X-Terminal-Info: PC
   func eCardTicketURL(_ t: PortalToken) async throws -> URL           // getMyECard.pcUrl
 }
 struct EcyktClient { // POST JSON, acc_token in header AND body
-  func exchange(ticket: String) async throws -> EcyktLogin            // csalogintoken (G6)
+  func exchange(ticket: String) async throws -> EcyktLogin            // csalogintoken
   func boundCards(_ s: EcyktSession) async throws -> [BoundCard]      // getSysBindCustInfo  (VALIDATES token)
   func freshLogin(_ s: EcyktSession) async throws -> EcyktLogin       // loginBySysId        (VALIDATES token)
   func signData(_ s: EcyktSession, custid: String) async throws -> ShowerHandoff // getSignData (VALIDATES)
@@ -149,8 +163,8 @@ struct EcyktClient { // POST JSON, acc_token in header AND body
 
 | Credential | Source | Stored | Lifetime (observed) |
 |---|---|---|---|
-| portal token | CAS login (WebView) | Keychain `school.portal` (WhenUnlocked) | unknown (G7) |
-| ecykt token + `syscustid` + `custid` + `areacode` + UA | exchange / elecampus_state | Keychain `school.ecykt` (AfterFirstUnlock, so BG refresh works) | > 64 min incl. 28 min idle; real TTL unknown (G7) |
+| portal token | CAS login (WebView) | Keychain `school.portal` (WhenUnlocked) | unknown |
+| ecykt token + `syscustid` + `custid` + `areacode` + UA | exchange / elecampus_state | Keychain `school.ecykt` (AfterFirstUnlock, so BG refresh works) | > 64 min incl. 28 min idle; real TTL unknown |
 | dorm address, chosen meter id, building path | portal / user choice | Keychain `school.profile` | until changed |
 
 Facts the design relies on (from the read-only captures):
@@ -244,7 +258,7 @@ three fields. Envelope casing differs by backend: `Code/Data/Message` (AECC) vs
 | authorize/settle: explicit non-zero code | `rejected` (definite refusal, nothing charged for authorize) |
 | authorize/settle: transport error, non-200, unreadable body | `uncertain(.lxt6)` |
 
-Authorize/settle reply shapes and their refusal codes are **not captured** (G1/G2); the
+Authorize/settle reply shapes and their refusal codes are **not captured**; the
 decoders are written from the existing iOS and Android code (`machineid`, `studentId`,
 `systemData` hex; settle `pay` in fen) and are verified on device.
 
@@ -277,7 +291,7 @@ are `[A-Za-z0-9]{1,80}`. Only module type 7 is ordered from the app.
 per-install `x-mobile-id` UUID. Expiry: **HTTP 401** `{code:401, message:"Token is invalid" |
 "JWT token is missing"}` → `sessionExpired(.ujing)`; no silent refresh, user repeats SMS login
 (60 s UI cooldown, never auto-requested). `x-app-code`: `ZI` on captcha/login, `BI` on every
-authenticated call (what the existing iOS and Android clients send; confirm in G3). `x-mobile-id`
+authenticated call (what the existing iOS and Android clients send; to be confirmed on device). `x-mobile-id`
 is created once per install and kept in `laundry.account` across logouts. Signed-in calls without
 a token fail locally with `sessionExpired` (nothing sent).
 
@@ -327,7 +341,7 @@ Rules:
 - `writePending` shows as running on purpose (the controller may have accepted without acking).
   `finish` from it: probe shows the device idle with our identity → `idle`, no charge; else close.
 - Close is sent only after the probe returns `0xA5`; otherwise keep the session, flag review.
-- `settling` is never auto-retried; repeat-settle idempotency is unknown (G2), so a manual retry
+- `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
   needs a second confirmation and is recorded in diagnostics.
 - Unsettled reminder after the configured minutes in `writePending/running`. The Live Activity
   mirrors `{phase, startedAt, writeUnconfirmed, amountYuan?}`; its "结束并结算" intent calls
@@ -351,7 +365,7 @@ attention` (Keychain `laundry.checkout`). Relaunch (`LaundryReducer.restore`) ne
 anything: `creating` → `reconcile`, `paying` → `verifying`, `cancelling` before the POST →
 `created`; the rest stay.
 
-Server status codes (from current code, confirm in G3): `10` reserved/unpaid, `17` unpaid,
+Server status codes (from current code, to be confirmed on device): `10` reserved/unpaid, `17` unpaid,
 `20` paid/waiting start, `21` starting, `40` washing, `50` done, `51` payment timed out,
 `52` machine didn't start (check charge in U净), `53` cancelled.
 
@@ -390,7 +404,7 @@ Rules:
 ### 3.3 Recharge (card and electricity)
 
 Payment stays inside the school's own web pages (WKWebView); the app does not call the recharge
-submit APIs itself (not captured, G4/G5).
+submit APIs itself (not captured).
 
 ```
 idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded─► inPage ─back / app foreground─► confirming ─► idle
@@ -516,17 +530,17 @@ pay/cancel.
 from the existing iOS implementation and the Android code as reference, then verified on the
 maintainer's device:
 
-| # | Gap | Closed by |
-|---|---|---|
-| G1 | hot water `bathingConsumptionAuthorization` success + refusal shapes | decoder from the existing iOS/Android code; on device |
-| G2 | hot water `analysisOfBathingConsumptionData` success (+ whether a repeat is idempotent) | decoder from existing code; on device; settle is never auto-retried until then |
-| G3 | U净 SMS captcha + login (incl. `isTempToken`/challenge), scan, program info, order detail, payment methods, create → pay → status 20/40/50, cancel from 10/17 | client from existing code; on device |
-| G4 | card recharge submit | not needed: recharge stays in the school's web page |
-| G5 | electricity recharge order | not needed: recharge stays in the school's web page |
-| G6 | `csalogintoken` ticket exchange | shape taken from the official page's JS (synthetic test fixture); `adoptWebState` fallback; on device |
-| G7 | token lifetime: ecykt at +2/+6/+24 h idle; portal token lifetime | scheduled read-only probes (`getSysBindCustInfo`); no user session needed beyond one sign-in |
+| Gap | Closed by |
+|---|---|
+| hot water `bathingConsumptionAuthorization` success + refusal shapes | decoder from the existing iOS/Android code; on device |
+| hot water `analysisOfBathingConsumptionData` success (+ whether a repeat is idempotent) | decoder from existing code; on device; settle is never auto-retried until then |
+| U净 SMS captcha + login (incl. `isTempToken`/challenge), scan, program info, order detail, payment methods, create → pay → status 20/40/50, cancel from 10/17 | client from existing code; on device |
+| card recharge submit | not needed: recharge stays in the school's web page |
+| electricity recharge order | not needed: recharge stays in the school's web page |
+| `csalogintoken` ticket exchange | shape taken from the official page's JS (synthetic test fixture); `adoptWebState` fallback; on device |
+| token lifetime: ecykt at +2/+6/+24 h idle; portal token lifetime | scheduled read-only probes (`getSysBindCustInfo`); no user session needed beyond one sign-in |
 
-Decoder tests for G1–G3 use synthetic replies shaped like the existing code expects and are
+Decoder tests for the hot-water authorize/settle and U净 paths use synthetic replies shaped like the existing code expects and are
 marked as such; no release ships a money path whose device check is still open. `swift test`
 touches no network, Bluetooth or host Keychain.
 
@@ -578,7 +592,7 @@ Legend: **RO** read-only, **ST** changes server state, **$$** spends money.
   (`code:-1, msg:"登录状态已过期，请重新登录！"`, HTTP 200). Balance and electricity endpoints
   don't signal expiry; use `getSysBindCustInfo` as the liveness check.
 - Lifetime: tokens were still valid after > 1 h including 28 min idle; the real TTL is measured
-  by scheduled probes (G7).
+  by scheduled probes.
 
 ### A.2 ecykt.gdbtu.edu.cn (`/ykt-mini`)
 
@@ -632,8 +646,8 @@ a JSON string containing JSON.
 | `zk_areainfo_api/areaInfo/getAreaInfoForApplests` | `id=<parent>` | `{code:0, data:[{id, name}]}` | `4002 "参数不匹配"` (bad sign / missing id); `4034 "查无此信息…"` (unknown id) | RO |
 | `zk_areainfo_api/areaInfo/getAreaForRoomApplests` | `id=<floor>` | rooms `[{id, name}]` | – | RO |
 | `ZK_BSRS/bathe/getMachineMacAddress` | `typeId, schoolId, roomId` | `{code:0, data:{objList:[{machineId, ID, Mac, machineName}]}}` | `5000 "当前房间未绑定设备"` | RO |
-| `ZK_BSRS/GDBusinessSchool/bathingConsumptionAuthorization` | – | not captured (G1) | – | **$$** |
-| `ZK_BSRS/GDBusinessSchool/analysisOfBathingConsumptionData` | – | not captured (G2) | – | **$$** |
+| `ZK_BSRS/GDBusinessSchool/bathingConsumptionAuthorization` | – | not captured | – | **$$** |
+| `ZK_BSRS/GDBusinessSchool/analysisOfBathingConsumptionData` | – | not captured | – | **$$** |
 
 Area names: campuses (`星湖校区`, …), buildings `N栋`, floors `一楼…七楼`, rooms `NNN`.
 
@@ -643,7 +657,7 @@ Headers: `Authorization: Bearer <token>`, `x-app-code` (`ZI` captcha/login, `BI`
 `x-app-version` (`2.4.18`), `x-mobile-id` (per-install UUID), `x-mobile-brand`, UA. Envelope
 `{code, message, data}`. Missing token → HTTP 401 "JWT token is missing"; bad token → HTTP 401
 "Token is invalid". Only the 401 replies are captured; every other `ujing/` fixture is synthetic
-(shapes from the existing app) until G3.
+(shapes from the existing app) until they are checked on device.
 
 | Endpoint | Kind |
 |---|---|

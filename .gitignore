@@ -6,8 +6,6 @@ artifacts/
 .playwright-cli/
 output/
 build/
-CampusHotWater.xcodeproj/
-XiaoRiChang.xcodeproj/
 /.DerivedData/
 .build-tests/
 # Local signing override (see Configuration/Base.xcconfig)

@@ -6,7 +6,7 @@
 
 ### Removed
 
-- Remove the self-hosted hot-water access service (`services/access`), its client in the app and its preparation script. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
+- Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `Android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
 - Remove the process documents, promotional images and the old project generator; their history stays in Git.
 
 ### Changed

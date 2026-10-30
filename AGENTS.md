@@ -7,9 +7,9 @@ The rules for working in this repo, for people and AI agents alike. The full des
 
 - `App/Application/`: app entry and `AppEnvironment` (creates and wires the services). No feature logic.
 - `App/Interface/<Feature>/`: views and view models for Home, CampusCard, Shower, Laundry, Onboarding, Settings. A type goes in `Interface/Common/` only when two or more features use it.
-- `App/Services/`: platform side effects (Bluetooth, school web login, Alipay, Live Activities, App Intents, reminders).
-- `Shared/`: code compiled into both App and Widget (widget views, Live Activity views, theme).
-- `Packages/Core/`: all logic that can run without UI. It must not import SwiftUI, UIKit, WidgetKit, ActivityKit or CoreBluetooth.
+- `App/Services/`: platform side effects (Bluetooth, school web login, background refresh, Alipay, Live Activities, App Intents, reminders).
+- `Shared/`: code compiled into both App and Widget (widget views, Live Activity views, and in `Theme/` only the formatting and shapes the widget needs; app colours and fonts stay in `App/Interface/Common/`).
+- `Packages/Core/`: all logic that can run without UI. It must not import SwiftUI, UIKit, WidgetKit, ActivityKit or CoreBluetooth. `Storage/` holds only generic Keychain and UserDefaults access; each feature keeps its own vault protocol and store in its folder.
 - Xcode uses synchronized folders, so adding a file needs no project edit. Identity and versions live in `Configuration/*.xcconfig`. Local signing goes in the untracked `Configuration/Developer.xcconfig`.
 
 ## Dependencies
@@ -18,7 +18,7 @@ The rules for working in this repo, for people and AI agents alike. The full des
 
 ## Code
 
-- Swift 6, iOS 17. SwiftUI with `@Observable`. Pass dependencies through initializers; no singletons. Time, network and Bluetooth are injectable.
+- iOS 17. Core builds in Swift 6 mode; the App and Widget targets are still Swift 5 until R2. Today's screen models are `ObservableObject` (some with `.shared` singletons, see docs/architecture.md); new code passes dependencies through initializers instead of adding singletons. Time, network and Bluetooth are injectable.
 - One main type per file, named after the type. Split files over 400 lines by responsibility (`HomeView+Rows.swift`).
 - Feature names are Campus, Shower, Laundry and Snapshot everywhere. Do not use Water, HotWater or DailyXxx in new names.
 - Comment only what the code cannot say, for example a field order that the platform signs.
@@ -30,7 +30,7 @@ Hot-water signing, BLE commands, and how school and U净 responses are parsed mu
 
 ## Privacy
 
-The repo is public. Real student ids, phone numbers, rooms, device ids, keys and captures never go in it. Fixtures in `Packages/Core/Tests/Fixtures` are synthetic. Run `mise privacy-check` before every commit.
+The repo is public. Real student ids, phone numbers, rooms, device ids, keys and captures never go in it. Fixtures in `Packages/Core/Tests/Fixtures` are synthetic. Run `mise privacy-check` on the staged files before every commit. It needs your private value list: set `LEAKCHECK_FILE` (default `private/capture/secrets/leakcheck.txt`), otherwise it fails.
 
 ## Before committing
 
