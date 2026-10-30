@@ -156,14 +156,14 @@ struct CheckToggleStyle: ToggleStyle {
 
 private struct CheckMark: View {
     let on: Bool
-    @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var enabled
     var body: some View {
         ZStack {
             if on {
                 Circle().fill(Theme.accentText)
                 Image(systemName:"checkmark").font(.system(size:12, weight:.bold))
-                    .foregroundStyle(scheme == .dark ? Color(white:0.067) : .white)
+                    // White in light, #111 in dark, resolved by the asset from the trait collection.
+                    .foregroundStyle(Theme.accentInk)
             } else {
                 Circle().strokeBorder(Theme.ink3, lineWidth:1.5)
             }
