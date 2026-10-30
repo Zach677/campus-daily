@@ -102,7 +102,10 @@ struct ShowerDetail: View {
         default: return "当前记录待核对"
         }
     }
-    private func perform(start:Bool) { Task { try? await water.run(start:start) } }
+    /// Both go through the shower page, which shows the start or the end as it runs.
+    private func perform(start:Bool) {
+        if start { water.pageEvent(.startTapped) } else { water.pageEvent(.reopen); water.pageEvent(.endTapped) }
+    }
 }
 
 struct ShowerButtonStyle: ButtonStyle {

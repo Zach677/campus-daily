@@ -57,7 +57,7 @@ struct HomeView: View {
 
     /// Home is what the user sees: nothing pushed, no sheet, cover or panel on top, app in front.
     var homeClear: Bool {
-        var clear = phase == .active && path.isEmpty && !settings && onboarding == nil && panel == nil
+        var clear = phase == .active && path.isEmpty && !settings && onboarding == nil && panel == nil && !shower.page.presented
         #if DEBUG
         clear = clear && activityPreview == nil && widgetPreview == nil
         #endif
@@ -107,6 +107,15 @@ struct HomeView: View {
         .accountSwitchAlert { campus.hotWaterSetupRequested = true; settings = true }
         .sheet(isPresented:$settings) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
         .sheet(isPresented:$relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
+        // The shower page: down only by its own buttons, or a swipe while water runs (收起).
+        .fullScreenCover(isPresented:Binding(get:{ shower.page.presented },
+                                             set:{ if !$0, shower.page.presented { shower.pageEvent(.collapseTapped) } })) {
+            #if DEBUG
+            ShowerPageView(room:demo?.dorm ?? campus.room).environmentObject(shower).onOpenURL { handleDemo($0) }
+            #else
+            ShowerPageView(room:campus.room).environmentObject(shower)
+            #endif
+        }
         .fullScreenCover(item:$onboarding, onDismiss:{ didSeeQuickSetup = true }) { request in
             // .id: a new request must reset the cover's @State (step), not reuse it.
             // Own device chooser: a sheet from the home root can't show above this cover.
@@ -151,12 +160,14 @@ struct HomeView: View {
             if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
         }
         .onChange(of:shower.state.phase) { old, value in
+            // The result is on the shower page; the balance it was taken from is read again.
             guard old != .done, value == .done else { return }
-            presentSettled()
             Task { await campus.refresh(force:true) }
         }
-        .onChange(of:shower.problem) { _, problem in
-            if problem, unresolvedClose { presentUnconfirmed() }
+        .onChange(of:shower.reviewRequested) { _, requested in
+            guard requested else { return }
+            shower.reviewRequested = false
+            settings = false; path = [.shower]
         }
         .onChange(of:resetter.completed) { _, _ in afterReset() }
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
@@ -194,24 +205,21 @@ struct HomeView: View {
 
     // MARK: Actions
 
-    /// Starting works as before (the shower runs from here, its page shows the details); every
-    /// other state opens the shower page, where 结束并结算 and 核对 live.
+    /// 开始洗澡 opens the shower page and starts connecting; a shower going on opens the page as
+    /// it stands; a record to check opens the 核对 screen.
     func tap(_ kind: HomeShowerButton.Kind) {
         #if DEBUG
         if demo != nil { demoTap(kind); return }
         #endif
         switch kind {
         case .signIn: openOnboarding()
-        case .review, .showering, .settling: path.append(.shower)
+        case .review: path.append(.shower)
+        case .showering, .settling, .starting: shower.pageEvent(.reopen)
         case .start:
             // An unchecked record blocks a new start: show it instead of failing.
             guard shower.mayStart else { path.append(.shower); return }
             startTick += 1
-            Task {
-                do { try await shower.run(start:true) }
-                catch { errorTick += 1 }
-            }
-        case .starting: break
+            shower.pageEvent(.startTapped)
         }
     }
 
@@ -222,17 +230,6 @@ struct HomeView: View {
         if case .failed = HomeData(campus:campus, shower:shower, laundry:laundry).updateLine { errorTick += 1 }
     }
 
-    var unresolvedClose: Bool { shower.unresolvedClose }
-
-    func presentSettled() {
-        var minutes: Int?
-        if let start = shower.sessionStarted, let end = shower.lastEnded {
-            minutes = max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
-        }
-        successTick += 1
-        panel = .settled(minutes:minutes, amount:shower.lastCost)
-    }
-
     func presentLaundryDone(_ done: HomeData.LaundryDone?) {
         #if DEBUG
         if demo != nil { return }
@@ -241,11 +238,5 @@ struct HomeView: View {
         laundryDoneShown = done.id
         successTick += 1
         panel = .laundryDone(amount:done.amount, detail:done.detail)
-    }
-
-    func presentUnconfirmed() {
-        guard panel == nil else { return }
-        errorTick += 1
-        panel = .unconfirmed
     }
 }

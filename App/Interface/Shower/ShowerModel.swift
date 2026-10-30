@@ -50,7 +50,15 @@ enum ShowerProfileFiles {
 /// mirrors its state (home, detail page, Live Activity, reminder).
 @MainActor final class ShowerModel: ObservableObject {
     static let shared = ShowerModel()
-    @Published private(set) var state = ShowerState.idle
+    @Published private(set) var state = ShowerState.idle {
+        didSet { if state != oldValue { pageEvent(.record(state)) } }
+    }
+    /// The full-screen shower page: up or not, and the taps it waits on (`ShowerPageFlow`).
+    @Published var page = ShowerPageFlow(record:.idle)
+    /// 去核对 on the page: the home screen opens the 核对 screen.
+    @Published var reviewRequested = false
+    /// The running start, so an accepted 取消 can cut the Bluetooth connect short.
+    var startTask: Task<Void, Never>?
     @Published private(set) var binding: ShowerBinding?
     @Published private(set) var profile: ShowerPlatformProfile?
     @Published private(set) var busy = false
@@ -63,7 +71,7 @@ enum ShowerProfileFiles {
     @Published private(set) var inspecting = false
     /// The last check reached a controller that was in use, so it could not say whose it is.
     @Published private(set) var inspectionFoundBusy = false
-    private var engine: ShowerEngine?
+    private(set) var engine: ShowerEngine?
     private var observer: Task<Void, Never>?
     private let gateway = ShowerGatewayBox()
     private let bluetooth = BluetoothTransport()
@@ -71,6 +79,7 @@ enum ShowerProfileFiles {
     init() {
         binding = (try? AppEnvironment.showerVault.binding()) ?? nil
         if let persisted = (try? AppEnvironment.showerVault.showerState()) ?? nil { state = ShowerReducer.restore(persisted) }
+        page = ShowerPageFlow(record:state)
         Task { await reloadProfile() }
     }
 

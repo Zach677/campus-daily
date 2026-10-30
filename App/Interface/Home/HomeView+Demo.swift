@@ -63,6 +63,15 @@ extension HomeView {
                 reminders.demoHomeRead()
                 return
             }
+            if url.host == "demo", let record = ShowerPageDemo.record(url.lastPathComponent) {
+                // The shower page over the home demo, on a synthetic record (nothing connects).
+                onboarding = nil; settings = false; path = []; panel = nil; laundryDemo = nil
+                demo = HomeDemo.normal.content().0
+                // Collapsed while water runs, home shows the showering button, as it would live.
+                if record.phase == .running, let start = record.startedAt { demo?.shower = .showering(start) }
+                shower.showDemoPage(record)
+                return
+            }
             let settingsDemos: [String:UNAuthorizationStatus] = ["settings":.authorized, "settings-notif-off":.denied,
                                                                   "settings-ask":.notDetermined, "settings-password-on":.authorized,
                                                                   "settings-paused":.authorized, "settings-paused-noanswer":.authorized,
@@ -81,6 +90,30 @@ extension HomeView {
                 Task { try? await Task.sleep(for:.milliseconds(500)); settings = true }
             }
     }
+    /// campusdaily://demo/sh-<face>: connect, run, settle, done, nocon, denied, busy, unsure.
+    enum ShowerPageDemo {
+        static func record(_ name: String, now: Date = Date()) -> ShowerState? {
+            let start = now.addingTimeInterval(-(8 * 60 + 42))
+            func failed(_ reason: ShowerFailureReason, review: Bool) -> ShowerState {
+                ShowerState(phase:.failed, startedAt:start,
+                            failure:ShowerFailure(reason:reason, needsReview:review))
+            }
+            switch name {
+            case "sh-connect": return ShowerState(phase:.authorizing, startedAt:now)
+            case "sh-run": return ShowerState(phase:.running, startedAt:start)
+            case "sh-settle": return ShowerState(phase:.settling, startedAt:start)
+            case "sh-done":
+                return ShowerState(phase:.done, startedAt:now.addingTimeInterval(-11 * 60),
+                                   receipt:ShowerReceipt(amount:Money(fen:132)), endedAt:now)
+            case "sh-nocon": return failed(.deviceUnavailable, review:false)
+            case "sh-denied": return failed(.authorizeRefused, review:false)
+            case "sh-busy": return failed(.deviceBusy, review:false)
+            case "sh-unsure": return failed(.settleUncertain, review:true)
+            default: return nil
+            }
+        }
+    }
+
     /// campusdaily://demo/notify/<kind>
     func notifyDemo(_ url: URL) -> String? {
         let parts = Array(url.pathComponents.dropFirst())
@@ -93,6 +126,9 @@ extension HomeView {
         case .start:
             startTick += 1
             withAnimation(Theme.spring) { demo?.shower = .showering(Date()) }
+        case .showering where shower.page.record.phase == .running:
+            // Collapsed from a demo page: open it again, as the live button does.
+            shower.pageEvent(.reopen)
         case .showering(let start, _):
             withAnimation(Theme.spring) { demo?.shower = .settling(start) }
             Task {
