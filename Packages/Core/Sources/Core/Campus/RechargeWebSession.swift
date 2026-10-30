@@ -80,12 +80,13 @@ public enum RechargeNavigation {
         return .cancel
     }
 
-    /// Diagnostic line for a cancelled navigation: the host only (or the scheme when there is no
-    /// host), never the path, query or fragment, which can carry order ids or tokens.
+    /// Diagnostic line for a cancelled navigation: for http(s) the host only, for any other scheme
+    /// the scheme only (an app link's "host" can be an identifier), never the path, query or
+    /// fragment, which can carry order ids or tokens.
     public static func blockedEvent(_ url: URL) -> String {
         let scheme = sanitized(url.scheme ?? "", limit: 16)
-        if let host = url.host, !host.isEmpty {
-            return "recharge.blocked " + (scheme.isEmpty ? "" : scheme + "://") + sanitized(host, limit: 50)
+        if scheme == "http" || scheme == "https", let host = url.host, !host.isEmpty {
+            return "recharge.blocked " + scheme + "://" + sanitized(host, limit: 50)
         }
         return "recharge.blocked " + (scheme.isEmpty ? "unknown" : scheme + ":")
     }

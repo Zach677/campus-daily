@@ -12,11 +12,20 @@ final class RechargeBlockedHostTests: XCTestCase {
 
     func testSchemeOnlyLinksAndOddHosts() {
         XCTAssertEqual(RechargeNavigation.blockedEvent(URL(string: "alipays://platformapi/startapp?appId=1&qrcode=SYNTH")!),
-                       "recharge.blocked alipays://platformapi")
+                       "recharge.blocked alipays:")
+        XCTAssertEqual(RechargeNavigation.blockedEvent(URL(string: "http://Pay.Example.INVALID/x?y=1")!),
+                       "recharge.blocked http://pay.example.invalid")
         XCTAssertEqual(RechargeNavigation.blockedEvent(URL(string: "weixin:pay?token=SYNTH")!), "recharge.blocked weixin:")
         XCTAssertEqual(RechargeNavigation.blockedEvent(URL(string: "https://user:pw@Pay.Example.INVALID/")!),
                        "recharge.blocked https://pay.example.invalid")
         let long = URL(string: "https://" + String(repeating: "a", count: 200) + ".example/")!
         XCTAssertLessThanOrEqual(RechargeNavigation.blockedEvent(long).count, 80, "fits one diagnostic entry")
+    }
+
+    /// The part after `scheme://` of an app link can be an identifier, so it is never logged.
+    func testCustomSchemeLogsTheSchemeOnly() {
+        let event = RechargeNavigation.blockedEvent(URL(string: "examplepay://SYNTH-ID-99001/pay?x=1")!)
+        XCTAssertEqual(event, "recharge.blocked examplepay:")
+        XCTAssertFalse(event.lowercased().contains("synth"))
     }
 }
