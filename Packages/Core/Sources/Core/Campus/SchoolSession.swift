@@ -25,6 +25,10 @@ public struct SchoolReading: Sendable, Equatable {
         /// Keychain refused a write or a read: nothing is known about the login. Not an error to
         /// show: the stored numbers stay as they are and the next refresh goes ahead.
         case interrupted
+        /// This read lost the refresh lease (it ran out while the app was suspended, the other
+        /// process took it, or a sign-out removed it) and stopped. Not an error: the snapshot
+        /// shows what is stored, which the other process may be updating.
+        case leaseLost
     }
     public var outcome: Outcome
     /// When the liveness check answered (or failed).
@@ -334,7 +338,7 @@ public actor SchoolSession {
             live = try await liveCard(stored)
         } catch let e as ServiceError where e.isSessionExpired {
             logExpired(.card, obtainedAt: stored.obtainedAt, lastAliveAt: stored.lastAliveAt)
-            guard await mayMint() else { return SchoolReading(outcome: .failed(.timedOut), checkedAt: now()) }
+            guard await mayMint() else { return SchoolReading(outcome: .leaseLost, checkedAt: now()) }
             let current: EcyktSession?
             do { current = try vault.ecyktSession() } catch { return SchoolReading(outcome: .failed(.offline), checkedAt: now()) }
             guard let current else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
@@ -361,7 +365,7 @@ public actor SchoolSession {
         alive.lastAliveAt = checkedAt
         switch await writeBack(alive, over: base, mayMint: mayMint) {
         case .signedOut: return SchoolReading(outcome: .notSignedIn, checkedAt: now())
-        case .lostLease: return SchoolReading(outcome: .failed(.timedOut), checkedAt: now(), reexchanged: reexchanged)
+        case .lostLease: return SchoolReading(outcome: .leaseLost, checkedAt: now(), reexchanged: reexchanged)
         case .written, .kept: break
         }
         let session = alive
@@ -426,7 +430,7 @@ public actor SchoolSession {
         case .offline: return .stopped(SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: triedPortal))
         case .retryLater: return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: triedPortal))
         case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: triedPortal))
-        case .lostLease: return .stopped(SchoolReading(outcome: .failed(.timedOut), checkedAt: now(), reexchanged: triedPortal))
+        case .lostLease: return .stopped(SchoolReading(outcome: .leaseLost, checkedAt: now(), reexchanged: triedPortal))
         case .signedOut: return .stopped(SchoolReading(outcome: .notSignedIn, checkedAt: now()))
         }
     }

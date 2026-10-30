@@ -360,3 +360,16 @@ final class CancellableSchoolReader: SchoolReader, @unchecked Sendable {
         }
     }
 }
+
+/// A read that lost the lease is not a failure: the stored numbers stay, with no error.
+final class LeaseLostReadingTests: XCTestCase {
+    func testALostLeaseChangesNothingInTheSnapshot() {
+        var s = HomeSnapshot()
+        s.card.succeed(Money(fen: 8650), at: Date(timeIntervalSince1970: 1_000))
+        let reading = SchoolReading(outcome: .leaseLost, checkedAt: Date(timeIntervalSince1970: 2_000))
+        let after = SnapshotRefresher.apply(reading, to: s)
+        XCTAssertEqual(after, s)
+        XCTAssertNil(after.card.error)
+        XCTAssertFalse(after.needsLogin)
+    }
+}

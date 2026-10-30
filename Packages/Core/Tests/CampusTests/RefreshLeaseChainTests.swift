@@ -245,7 +245,7 @@ final class ExpiredLeaseWriteTests: XCTestCase {
             clock.advance(RefreshLease.defaultDuration + 1)
         }
         let report = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
-        XCTAssertEqual(report.outcome, .failed(.timedOut))
+        XCTAssertEqual(report.outcome, .leaseLost)
         XCTAssertFalse(report.snapshotSaved)
         XCTAssertNil(try h.snapshots.loadSnapshot())
         XCTAssertTrue(h.server.requests(path: "/getMyECard").isEmpty, "nothing minted without the lease")

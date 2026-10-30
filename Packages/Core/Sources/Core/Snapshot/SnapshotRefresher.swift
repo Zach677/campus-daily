@@ -284,7 +284,7 @@ public actor SnapshotRefresher {
         guard !isOlder(reading, than: snapshot) else { return snapshot }
         var s = snapshot
         switch reading.outcome {
-        case .interrupted:
+        case .interrupted, .leaseLost:
             return s
         case .notSignedIn:
             guard s != .empty else { return s }

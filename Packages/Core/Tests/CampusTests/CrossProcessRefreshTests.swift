@@ -140,7 +140,7 @@ final class CrossProcessRefreshTests: XCTestCase {
             XCTAssertTrue(RefreshLease(store: store, owner: "app-2", now: clock.function).acquire())
         }
         let report = await refresher(h, owner: "widget-1").refresh(inBackground: true)
-        XCTAssertEqual(report.outcome, .failed(.timedOut))
+        XCTAssertEqual(report.outcome, .leaseLost)
         XCTAssertFalse(report.snapshotSaved)
         XCTAssertTrue(h.server.requests(path: "/getMyECard").isEmpty)
         XCTAssertEqual(try h.vault.ecyktSession()?.token, T.session().token)

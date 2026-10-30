@@ -96,15 +96,16 @@ struct PowerChoice: Identifiable, Equatable {
         // pull tries again.
         guard !report.leaseBusy else { return }
         // The saved password changed while this read ran (or the Keychain refused a write):
-        // nothing to report, the numbers stay, and the next refresh is not held off.
-        guard report.outcome != .interrupted else { issue = nil; return }
+        // nothing to report, the numbers stay, and the next refresh is not held off. The same when
+        // this read lost the lease (back from a long suspension, say): nothing failed.
+        guard report.outcome != .interrupted, report.outcome != .leaseLost else { issue = nil; return }
         lastRefresh = Date()
         switch report.outcome {
         case .ok: issue = nil
         case .needsLogin: issue = "学校登录过期了，重新登录一下。"
         case .failed(let e): issue = e.userMessage
         case .notSignedIn: configured = false; issue = nil
-        case .interrupted: issue = nil
+        case .interrupted, .leaseLost: issue = nil
         }
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         Reminders.shared.evaluateCampus(snapshot)
