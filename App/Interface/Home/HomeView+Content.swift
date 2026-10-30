@@ -17,7 +17,7 @@ extension HomeView {
                     cardAction:{ data.signedIn ? path.append(.card) : openOnboarding() },
                     powerAction:{ data.signedIn ? path.append(data.powerBound ? .power : .powerSetup) : openOnboarding() })
                 .padding(.top,28)
-            HomeUpdateLineView(line:data.updateLine, now:now)
+            HomeUpdateLineView(line:data.updateLine, now:now) { signInAgain(data) }
                 .padding(.top,16).padding(.horizontal,24)
             showerSection(data).padding(.top,28)
             if data.laundryEnabled {
@@ -64,6 +64,15 @@ extension HomeView {
                 }
                 Hairline()
             }
+        }
+    }
+
+    /// The expired-login line: the sign-in form, or Settings › 学校账号 when the saved password
+    /// is paused there.
+    func signInAgain(_ data: HomeData) {
+        switch HomeUpdateLine.signInTarget(data.schoolAccount) {
+        case .signIn: relogin = true
+        case .account: campus.accountPageRequested = true; settings = true
         }
     }
 

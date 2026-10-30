@@ -158,6 +158,39 @@ final class HomeFiguresTests: XCTestCase {
         XCTAssertEqual(HomeUpdateLine.of(HomeSnapshot(), signedIn: true, meterBound: true, refreshing: false), .hidden)
     }
 
+    /// The login ran out: the line says to sign in again (pulling again can't help).
+    func testExpiredLoginSaysToSignInAgain() {
+        let s = SchoolSnapshotReducer.reduce(snapshot(readAt: date(10, 30, 8, 10)), .sessionExpired(.sessionExpired(.ecykt), at: now))
+        let line = HomeUpdateLine.of(s, signedIn: true, meterBound: true, refreshing: false)
+        XCTAssertEqual(line, .expired(lastGood: date(10, 30, 8, 10)))
+        XCTAssertEqual(line.text(now: now, calendar: calendar), "登录过期了，点这里重新登录 · 数字是 8:10 的")
+        XCTAssertEqual(HomeUpdateLine.expired(lastGood: nil).text(now: now, calendar: calendar), "登录过期了，点这里重新登录")
+        XCTAssertEqual(HomeUpdateLine.of(s, signedIn: true, meterBound: true, refreshing: true), .refreshing)
+    }
+
+    /// Holding off after a password login with no answer is not an expired login.
+    func testHeldLoginIsStillTheFailedLine() {
+        let s = SchoolSnapshotReducer.reduce(snapshot(readAt: date(10, 30, 8, 10)), .sessionExpired(.sessionExpired(.ecykt), at: now))
+        XCTAssertEqual(HomeUpdateLine.of(s, signedIn: true, meterBound: true, refreshing: false, loginHeld: true),
+                       .failed(lastGood: date(10, 30, 8, 10)))
+    }
+
+    /// A good read after the expiry clears it.
+    func testLoginBackClearsTheExpiredLine() {
+        var s = SchoolSnapshotReducer.reduce(snapshot(readAt: date(10, 30, 8, 10)), .sessionExpired(.sessionExpired(.ecykt), at: now))
+        s = SchoolSnapshotReducer.reduce(s, .livenessOK(at: now))
+        s = SchoolSnapshotReducer.reduce(s, .balance(.success(Money(fen: 100)), at: now))
+        s = SchoolSnapshotReducer.reduce(s, .meter(.success(Meter(comAddress: "M1", name: "x", remainingKWh: 5)), at: now))
+        XCTAssertEqual(HomeUpdateLine.of(s, signedIn: true, meterBound: true, refreshing: false), .updated(now))
+    }
+
+    func testExpiredLineOpensSettingsOnlyForAPausedSavedPassword() {
+        XCTAssertEqual(HomeUpdateLine.signInTarget(nil), .signIn)
+        XCTAssertEqual(HomeUpdateLine.signInTarget(SchoolAccount(account: "99100991")), .signIn)
+        XCTAssertEqual(HomeUpdateLine.signInTarget(SchoolAccount(account: "99100991", password: "synthetic-pw-991")), .signIn)
+        XCTAssertEqual(HomeUpdateLine.signInTarget(SchoolAccount(account: "99100991", password: "synthetic-pw-991", paused: true)), .account)
+    }
+
     func testStampOlderThanYesterdayIsTheDayOnly() {
         XCTAssertEqual(HomeUpdateLine.updated(date(10, 26, 7, 5)).text(now: now, calendar: calendar), "10月26日 更新")
         XCTAssertEqual(HomeUpdateLine.updated(date(10, 29, 7, 5)).text(now: now, calendar: calendar), "昨天 7:05 更新")

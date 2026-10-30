@@ -96,7 +96,8 @@ struct HomeData {
         return HomeFigures.power(snapshot, signedIn:signedIn, lines:lines, now:now)
     }
     var updateLine: HomeUpdateLine {
-        HomeUpdateLine.of(snapshot, signedIn:signedIn, meterBound:powerBound, refreshing:refreshing)
+        HomeUpdateLine.of(snapshot, signedIn:signedIn, meterBound:powerBound, refreshing:refreshing,
+                          loginHeld:schoolAccount?.isHolding(at:Date()) ?? false)
     }
     /// Newest first, at most four; card records only while signed in (the snapshot is empty otherwise).
     var recents: [RecentItem] {

@@ -101,18 +101,39 @@ public enum HomeUpdateLine: Sendable, Equatable {
     case updated(Date)
     /// 「没更新上，下拉再试 · 数字是 10:32 的」; the date is nil when nothing was ever read.
     case failed(lastGood: Date?)
+    /// 「登录过期了，点这里重新登录 · 数字是 10:32 的」: pulling again can't help, signing in can.
+    case expired(lastGood: Date?)
+
+    /// Where tapping the expired line goes.
+    public enum SignInTarget: Sendable, Equatable {
+        /// The sign-in form.
+        case signIn
+        /// Settings › 学校账号: a password is saved but automatic sign-in is paused there.
+        case account
+    }
+
+    public static func signInTarget(_ account: SchoolAccount?) -> SignInTarget {
+        guard let account, let password = account.password, !password.isEmpty, account.paused else { return .signIn }
+        return .account
+    }
 
     /// Refreshing wins. Otherwise a failed read of the balance or of the bound meter (kept as
     /// the tile's error until a later read succeeds, so a refresh that stopped without reading
     /// changes nothing) shows the failed line. The time is the older of the shown numbers', so
     /// it never claims a number is fresher than it is (a number never read shows 「—」 and has
     /// no time). Nothing read and nothing failed yet (just signed in): no line.
-    public static func of(_ snapshot: HomeSnapshot, signedIn: Bool, meterBound: Bool, refreshing: Bool) -> HomeUpdateLine {
+    ///
+    /// A login that has run out says so instead, except while automatic sign-in holds off after
+    /// a password login that got no answer (`loginHeld`): that one resumes by itself, so it is
+    /// still the plain failed line.
+    public static func of(_ snapshot: HomeSnapshot, signedIn: Bool, meterBound: Bool, refreshing: Bool,
+                          loginHeld: Bool = false) -> HomeUpdateLine {
         guard signedIn else { return .hidden }
         if refreshing { return .refreshing }
         var times = [snapshot.card.fetchedAt]
         if meterBound { times.append(snapshot.power.fetchedAt) }
         let lastGood = times.compactMap { $0 }.min()
+        if snapshot.needsLogin, !loginHeld { return .expired(lastGood: lastGood) }
         if snapshot.card.error != nil || (meterBound && snapshot.power.error != nil) { return .failed(lastGood: lastGood) }
         guard let lastGood else { return .hidden }
         return .updated(lastGood)
@@ -134,6 +155,8 @@ public enum HomeUpdateLine: Sendable, Equatable {
         case .updated(let date): return Self.stamp(date, now: now, calendar: calendar) + " 更新"
         case .failed(let date?): return "没更新上，下拉再试 · 数字是 " + Self.stamp(date, now: now, calendar: calendar) + " 的"
         case .failed(nil): return "没更新上，下拉再试"
+        case .expired(let date?): return "登录过期了，点这里重新登录 · 数字是 " + Self.stamp(date, now: now, calendar: calendar) + " 的"
+        case .expired(nil): return "登录过期了，点这里重新登录"
         }
     }
 }

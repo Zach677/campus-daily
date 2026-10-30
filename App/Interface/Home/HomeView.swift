@@ -14,6 +14,8 @@ struct HomeView: View {
     @Environment(\.dynamicTypeSize) var typeSize
     @State var path: [HomeRoute] = []
     @State var settings = false
+    /// The sign-in form, from the expired-login line.
+    @State var relogin = false
     @State var onboarding: OnboardingRequest?
     @State var scrolledPastDate = false
     @State var panel: SettlementResult?
@@ -104,6 +106,7 @@ struct HomeView: View {
         .sensoryFeedback(.error, trigger:errorTick)
         .accountSwitchAlert { campus.hotWaterSetupRequested = true; settings = true }
         .sheet(isPresented:$settings) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
+        .sheet(isPresented:$relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
         .fullScreenCover(item:$onboarding, onDismiss:{ didSeeQuickSetup = true }) { request in
             // .id: a new request must reset the cover's @State (step), not reuse it.
             // Own device chooser: a sheet from the home root can't show above this cover.
