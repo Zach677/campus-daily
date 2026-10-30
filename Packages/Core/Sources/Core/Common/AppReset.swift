@@ -94,21 +94,24 @@ public enum AppReset {
     public enum Resumed: Sendable, Equatable {
         case completed
         case stopped(Lock)
+        /// A stale marker was dropped and nothing cleared: the reset was left half done (signed
+        /// out, perhaps, with hot water and laundry still there). The user is told once.
+        case abandoned
     }
 
     /// At launch: a marker left by a reset the app was killed in. Only a fresh one (younger than
     /// `ResetMarker.staleAfter`) is finished, with the same steps as `run`, the lock check
     /// included: stopped, the marker goes and nothing is cleared. An older one is deleted and
-    /// nothing is cleared: by then the user may have signed in and set things up again. Nil when
-    /// there is no marker or only a stale one.
+    /// nothing is cleared: by then the user may have signed in and set things up again; that
+    /// is `abandoned`, so the user learns the reset never finished. Nil when there is no marker.
     @MainActor public static func resume(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
                                          signOut: () async -> Void, clear: () throws -> Void,
                                          reload: () async -> Void) async throws -> Resumed? {
         guard marker.startedAt() != nil else { return nil }
         guard marker.refusesStarts(at: now) else {
-            // One that can't be deleted is stale again next launch, and dropped again.
+            // One that can't be deleted is stale again next launch, and dropped (and told) again.
             try? marker.end()
-            return nil
+            return .abandoned
         }
         let stopped = try await run(marker: marker, now: now, clock: clock, lock: lock, signOut: signOut, clear: clear, reload: reload)
         return stopped.map(Resumed.stopped) ?? .completed

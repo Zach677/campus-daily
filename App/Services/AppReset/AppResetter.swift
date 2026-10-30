@@ -30,9 +30,13 @@ import Core
     /// A reset left unfinished by the last run of the app was found at launch and stopped by a
     /// lock: nothing was cleared. The home screen says so.
     @Published var resumeStopped: AppReset.Lock?
-    /// That reset was finished at launch and failed (something could not be deleted): what the
-    /// home screen says. The marker is gone, so nothing clears later on its own.
+    /// That reset was finished at launch and failed (something could not be deleted), or was
+    /// too old to finish: what the home screen says. The marker is gone, so nothing clears
+    /// later on its own.
     @Published var resumeFailed: String?
+
+    /// A reset killed long enough ago that it was dropped, not finished, at launch.
+    static let abandonedText = "上次重置没做完，再试一次。"
 
     static var marker: ResetMarker { ResetMarker(store:AppEnvironment.store) }
 
@@ -74,6 +78,7 @@ import Core
         switch resumed {
         case .completed?: completed += 1
         case .stopped(let lock)?: resumeStopped = lock
+        case .abandoned?: resumeFailed = Self.abandonedText
         case nil: break
         }
     }

@@ -73,7 +73,7 @@ final class ResetMarkerTests: XCTestCase {
     }
 
     /// A marker older than a few minutes (a reset killed days ago): deleted, and nothing the user
-    /// set up since is signed out or cleared.
+    /// set up since is signed out or cleared. The caller is told the reset was left unfinished.
     @MainActor func testAStaleMarkerIsDroppedWithoutClearing() async throws {
         let store = InMemorySecureStore()
         let marker = ResetMarker(store: store)
@@ -85,7 +85,7 @@ final class ResetMarkerTests: XCTestCase {
             try marker.begin(at: t0)
             var steps: [String] = []
             let resumed = try await resume(store, at: later, steps: &steps)
-            XCTAssertNil(resumed)
+            XCTAssertEqual(resumed, .abandoned)
             XCTAssertEqual(steps, [], "nothing signed out, cleared or reloaded")
             XCTAssertNil(marker.startedAt())
             XCTAssertNotNil(try StoredSchoolVault(store: store).account())
@@ -110,6 +110,18 @@ final class ResetMarkerTests: XCTestCase {
         XCTAssertEqual(try StoredShowerVault(store: store).showerState(), running)
         XCTAssertNotNil(try StoredShowerVault(store: store).binding())
         XCTAssertNil(marker.startedAt())
+    }
+
+    /// Told once: the marker is gone, so the next launch has nothing to say.
+    @MainActor func testAnAbandonedResetIsToldOnce() async throws {
+        let store = InMemorySecureStore()
+        try ResetMarker(store: store).begin(at: t0)
+        var steps: [String] = []
+        let later = t0.addingTimeInterval(ResetMarker.staleAfter + 60)
+        let first = try await resume(store, at: later, steps: &steps)
+        let second = try await resume(store, at: later.addingTimeInterval(60), steps: &steps)
+        XCTAssertEqual(first, .abandoned)
+        XCTAssertNil(second)
     }
 
     @MainActor func testNoMarkerNothingToResume() async throws {
