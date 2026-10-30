@@ -73,8 +73,9 @@ public enum HomeFigures {
         return HomeFigure(value: remaining, low: low, subline: subline)
     }
 
-    /// Whole days left (rounded down) and, when the estimated end falls today or tomorrow by
-    /// `now`, which night. An end already past reads as tonight.
+    /// Whole days left from `now` to the estimated end (rounded down; a reading two days old
+    /// has two days fewer left) and, when the end falls today or tomorrow by `now`, which night.
+    /// An end already past reads as tonight, with no days left.
     static func estimate(remaining: Decimal, dailyUse: Decimal?, readAt: Date, now: Date,
                          calendar: Calendar) -> (days: Int, night: HomeFigure.Night?)? {
         guard let dailyUse, dailyUse > 0, remaining >= 0 else { return nil }
@@ -87,7 +88,8 @@ public enum HomeFigures {
            let after = calendar.date(byAdding: .day, value: 2, to: today) {
             if end < tomorrow { night = .tonight } else if end < after { night = .tomorrow }
         }
-        return (Int(daysLeft.rounded(.down)), night)
+        let fromNow = max(0, end.timeIntervalSince(now) / 86_400)
+        return (Int(fromNow.rounded(.down)), night)
     }
 }
 

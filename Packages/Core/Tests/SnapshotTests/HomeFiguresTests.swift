@@ -74,6 +74,15 @@ final class HomeFiguresTests: XCTestCase {
         XCTAssertEqual(power(old).subline, .lastsUntil(.tonight))
     }
 
+    /// Read two days ago with 3 days left: one day is left now, so it is red and says tomorrow
+    /// night, not 「够用约 3 天」.
+    func testPowerDaysLeftCountFromNow() {
+        let old = snapshot(kwh: 30, daily: 10, readAt: date(10, 28, 9, 15))
+        XCTAssertEqual(power(old), HomeFigure(value: 30, low: true, subline: .lastsUntil(.tomorrow)))
+        let older = snapshot(kwh: 60, daily: 10, readAt: date(10, 28, 9, 15))
+        XCTAssertEqual(power(older), HomeFigure(value: 60, low: false, subline: .lastsDays(4)))
+    }
+
     func testPowerTwoDaysIsNotLow() {
         XCTAssertEqual(power(snapshot(kwh: 40, daily: 20)), HomeFigure(value: 40, low: false, subline: .lastsDays(2)))
     }
