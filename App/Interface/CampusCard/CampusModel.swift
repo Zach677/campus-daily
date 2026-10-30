@@ -41,7 +41,7 @@ struct PowerChoice: Identifiable, Equatable {
     }
 
     var address: DormAddress? { profile?.residence?.address }
-    /// 「9 栋 199」 style label, or 「未配置」.
+    /// 「99 栋 991」 style label, or 「未配置」.
     var room: String {
         if let address { return address.building + " 栋 " + address.room }
         return Theme.dorm(snapshot.roomLabel ?? profile?.meter?.label ?? "") ?? "未配置"
