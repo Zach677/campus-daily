@@ -2,7 +2,7 @@ import SwiftUI
 
 /// One dorm or meter location offered for a choice: the short name people know
 /// (「3 栋 108」) and the full location that tells same-named places apart
-/// (「北校区 · 东苑公寓 · 3 栋 · 108」, design §3.3).
+/// (「北校区 · 东苑公寓 · 3 栋 · 108」).
 struct LocationChoice: Identifiable, Equatable {
     let id: String
     let title: String

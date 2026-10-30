@@ -378,7 +378,7 @@ enum OnboardingDemo {
         case "2": return (.dorm, preview)
         case "2-missing": preview.dorm = nil; return (.dorm, preview)
         case "2-samename", "2-samename-picked":
-            // Same-name meter picker (tester §1): one name in two apartments, told apart by location.
+            // Same-name meter picker: one name in two apartments, told apart by location.
             preview.powerChoices = [LocationChoice(id:"preview-0", title:"3 栋 108", location:"北校区 · 东苑公寓 · 3 栋 · 108"),
                                    LocationChoice(id:"preview-1", title:"3 栋 108", location:"北校区 · 西苑公寓 · 3 栋 · 108")]
             if parts[1] == "2-samename-picked" { preview.picked = "preview-1" }

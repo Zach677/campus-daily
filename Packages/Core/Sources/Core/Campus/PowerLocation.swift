@@ -1,6 +1,6 @@
 import Foundation
 
-/// Full dorm and meter locations, 「校区 · 公寓 · 楼栋 · 房间」 (design §3.3/§5a). Same-named
+/// Full dorm and meter locations, 「校区 · 公寓 · 楼栋 · 房间」. Same-named
 /// buildings exist in different apartments, so the short 「3 栋 108」 alone can't say which.
 public enum PowerLocation {
     static let separator = " · "

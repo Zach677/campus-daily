@@ -64,7 +64,7 @@ struct SettingsView: View {
                         SettingsRow(emoji:"🎓", title:"学校账号", value:AccountText.row(signedIn:data.signedIn, account:data.schoolAccount))
                     }
                     NavigationLink { CampusOnboardingView() } label: {
-                        // Full location under the title (design §5a); 「去设置」 until there is one.
+                        // Full location under the title; 「去设置」 until there is one.
                         if let location = data.dormLocation { SettingsRow(emoji:"🏠", title:"宿舍", detail:location) }
                         else { SettingsRow(emoji:"🏠", title:"宿舍", value:data.dorm ?? "去设置") }
                     }

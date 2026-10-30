@@ -2,7 +2,7 @@ import Foundation
 import Core
 
 /// One same-name meter offered when the electricity match is ambiguous, told apart by its
-/// full location (校区 · 公寓 · 楼栋 · 房间): the names alone are identical (tester §1).
+/// full location (校区 · 公寓 · 楼栋 · 房间): the names alone are identical.
 struct PowerChoice: Identifiable, Equatable {
     var id: String { candidate.id }
     let candidate: MeterCandidate
