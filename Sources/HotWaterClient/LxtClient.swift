@@ -3,7 +3,7 @@ import DailyCore
 import DailyHTTP
 
 /// Reads used by onboarding (area tree + controllers). Implemented by `LxtClient` (direct,
-/// signed locally) and `WaterAccessServiceClient` (the access service holds the secret).
+/// signed locally).
 public protocol WaterDirectory: Sendable {
     /// Children of `parent` (the platform school id gives the campuses).
     func areas(parent: String) async throws -> [AreaNode]

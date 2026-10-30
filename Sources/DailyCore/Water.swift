@@ -27,25 +27,6 @@ public struct WaterMachine: Sendable, Equatable, Hashable, Codable {
     }
 }
 
-/// Per-student session with the project's access service (`services/access`, `/v1/connect`).
-/// The platform `secret` never reaches the app in this mode.
-public struct WaterAccessGrant: Sendable, Equatable, Codable, CustomStringConvertible {
-    public var token: String
-    public var campusOwner: String
-    /// Milliseconds since 1970 (as the service sends it).
-    public var expiresAt: Int64
-    public var bleName: String
-    public var typeID: Int
-    public var version: Int
-    public init(token: String, campusOwner: String, expiresAt: Int64, bleName: String, typeID: Int, version: Int) {
-        self.token = token; self.campusOwner = campusOwner; self.expiresAt = expiresAt
-        self.bleName = bleName; self.typeID = typeID; self.version = version
-    }
-    /// Valid for at least one more minute at `now`.
-    public func isCurrent(at now: Date) -> Bool { expiresAt > Int64(now.timeIntervalSince1970 * 1000) + 60_000 }
-    public var description: String { "WaterAccessGrant(<redacted>, expiresAt: \(expiresAt))" }
-}
-
 /// Keychain `water.binding`: who showers where.
 public struct WaterBinding: Sendable, Equatable, Codable, CustomStringConvertible {
     public var studentId: String
@@ -56,14 +37,12 @@ public struct WaterBinding: Sendable, Equatable, Codable, CustomStringConvertibl
     public var machineName: String?
     /// CoreBluetooth identifier of the controller last verified by its identity frame.
     public var peripheralID: String?
-    /// Present when the binding goes through the access service.
-    public var access: WaterAccessGrant?
 
     public init(studentId: String, schoolId: String, machineId: String, roomId: String, roomLabel: String,
-                machineName: String? = nil, peripheralID: String? = nil, access: WaterAccessGrant? = nil) {
+                machineName: String? = nil, peripheralID: String? = nil) {
         self.studentId = studentId; self.schoolId = schoolId; self.machineId = machineId.uppercased()
         self.roomId = roomId; self.roomLabel = roomLabel; self.machineName = machineName
-        self.peripheralID = peripheralID; self.access = access
+        self.peripheralID = peripheralID
     }
     public var description: String { "WaterBinding(<redacted>, room: \(roomLabel))" }
 }

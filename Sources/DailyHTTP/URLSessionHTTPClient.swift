@@ -5,9 +5,6 @@ import DailyCore
 public enum AllowedHosts {
     public static let school: Set<String> = ["cas.gdbtu.edu.cn", "portal.gdbtu.edu.cn", "ecykt.gdbtu.edu.cn"]
     public static let hotWater: Set<String> = ["isv.lxt6.cn"]
-    /// The project's hot-water access service (`services/access`), primary and backup. A
-    /// self-hosted deployment adds its own host when building the client.
-    public static let hotWaterAccess: Set<String> = ["campus-api.070688.xyz", "campus-daily-access.jasonbeam-campus.workers.dev"]
     public static let laundry: Set<String> = ["phoenix.ujing.online"]
 }
 

@@ -17,27 +17,17 @@ public struct WaterPlatformProfile: Sendable, Equatable, Codable, CustomStringCo
     public var debugDescription: String { description }
 }
 
-/// Where the platform profile comes from. All three are supported ways:
+/// Where the platform profile comes from:
 /// - `bundled`: staged into the app bundle at build time (`tools/stage_platform_profile.py`);
-/// - `imported`: a `.waterconfig` file the user imported;
-/// - `accessService`: the project's hot-water access service (`services/access`, `config.access`
-///   mode), which does the signed calls server-side so the app never holds `secret`.
+/// - `imported`: a `.waterconfig` file the user imported.
 public enum WaterProfileSource: Sendable, Equatable, Codable {
     case bundled
     case imported(fileName: String)
-    case accessService(endpoint: URL)
-
-    /// Whether the app itself signs lxt6 requests with a local profile.
-    public var signsLocally: Bool {
-        if case .accessService = self { return false }
-        return true
-    }
 }
 
 /// What a source resolves to.
 public enum WaterPlatformAccess: Sendable, Equatable {
     case local(WaterPlatformProfile, source: WaterProfileSource)
-    case remote(endpoint: URL)
 }
 
 public enum WaterProfileError: Error, Equatable, Sendable {

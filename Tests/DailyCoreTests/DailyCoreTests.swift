@@ -184,7 +184,6 @@ final class WaterProfileSourceTests: XCTestCase {
             case .bundled: throw WaterProfileError.missing(.bundled)
             case .imported(let name):
                 return .local(try WaterProfileResolver.decodeProfile(Data(#"{"secret":"s","sid":"i","ble_name":"b","type_id":1,"version":2,"student_id":"x"}"#.utf8), source: .imported(fileName: name)), source: source)
-            case .accessService(let url): return .remote(endpoint: url)
             }
         }
     }
@@ -199,11 +198,7 @@ final class WaterProfileSourceTests: XCTestCase {
         }
     }
 
-    func testResolverKeepsAccessServiceAsASource() async {
-        let url = URL(string: "https://access.example.invalid")!
-        let r1 = await WaterProfileResolver.firstUsable([.bundled, .accessService(endpoint: url)], provider: Provider())
-        XCTAssertEqual(try? r1.get(), .remote(endpoint: url))
-        XCTAssertFalse(WaterProfileSource.accessService(endpoint: url).signsLocally)
+    func testResolverPicksFirstUsableSource() async {
         let r2 = await WaterProfileResolver.firstUsable([.bundled, .imported(fileName: "a.waterconfig")], provider: Provider())
         guard case .success(.local(let p, _)) = r2 else { return XCTFail() }
         XCTAssertEqual(p.version, "2")

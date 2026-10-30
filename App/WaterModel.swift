@@ -47,11 +47,6 @@ enum WaterProfileFiles {
         if case .success(.local(let profile, _)) = await WaterProfileResolver.firstUsable(sources, provider:loader) { return profile }
         return nil
     }
-    /// The access-service endpoint the binding was made with (onboarding saves it).
-    static var accessEndpoint: URL {
-        get { UserDefaults.standard.url(forKey:PreferenceKey.prefix + "water.accessEndpoint") ?? WaterAccessServiceClient.defaultEndpoints[0] }
-        set { UserDefaults.standard.set(newValue, forKey:PreferenceKey.prefix + "water.accessEndpoint") }
-    }
 }
 
 /// UI state over `ShowerEngine`. The engine owns the session; this class only forwards taps and
@@ -84,8 +79,8 @@ enum WaterProfileFiles {
 
     var configured: Bool { binding != nil }
     var display: ShowerDisplay { ShowerDisplay(state) }
-    /// The build has no usable profile and the binding doesn't go through the access service.
-    var platformMissing: Bool { binding != nil && binding?.access == nil && profile == nil }
+    /// The build has no usable profile (neither bundled nor imported).
+    var platformMissing: Bool { binding != nil && profile == nil }
     var mayStart: Bool {
         configured && !platformMissing && !residenceReviewRequired && engine != nil && !busy && !storageBlocked && state.canStart
     }
@@ -132,15 +127,12 @@ enum WaterProfileFiles {
     private func rebuildEngine() {
         guard !busy else { return }
         observer?.cancel(); observer = nil; engine = nil
-        guard let binding else {
+        guard binding != nil else {
             state = ((try? AppServices.waterVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle
             return
         }
         let bleName: String
-        if let access = binding.access {
-            bleName = access.bleName
-            gateway.current = WaterAccessServiceClient(http:AppServices.waterAccessHTTP, endpoint:WaterProfileFiles.accessEndpoint, grant:access)
-        } else if let profile {
+        if let profile {
             bleName = profile.bleName
             gateway.current = LxtClient(http:AppServices.waterHTTP, profile:profile)
         } else {
@@ -265,7 +257,7 @@ enum WaterProfileFiles {
     /// Read-only: connect, ask the identity (0xAA), disconnect. Never sent during a session.
     func inspectBluetooth() async {
         guard let binding, mayImport, !inspecting else { return }
-        let bleName = binding.access?.bleName ?? profile?.bleName ?? ""
+        let bleName = profile?.bleName ?? ""
         guard !bleName.isEmpty else { inspectionStatus = Self.platformMissingText; return }
         inspecting = true; inspectionStatus = nil; verifiedDevice = nil
         defer { inspecting = false }

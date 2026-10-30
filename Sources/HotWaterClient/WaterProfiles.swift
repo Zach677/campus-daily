@@ -29,7 +29,7 @@ public enum WaterConfigFile {
     }
 }
 
-/// Resolves the three profile sources (`WaterProfileSource`). File and bundle reads are
+/// Resolves the two profile sources (`WaterProfileSource`). File and bundle reads are
 /// injected (App: `Bundle.main` / the imported-file container).
 public struct WaterProfileLoader: WaterProfileProviding {
     let bundled: @Sendable () throws -> Data?
@@ -47,11 +47,6 @@ public struct WaterProfileLoader: WaterProfileProviding {
         case .imported(let name):
             guard let data = try read({ try imported(name) }, source) else { throw WaterProfileError.missing(source) }
             return .local(try WaterConfigFile.parse(data, source: source), source: source)
-        case .accessService(let endpoint):
-            guard endpoint.scheme?.lowercased() == "https", endpoint.host != nil, endpoint.query == nil else {
-                throw WaterProfileError.unreadable(source)
-            }
-            return .remote(endpoint: endpoint)
         }
     }
 

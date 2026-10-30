@@ -13,7 +13,6 @@ enum AppServices {
 
     static let schoolHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.school)
     static let waterHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWater)
-    static let waterAccessHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWaterAccess)
     static let laundryHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.laundry)
 
     static let schoolVault = StoredSchoolVault(store:store)

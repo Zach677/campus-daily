@@ -236,7 +236,7 @@ struct CampusOnboardingView: View {
     private let levels = ["校区","楼栋","楼层","宿舍"]
     var body: some View {
         Form {
-            if water.profile == nil && water.binding?.access == nil && flow.identity == nil {
+            if water.profile == nil && flow.identity == nil {
                 Section("热水") {
                     Text("登录学校账号后会自动读到宿舍和水控，不用导入文件。")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -266,10 +266,6 @@ struct CampusOnboardingView: View {
                         .disabled(flow.busy || !water.mayImport || campus.loading).accessibilityIdentifier("prepareDormOnboarding")
                 }
             } header: { Text("学校账号") } footer: { Text("密码只交给学校，不经过我们。登录后会读到你的校园卡和宿舍。") }
-            if flow.serviceEnabled == false {
-                Section {Text("宿舍已经设好了，热水开放后就能用。")
-                    .font(.footnote).foregroundStyle(.orange)}
-            }
             if flow.identity != nil {
                 Section("热水宿舍") {
                     if flow.autoMatched, let address = campus.address {
@@ -340,25 +336,22 @@ struct CampusOnboardingView: View {
     }
 }
 
-/// Dorm → hot-water controller binding over `WaterOnboarding` (direct platform) or the access
-/// service's bootstrap. Used by the dorm screen and by the first-run guide. Saving never starts
-/// water or changes school data.
+/// Dorm → hot-water controller binding over `WaterOnboarding` (direct platform). Used by the
+/// dorm screen and by the first-run guide. Saving never starts water or changes school data.
 @MainActor final class DormSetupFlow: ObservableObject {
     @Published private(set) var identity: WaterUser?
     @Published private(set) var options: [[AreaNode]] = [[],[],[],[]]
     @Published private(set) var selected: [AreaNode] = []
     @Published private(set) var machines: [WaterMachine] = []
-    @Published private(set) var serviceEnabled: Bool?
     @Published private(set) var autoMatched = false
     @Published private(set) var busy = false
     @Published private(set) var saved = false
     @Published var issue: String?
     private var directory: WaterDirectory?
-    private var access: (client: WaterAccessServiceClient, grant: WaterAccessGrant, endpoint: URL)?
 
     func reset() {
         identity = nil; options = [[],[],[],[]]; selected = []; machines = []; saved = false; issue = nil
-        autoMatched = false; serviceEnabled = nil; directory = nil; access = nil
+        autoMatched = false; directory = nil
     }
 
     enum AutoBind: Equatable {
@@ -400,22 +393,7 @@ struct CampusOnboardingView: View {
                 if options[0].isEmpty { options[0] = try await client.areas(parent:user.schoolId) }
                 if selected.isEmpty, options[0].count == 1, let only = options[0].first { busy = false; await choose(only, at:0) }
             } else {
-                guard let session = try AppServices.schoolVault.ecyktSession(), let custid = session.custid else {
-                    throw ServiceError.sessionExpired(.ecykt)
-                }
-                guard let endpoint = await WaterAccessServiceClient.firstHealthy(http:AppServices.waterAccessHTTP) else {
-                    issue = WaterModel.platformMissingText; return
-                }
-                let base = WaterAccessServiceClient(http:AppServices.waterAccessHTTP, endpoint:endpoint)
-                let (user, grant) = try await base.connect(session, custid:custid)
-                let client = base.with(grant:grant)
-                identity = user; directory = client; access = (client, grant, endpoint)
-                let raw = campus.profile?.residence?.raw ?? ""
-                let boot = try await client.bootstrap(residence:raw)
-                serviceEnabled = boot.transactionsEnabled
-                for (index, level) in boot.levels.prefix(4).enumerated() { options[index] = level }
-                selected = boot.path; machines = boot.machines; autoMatched = boot.matched
-                if boot.matched && boot.machines.isEmpty { issue = WaterOnboarding.noControllerText }
+                issue = WaterModel.platformMissingText
             }
         } catch {
             issue = (error as? ServiceError)?.userMessage ?? "暂时读不到宿舍，稍后再试。"
@@ -464,13 +442,9 @@ struct CampusOnboardingView: View {
         guard selected.count == 4, let identity, water.mayImport else { return }
         busy = true; defer { busy = false }
         do {
-            if let access {
-                try await access.client.bind(room:selected[3].id, machineID:machine.machineId)
-                WaterProfileFiles.accessEndpoint = access.endpoint
-            }
             let binding = WaterBinding(studentId:identity.studentId, schoolId:identity.schoolId, machineId:machine.machineId,
                                        roomId:selected[3].id, roomLabel:WaterOnboarding.roomLabel(selected),
-                                       machineName:machine.name, access:access?.grant)
+                                       machineName:machine.name)
             try water.saveBinding(binding)
             saved = true; issue = nil
         } catch { issue = (error as? ServiceError)?.userMessage ?? "没保存上，再试一次。" }
