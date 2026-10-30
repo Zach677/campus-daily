@@ -106,6 +106,17 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(SharedSnapshotStore.widgetKind, "XiaoRiChangBalances")
     }
 
+    /// Installed builds already wrote these names; renaming one would lose the item.
+    func testRemainingItemsKeepTheirStoredNames() {
+        XCTAssertEqual(StoreKey.schoolPortal.service, "com.beamjason.xiaorichang.school.portal.v1")
+        XCTAssertEqual(StoreKey.schoolProfile.service, "com.beamjason.xiaorichang.school.profile.v1")
+        XCTAssertEqual(StoreKey.laundryAccount.service, "com.beamjason.xiaorichang.laundry.account.v1")
+        XCTAssertEqual(StoreKey.laundryCheckout.service, "com.beamjason.xiaorichang.laundry.checkout.v1")
+        XCTAssertEqual(StoreKey.sharedReminderLines.service, "com.beamjason.xiaorichang.shared.reminderLines.v1")
+        XCTAssertEqual(PreferenceKey.schoolLaundry, "xrc.laundry.school")
+        XCTAssertEqual(StoreKey.allCases.count, 9, "a new item needs its stored name pinned here")
+    }
+
     /// The Swift names say shower; the stored names stay what installed builds already wrote.
     func testShowerItemsKeepTheirStoredNames() {
         XCTAssertEqual(StoreKey.showerBinding.service, "com.beamjason.xiaorichang.water.binding.v1")
