@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// First-run guide (design §7, copy-r1 「首次引导」). Presented as a full-screen cover.
+/// First-run guide. Presented as a full-screen cover.
 struct OnboardingView: View {
     enum Step: Int, CaseIterable { case login, dorm, washer, done }
 
@@ -167,7 +167,7 @@ struct OnboardingView: View {
         switch step {
         case .login: return Text("登录") + accent("学校账号")
         case .dorm: return Text("你住在") + accent("哪一间") + question
-        // 学校洗衣机 question (laundry-optional spec §1): same page, 「洗衣机」 in the accent colour.
+        // 学校洗衣机 question: same page, 「洗衣机」 in the accent colour.
         case .washer: return Text("宿舍用学校的") + accent("洗衣机") + Text("吗") + question
         case .done: return Text("好了，\n") + accent("都准备好了") + Text("。")
         }

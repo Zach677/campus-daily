@@ -18,7 +18,7 @@ struct HomeData {
             switch self { case .showering(let date), .settling(let date): return date; default: return nil }
         }
     }
-    /// Home 🧺 row (Camo r2 home-row table).
+    /// Home 🧺 row.
     enum Laundry: Equatable {
         case unknown, idle, unpaid, starting, done, inUse, unresolved
         case running(program: String, end: Date)
@@ -245,7 +245,7 @@ extension HomeData {
 enum SettlementResult: Equatable {
     case settled(minutes: Int?, amount: Decimal?)
     case unconfirmed
-    /// Laundry order 50 (r2 §1.7): 「衣服洗好了」 · amount · 「标准洗 · 45 分钟 · 3 号机」.
+    /// Laundry order 50: 「衣服洗好了」 · amount · 「标准洗 · 45 分钟 · 3 号机」.
     case laundryDone(amount: Decimal?, detail: String)
 }
 

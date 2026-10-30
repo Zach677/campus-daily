@@ -52,7 +52,7 @@ public struct ShowerOnboarding: Sendable {
         do {
             machines = try await directory.machines(room: room.id, schoolId: schoolId)
         } catch ServiceError.rejected(.lxt6, "5000", _) {
-            // The server's "系统提示： 当前房间未绑定设备" is shown as our own sentence (§batch 2).
+            // The server's "系统提示： 当前房间未绑定设备" is shown as our own sentence.
             return .noController(path: path, message: Self.noControllerText)
         } catch ServiceError.rejected(.lxt6, "4034", let message) {
             return .addressUnknown(message: message.isEmpty ? Self.addressUnknownText : message)

@@ -1,7 +1,7 @@
 import Foundation
 import BackgroundTasks
 
-/// Background campus read: low power / card reminders (§5) and a fresh widget.
+/// Background campus read: low power / card reminders and a fresh widget.
 enum BackgroundRefresh {
     /// Also listed in Info.plist `BGTaskSchedulerPermittedIdentifiers`.
     nonisolated static let refreshTask = "com.beamjason.xiaorichang.refresh"

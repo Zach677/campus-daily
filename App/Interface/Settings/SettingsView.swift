@@ -8,7 +8,7 @@ enum ResetLockText {
     static let checkingController = "正在核对水控，核对完再重置。"
 }
 
-/// Settings sheet (design §6, copy-r1 「设置」).
+/// Settings sheet.
 struct SettingsView: View {
     /// DEBUG demo data; nil = live models.
     var preview: HomeData? = nil
@@ -134,7 +134,7 @@ extension SettingsView {
         accountPage = true
     }
 
-    /// 提醒 (design-r2 §6). With system notifications off: switches off and disabled, plus a row to Settings.
+    /// 提醒. With system notifications off: switches off and disabled, plus a row to Settings.
     @ViewBuilder var reminderSection: some View {
         let off = reminders.denied
         Section {
@@ -227,7 +227,7 @@ extension SettingsView {
             .accessibilityLabel(lead + " \(value.wrappedValue)" + unit)
         }
     }
-    /// First time a reminder is switched on while the system hasn't been asked yet (§7).
+    /// First time a reminder is switched on while the system hasn't been asked yet.
     private func switchedOn(_ old: Bool, _ new: Bool) {
         if !old && new { reminders.maybePrompt(from:.settings) }
     }

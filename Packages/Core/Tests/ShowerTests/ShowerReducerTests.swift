@@ -3,7 +3,7 @@ import Foundation
 import Core
 import CoreTestSupport
 
-/// §3.1 transitions, one by one, on the pure reducer.
+/// Architecture §3.1 transitions, one by one, on the pure reducer.
 final class ShowerReducerTests: XCTestCase {
     let machine = "11223344"
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)

@@ -2,7 +2,7 @@ import Foundation
 import ActivityKit
 import Core
 
-/// Mirrors the current laundry order into one Live Activity (design-r2 §3). Read only:
+/// Mirrors the current laundry order into one Live Activity. Read only:
 /// it never requests anything from U净 and never changes the checkout record.
 /// Driven from LaundryModel whenever the order or machine reading changes, and on foreground.
 @MainActor final class LaundryActivityController {

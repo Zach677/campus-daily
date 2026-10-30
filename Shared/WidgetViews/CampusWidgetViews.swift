@@ -2,7 +2,7 @@ import SwiftUI
 import WidgetKit
 import Core
 
-/// What the 「校日常」 widget shows (design-r3 §4). Built from the shared snapshot and the saved
+/// What the 「校日常」 widget shows. Built from the shared snapshot and the saved
 /// account; compiled into the widget and the app (DEBUG preview only).
 struct CampusWidgetModel: Sendable {
     /// fresh / stale / expired / never, from `WidgetStatus.freshness` (Core), never decided here.

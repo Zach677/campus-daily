@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// Laundry page (design r2 §1): hero sentence + hairline lists + bottom dock, same skeleton as home.
+/// Laundry page: hero sentence + hairline lists + bottom dock, same skeleton as home.
 /// All ordering/payment safety lives in `LaundryModel` / `LaundryCheckoutController`; this view only
 /// decides what to show and forwards explicit user confirmations.
 struct LaundryDetail: View {
@@ -469,7 +469,7 @@ enum LaundrySheet: Identifiable, Equatable {
 
 // MARK: - Rows & hero
 
-/// 「选程序」 row (r2 §1.4): selection mark · 「标准洗 · 45 分钟」 · price.
+/// 「选程序」 row: selection mark · 「标准洗 · 45 分钟」 · price.
 struct LaundryProgramRow: View {
     let program: WasherProgram
     let selected: Bool
@@ -520,11 +520,11 @@ struct LaundryProgramRow: View {
         Text(Theme.yuan(program.price.yuan)).scaledFont(20, .semibold, design:.rounded, relativeTo:.title3)
             .monospacedDigit().foregroundStyle(Theme.ink).lineLimit(1)
     }
-    /// Camo's single-spin note (the machine's own description text is not decoded).
+    /// Note for the spin-only program (the machine's own description text is not decoded).
     private var note: String? { program.workModelName == "单脱水" ? "最多 3/4 桶，适合手洗的衣服甩干" : nil }
 }
 
-/// Running hero (r2 §1.5): live label · minutes left · progress line · sub.
+/// Running hero: live label · minutes left · progress line · sub.
 struct LaundryRunHero: View {
     let machine: String?
     let program: String

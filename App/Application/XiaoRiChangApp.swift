@@ -33,7 +33,7 @@ import Core
                 Task { await laundry.refreshOrder() }
             }
         }
-        // Background campus read: low power / card reminders (§5) and a fresh widget.
+        // Background campus read: low power / card reminders and a fresh widget.
         .backgroundTask(.appRefresh(BackgroundRefresh.refreshTask)) { await BackgroundRefresh.run() }
     }
 }

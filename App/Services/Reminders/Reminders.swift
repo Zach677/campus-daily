@@ -34,7 +34,7 @@ enum ReminderKey {
     }
 }
 
-/// Local notifications (design-r2 §5) and the pre-permission sheet (§7). Never touches orders or payments:
+/// Local notifications and the pre-permission sheet. Never touches orders or payments:
 /// it only reads facts the models already have.
 @MainActor final class Reminders: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = Reminders()
@@ -103,7 +103,7 @@ enum ReminderKey {
         }
     }
 
-    // MARK: Permission (§7)
+    // MARK: Permission
 
     /// Three automatic triggers share one persisted flag: whichever comes first shows the sheet, once ever
     /// (「以后再说」 included). Only while the system hasn't been asked.
@@ -187,7 +187,7 @@ enum ReminderKey {
         switch phase {
         case .running(let end):
             guard let id = facts.record?.orderId else { return }
-            // First successful payment: the moment to explain reminders (§7).
+            // First successful payment: the moment to explain reminders.
             requestAppPrompt()
             let plan = LaundryPlan(orderId:id, end:end, machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机")
             laundryPlan = plan
@@ -344,7 +344,7 @@ enum ReminderKey {
     #endif
 }
 
-/// Pre-permission sheet (§7): group bg, ~300pt detent, padding 24, no mascot.
+/// Pre-permission sheet: group bg, ~300pt detent, padding 24, no mascot.
 struct ReminderPermissionSheet: View {
     @ObservedObject private var reminders = Reminders.shared
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -377,7 +377,7 @@ struct ReminderPermissionSheet: View {
 }
 
 /// Home-root hooks: the pre-permission sheet after the first paid laundry order or the first home read
-/// (§7; the settings triggers show it inside settings), and notification taps (laundry → laundry page, the rest → home).
+/// (the settings triggers show it inside settings), and notification taps (laundry → laundry page, the rest → home).
 struct ReminderHooks: ViewModifier {
     @Binding var settings: Bool
     @Binding var path: [HomeRoute]
