@@ -155,10 +155,10 @@ public actor SchoolSession {
     /// A different person signed in: drop the previous one's dorm, meter, saved account and
     /// tokens before the new ones are written. The login device id stays (same phone).
     private func clearPreviousPerson() throws {
+        try vault.saveAccount(nil)
         try vault.savePortalToken(nil)
         try vault.saveEcyktSession(nil)
         try vault.saveProfile(nil)
-        try vault.saveAccount(nil)
     }
 
     private func passwordLoginOnce(account: String, password: String) async throws -> PortalToken {
@@ -240,13 +240,28 @@ public actor SchoolSession {
         return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: switched)
     }
 
+    /// Some school items could not be deleted (item names only, never values).
+    public struct SignOutFailure: Error, Sendable, Equatable {
+        public var items: [String]
+    }
+
+    /// Deletes the saved password first (it sits in the shared group the widget reads), then
+    /// everything else. A failed deletion doesn't stop the rest; the failures are reported
+    /// together at the end.
     public func signOut() throws {
         signOutGeneration += 1
-        try vault.savePortalToken(nil)
-        try vault.saveEcyktSession(nil)
-        try vault.saveProfile(nil)
-        try vault.saveAccount(nil)
-        try vault.saveLoginDeviceID(nil)
+        var failed: [String] = []
+        let steps: [(String, () throws -> Void)] = [
+            ("account", { try self.vault.saveAccount(nil) }),
+            ("portalToken", { try self.vault.savePortalToken(nil) }),
+            ("ecyktSession", { try self.vault.saveEcyktSession(nil) }),
+            ("profile", { try self.vault.saveProfile(nil) }),
+            ("loginDevice", { try self.vault.saveLoginDeviceID(nil) }),
+        ]
+        for (name, step) in steps {
+            do { try step() } catch { failed.append(name) }
+        }
+        if !failed.isEmpty { throw SignOutFailure(items: failed) }
     }
 
     // MARK: Refresh

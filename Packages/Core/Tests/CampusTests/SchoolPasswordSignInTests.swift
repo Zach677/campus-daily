@@ -194,6 +194,22 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertNil(try h.vault.account(), "the web page never says whose password it was")
     }
 
+    /// One item that can't be deleted doesn't keep the password (or anything else) behind.
+    func testSignOutKeepsGoingAfterAFailedDeletion() async throws {
+        for stuck in [StoreKey.schoolPortal, .schoolEcykt, .schoolPassword] {
+            let h = harness(FakePasswordLogin())
+            try h.signedIn(portal: true)
+            try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+            try h.vault.saveLoginDeviceID("99000000000000000000000000000991")
+            h.store.failWrites(to: stuck)
+            do { try await h.session().signOut(); XCTFail("expected a sign-out failure") }
+            catch let failure as SchoolSession.SignOutFailure { XCTAssertEqual(failure.items.count, 1, "\(stuck)") }
+            for key in [StoreKey.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice] where key != stuck {
+                XCTAssertNil(try h.store.read(key), "\(key) after \(stuck) failed")
+            }
+        }
+    }
+
     func testAutoLoginStatusForEveryState() {
         let t = Date(timeIntervalSince1970: 1_793_300_000)
         XCTAssertEqual(SchoolAccount(account: "a").autoLogin(at: t), .off)
