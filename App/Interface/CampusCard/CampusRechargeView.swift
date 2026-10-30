@@ -91,7 +91,11 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
     }
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         let expired: () -> Void
-        init(expired: @escaping () -> Void) { self.expired = expired }
+        init(expired: @escaping () -> Void) {
+            self.expired = expired
+            super.init()
+            assert(responds(to:WebNavigationPolicy.selector), "WebKit no longer calls the navigation allow-list")
+        }
         func userContentController(_ userContentController: WKUserContentController,didReceive message: WKScriptMessage) {
             if message.name == "campusRechargeExpired", message.frameInfo.isMainFrame,
                message.frameInfo.securityOrigin.protocol == "https", message.frameInfo.securityOrigin.host == "ecykt.gdbtu.edu.cn",

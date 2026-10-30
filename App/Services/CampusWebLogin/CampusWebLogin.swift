@@ -68,7 +68,11 @@ struct OfficialCampusBrowser: UIViewRepresentable {
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         let state: CampusBrowserState
         private var automation: Task<Void,Never>?
-        init(_ state: CampusBrowserState) { self.state = state }
+        init(_ state: CampusBrowserState) {
+            self.state = state
+            super.init()
+            assert(responds(to:WebNavigationPolicy.selector), "WebKit no longer calls the navigation allow-list")
+        }
         func stop() { automation?.cancel(); automation = nil }
         func connect(_ webView: WKWebView) {
             stop(); state.stalled = false; state.issue = nil
