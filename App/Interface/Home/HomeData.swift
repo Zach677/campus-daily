@@ -72,6 +72,9 @@ struct HomeData {
         let amount: Decimal?
     }
     var signedIn = true
+    /// Settings › 学校账号 (nil after a web sign-in).
+    var schoolAccount: SchoolAccount?
+    var passwordSaved: Bool { schoolAccount?.password != nil }
     var dorm: String?
     var powerBound = true
     var remainingKWh: Decimal?
@@ -165,6 +168,7 @@ struct HomeData {
 extension HomeData {
     @MainActor init(campus: CampusModel, water model: ShowerModel, laundry: LaundryModel, now: Date = Date()) {
         signedIn = campus.configured
+        schoolAccount = campus.account
         dorm = Theme.dorm(campus.room)
         let snapshot = campus.snapshot
         powerBound = campus.powerConfigured
@@ -254,6 +258,8 @@ enum HomeDemo: String, CaseIterable {
     case settingsLaundryLocked = "settings-laundry-locked"
     case settingsOff = "settings-notif-off"
     case settingsAsk = "settings-ask"
+    /// Settings › 学校账号 with the password saved (synthetic account and password).
+    case settingsPassword = "settings-password-on"
     case unconfirmedRow = "unconfirmed-row"
     /// Showering while the authorization write is unconfirmed (stage .authorizationWritePending).
     case showerUnconfirmed = "shower-unconfirmed"
@@ -276,6 +282,7 @@ enum HomeDemo: String, CaseIterable {
         let calendar = Calendar.current
         var data = HomeData()
         data.dorm = "3 栋 108"
+        data.schoolAccount = SchoolAccount(account:"99100991")
         data.remainingKWh = Decimal(string:"42.6"); data.yesterdayKWh = Decimal(string:"4.6")
         data.balance = Decimal(string:"86.50"); data.balanceUpdated = now.addingTimeInterval(-25 * 60)
         data.lastShowerMinutes = 11; data.lastShowerCost = Decimal(string:"1.32")
@@ -288,6 +295,9 @@ enum HomeDemo: String, CaseIterable {
         ]
         switch self {
         case .normal, .settings, .settingsOff, .settingsAsk: return (data, nil)
+        case .settingsPassword:
+            data.schoolAccount = SchoolAccount(account:"99100991", password:"demo-password")
+            return (data, nil)
         case .laundryOff, .settingsLaundryOff:
             data.laundryEnabled = false
             data.recents.removeAll { $0.emoji == "🧺" }

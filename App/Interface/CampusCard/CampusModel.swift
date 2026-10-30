@@ -116,6 +116,27 @@ struct PowerChoice: Identifiable, Equatable {
         powerChoices = []; powerMatchIssue = nil
     }
 
+    /// Settings › 学校账号 › 保存密码 on: one login checks the password before it is kept.
+    /// Without a known account (signed in on the web page) it is a full sign-in with `account`,
+    /// so the card session and the saved password are the same person's.
+    func savePassword(_ password: String, account typed: String?) async throws {
+        if let known = account?.account, !known.isEmpty {
+            try await session.savePassword(password, account:known)
+            reload()
+        } else if let typed, !typed.isEmpty {
+            try await signIn(account:typed, password:password, savePassword:true)
+            await refresh(force:true)
+        } else {
+            throw SchoolLoginFailure.wrongCredentials
+        }
+    }
+
+    /// 保存密码 off: the password goes at once; the account stays for display.
+    func forgetPassword() async {
+        try? await session.forgetPassword()
+        reload()
+    }
+
     func signOut() {
         signOutGeneration += 1
         let session = session, refresher = refresher

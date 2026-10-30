@@ -184,7 +184,7 @@ struct HomeView: View {
                 return
             }
             let settingsDemos: [String:UNAuthorizationStatus] = ["settings":.authorized, "settings-notif-off":.denied,
-                                                                  "settings-ask":.notDetermined,
+                                                                  "settings-ask":.notDetermined, "settings-password-on":.authorized,
                                                                   "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized]
             reminders.demoStatus = settingsDemos[url.lastPathComponent]
             guard let result = HomeDemo.handle(url) else { return }
