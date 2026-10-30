@@ -308,7 +308,9 @@ struct AccountView: View {
                 Section {
                     Button("退出登录", role:.destructive) { confirmSignOut = true }
                         .frame(maxWidth:.infinity)
-                        .disabled(preview != nil || campus.loading || saving)
+                        // Only while a password check is in flight. A running refresh is no reason:
+                        // sign-out drops it (its late result is never written back).
+                        .disabled(saving)
                 }.listRowBackground(Theme.group)
             }
         }
@@ -330,7 +332,8 @@ struct AccountView: View {
             Text("密码只存在这台 iPhone 的钥匙串里。")
         }
         .confirmationDialog("退出学校账号？", isPresented:$confirmSignOut, titleVisibility:.visible) {
-            Button("退出登录", role:.destructive) { campus.signOut() }
+            // DEBUG demo data: the dialog shows, nothing is signed out.
+            Button("退出登录", role:.destructive) { if preview == nil { campus.signOut() } }
             Button("取消", role:.cancel) {}
         } message: {
             Text("首页的电量和余额会清空，热水记录和洗衣设置都还在。")
