@@ -18,7 +18,7 @@ The rules for working in this repo, for people and AI agents alike. The full des
 
 ## Code
 
-- iOS 17. Core builds in Swift 6 mode; the App and Widget targets are still Swift 5; the target design (docs/architecture.md) moves them to Swift 6. Today's screen models are `ObservableObject` (some with `.shared` singletons, see docs/architecture.md); new code passes dependencies through initializers instead of adding singletons. Time, network and Bluetooth are injectable.
+- iOS 17. Core, App and Widget build in Swift 6 language mode. Today's screen models are `ObservableObject` (some with `.shared` singletons, see docs/architecture.md); new code passes dependencies through initializers instead of adding singletons. Time, network and Bluetooth are injectable.
 - One main type per file, named after the type. Split files over 400 lines by responsibility (`HomeView+Rows.swift`).
 - Feature names are Campus, Shower, Laundry and Snapshot everywhere. Do not use Water, HotWater or DailyXxx in new names.
 - Comment only what the code cannot say, for example a field order that the platform signs.

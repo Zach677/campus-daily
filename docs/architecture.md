@@ -41,7 +41,7 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
                       and the refresher (the only writer of the snapshot)
     Networking/       HTTPClient protocol + URLSession implementation, envelopes, redacting logger
     Storage/          generic Keychain and UserDefaults access only: SecureStore, StoreKey, SharedKeychain
-                      (access group shared with the widget), PreferenceStorage, StorageError
+                      (app-private and widget-shared access groups), PreferenceStorage, StorageError
     Common/           Money, ServiceError, JSONValue, DormAddress, ShowerHandoff (used by Campus and Shower)
   Tests/
     CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/
@@ -86,10 +86,10 @@ Networking makes sessions.
 **Current state of the App layer.** The screen models are `ObservableObject` classes passed down
 with `@EnvironmentObject`. `ShowerModel.shared`, `CampusModel.shared` and `Reminders.shared` are
 singletons (the Live Activity intent, background refresh and notification delegate reach them
-outside the view tree); `LaundryModel` is created by the app scene. The App and Widget targets
-build in Swift 5 language mode; Core builds in Swift 6 mode.
+outside the view tree); `LaundryModel` is created by the app scene. Core, the App and the Widget
+targets all build in Swift 6 language mode.
 
-**Target design.** The App and Widget targets move to Swift 6. Models become `@Observable`
+**Target design.** Models become `@Observable`
 adapters that observe the engines' `AsyncStream<State>`, created in `AppEnvironment` and passed
 through initializers or the environment, with no singletons.
 
@@ -195,6 +195,23 @@ Facts the design relies on (from the read-only captures):
 4. Silent re-exchange (only when not running in background): if a portal token exists,
    `eCardTicketURL` → `exchange` → retry step 1 once. Portal `-1001`/`-1` → `sessionExpired(.portal)`
    → UI asks the user to sign in again. No loops, no retries beyond one.
+
+**One refresh at a time.** Callers today are pull-to-refresh, the app coming to the foreground,
+the background task, and the refreshes after a state change (sign-in, meter choice, recharge).
+The widget does not refresh: it only reads the stored snapshot. Within the app process the
+refresher runs one read at a time; a caller arriving while one runs awaits that read and gets
+its report (pull-to-refresh awaits it, so the "updated" time or the failure really shows).
+Exceptions to joining:
+- a foreground caller that joined a background read which ended in `needsLogin` runs one
+  foreground read straight after, because only the foreground may silently re-exchange;
+- after a state change (`noteChange()`), a caller asking for `includingChanges` does not join a
+  read that started before the change: it waits for that read to end, then starts (or joins) a
+  read that sees the change;
+- when every caller of a read is cancelled (an expiring background task), the read is cancelled
+  and writes nothing.
+`clear()` (sign-out) empties the snapshot and drops any read still running, so a late result
+never writes the old values back. A failed read keeps the last good values and records the
+failure and its time per tile.
 
 **Electricity resolution.** The power tree contains apartment levels that the dorm address lacks,
 so do not walk it level by level. Onboarding: call `meters(nodeID: <campus node>)` once (≈2.3k
@@ -437,10 +454,10 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 
 | Data | Store | Accessibility | Shared with widget |
 |---|---|---|---|
-| school credentials (`school.portal`, `school.ecykt`) | Keychain | portal: WhenUnlockedThisDeviceOnly; ecykt: AfterFirstUnlockThisDeviceOnly | portal: no; ecykt: **yes** |
+| school credentials (`school.portal`, `school.ecykt`) | Keychain | portal: WhenUnlockedThisDeviceOnly; ecykt: AfterFirstUnlockThisDeviceOnly | portal: no (private group); ecykt: **yes** |
 | school profile (dorm, meter) | Keychain `school.profile` | AfterFirstUnlockThisDeviceOnly | **yes** |
-| water binding, shower session | Keychain `water.binding`, `water.session` | AfterFirstUnlockThisDeviceOnly | no |
-| U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | no |
+| water binding, shower session | Keychain `water.binding`, `water.session` | AfterFirstUnlockThisDeviceOnly | never (private group) |
+| U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard), keys prefixed `xrc.` | – | no |
@@ -449,12 +466,19 @@ All Keychain items use service `com.beamjason.xiaorichang.<name>.v1`, account `d
 Session stores (water/laundry) write synchronously and fail closed: a failed write blocks the
 next side effect (`storage` error), same as today.
 
-Widget sharing: items marked "yes" are written with the **keychain access group**
-`$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared` (`SharedKeychain.groupIdentifier`, listed in
-both entitlements files; works with any signing team incl. free Personal Teams, no portal
-registration). Today the widget reads only `shared.snapshot` and `shared.reminderLines`; the
-school card session and profile are shared so the widget can read the balance and meter by itself.
-The widget never reads the portal token, hot-water or laundry items. No App Group is introduced: the current build has none and
+Widget sharing: App.entitlements lists two keychain access groups, in this order: the app's
+private group `$(AppIdentifierPrefix)com.beamjason.xiaorichang` (`SharedKeychain.privateGroupIdentifier`),
+then the shared group `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared`
+(`SharedKeychain.groupIdentifier`). Widget.entitlements lists only the shared group. Order matters:
+iOS puts an item written without a group into the first listed group. Items marked "yes" are
+written to the shared group; all others are written to the private group, which the widget is
+not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
+registration. Today the widget reads only `shared.snapshot` and `shared.reminderLines`; the
+school card session and profile are shared so the widget can later read the balance and meter by
+itself. Builds before the private group existed kept every item in the shared group: at launch
+(and on any read that finds one there) a private item is written to the private group, read back,
+and only then deleted from the shared group; a failed step keeps the original and retries next
+launch, so nobody is signed out or loses a binding. No App Group is introduced: the current build has none and
 re-signers of the public IPA may not get one. Live Activities get data via ActivityKit content
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.
@@ -468,7 +492,7 @@ become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidence
 |---|---|
 | App bundle id | `com.beamjason.xiaorichang` (matches Android `applicationId`) |
 | Widget extension | `com.beamjason.xiaorichang.balances` |
-| Keychain access group | `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared` |
+| Keychain access groups | app: `$(AppIdentifierPrefix)com.beamjason.xiaorichang`, then `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared`; widget: the shared one only |
 | Keychain services | `com.beamjason.xiaorichang.<name>.v1` |
 | BG task id | `com.beamjason.xiaorichang.refresh` |
 | Widget kind | `XiaoRiChangBalances` |
@@ -476,7 +500,7 @@ become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidence
 | Navigation scheme | `campusdaily://home`, `campusdaily://demo/<state>` |
 | Xcode workspace / project / targets | `XiaoRiChang.xcworkspace` / `App.xcodeproj` / `App` (product `XiaoRiChang.app`), `Widget` (product `XiaoRiChangWidget.appex`) |
 | Swift package / product | `Packages/Core` / `Core` |
-| Display names | 校日常 / widget gallery title 校园双余额 |
+| Display names | 校日常 / widget gallery title 校日常 |
 
 Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
 Store/TestFlight record. Paid-team signers register `com.beamjason.xiaorichang` and
