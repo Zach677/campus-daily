@@ -138,12 +138,12 @@ final class SignOutDuringOtherProcessLoginTests: XCTestCase {
         h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-ok")
-        let reached = expectation(description: "login in flight")
-        let release = DispatchSemaphore(value: 0)
-        h.server.gate { r in
-            guard r.url.path.hasSuffix("/csalogintoken/450010") else { return }
+        // Held while the password is out: the portal token it brings back is not stored yet.
+        let reached = expectation(description: "password in flight")
+        let (answer, release) = AsyncStream<Void>.makeStream()
+        login.whileSent {
             reached.fulfill()
-            release.wait()
+            for await _ in answer { break }
         }
         let widget = RefreshLeaseChainTests().refresher(h, owner: "widget-1")
         async let read = widget.refresh(inBackground: true)
@@ -157,8 +157,9 @@ final class SignOutDuringOtherProcessLoginTests: XCTestCase {
             // An older app build left the lease in place.
             XCTAssertTrue(RefreshLease(store: h.store, owner: "widget-1", now: h.clock.function).acquire())
         }
-        release.signal()
+        release.yield()
         let report = await read
+        XCTAssertEqual(login.calls.count, 1)
         // Without the lease revoked the read may store the same signed-out snapshot again.
         if revokingLease { XCTAssertFalse(report.snapshotSaved) }
         XCTAssertEqual(report.outcome, .notSignedIn)
@@ -166,6 +167,7 @@ final class SignOutDuringOtherProcessLoginTests: XCTestCase {
         XCTAssertNil(try h.vault.ecyktSession())
         XCTAssertNil(try h.vault.account())
         XCTAssertNil(try h.vault.loginDeviceID())
+        XCTAssertTrue(h.server.requests(path: "/csalogintoken/450010").isEmpty, "no exchange after the sign-out")
         XCTAssertEqual(try h.snapshots.loadSnapshot(), SchoolSnapshotReducer.reduce(.empty, .signedOut))
     }
 

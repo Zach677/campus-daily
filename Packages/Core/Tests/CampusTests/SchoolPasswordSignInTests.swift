@@ -8,14 +8,20 @@ final class FakePasswordLogin: SchoolPasswordLogin {
     struct Call: Equatable { var account: String; var password: String; var visitorID: String }
     private let state = OSAllocatedUnfairLock<(results: [Result<PortalToken, SchoolLoginFailure>], calls: [Call])>(initialState: ([], []))
 
+    private let inFlight = OSAllocatedUnfairLock<(@Sendable () async -> Void)?>(initialState: nil)
+
     init(_ results: Result<PortalToken, SchoolLoginFailure>...) { state.withLock { $0.results = results } }
     var calls: [Call] { state.withLock { $0.calls } }
+
+    /// Runs while the password is out, after it was sent and before the answer comes back.
+    func whileSent(_ run: @escaping @Sendable () async -> Void) { inFlight.withLock { $0 = run } }
 
     func login(account: String, password: String, visitorID: String) async throws -> PortalToken {
         let result: Result<PortalToken, SchoolLoginFailure> = state.withLock {
             $0.calls.append(Call(account: account, password: password, visitorID: visitorID))
             return $0.results.isEmpty ? .failure(.cannotLoginDirectly) : $0.results.removeFirst()
         }
+        if let run = inFlight.withLock({ $0 }) { await run() }
         return try result.get()
     }
 }
