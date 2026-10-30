@@ -19,6 +19,18 @@ final class UpdateTimeTextTests: XCTestCase {
 
     func footer(_ d: Date) -> String { UpdateTimeText.widgetUpdated(d, now: now, calendar: calendar) }
 
+    /// 最近 counts days in the school's time zone, like 昨天花了: 00:30 in Shanghai is today there,
+    /// whatever zone the phone is set to.
+    func testRecentRowsCountDaysInTheSchoolTimeZone() {
+        XCTAssertEqual(UpdateTimeText.recent(date(10, 30, 9, 12), now: now), "刚刚")
+        XCTAssertEqual(UpdateTimeText.recent(date(10, 30, 0, 30), now: now), "今天 00:30")
+        XCTAssertEqual(UpdateTimeText.recent(date(10, 29, 23, 50), now: now), "昨天 23:50")
+        XCTAssertEqual(UpdateTimeText.recent(date(10, 26, 19, 2), now: now), "周一 19:02")
+        XCTAssertEqual(UpdateTimeText.recent(date(10, 20, 19, 2), now: now), "10月20日 19:02")
+        // The default is the school's calendar, not the device's: the same answers without passing one.
+        XCTAssertEqual(UpdateTimeText.recent(date(10, 29, 23, 50), now: now, calendar: calendar), "昨天 23:50")
+    }
+
     func testToday() {
         XCTAssertEqual(footer(date(10, 30, 8, 10)), "8:10 更新")
         XCTAssertEqual(footer(date(10, 30, 0, 0)), "0:00 更新", "midnight is today")
