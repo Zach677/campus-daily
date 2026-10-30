@@ -4,20 +4,7 @@ import Core
 
 /// Everything the home screen shows, derived from the models (or DEBUG demo data).
 struct HomeData {
-    enum Shower: Equatable {
-        case unconfigured
-        /// Hot water can't be used in this build or at this school (no start); the reason is the subtitle.
-        case unavailable(String)
-        case idle
-        case starting
-        case showering(Date)
-        case settling(Date)
-        /// A record that needs checking before another start (stage label).
-        case unresolved(String)
-        var showering: Date? {
-            switch self { case .showering(let date), .settling(let date): return date; default: return nil }
-        }
-    }
+    typealias Shower = ShowerHomeStatus
     /// Home 🧺 row.
     enum Laundry: Equatable {
         case unknown, idle, unpaid, starting, done, inUse, unresolved
