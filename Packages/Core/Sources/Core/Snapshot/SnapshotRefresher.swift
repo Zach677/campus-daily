@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(os)
+import os
+#endif
 
 /// The school read the refresher drives (`SchoolSession` in the app, fakes in tests).
 public protocol SchoolReader: Sendable {
@@ -36,6 +39,8 @@ public struct RefreshReport: Sendable, Equatable {
 public actor SnapshotRefresher {
     let school: SchoolReader
     let store: SnapshotStoring
+    /// Event names only (no values), e.g. when the snapshot could not be saved.
+    let diagnostic: @Sendable (String) -> Void
 
     private struct Run {
         let id: Int
@@ -58,8 +63,20 @@ public actor SnapshotRefresher {
     private(set) var cancelledWaiters = 0
 
     /// Times come from the school reading (`checkedAt`, `readAt`), so the refresher needs no clock.
-    public init(school: SchoolReader, store: SnapshotStoring) {
-        self.school = school; self.store = store
+    public init(school: SchoolReader, store: SnapshotStoring,
+                diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
+        self.school = school; self.store = store; self.diagnostic = diagnostic
+    }
+
+    public static let osLog: @Sendable (String) -> Void = { event in
+        #if canImport(os)
+        Logger(subsystem: "com.beamjason.xiaorichang", category: "snapshot").info("\(event, privacy: .public)")
+        #endif
+    }
+
+    /// The diagnostic line for a failed save: the storage status only.
+    static func saveFailedEvent(_ error: Error) -> String {
+        "snapshot.saveFailed" + ((error as? StorageError).map { " status=\($0.status)" } ?? "")
     }
 
     /// The stored snapshot, or `.empty`. Reading never waits for a running refresh.
@@ -135,7 +152,11 @@ public actor SnapshotRefresher {
             return RefreshReport(outcome: outcome, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
         }
         let snapshot = Self.apply(reading, to: latest())
-        let saved = (try? store.saveSnapshot(snapshot)) != nil
+        var saved = true
+        do { try store.saveSnapshot(snapshot) } catch {
+            saved = false
+            diagnostic(Self.saveFailedEvent(error))
+        }
         return RefreshReport(outcome: reading.outcome, snapshot: snapshot, reexchanged: reading.reexchanged, snapshotSaved: saved)
     }
 

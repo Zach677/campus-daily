@@ -12,6 +12,13 @@ final class RecordingSnapshotStore: SnapshotStoring, @unchecked Sendable {
     var writeCount: Int { lock.withLock { writes.count } }
 }
 
+final class EventLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [String] = []
+    func append(_ e: String) { lock.withLock { events.append(e) } }
+    var all: [String] { lock.withLock { events } }
+}
+
 /// School reader that answers a scripted reading and counts calls.
 final class ScriptedSchoolReader: SchoolReader, @unchecked Sendable {
     private let lock = NSLock()
@@ -112,6 +119,24 @@ final class SnapshotRefresherTests: XCTestCase {
         let report = await refresher.refresh(inBackground: false)
         XCTAssertFalse(report.snapshotSaved)
         XCTAssertEqual(report.snapshot.card.error, .offline)
+    }
+
+    /// A failed save leaves one diagnostic line with the storage status and no values.
+    func testStoreWriteFailureIsLogged() async {
+        let mem = InMemorySecureStore()
+        mem.failWrites(to: .sharedSnapshot)
+        let events = EventLog()
+        let reading = SchoolReading(outcome: .ok, checkedAt: t1, balance: .success(Money(fen: 99123)), readAt: t1)
+        let refresher = SnapshotRefresher(school: ScriptedSchoolReader(reading), store: SharedSnapshotStore(store: mem),
+                                          diagnostic: { events.append($0) })
+        let report = await refresher.refresh(inBackground: false)
+        XCTAssertFalse(report.snapshotSaved)
+        XCTAssertEqual(events.all, ["snapshot.saveFailed status=-1"])
+        XCTAssertFalse(events.all.joined().contains("991"))
+        // A successful save logs nothing.
+        mem.failWrites(to: .sharedSnapshot, false)
+        _ = await refresher.refresh(inBackground: false)
+        XCTAssertEqual(events.all.count, 1)
     }
 }
 
