@@ -11,6 +11,8 @@ struct OnboardingView: View {
         var laundryConnected = false
         /// Same-name meter locations for the dorm step's picker.
         var powerChoices: [LocationChoice] = []
+        /// The same-name row already picked (design `ob-dorm-picked`).
+        var picked: String?
         /// Login step: what the form starts with.
         var account = ""
         var password = ""
@@ -28,6 +30,7 @@ struct OnboardingView: View {
         _password = State(initialValue:preview?.password ?? "")
         _savePassword = State(initialValue:preview?.savePassword ?? false)
         _loginState = State(initialValue:preview?.loginState ?? .idle)
+        _apartment = State(initialValue:preview?.picked)
     }
 
     @EnvironmentObject private var campus: CampusModel

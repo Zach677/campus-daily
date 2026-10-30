@@ -373,7 +373,7 @@ enum HomeDemo: String, CaseIterable {
     }
 }
 
-/// campusdaily://demo/onboard/{1,1-filled,1-loading,1-wrong,1-fallback,2,2-missing,2-samename,3,done}
+/// campusdaily://demo/onboard/{1,1-filled,1-loading,1-wrong,1-fallback,2,2-missing,2-samename,2-samename-picked,3,done}
 /// The login states use a synthetic account; tapping 登录 only moves to the next step.
 enum OnboardingDemo {
     static func handle(_ url: URL) -> (OnboardingView.Step, OnboardingView.Preview)? {
@@ -383,10 +383,11 @@ enum OnboardingDemo {
         switch parts.count > 1 ? parts[1] : "1" {
         case "2": return (.dorm, preview)
         case "2-missing": preview.dorm = nil; return (.dorm, preview)
-        case "2-samename":
-            // Upstream 0.8.0-beta.2 same-name building picker, with sample directory labels.
+        case "2-samename", "2-samename-picked":
+            // Same-name meter picker (tester §1): one name in two apartments, told apart by location.
             preview.powerChoices = [LocationChoice(id:"preview-0", title:"3 栋 108", location:"北校区 · 东苑公寓 · 3 栋 · 108"),
                                    LocationChoice(id:"preview-1", title:"3 栋 108", location:"北校区 · 西苑公寓 · 3 栋 · 108")]
+            if parts[1] == "2-samename-picked" { preview.picked = "preview-1" }
             return (.dorm, preview)
         case "1-filled", "1-loading", "1-wrong", "1-fallback":
             preview.account = "99100991"
