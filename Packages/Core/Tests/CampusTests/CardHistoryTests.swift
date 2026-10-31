@@ -164,6 +164,19 @@ final class CardHistoryTests: XCTestCase {
         XCTAssertNil(groups[1].total)
     }
 
+    /// A record without a readable date says nothing about where the page was cut.
+    func testARecordWithoutADateDoesNotCompleteTheCutDay() {
+        var history = CardHistory(now: noon)
+        let rows = meals("20261030", 30) + meals("20261029", 19) + [record("", "", "POS消费示例面馆", "12.00")]
+        history.receive(CardRecordPage(total: 80, rows: rows), for: history.nextQuery!)
+        XCTAssertEqual(history.nextQuery?.page, 2)
+        XCTAssertFalse(history.isComplete(day: "20261029"), "the cut day")
+        XCTAssertTrue(history.isComplete(day: "20261030"))
+        XCTAssertEqual(history.readThrough, "20261029", "the app's records of unread days wait")
+        let app = AppActivity(id: "a", kind: .shower(minutes: 9), date: moment(10, 20, 21), amount: Money(fen: 90))
+        XCTAssertFalse(CardDays.groups(history: history, app: [app], now: noon).contains { $0.id == "20261020" })
+    }
+
     // MARK: Day totals
 
     func testADayTotalCountsMoneyOutOnly() {

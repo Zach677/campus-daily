@@ -76,10 +76,12 @@ public struct CardHistory: Sendable, Equatable {
         return readFrom
     }
 
-    /// The oldest day of the current range so far, when its pages come newest first.
+    /// The oldest day of the current range so far, when its pages come newest first. Records
+    /// without a readable date or time say nothing about where a page was cut.
     private var cutDay: String? {
-        guard !current.isEmpty, Self.newestFirst(current) else { return nil }
-        return current.map { Self.trimmed($0.date) }.min()
+        let dated = current.filter { $0.moment(calendar: calendar) != nil }
+        guard !dated.isEmpty, Self.newestFirst(dated) else { return nil }
+        return dated.map { Self.trimmed($0.date) }.min()
     }
 
     /// Every record of `day` (`yyyyMMdd`) has been read.
