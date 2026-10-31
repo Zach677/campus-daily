@@ -183,6 +183,27 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertEqual(try h.vault.account()?.password, "synthetic-pw-991", "saved again since: kept")
     }
 
+    /// Off, on again with a password that failed (nothing saved), off once more: that last
+    /// off finds no password and changes nothing, so the first off's pending second write still
+    /// removes the password a refresh wrote back meanwhile.
+    func testOffAgainAfterAFailedOnKeepsThePendingSecondForget() async throws {
+        let h = harness(FakePasswordLogin(.failure(.wrongCredentials)))
+        try h.signedIn()
+        let saved = SchoolAccount(account: "99100991", password: "synthetic-pw-991")
+        try h.vault.saveAccount(saved)
+        let session = h.session()
+        let first = try await session.forgetPassword()
+        let forgotten = try XCTUnwrap(first)
+        do { try await session.savePassword("synthetic-wrong-pw"); XCTFail("the login fails") } catch {}
+        let again = try await session.forgetPassword()
+        XCTAssertNil(again, "no password to forget")
+        XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
+
+        try h.vault.saveAccount(saved)   // a refresh that read the account before the first off
+        try await session.forgetPasswordAgain(forgotten: forgotten)
+        XCTAssertNil(try h.vault.account()?.password, "the written-back password still goes")
+    }
+
     // MARK: Refresh ladder
 
     func testExpiredCardAndPortalTokenSignInWithTheSavedPassword() async throws {

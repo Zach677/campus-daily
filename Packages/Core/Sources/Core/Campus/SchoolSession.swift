@@ -190,8 +190,10 @@ public actor SchoolSession {
     }
 
     /// Turning 保存密码 off: the password goes at once; the account name stays for display.
+    /// nil, and nothing changed, when no password is saved: an earlier off's pending second
+    /// write still holds then.
     @discardableResult public func forgetPassword() throws -> ForgottenPassword? {
-        guard let stored = try vault.account() else { return nil }
+        guard let stored = try vault.account(), stored.password != nil else { return nil }
         passwordGeneration += 1
         try vault.saveAccount(SchoolAccount(account: stored.account))
         return ForgottenPassword(account: stored, generation: passwordGeneration)
