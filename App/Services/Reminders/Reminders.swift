@@ -379,8 +379,8 @@ struct ReminderPermissionSheet: View {
 /// Home-root hooks: the pre-permission sheet after the first paid laundry order or the first home read
 /// (the settings triggers show it inside settings), and notification taps (laundry → laundry page, the rest → home).
 struct ReminderHooks: ViewModifier {
-    @Binding var settings: Bool
-    @Binding var path: [HomeRoute]
+    /// Home's `open(_:)`: closes the settings sheet, then shows these pages over home.
+    let open: ([HomeRoute]) -> Void
     /// Home is visible with nothing on top (no onboarding, sheet, cover, panel or pushed page).
     var homeClear: Bool
     @ObservedObject private var reminders = Reminders.shared
@@ -399,8 +399,7 @@ struct ReminderHooks: ViewModifier {
             .onChange(of:reminders.route) { _, route in
                 guard let route else { return }
                 reminders.route = nil
-                settings = false
-                path = route == .laundry ? [.laundry] : []
+                open(route == .laundry ? [.laundry] : [])
             }
     }
 }

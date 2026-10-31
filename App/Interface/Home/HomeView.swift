@@ -23,6 +23,8 @@ struct HomeView: View {
     @State var recentsTop: CGFloat = 0
     @State var recentHeights: [RecentItem.ID: CGFloat] = [:]
     nonisolated static let contentSpace = "homeContent"
+    /// Pages to push once the settings sheet has gone (`open(_:)`).
+    @State var pathAfterSettings: [HomeRoute]?
     @State var panel: SettlementResult?
     @State var startTick = 0
     /// The shower page's cover. Follows `shower.page.presented`, but only once no sheet is up:
@@ -57,6 +59,13 @@ struct HomeView: View {
 
     func openOnboarding() {
         onboarding = OnboardingRequest(step:.login)
+    }
+
+    /// Shows these pages over home. With the settings sheet up, it is closed first and the pages
+    /// are pushed once it has gone: pushed while it slides away, a page comes without its title.
+    func open(_ routes: [HomeRoute]) {
+        guard settings else { path = routes; return }
+        path = []; pathAfterSettings = routes; settings = false
     }
 
     /// Reset finished: back to the first-run guide as on a fresh install, no toast.
@@ -153,7 +162,9 @@ struct HomeView: View {
         .sensoryFeedback(.success, trigger:successTick)
         .sensoryFeedback(.error, trigger:errorTick)
         .accountSwitchAlert { campus.hotWaterSetupRequested = true; settings = true }
-        .sheet(isPresented:$settings) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
+        .sheet(isPresented:$settings, onDismiss:{
+            if let routes = pathAfterSettings { pathAfterSettings = nil; path = routes }
+        }) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
         .sheet(isPresented:$relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
         // The shower page: down only by its own buttons, or a swipe while water runs (收起).
         .fullScreenCover(isPresented:Binding(get:{ pageCover },
@@ -224,13 +235,13 @@ struct HomeView: View {
         .onChange(of:shower.reviewRequested) { _, requested in
             guard requested else { return }
             shower.reviewRequested = false
-            settings = false; path = [.shower]
+            open([.shower])
         }
         .onChange(of:resetter.completed) { _, _ in afterReset() }
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
         // A done panel that arrived while another panel was up is shown once that one closes.
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
-        .modifier(ReminderHooks(settings:$settings, path:$path, homeClear:homeClear))
+        .modifier(ReminderHooks(open:open, homeClear:homeClear))
         .onOpenURL { url in
             // Widget tap: campusdaily://home back to the home screen; campusdaily://login (login
             // expired, never signed in) straight to the login step; campusdaily://settings/account

@@ -25,30 +25,27 @@ extension HomeView {
                 return
             }
             if let laundryPage = LaundryDemo.handle(url) {
-                onboarding = nil; settings = false
+                onboarding = nil
                 demo = HomeDemo.normal.content().0
                 laundryDemo = laundryPage
                 panel = laundryPage.panel
                 // Fresh push so the page's @State starts from this demo.
-                path = []
-                Task { try? await Task.sleep(for:.milliseconds(350)); path = [.laundry] }
+                freshPush(.laundry)
                 return
             }
             if let records = RecordsDemo.handle(url) {
                 // 校园卡记录 over the home demo; a fresh push so the page starts from this demo.
-                onboarding = nil; settings = false; panel = nil; laundryDemo = nil
+                onboarding = nil; panel = nil; laundryDemo = nil
                 demo = HomeDemo.normal.content().0
                 recordsDemo = records
-                path = []
-                Task { try? await Task.sleep(for:.milliseconds(350)); path = [.records] }
+                freshPush(.records)
                 return
             }
             if url.host == "demo", url.lastPathComponent == "recharge-blocked" {
-                onboarding = nil; settings = false
+                onboarding = nil
                 demo = HomeDemo.normal.content().0
                 rechargeBlockedDemo = true
-                path = []
-                Task { try? await Task.sleep(for:.milliseconds(350)); path = [.card] }
+                freshPush(.card)
                 return
             }
             if url.host == "demo", url.lastPathComponent.hasPrefix("account-switched") || url.lastPathComponent.hasPrefix("account-unconfirmed") {
@@ -62,11 +59,10 @@ extension HomeView {
             }
             if url.host == "demo", ["meter-stopped", "meter-stopped-finding", "meter-stopped-slow"].contains(url.lastPathComponent) {
                 // The meter page where the lookup stopped (synthetic): as is / looking again / slow school.
-                onboarding = nil; settings = false; panel = nil; laundryDemo = nil
+                onboarding = nil; panel = nil; laundryDemo = nil
                 demo = HomeDemo.noMeter.content().0
                 campus.demoMeterStop(running:url.lastPathComponent.hasSuffix("finding"), slow:url.lastPathComponent.hasSuffix("slow"))
-                path = []
-                Task { try? await Task.sleep(for:.milliseconds(350)); path = [.powerSetup] }
+                freshPush(.powerSetup)
                 return
             }
             if url.host == "demo", url.lastPathComponent == "permission" {
@@ -184,6 +180,14 @@ extension HomeView {
     }
 
     /// campusdaily://demo/notify/<kind>
+    /// A page pushed anew, so its @State starts from the demo: after the settings sheet has gone
+    /// when it is up (`open(_:)`), otherwise a moment after home's pages are popped.
+    func freshPush(_ route: HomeRoute) {
+        if settings { open([route]); return }
+        path = []
+        Task { try? await Task.sleep(for:.milliseconds(350)); path = [route] }
+    }
+
     func notifyDemo(_ url: URL) -> String? {
         let parts = Array(url.pathComponents.dropFirst())
         guard url.scheme == "campusdaily", url.host == "demo", parts.first == "notify" else { return nil }
