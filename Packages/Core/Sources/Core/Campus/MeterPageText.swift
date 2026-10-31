@@ -30,6 +30,8 @@ public struct MeterPickerRow: Sendable, Equatable, Identifiable {
 }
 
 extension MeterPageText {
+    /// The meter page's search field.
+    public static let searchPrompt = "搜索楼栋或房间"
     /// While the lookup runs, on the meter page.
     public static let finding = "正在找电表…"
     /// Under the row that matches the dorm.

@@ -52,4 +52,10 @@ final class MeterPickerTextTests: XCTestCase {
         XCTAssertEqual(MeterLevel.next(after: .floor, options: nodes("989", "990")), .room)
         XCTAssertEqual(MeterLevel.next(after: .room, options: nodes("A", "B")), .room)
     }
+
+    /// The search field names what the list holds: buildings and rooms (the school's own names,
+    /// e.g. 「99栋」, are shown as they are).
+    func testTheSearchFieldAsksForABuildingOrRoom() {
+        XCTAssertEqual(MeterPageText.searchPrompt, "搜索楼栋或房间")
+    }
 }

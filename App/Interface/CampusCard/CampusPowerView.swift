@@ -80,7 +80,7 @@ struct CampusPowerSetupView: View {
             }
         }.scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
             .navigationTitle(MeterPageText.title).navigationBarTitleDisplayMode(.inline)
-            .searchable(text:$search,prompt:"搜索楼栋或宿舍")
+            .searchable(text:$search,prompt:MeterPageText.searchPrompt)
             .task { await open() }
             // The lookup stopped again (it ran once more meanwhile): shown if the user is still there.
             .onChange(of:campus.powerStop) { _, stop in
