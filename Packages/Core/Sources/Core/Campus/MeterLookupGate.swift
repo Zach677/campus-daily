@@ -39,14 +39,25 @@ public struct MeterLookupGate: Sendable, Equatable {
     }
 
     /// The lookup answered for the person still signed in: the answer replaces what was shown.
-    public mutating func answered(_ found: ElectricityResolution, stamp: Int) {
+    /// `meterBound` = a meter is bound now (read again as the answer lands).
+    @discardableResult
+    public mutating func answered(_ found: ElectricityResolution, stamp: Int, meterBound: Bool = false) -> Bool {
         running = false
         clear()
+        // A meter picked by hand meanwhile wins: the late list or stop is not shown.
+        guard !meterBound else { return false }
         switch found {
         case .chooseAmong(let list): choices = list; choicesStamp = stamp
         case .stopped(let at): stop = at
         case .matched, .alreadyBound, .noAddress: break
         }
+        return true
+    }
+
+    /// Where the meter page opens: the stopped level, unless a meter is bound by now.
+    public func pageStop(meterBound: Bool) -> MeterWalkStop? {
+        guard !meterBound, let stop, !stop.options.isEmpty else { return nil }
+        return stop
     }
 
     /// The lookup ended. After `answered`, or alone when it failed or was dropped for another

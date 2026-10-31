@@ -98,7 +98,7 @@ struct PowerChoice: Identifiable, Equatable {
     var powerChoices: [PowerChoice] { lookup.choices.map { PowerChoice(candidate:$0, stamp:lookup.choicesStamp ?? -1) } }
     /// Where the automatic lookup stopped (a level that did not match the dorm exactly once):
     /// the meter page opens there.
-    var powerStop: MeterWalkStop? { lookup.stop }
+    var powerStop: MeterWalkStop? { lookup.pageStop(meterBound:powerConfigured) }
     var balance: Decimal? { snapshot.card.value?.yuan }
     var meter: Meter? { snapshot.power.value }
 
@@ -302,12 +302,15 @@ struct PowerChoice: Identifiable, Equatable {
                 let (stamp, answer) = try await session.matchElectricity()
                 // Someone else signed in after it answered: none of it is theirs, their own runs.
                 if await session.isSamePerson(since:stamp) {
-                    lookup.answered(answer, stamp:stamp)
+                    // Read again as it lands: a meter picked by hand meanwhile wins over the answer.
+                    let bound = ((try? AppEnvironment.schoolVault.profile()) ?? nil)?.meter != nil
                     found = answer
-                    switch answer {
-                    case .matched, .alreadyBound, .chooseAmong: break
-                    case .stopped: powerMatchIssue = Self.stoppedIssue
-                    case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「电表」里选一下。"
+                    if lookup.answered(answer, stamp:stamp, meterBound:bound) {
+                        switch answer {
+                        case .matched, .alreadyBound, .chooseAmong: break
+                        case .stopped: powerMatchIssue = Self.stoppedIssue
+                        case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「电表」里选一下。"
+                        }
                     }
                 } else {
                     again = true

@@ -90,7 +90,8 @@ struct CampusPowerSetupView: View {
     }
     /// Where the lookup stopped, else the campuses.
     private func open() async {
-        guard let stop = campus.powerStop, !stop.options.isEmpty else { await loadRoot(); return }
+        // Nil once a meter is bound (`MeterLookupGate.pageStop`): the page starts at the campuses.
+        guard let stop = campus.powerStop else { await loadRoot(); return }
         stamp = await campus.personStamp()
         show(stop)
     }

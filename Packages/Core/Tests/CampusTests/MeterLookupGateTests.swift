@@ -129,4 +129,35 @@ final class MeterLookupGateTests: XCTestCase {
         XCTAssertEqual(gate.choices, [])
         XCTAssertTrue(gate.running)
     }
+
+    /// A meter picked by hand while the lookup ran: its late list or stop is not shown, and
+    /// says it was not (the app then says nothing about it).
+    func testALateAnswerAfterAMeterWasBoundIsNotShown() {
+        for answer in [ElectricityResolution.stopped(Self.stop), .chooseAmong([Self.candidate, Self.other]), .noAddress] {
+            var gate = MeterLookupGate()
+            _ = gate.start(.manual, signedIn: true, meterBound: false)
+            gate.clear()
+            XCTAssertFalse(gate.answered(answer, stamp: 1, meterBound: true), "\(answer)")
+            XCTAssertEqual(gate.choices, [])
+            XCTAssertNil(gate.choicesStamp)
+            XCTAssertNil(gate.stop)
+            XCTAssertFalse(gate.running)
+        }
+        var gate = MeterLookupGate()
+        _ = gate.start(.manual, signedIn: true, meterBound: false)
+        XCTAssertTrue(gate.answered(.stopped(Self.stop), stamp: 1, meterBound: false))
+        XCTAssertEqual(gate.stop, Self.stop)
+    }
+
+    /// The meter page opens at the stop only while no meter is bound.
+    func testThePageOpensAtTheStopOnlyWithoutAMeter() {
+        var gate = MeterLookupGate()
+        _ = gate.start(.manual, signedIn: true, meterBound: false)
+        gate.answered(.stopped(Self.stop), stamp: 1)
+        XCTAssertEqual(gate.pageStop(meterBound: false), Self.stop)
+        XCTAssertNil(gate.pageStop(meterBound: true))
+        let empty = MeterWalkStop(level: .campus, path: [], options: [])
+        gate.answered(.stopped(empty), stamp: 1)
+        XCTAssertNil(gate.pageStop(meterBound: false), "nothing to choose from: the page starts at the campuses")
+    }
 }
