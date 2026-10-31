@@ -84,29 +84,44 @@ final class PasswordLoginInterruptionTests: XCTestCase {
     }
 }
 
-/// A password login during which the process lost its lease (suspended past it, and the other
-/// process took it).
+/// A password login during which the process was suspended past its lease: the other process
+/// took it (`takenBy`), or nobody did and it only ran out (nil).
 final class LeaseLosingPasswordLogin: SchoolPasswordLogin, @unchecked Sendable {
     // @unchecked: `calls` is only touched by the one login of each refresh, read after it returned.
     let leaseFile: LeaseFile
     let clock: FakeClock
+    let takenBy: String?
     private(set) var calls = 0
-    init(leaseFile: LeaseFile, clock: FakeClock) { self.leaseFile = leaseFile; self.clock = clock }
+    init(leaseFile: LeaseFile, clock: FakeClock, takenBy: String? = "widget-2") {
+        self.leaseFile = leaseFile; self.clock = clock; self.takenBy = takenBy
+    }
     func login(account: String, password: String, visitorID: String) async throws -> PortalToken {
         calls += 1
         if calls == 1 {
             clock.advance(RefreshLease.defaultDuration + 1)
-            _ = RefreshLease(file: leaseFile, owner: "widget-2", now: clock.function).acquire()
+            if let takenBy { _ = RefreshLease(file: leaseFile, owner: takenBy, now: clock.function).acquire() }
         }
         return SchoolPasswordSignInTests.freshToken
     }
 }
 
+/// A password login whose answer comes back as its task is cancelled (the widget at its deadline).
+final class CancellingPasswordLogin: SchoolPasswordLogin, @unchecked Sendable {
+    // @unchecked: `calls` is only touched by the one login of each refresh, read after it returned.
+    private(set) var calls = 0
+    func login(account: String, password: String, visitorID: String) async throws -> PortalToken {
+        calls += 1
+        withUnsafeCurrentTask { $0?.cancel() }
+        return SchoolPasswordSignInTests.freshToken
+    }
+}
+
 final class PasswordLoginLostLeaseTests: XCTestCase {
-    /// The school accepted the password while the lease ran out (the other process took it):
-    /// nothing is written without the lease, not even the portal token, and the hold written
-    /// before the password went out stays, so the next refresh does not send it again.
-    func testAnAcceptedPasswordIsNotWrittenWhenTheLeaseIsLostMeanwhile() async throws {
+    /// The school accepted the password while the lease ran out and the other process took it:
+    /// that one may have stored newer credentials, so nothing is written, not even the portal
+    /// token, and the hold written before the password went out stays, so the next refresh
+    /// does not send it again.
+    func testAnAcceptedPasswordIsNotWrittenWhenTheOtherProcessTookTheLease() async throws {
         var h = Harness()
         let login = LeaseLosingPasswordLogin(leaseFile: h.store.leaseFile, clock: h.clock)
         h.passwordLogin = login
@@ -133,6 +148,51 @@ final class PasswordLoginLostLeaseTests: XCTestCase {
         _ = await refresher("app-1").refresh(inBackground: false)
         XCTAssertEqual(login.calls, 1, "the password was sent once")
         XCTAssertEqual(try h.vault.ecyktSession()?.token, T.session().token)
+    }
+
+    /// The school accepted the password while the lease ran out and nobody took it (the app
+    /// suspended past it): the lease is still ours by owner, so nobody else wrote. The portal
+    /// token is kept and the hold lifted, re-taking the lease in the same locked step, and the
+    /// token is exchanged at once; the password is not sent again.
+    func testAnAcceptedPasswordIsKeptWhenTheLeaseRanOutMeanwhile() async throws {
+        var h = Harness()
+        let login = LeaseLosingPasswordLogin(leaseFile: h.store.leaseFile, clock: h.clock, takenBy: nil)
+        h.passwordLogin = login
+        try h.signedIn()
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+        h.server.serve(try T.eCardWithTicket())
+        h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        let lease = RefreshLease(file: h.store.leaseFile, owner: "app-1", now: h.clock.function)
+        let refresher = SnapshotRefresher(school: h.session(), store: h.snapshots, lease: lease, leaseWait: 0, sleep: { _ in })
+        let result = await refresher.refresh(inBackground: false)
+        XCTAssertNotEqual(result.outcome, .leaseLost)
+        XCTAssertEqual(try h.vault.portalToken()?.value, SchoolPasswordSignInTests.freshToken.value, "kept")
+        let account = try XCTUnwrap(try h.vault.account())
+        XCTAssertNil(account.unansweredAt, "the hold is lifted")
+        XCTAssertFalse(account.paused)
+        XCTAssertEqual(try h.vault.ecyktSession()?.token, "AFTER-PASSWORD", "the token was exchanged under the re-taken lease")
+        XCTAssertEqual(login.calls, 1)
+    }
+
+    /// The answer came back as the task was cancelled (the widget at its deadline): the
+    /// accepted token is still written, in one synchronous locked step, so the next refresh
+    /// exchanges it instead of waiting out the hold.
+    func testAnAcceptedPasswordIsKeptWhenTheTaskIsCancelledMeanwhile() async throws {
+        var h = Harness()
+        let login = CancellingPasswordLogin()
+        h.passwordLogin = login
+        try h.signedIn()
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+        let lease = RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function)
+        let refresher = SnapshotRefresher(school: h.session(), store: h.snapshots, lease: lease, leaseWait: 0, sleep: { _ in })
+        _ = await refresher.refresh(inBackground: true)
+        XCTAssertEqual(try h.vault.portalToken()?.value, SchoolPasswordSignInTests.freshToken.value, "kept")
+        XCTAssertNil(try h.vault.account()?.unansweredAt, "the hold is lifted with it")
+        XCTAssertEqual(login.calls, 1)
     }
 }
 

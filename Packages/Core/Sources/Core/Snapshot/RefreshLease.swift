@@ -97,6 +97,21 @@ public struct RefreshLease: Sendable {
         return try ran?.get()
     }
 
+    /// `withOwnership` for the one write that may follow a lease which only ran out: this owner
+    /// is still the stored one (nobody took the lease since, and no sign-out removed it), so
+    /// nobody else wrote a credential meanwhile: every credential writer needs the lease and a
+    /// sign-out removes it first. The lease is taken again (expiry pushed forward) and `body`
+    /// runs, in the same locked step. nil = another owner, no lease, or no usable file.
+    func withOwnershipRetaking<T>(_ body: () throws -> T) throws -> T? {
+        var ran: Result<T, Error>?
+        _ = update { current -> (Record?, Void) in
+            guard let holder = current, holder.owner == owner else { return (current, ()) }
+            ran = Result { try body() }
+            return (Record(owner: owner, expiresAt: now().addingTimeInterval(duration)), ())
+        }
+        return try ran?.get()
+    }
+
     /// `acquire()` without waiting for the lock: false while another step holds it. Tests use it
     /// as the other process trying at one exact moment.
     func tryAcquire() -> Bool {
@@ -233,5 +248,14 @@ public struct LeaseOwnership: Sendable {
         guard let lease else { return try body() }
         guard !Task.isCancelled else { return nil }
         return try lease.withOwnership(body)
+    }
+
+    /// `write` for a password login's accepted portal token only: the lease may have run out
+    /// while this owner is still the stored one (`RefreshLease.withOwnershipRetaking`), and a
+    /// cancelled task still writes (one short synchronous step; dropping the token would leave
+    /// the password held back for hours with nothing newer stored). The owner check stays.
+    func writeRetaking<T>(_ body: () throws -> T) throws -> T? {
+        guard let lease else { return try body() }
+        return try lease.withOwnershipRetaking(body)
     }
 }

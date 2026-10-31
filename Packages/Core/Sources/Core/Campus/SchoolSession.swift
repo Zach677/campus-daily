@@ -733,22 +733,32 @@ public actor SchoolSession {
         }
         // The school accepted the password: the portal token is kept at once, so neither this
         // process nor the other one sends the password again (a read given up after this point
-        // leaves a token to exchange). It is written in one locked step while the lease is still
-        // ours and the stored account and portal token are still the ones this login started
-        // from: a token the other process stored after taking the lease is never overwritten.
-        // A sign-out in between (this process, or the account gone from the Keychain) drops it.
-        // The hold is lifted only once the token is stored.
+        // leaves a token to exchange). It is written in one locked step while this process is
+        // still the lease's owner and the stored account and portal token are still the ones
+        // this login started from: a token the other process stored after taking the lease is
+        // never overwritten. A lease that only ran out meanwhile (suspended, nobody took it) is
+        // taken again in that step, and a cancelled task (the widget's deadline) still writes:
+        // dropping the token there would hold the password back for hours with nothing newer
+        // stored. A sign-out in between (this process, or the account gone from the Keychain)
+        // drops it. The hold is lifted in the same step, only with the token stored.
         guard started == signOutGeneration else { return .unavailable }
         enum TokenSave { case written, gone, changed }
         let vault = vault, fresh = stamped(token)
-        let saveStep = (try? owning.write { () -> TokenSave in
+        let saveStep = (try? owning.writeRetaking { () -> TokenSave in
             let still: SchoolAccount?
             do { still = try vault.account() } catch { return .changed }
             guard let still else { return .gone }
             let portal: PortalToken?
             do { portal = try vault.portalToken() } catch { return .changed }
             guard still.account == saved.account, portal?.value == seenPortalToken else { return .changed }
-            return (try? vault.savePortalToken(fresh)) != nil ? .written : .changed
+            guard (try? vault.savePortalToken(fresh)) != nil else { return .changed }
+            // Read again: an older build's sign-out deletes without the lease, also right here.
+            if var current = (try? vault.account()) ?? nil, current.account == saved.account,
+               current.password == saved.password, current.unansweredAt == sentAt {
+                current.unansweredAt = nil
+                try? vault.saveAccount(current)
+            }
+            return .written
         }) ?? nil
         switch saveStep {
         // Lost to a sign-out (it removes the lease first, then the items): reported as one.
@@ -768,7 +778,6 @@ public actor SchoolSession {
             }) ?? nil
             return removed == true ? .signedOut : .retryLater
         }
-        liftHold(saved, sentAt: sentAt, since: started, owning: owning)
         do {
             guard await mayMint() else { return .lostLease }
             let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)

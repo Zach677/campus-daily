@@ -279,8 +279,11 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   and account with the ones it started from and writes everything in that one step; lost lease or
   changed credentials (the app was suspended past the lease and the widget stored newer ones),
   nothing is written and the login reports `busy` (「正在更新，等一下再试。」, the typed password
-  stays). A refresh's password accepted after its lease was lost keeps the hold written before it
-  went out, so it is not sent again for a while. Only deletions skip the lease check: sign-out and
+  stays). A refresh's password accepted after the other process took its lease keeps the hold
+  written before it went out, so it is not sent again for a while. Its portal token is still
+  written when the lease only ran out (this process is still the stored owner: nobody else took
+  it, so nobody else wrote) or the task was cancelled: that step takes the lease again, lifts the
+  hold and keeps the owner and compare checks. Only deletions skip the lease check: sign-out and
   reset remove the lease first (below), and the first 保存密码 off-write removes the password at
   once, its second write under the lease taking out one a refresh wrote back;
 - each `holdingLease` call (a login, 保存密码, recharge, the hot-water hand-off) takes the lease
