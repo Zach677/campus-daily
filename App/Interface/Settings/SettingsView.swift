@@ -64,32 +64,32 @@ struct SettingsView: View {
             reminderHandlers(List {
                 Section("我的") {
                     NavigationLink { AccountView(preview:preview) } label: {
-                        SettingsRow(emoji:"🎓", title:"学校账号", value:AccountText.row(signedIn:data.signedIn, account:data.schoolAccount))
+                        SettingsRow(symbol:"graduationcap", title:"学校账号", value:AccountText.row(signedIn:data.signedIn, account:data.schoolAccount))
                     }
                     NavigationLink { CampusOnboardingView() } label: {
                         // Full location under the title; 「去设置」 until there is one.
-                        if let location = data.dormLocation { SettingsRow(emoji:"🏠", title:"宿舍", detail:location) }
-                        else { SettingsRow(emoji:"🏠", title:"宿舍", value:data.dorm ?? "去设置") }
+                        if let location = data.dormLocation { SettingsRow(symbol:"house", title:"宿舍", detail:location) }
+                        else { SettingsRow(symbol:"house", title:"宿舍", value:data.dorm ?? "去设置") }
                     }
                 }.listRowBackground(Theme.group)
                 // 电表, 热水, 学校洗衣机, 常用洗衣机; the 学校洗衣机 footnote stays under the group.
                 Section {
                     NavigationLink { CampusPowerSetupView() } label: {
-                        if data.powerBound, let location = data.meterLocation { SettingsRow(emoji:"⚡", title:"电表", detail:location) }
-                        else { SettingsRow(emoji:"⚡", title:"电表", value:data.powerBound ? "已绑定" : "去绑定") }
+                        if data.powerBound, let location = data.meterLocation { SettingsRow(symbol:"bolt", title:"电表", detail:location) }
+                        else { SettingsRow(symbol:"bolt", title:"电表", value:data.powerBound ? "已绑定" : "去绑定") }
                     }
                     if data.shower == .unconfigured {
                         // Hot water is set up by choosing the dorm (controller binding), not by a file.
                         NavigationLink { CampusOnboardingView() } label: {
-                            SettingsRow(emoji:"🚿", title:"热水", value:"未选")
+                            SettingsRow(symbol:"shower", title:"热水", value:"未选")
                         }
                     } else {
                         NavigationLink { ShowerDetail() } label: {
-                            SettingsRow(emoji:"🚿", title:"热水", value:"已导入")
+                            SettingsRow(symbol:"shower", title:"热水", value:"已导入")
                         }
                     }
                     Toggle(isOn:laundrySwitch) {
-                        SettingsRow(emoji:"🧺", title:SchoolLaundryPreference.title)
+                        SettingsRow(symbol:"washer", title:SchoolLaundryPreference.title)
                     }
                     .tint(.green)
                     .disabled(laundryLocked)
@@ -97,7 +97,7 @@ struct SettingsView: View {
                     if laundryOn {
                         NavigationLink { WasherSetupView() } label: {
                             // No icon: the title lines up with 「学校洗衣机」 above.
-                            SettingsRow(emoji:"🧺", title:"常用洗衣机", hidesEmoji:true,
+                            SettingsRow(symbol:nil, title:"常用洗衣机",
                                         value:data.laundryBound ? (data.laundryMachine.map { "\($0) 号机" } ?? "已绑定") : "去设置")
                         }
                     }
@@ -110,7 +110,7 @@ struct SettingsView: View {
                 reminderSection
                 Section {
                     NavigationLink { AdvancedSettingsView(preview:preview) } label: {
-                        SettingsRow(emoji:"🛠️", title:"高级")
+                        SettingsRow(symbol:"wrench.and.screwdriver", title:"高级")
                     }
                 } footer: {
                     Text("校日常 · 非学校官方应用")
@@ -251,19 +251,20 @@ extension SettingsView {
     }
 }
 
-/// Emoji (17pt in a 24pt frame) · title · value in ink2.
+/// Icon (`RowIcon`, 20pt in a 26pt column) · title · value in ink2.
 struct SettingsRow: View {
-    let emoji: String
+    /// SF Symbol name; nil keeps the column empty (a sub-row aligned with the row above).
+    let symbol: String?
     let title: String
-    /// Keeps the emoji's space but doesn't draw it (a sub-row aligned with the row above).
-    var hidesEmoji = false
     var value: String? = nil
     /// Second line under the title (a full location), 13 ink2, wraps; replaces `value`.
     var detail: String? = nil
     @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo:.title3) private var iconColumn: CGFloat = 26
     var body: some View {
         HStack(spacing:12) {
-            Text(emoji).scaledFont(17).frame(minWidth:24).fixedSize().opacity(hidesEmoji ? 0 : 1).accessibilityHidden(true)
+            Group { if let symbol { RowIcon(symbol:symbol) } else { Color.clear.frame(height:1) } }
+                .frame(width:iconColumn)
             if let detail {
                 VStack(alignment:.leading, spacing:2) {
                     titleText
@@ -290,7 +291,7 @@ struct SettingsRow: View {
     }
     private var titleText: some View {
         Text(title).foregroundStyle(Theme.ink)
-            // Separator starts under the title, not the emoji.
+            // Separator starts under the title, not the icon.
             .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
     }
 }

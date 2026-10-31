@@ -59,7 +59,7 @@ extension HomeView {
             VStack(spacing:0) {
                 Hairline()
                 rowLink(.shower, label:"热水，" + showerUnavailableReason(data)) {
-                    StatusRow(emoji:"🚿", title:"热水", subtitle:showerUnavailableReason(data), dimmed:true)
+                    StatusRow(symbol:"shower", title:"热水", subtitle:showerUnavailableReason(data), dimmed:true)
                 }
                 Hairline()
             }
@@ -114,7 +114,7 @@ extension HomeView {
         return "\(machine) 号机"
     }
     func laundryRow(_ data: HomeData) -> some View {
-        StatusRow(emoji:"🧺", title:laundryTitle(data),
+        StatusRow(symbol:"washer", title:laundryTitle(data),
                   subtitle:data.laundryBound ? data.laundry.subtitle : "扫机身上的码来绑定",
                   value:data.laundryBound ? data.laundry.value : nil)
     }

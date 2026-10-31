@@ -37,6 +37,14 @@ final class RecentFeedTests: XCTestCase {
         XCTAssertEqual(CardRecordKind.allCases.map(\.title), ["食堂", "热水", "洗衣", "电费", "充值", "其他"])
     }
 
+    /// Rows draw one grey line symbol per kind (SF Symbols names), no emoji.
+    func testEachKindHasItsLineSymbol() {
+        XCTAssertEqual(CardRecordKind.allCases.map(\.symbol),
+                       ["fork.knife", "shower", "washer", "bolt", "plus.circle", "bag"])
+        let item = RecentItem(id: "1", kind: .laundry, title: "洗衣", date: noon, detail: nil, amount: nil, source: .app)
+        XCTAssertEqual(item.symbol, "washer")
+    }
+
     func testTheFixtureRecordsAreClassified() throws {
         let data = try Data(contentsOf: FixtureLoader.root.appendingPathComponent("ecykt/card-getRecordList-ok.json"))
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])

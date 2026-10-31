@@ -281,13 +281,13 @@ struct LaundryDetail: View {
         if let record = facts.record {
             HomeSectionHeader(text:"这笔订单").padding(.top,30)
             VStack(spacing:0) {
-                StatusRow(emoji:"🧺", title:programLine(facts) ?? record.programName,
+                StatusRow(symbol:"washer", title:programLine(facts) ?? record.programName,
                           subtitle:[facts.machine.map(LaundryFormat.machine), facts.store].compactMap { $0 }.joined(separator:" · "))
                     .accessibilityElement(children:.combine)
                 if record.order?.paid == true {
                     RowSeparator()
                     // Payment channel is not in the order detail, so no 「支付宝」 subtitle.
-                    StatusRow(emoji:"💳", title:"已付款", value:facts.amount.map { .amount(Theme.yuan($0)) })
+                    StatusRow(symbol:"creditcard", title:"已付款", value:facts.amount.map { .amount(Theme.yuan($0)) })
                         .accessibilityElement(children:.ignore)
                         .accessibilityLabel(["已付款", facts.amount.map(LaundryFormat.spokenYuan)].compactMap { $0 }.joined(separator:"，"))
                 }

@@ -19,25 +19,24 @@ func minuteSchedule(to end: Date) -> PeriodicTimelineSchedule {
     .periodic(from:end.addingTimeInterval(-86400), by:60)
 }
 
-/// Emoji column width shared by StatusRow and RecentRow (scaled like .title2) so text edges line up.
-enum RowMetrics { static let emojiColumn: CGFloat = 28 }
+/// Icon column width shared by StatusRow and RecentRow (scaled like .title2) so text edges line up.
+enum RowMetrics { static let iconColumn: CGFloat = 28 }
 
-/// Home status row: emoji · title/subtitle · value. Min height 66.
+/// Home status row: icon · title/subtitle · value. Min height 66.
 struct StatusRow: View {
-    let emoji: String
+    /// SF Symbol name (`RowIcon`).
+    let symbol: String
     let title: String
     var subtitle: String = ""
     var subtitleLow = false
     var value: RowValue?
     var dimmed = false
     @Environment(\.dynamicTypeSize) private var typeSize
-    /// Emoji scales with Dynamic Type like .title2 (22pt at the default size).
-    @ScaledMetric(relativeTo:.title2) private var emojiSize: CGFloat = 22
-    @ScaledMetric(relativeTo:.title2) private var emojiColumn: CGFloat = RowMetrics.emojiColumn
+    @ScaledMetric(relativeTo:.title2) private var iconColumn: CGFloat = RowMetrics.iconColumn
     var body: some View {
-        // Accessibility sizes: emoji sits on the first title line's baseline, not the stack's centre.
+        // Accessibility sizes: the icon sits on the first title line's baseline, not the stack's centre.
         HStack(alignment:typeSize.isAccessibilitySize ? .firstTextBaseline : .center, spacing:14) {
-            Text(emoji).font(.system(size:emojiSize)).frame(width:emojiColumn).accessibilityHidden(true)
+            RowIcon(symbol:symbol).frame(width:iconColumn)
             if typeSize.isAccessibilitySize {
                 VStack(alignment:.leading, spacing:6) { titles; valueView }
                 Spacer(minLength:0)
@@ -96,7 +95,7 @@ struct StatusRow: View {
     }
 }
 
-/// 「最近」 row: min height 56, emoji 18, 16pt text.
+/// 「最近」 row: min height 56, icon 20, 16pt text.
 struct RecentRow: View {
     let item: RecentItem
     /// Replaces the amount with an accentText word (laundry 「待核对」).
@@ -104,13 +103,11 @@ struct RecentRow: View {
     /// Under a day header (校园卡记录): the time alone, 「12:05 · 示例面馆」.
     var clockOnly = false
     @Environment(\.dynamicTypeSize) private var typeSize
-    /// Emoji scales with Dynamic Type relative to .title2 (18pt at the default size).
-    @ScaledMetric(relativeTo:.title2) private var emojiSize: CGFloat = 18
-    @ScaledMetric(relativeTo:.title2) private var emojiColumn: CGFloat = RowMetrics.emojiColumn
+    @ScaledMetric(relativeTo:.title2) private var iconColumn: CGFloat = RowMetrics.iconColumn
     var body: some View {
-        // Accessibility sizes: emoji sits on the first title line's baseline.
+        // Accessibility sizes: the icon sits on the first title line's baseline.
         HStack(alignment:typeSize.isAccessibilitySize ? .firstTextBaseline : .center, spacing:14) {
-            Text(item.emoji).font(.system(size:emojiSize)).frame(width:emojiColumn).accessibilityHidden(true)
+            RowIcon(symbol:item.symbol).frame(width:iconColumn)
             if typeSize.isAccessibilitySize {
                 VStack(alignment:.leading, spacing:4) { titles; amountView }
                 Spacer(minLength:0)

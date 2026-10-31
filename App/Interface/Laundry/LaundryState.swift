@@ -36,7 +36,7 @@ struct LaundryLastOrder: Codable, Equatable {
     var amount: Money?
 }
 
-/// Everything the laundry page and the home 🧺 row read, from the model or DEBUG demo data.
+/// Everything the laundry page and the home 洗衣 row read, from the model or DEBUG demo data.
 /// Pure value: deriving a phase never triggers a request.
 struct LaundryFacts {
     var configured = false

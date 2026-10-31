@@ -74,17 +74,17 @@ public enum CardRecordKind: String, Sendable, Codable, CaseIterable {
         }
     }
 
-    public var emoji: String {
+    /// The SF Symbol rows draw for it (grey, outline).
+    public var symbol: String {
         switch self {
-        case .canteen: return "🍚"
-        case .shower: return "🚿"
-        case .laundry: return "🧺"
-        case .electricity: return "⚡"
-        case .topUp: return "⬆️"
-        case .other: return "💳"
+        case .canteen: return "fork.knife"
+        case .shower: return "shower"
+        case .laundry: return "washer"
+        case .electricity: return "bolt"
+        case .topUp: return "plus.circle"
+        case .other: return "bag"
         }
     }
-
 
     /// Classifies by the record name (`transname`). Order matters: a hot-water name contains
     /// 「POS」 too, and paying for electricity or hot water from the card can be called

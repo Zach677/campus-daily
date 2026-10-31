@@ -48,7 +48,7 @@ public struct RecentItem: Sendable, Equatable, Identifiable {
         self.flow = flow ?? (kind == .topUp ? .moneyIn : .moneyOut)
     }
 
-    public var emoji: String { kind.emoji }
+    public var symbol: String { kind.symbol }
 
     /// 「−¥12.00」 for money out, 「+¥50.00」 for money in, 「¥3.00」 (no sign) when that can't be told;
     /// nil without an amount.

@@ -5,7 +5,7 @@ import Core
 /// Everything the home screen shows, derived from the models (or DEBUG demo data).
 struct HomeData {
     typealias Shower = ShowerHomeStatus
-    /// Home 🧺 row.
+    /// Home 洗衣 row.
     enum Laundry: Equatable {
         case unknown, idle, unpaid, starting, done, inUse, unresolved
         case running(program: String, end: Date)

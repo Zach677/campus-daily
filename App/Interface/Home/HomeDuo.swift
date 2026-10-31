@@ -30,12 +30,12 @@ struct HomeDuo: View {
     }
 
     private var cardColumn: some View {
-        HomeDuoColumn(emoji:"💳", title:"校园卡", figure:card, value:card.value.map(Theme.yuan), unit:nil,
+        HomeDuoColumn(symbol:"creditcard", title:"校园卡", figure:card, value:card.value.map(Theme.yuan), unit:nil,
                       spoken:Self.spokenCard(card), action:cardAction)
     }
 
     private var powerColumn: some View {
-        HomeDuoColumn(emoji:"⚡", title:"电量", figure:power, value:power.value.map(Theme.kwh), unit:"度",
+        HomeDuoColumn(symbol:"bolt", title:"电量", figure:power, value:power.value.map(Theme.kwh), unit:"度",
                       spoken:Self.spokenPower(power), action:powerAction)
     }
 
@@ -67,7 +67,8 @@ struct HomeDuo: View {
 
 /// One half of the duo: label, big number, optional small line. One VoiceOver element.
 struct HomeDuoColumn: View {
-    let emoji: String
+    /// SF Symbol name: grey like the label, never red.
+    let symbol: String
     let title: String
     let figure: HomeFigure
     /// Nil shows 「—」.
@@ -80,7 +81,7 @@ struct HomeDuoColumn: View {
         Button(action:{ if figure.tappable { action() } }) {
             VStack(alignment:.leading, spacing:0) {
                 HStack(spacing:6) {
-                    Text(emoji)
+                    Image(systemName:symbol).symbolRenderingMode(.monochrome).accessibilityHidden(true)
                     Text(title)
                 }
                 .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.ink2)

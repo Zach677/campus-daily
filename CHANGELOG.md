@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Draw the row icons on home, 校园卡记录, the laundry page and Settings as one set of grey line symbols instead of emoji; they stay grey when a number turns red.
 - Look for the dorm's electricity meter one level at a time (campus, apartment, building, floor, room) with small reads instead of one read of every meter on the campus; each read is retried twice on a timeout or a lost connection.
 - When a level does not match the dorm exactly once, open the meter page at that level: the matched levels with 「重选」, the level's list headed 「选校区」「选公寓」「选楼栋」「选楼层」「选房间」, and the dorm's likely rows first with 「可能是这个」.
 - Bind meters to their room only; a meter bound to the whole campus by an earlier build is removed at launch, keeping the dorm, and looked up again.
