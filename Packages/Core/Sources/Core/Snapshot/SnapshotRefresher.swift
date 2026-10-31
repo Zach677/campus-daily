@@ -355,6 +355,8 @@ public actor SnapshotRefresher {
             let at = reading.readAt ?? reading.checkedAt
             if let b = reading.balance { s = SchoolSnapshotReducer.reduce(s, .balance(b, at: at)) }
             if let a = reading.activity { s = SchoolSnapshotReducer.reduce(s, .activity(a, at: at)) }
+            // No meter bound: the stored reading belonged to one that is gone.
+            if reading.noMeter { s = SchoolSnapshotReducer.reduce(s, .meterUnbound) }
             if let m = reading.meter {
                 s = SchoolSnapshotReducer.reduce(s, .meter(m, at: at))
                 s = SchoolSnapshotReducer.reduce(s, .roomLabel(reading.roomLabel))

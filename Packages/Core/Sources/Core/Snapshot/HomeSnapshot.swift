@@ -71,6 +71,8 @@ public enum SchoolSnapshotEvent: Sendable, Equatable {
     case meter(Result<Meter?, ServiceError>, at: Date)
     case activity(Result<CardActivity, ServiceError>, at: Date)
     case roomLabel(String?)
+    /// No meter is bound any more: its reading and room are forgotten.
+    case meterUnbound
     case signedOut
 }
 
@@ -108,6 +110,9 @@ public enum SchoolSnapshotReducer {
             s.activity.fail(e, at: at)
         case .roomLabel(let label):
             s.roomLabel = label
+        case .meterUnbound:
+            s.power = Tile()
+            s.roomLabel = nil
         case .signedOut:
             s = .empty
         }

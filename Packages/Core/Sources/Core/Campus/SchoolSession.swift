@@ -47,12 +47,15 @@ public struct SchoolReading: Sendable, Equatable {
     /// When balance and meter answered.
     public var readAt: Date?
     public var reexchanged: Bool
+    /// No meter is bound (none saved, or one bound to the campus node by an older build): the
+    /// stored electricity reading belongs to no meter and is cleared.
+    public var noMeter: Bool
 
     public init(outcome: Outcome, checkedAt: Date, balance: Result<Money, ServiceError>? = nil,
                 meter: Result<Meter?, ServiceError>? = nil, roomLabel: String? = nil, readAt: Date? = nil,
-                reexchanged: Bool = false) {
+                reexchanged: Bool = false, noMeter: Bool = false) {
         self.outcome = outcome; self.checkedAt = checkedAt; self.balance = balance; self.meter = meter
-        self.roomLabel = roomLabel; self.readAt = readAt; self.reexchanged = reexchanged
+        self.roomLabel = roomLabel; self.readAt = readAt; self.reexchanged = reexchanged; self.noMeter = noMeter
     }
 }
 
@@ -565,7 +568,8 @@ public actor SchoolSession {
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
         var reading = SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
-                                    roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged)
+                                    roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged,
+                                    noMeter: binding?.nodeIsRoom != true)
         await numbers(reading)
         let a = await withTaskCancellationHandler { await records.value } onCancel: { records.cancel() }
         guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }

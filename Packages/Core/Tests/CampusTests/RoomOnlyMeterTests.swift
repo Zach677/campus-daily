@@ -45,7 +45,42 @@ final class RoomOnlyMeterTests: XCTestCase {
         let reading = await h.session().refresh(inBackground: true, owning: .unchecked)
         XCTAssertEqual(reading.outcome, .ok)
         XCTAssertNil(reading.meter)
+        XCTAssertTrue(reading.noMeter, "its stored reading is cleared")
         XCTAssertEqual(meterReads(h).count, 0)
+    }
+
+    /// With no meter saved (dropped, a new dorm, never found) the reading says so; with the
+    /// room's meter it does not.
+    func testARefreshSaysWhetherAMeterIsBound() async throws {
+        for (binding, none) in [(nil, true), (Harness.roomBinding, false)] as [(MeterBinding?, Bool)] {
+            let h = Harness()
+            try h.signedIn(meter: binding)
+            try h.server.serve("ecykt/getSysBindCustInfo-ok")
+            try h.server.serve("ecykt/getUserBalance-ok")
+            try h.server.serve("ecykt/electric-getMeterStatus-room", matchBody: ["server"])
+            try h.server.serve("ecykt/card-getRecordList-ok")
+            let reading = await h.session().refresh(inBackground: true, owning: .unchecked)
+            XCTAssertEqual(reading.outcome, .ok)
+            XCTAssertEqual(reading.noMeter, none)
+        }
+    }
+
+    /// End to end: the refresh after the launch drop leaves home and the widget no reading.
+    func testTheRefreshAfterTheDropClearsTheStoredReading() async throws {
+        let h = Harness()
+        try h.signedIn(meter: Self.campusBinding)
+        let store = h.snapshots
+        var old = HomeSnapshot(roomLabel: "99栋 991", checkedAt: Date(timeIntervalSince1970: 1))
+        old.power.succeed(Meter(comAddress: "000000000991", name: "99栋991", remainingKWh: 42), at: Date(timeIntervalSince1970: 1))
+        try store.saveSnapshot(old)
+        XCTAssertTrue(try SchoolSession.dropCampusWideMeter(h.vault))
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        try h.server.serve("ecykt/card-getRecordList-ok")
+        let report = await SnapshotRefresher(school: h.session(), store: store).refresh(inBackground: true)
+        XCTAssertNil(report.snapshot.power.value)
+        XCTAssertNil(report.snapshot.roomLabel)
+        XCTAssertNil(try store.loadSnapshot()?.power.value)
     }
 
     func testTheRechargeCheckReadsNoCampusWideMeter() async throws {
