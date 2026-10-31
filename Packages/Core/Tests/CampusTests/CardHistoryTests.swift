@@ -9,11 +9,16 @@ final class CardHistoryTests: XCTestCase {
     /// 2026-10-30 12:00 in Shanghai.
     var noon: Date { cal.date(from: DateComponents(year: 2026, month: 10, day: 30, hour: 12))! }
 
+    /// Each record gets the next synthetic voucher, as the school gives one to each; pass
+    /// `voucher: nil` for a record without.
     func record(_ date: String, _ time: String, _ title: String = "POS消费示例面馆", _ yuan: String = "12.00",
-                flag: String? = "1", balance: String? = nil) -> CardRecord {
-        CardRecord(date: date, time: time, title: title, amount: Money(yuanString: yuan)!,
-                   balanceAfter: balance.flatMap(Money.init(yuanString:)), direction: flag)
+                flag: String? = "1", balance: String? = nil, voucher: String? = "next") -> CardRecord {
+        vouchers += 1
+        return CardRecord(date: date, time: time, title: title, amount: Money(yuanString: yuan)!,
+                          balanceAfter: balance.flatMap(Money.init(yuanString:)), direction: flag,
+                          voucher: voucher == "next" ? String(format: "99%018d", vouchers) : voucher)
     }
+    var vouchers = 0
 
     func moment(_ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
         cal.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour, minute: minute))!
@@ -84,6 +89,79 @@ final class CardHistoryTests: XCTestCase {
         // A new record at the top pushed the 50th onto page 2.
         history.receive(CardRecordPage(total: 52, rows: [rows[49], rows[50]]), for: history.nextQuery!)
         XCTAssertEqual(history.records.count, 51)
+    }
+
+    // MARK: The same record on two pages
+
+    /// Page 1 is full: 49 meals, then `last`. Page 2 brings `again` (the school moved `last` down
+    /// when a new record came, or a second purchase) and a record of the day before; the range ends.
+    func pagedTwice(last: CardRecord, again: CardRecord) -> CardHistory {
+        var history = CardHistory(now: noon)
+        history.receive(CardRecordPage(total: 51, rows: meals("20261030", 49) + [last]), for: history.nextQuery!)
+        history.receive(CardRecordPage(total: 51, rows: [again, record("20261029", "090000", balance: "60.00")]),
+                        for: history.nextQuery!)
+        return history
+    }
+
+    /// Two purchases alike in everything the school shows but their vouchers are two purchases.
+    func testTwoIdenticalPurchasesWithDifferentVouchersBothStay() {
+        let history = pagedTwice(last: record("20261030", "100000", voucher: "99000000000000000101"),
+                                 again: record("20261030", "100000", voucher: "99000000000000000102"))
+        XCTAssertEqual(history.records.count, 52)
+        XCTAssertEqual(CardDays.groups(history: history, app: [], now: noon).first?.total, Money(fen: 51 * 1200))
+    }
+
+    /// The same voucher, day, time and amount on the next page is the record moved down once more.
+    func testARecordMovedOntoTheNextPageIsShownOnceByItsVoucher() {
+        let row = record("20261030", "100000", voucher: "99000000000000000101")
+        let history = pagedTwice(last: row, again: row)
+        XCTAssertEqual(history.records.count, 51)
+        XCTAssertEqual(CardDays.groups(history: history, app: [], now: noon).first?.total, Money(fen: 50 * 1200))
+    }
+
+    /// The voucher alone never makes two records one.
+    func testTheSameVoucherAtAnotherTimeIsAnotherRecord() {
+        let history = pagedTwice(last: record("20261030", "100000", voucher: "99000000000000000101"),
+                                 again: record("20261030", "095900", voucher: "99000000000000000101"))
+        XCTAssertEqual(history.records.count, 52)
+    }
+
+    /// Without a voucher, the balance after it tells two alike purchases apart.
+    func testWithoutAVoucherTheBalanceTellsTwoPurchasesApart() {
+        let apart = pagedTwice(last: record("20261030", "100000", balance: "50.00", voucher: nil),
+                               again: record("20261030", "100000", balance: "62.00", voucher: nil))
+        XCTAssertEqual(apart.records.count, 52)
+        let same = pagedTwice(last: record("20261030", "100000", balance: "50.00", voucher: nil),
+                              again: record("20261030", "100000", balance: "50.00", voucher: nil))
+        XCTAssertEqual(same.records.count, 51)
+        XCTAssertEqual(CardDays.groups(history: same, app: [], now: noon).first?.total, Money(fen: 50 * 1200))
+    }
+
+    /// Neither voucher nor balance: two alike rows may be one record or two. Both are shown,
+    /// and their day has no 「花了」; the other days keep theirs.
+    func testWithoutVoucherOrBalanceNothingIsMergedAndTheDayHasNoTotal() {
+        let row = record("20261030", "100000", voucher: nil)
+        let history = pagedTwice(last: row, again: row)
+        XCTAssertEqual(history.records.count, 52)
+        let days = CardDays.groups(history: history, app: [], now: noon)
+        XCTAssertEqual(days.map(\.id), ["20261030", "20261029"])
+        XCTAssertNil(days[0].total)
+        XCTAssertEqual(days[1].total, Money(fen: 1200))
+    }
+
+    /// The voucher is kept in memory for the list only: never encoded, never printed.
+    func testAVoucherIsNeverEncodedOrPrinted() throws {
+        let voucher = "99000000000000000101"
+        let row = record("20261030", "100000", voucher: voucher)
+        let json = String(decoding: try JSONEncoder().encode(row), as: UTF8.self)
+        XCTAssertFalse(json.contains(voucher))
+        XCTAssertFalse(json.lowercased().contains("voucher"))
+        XCTAssertFalse(String(describing: row).contains(voucher))
+        XCTAssertFalse(String(reflecting: row).contains(voucher))
+        XCTAssertFalse(String(describing: [row]).contains(voucher))
+        let back = try JSONDecoder().decode(CardRecord.self, from: Data(json.utf8))
+        XCTAssertNil(back.voucher)
+        XCTAssertEqual(back.amount, row.amount)
     }
 
     func testAServerThatRepeatsTheSamePageEndsThatRangeWithoutATotalForTheCutDay() {

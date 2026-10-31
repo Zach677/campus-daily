@@ -64,6 +64,9 @@ final class SchoolRefreshTests: XCTestCase {
         XCTAssertEqual(saved.card, report.snapshot.card)
         XCTAssertEqual(saved.power.value?.leftMoney, Money(fen: 3692))
         XCTAssertEqual(saved.activity, report.snapshot.activity)
+        // 最近 and the widget keep no voucher: it is for 校园卡记录's list only.
+        XCTAssertEqual(report.snapshot.activity.value?.records.isEmpty, false)
+        XCTAssertEqual(report.snapshot.activity.value?.records.compactMap(\.voucher), [])
         XCTAssertEqual(h.loginBySysIdCalls(), 0, "refresh never calls loginBySysId")
         XCTAssertTrue(h.server.unmatched.isEmpty)
         // Latest custid ciphertext from the liveness answer is kept for next time.

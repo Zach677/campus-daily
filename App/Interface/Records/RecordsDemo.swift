@@ -90,8 +90,10 @@ enum RecordsDemo: String {
             if back % 5 == 4 { rows.append(record(at(19, 12, back), "洗衣", "4.00")) }
             if back == 15 { rows.append(record(at(13, 5, back), "校园卡充值", "50.00", flag:nil)) }
         }
+        // Each with a voucher, as the school gives them (synthetic: 99 and a zero-padded counter).
         return rows.filter { ($0.moment(calendar:school) ?? now) <= now.addingTimeInterval(-15 * 60) }
             .sorted { ($0.moment(calendar:school) ?? now) > ($1.moment(calendar:school) ?? now) }
+            .enumerated().map { i, row in var row = row; row.voucher = String(format:"99%018d", i + 1); return row }
     }
 }
 #endif

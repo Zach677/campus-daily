@@ -810,7 +810,7 @@ with an empty body**: treat it as a bad request, never as expiry.
 | `POST /api/electricnew/service` `server=/api/getMeterStatus` | no | `areacode, buildingID` | JSON string `[{comAddress, piplineName("99栋991"), type, meterData, leftMoney, preUseDay, meterStatus, updateDateTime, onlineStatus("在线"/"离线"), price, remaining}]` (all strings) | RO |
 | `POST /api/electricnew/service` without `server` | – | – | `code:500, msg:"缺少参数"` | – |
 | `POST /api/customer/getSignData` | yes | `custid, timestamp:""` | `{userLoginData, appdata:{vsuppid, phone, appid, sign, deptId, userId, nonce, username, timestamp}}` | RO (hot-water hand-off) |
-| `POST /card/getRecordList` | – | `begin, end (yyyyMMdd), custid, datetype:1, pageNum, pageSize, dcflag:"", address:""` | `{total, rows:[{transdate, transtime, transname, amount, balance, dcflag, …}]}` | RO |
+| `POST /card/getRecordList` | – | `begin, end (yyyyMMdd), custid, datetype:1, pageNum, pageSize, dcflag:"", address:""` | `{total, rows:[{transdate, transtime, transname, amount, balance, dcflag, voucherno, …}]}` | RO |
 | `GET /api/electricnew/getPowerUrl?custid&syscustid` | – | – | **302** to `/ykt-view/powersel?interfaceName=powernew_450010&isbind=1` | RO |
 | `POST /verify/csalogintoken/{areacode}` | ticket | `{ticket}` | `{syscustid, isbind, status, token}` | login |
 

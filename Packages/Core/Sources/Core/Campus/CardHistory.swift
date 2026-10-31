@@ -42,6 +42,8 @@ public struct CardHistory: Sendable, Equatable {
     private var readFrom: String?
     /// Days of finished ranges that may still miss records (the school stopped paging).
     private var unsure: Set<String> = []
+    /// Days with a record that may be on the list twice (no voucher, no balance): no total.
+    private var mayRepeat: Set<String> = []
     /// Days back from today of the current range's last day.
     private var rangeEnd = 0
     private var page = 1
@@ -87,8 +89,9 @@ public struct CardHistory: Sendable, Equatable {
         return dated.map { Self.trimmed($0.date) }.min()
     }
 
-    /// Every record of `day` (`yyyyMMdd`) has been read.
+    /// Every record of `day` (`yyyyMMdd`) has been read, each once.
     public func isComplete(day: String) -> Bool {
+        if mayRepeat.contains(day) { return false }
         if let readFrom, day >= readFrom { return !unsure.contains(day) }
         guard !reachedEnd, day >= self.day(back: rangeBegin), day <= self.day(back: rangeEnd),
               let cut = cutDay else { return false }
@@ -99,8 +102,9 @@ public struct CardHistory: Sendable, Equatable {
     public mutating func receive(_ answer: CardRecordPage, for query: CardHistoryQuery) {
         guard let expected = nextQuery, query == expected else { return }
         // A record that came on the previous page too (a new one at the top pushed it down).
-        let fresh = answer.rows.filter { !current.contains($0) }
+        let fresh = answer.rows.filter { row in !current.contains { $0.isSameRecord(as: row) } }
         current += fresh
+        for row in fresh where row.cannotBeToldApart { mayRepeat.insert(Self.trimmed(row.date)) }
         // The total, when given, decides; a page with room left over is the last one only without it.
         let last: Bool
         if let total = answer.total {

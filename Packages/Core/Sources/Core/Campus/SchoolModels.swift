@@ -244,7 +244,7 @@ public struct MeterCandidate: Sendable, Equatable, Identifiable {
 
 // MARK: - Card records
 
-public struct CardRecord: Sendable, Equatable, Codable {
+public struct CardRecord: Sendable, Equatable, Codable, CustomReflectable {
     public var date: String      // yyyyMMdd (transdate)
     public var time: String      // HHmmss (transtime)
     public var title: String     // transname
@@ -252,10 +252,37 @@ public struct CardRecord: Sendable, Equatable, Codable {
     public var balanceAfter: Money?
     /// Server `dcflag` (direction flag) as given.
     public var direction: String?
-    public init(date: String, time: String, title: String, amount: Money, balanceAfter: Money?, direction: String?) {
+    /// Server `voucherno`: told apart two alike records on 校园卡记录's pages. A personal
+    /// identifier kept in memory only: never encoded (so never stored, nor in the widget's
+    /// snapshot), never printed or logged.
+    public var voucher: String?
+    public init(date: String, time: String, title: String, amount: Money, balanceAfter: Money?, direction: String?,
+                voucher: String? = nil) {
         self.date = date; self.time = time; self.title = title; self.amount = amount
-        self.balanceAfter = balanceAfter; self.direction = direction
+        self.balanceAfter = balanceAfter; self.direction = direction; self.voucher = voucher
     }
+
+    private enum CodingKeys: String, CodingKey { case date, time, title, amount, balanceAfter, direction }
+
+    /// Printing a record (or a list of them) leaves the voucher out.
+    public var customMirror: Mirror {
+        Mirror(self, children: ["date": date, "time": time, "title": title, "amount": amount,
+                                "balanceAfter": balanceAfter as Any, "direction": direction as Any])
+    }
+
+    /// The same school record read twice (a page moved under the list): with both vouchers, the
+    /// voucher with the day, time and amount (never the voucher alone); without, the day, time,
+    /// amount, place and balance after it. Without voucher and balance nothing tells two alike
+    /// records from one read twice, so none is the same as another.
+    public func isSameRecord(as other: CardRecord) -> Bool {
+        guard date == other.date, time == other.time, amount == other.amount else { return false }
+        if let v = voucher, !v.isEmpty, let w = other.voucher, !w.isEmpty { return v == w }
+        guard let balance = balanceAfter, let otherBalance = other.balanceAfter else { return false }
+        return title == other.title && balance == otherBalance
+    }
+
+    /// Neither voucher nor balance: a repeat of it cannot be told from a second purchase.
+    var cannotBeToldApart: Bool { (voucher ?? "").isEmpty && balanceAfter == nil }
 }
 
 public struct CardRecordPage: Sendable, Equatable {

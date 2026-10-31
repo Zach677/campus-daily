@@ -545,7 +545,9 @@ public actor SchoolSession {
                 await Self.captureError {
                     let page = try await ecykt.cardRecords(session, custid: card.custid, begin: range.begin, end: range.end,
                                                            page: 1, pageSize: CardActivity.pageSize, timeout: timeout)
-                    return CardActivity(records: page.rows, begin: range.begin, end: range.end,
+                    // 最近 and the widget's snapshot keep no voucher (it is for 校园卡记录 only).
+                    let rows = page.rows.map { row in var row = row; row.voucher = nil; return row }
+                    return CardActivity(records: rows, begin: range.begin, end: range.end,
                                         complete: page.isComplete(pageSize: CardActivity.pageSize))
                 }
             }

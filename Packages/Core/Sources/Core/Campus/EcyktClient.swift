@@ -108,7 +108,8 @@ public struct EcyktClient: Sendable {
                               title: row["transname"]?.text ?? "",
                               amount: amount,
                               balanceAfter: row["balance"]?.text.flatMap(Money.init(yuanString:)),
-                              direction: row["dcflag"]?.text)
+                              direction: row["dcflag"]?.text,
+                              voucher: row["voucherno"]?.text)
         }
         return CardRecordPage(total: data["total"]?.intValue, rows: records)
     }

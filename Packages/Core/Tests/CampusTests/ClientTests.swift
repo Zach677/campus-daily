@@ -274,6 +274,7 @@ final class EcyktBalanceTests: XCTestCase {
         XCTAssertEqual(page.rows.first?.amount, Money(fen: 13))
         XCTAssertEqual(page.rows.first?.balanceAfter, Money(fen: 1234))
         XCTAssertEqual(page.rows.first?.date, "20260110")
+        XCTAssertEqual(page.rows.map(\.voucher), (0..<5).map { "9900000000000000000\($0)" })
         XCTAssertEqual(server.requests.first?.bodyField("pageSize"), "5")
         XCTAssertFalse(page.isComplete(pageSize: 5))
     }
