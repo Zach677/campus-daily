@@ -90,6 +90,36 @@ final class SchoolAccountSwitchTests: XCTestCase {
         XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
     }
 
+    /// Nothing shows whose web sign-in this was (the previous card id was never read, and the
+    /// page has no account): like the form sign-in, the old dorm and meter are not kept, and
+    /// the app is told so it drops that person's hot-water binding too.
+    func testWebSignInThatCannotTellThePersonDropsTheOldDormAndMeter() async throws {
+        let h = try signedInHarness(card: "TESTid00000000000000000000000001")
+        var unread = try XCTUnwrap(try h.vault.ecyktSession()); unread.cardUnionID = nil
+        try h.vault.saveEcyktSession(unread)
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil)
+        XCTAssertFalse(summary.switchedAccount)
+        XCTAssertTrue(summary.previousPersonUnconfirmed)
+        XCTAssertNil(try h.vault.profile()?.meter, "maybe someone else's meter")
+        XCTAssertNil(try h.vault.profile()?.residence, "maybe someone else's dorm")
+    }
+
+    func testOnlyALoginThatCannotTellThePreviousPersonIsUnconfirmed() async throws {
+        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let same = try signedInHarness(card: "TESTid00000000000000000000000001")
+        try same.server.serve("ecykt/getSysBindCustInfo-ok")
+        let kept = try await same.session().adoptWebState(try state.encoded(), portalToken: nil)
+        XCTAssertFalse(kept.previousPersonUnconfirmed)
+
+        let first = Harness()
+        try first.server.serve("ecykt/getSysBindCustInfo-ok")
+        let nobody = try await first.session().adoptWebState(try state.encoded(), portalToken: nil)
+        XCTAssertFalse(nobody.previousPersonUnconfirmed, "nobody was signed in before")
+        XCTAssertFalse(nobody.switchedAccount)
+    }
+
     /// The widget keeps signing in with the saved password after the same person used the web page.
     func testWebSignInKeepsTheSavedPasswordOnlyForTheSamePerson() async throws {
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])

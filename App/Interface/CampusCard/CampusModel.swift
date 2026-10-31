@@ -136,7 +136,7 @@ struct PowerChoice: Identifiable, Equatable {
         let summary = try await refresher.holdingLease {
             try await session.adoptWebState(state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
         }
-        if summary.switchedAccount { await previousPersonCleared() }
+        if summary.switchedAccount || summary.previousPersonUnconfirmed { await previousPersonCleared() }
         await refresher.noteChange()
         // Signed out (or reset) while that ran: the dorm must not be written back.
         guard started == signOutGeneration else { return }
@@ -160,13 +160,14 @@ struct PowerChoice: Identifiable, Equatable {
         let summary = try await refresher.holdingLease {
             try await session.signIn(account:account, password:password, savePassword:savePassword)
         }
-        if summary.switchedAccount { await previousPersonCleared() }
+        if summary.switchedAccount || summary.previousPersonUnconfirmed { await previousPersonCleared() }
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
         powerChoices = []; powerMatchIssue = nil
     }
 
-    /// The login was someone else: Core already dropped their school data. Here: the widget
+    /// The login was someone else, or nothing showed it was the same person: Core already
+    /// dropped their school data. Here: the widget
     /// snapshot, the hot-water binding made with their identity, and the one-time alert.
     /// Laundry (U净) is its own login and stays.
     private func previousPersonCleared() async {

@@ -59,8 +59,14 @@ public struct SignInSummary: Sendable, Equatable {
     /// A different person than the one signed in before: the old dorm, meter and saved
     /// account were cleared first (the app clears its own per-person data too).
     public var switchedAccount: Bool
-    public init(cardholder: String, residence: PortalResidence?, switchedAccount: Bool = false) {
+    /// Someone was signed in, and neither the card nor the account shows whether this is them:
+    /// their dorm and meter were not kept (unless the new dorm is the same room), and the app
+    /// drops what it keeps per person as for a switch.
+    public var previousPersonUnconfirmed: Bool
+    public init(cardholder: String, residence: PortalResidence?, switchedAccount: Bool = false,
+                previousPersonUnconfirmed: Bool = false) {
         self.cardholder = cardholder; self.residence = residence; self.switchedAccount = switchedAccount
+        self.previousPersonUnconfirmed = previousPersonUnconfirmed
     }
 }
 
@@ -275,7 +281,8 @@ public actor SchoolSession {
             profile = SchoolProfile()
         }
         try vault.saveProfile(profile)
-        return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: match == .different)
+        return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: match == .different,
+                             previousPersonUnconfirmed: before != nil && match == .unknown)
     }
 
     /// Fallback while the ticket exchange is uncaptured: adopt the
@@ -312,8 +319,14 @@ public actor SchoolSession {
             if profile.residence?.address != r.address { profile.meter = nil }
             profile.residence = r
             try vault.saveProfile(profile)
+        } else if match == .unknown, before != nil {
+            // As for the form sign-in: without the new dorm, a dorm and meter that may be
+            // someone else's are not kept.
+            try ensureSignedIn(since: started)
+            try vault.saveProfile(SchoolProfile())
         }
-        return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: switched)
+        return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: switched,
+                             previousPersonUnconfirmed: before != nil && match == .unknown)
     }
 
     /// Some school items could not be deleted (item names only, never values).
