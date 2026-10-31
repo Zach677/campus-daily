@@ -251,7 +251,7 @@ enum HomeDemo: String, CaseIterable {
         data.laundryBound = true; data.laundryMachine = "3"; data.laundry = .idle
         data.appActivities = [
             AppActivity(id:"demo-shower", kind:.shower(minutes:11), date:now.addingTimeInterval(-Self.showerAgo), amount:Money(fen:132)),
-            AppActivity(id:"demo-laundry", kind:.laundry(program:"标准洗"), date:now.addingTimeInterval(-44 * 3600),
+            AppActivity(id:"demo-laundry", kind:.laundry(program:"标准洗"), date:now.addingTimeInterval(-Self.laundryAgo),
                         amount:Money(fen:400), detail:"3 号机"),
         ]
         switch self {
@@ -343,6 +343,8 @@ enum HomeDemo: String, CaseIterable {
     /// The demo shower ended this long before now; its card record follows a minute later, so
     /// 最近 shows the shower once.
     static let showerAgo: TimeInterval = 20 * 3600
+    /// The demo laundry order was paid this long before now; its card record follows a minute later.
+    static let laundryAgo: TimeInterval = 44 * 3600
 
     /// Synthetic balance, meter and card records, never later than `now` (whatever the device's
     /// time zone), written in the school's calendar as the school does. Meals sit at meal times
@@ -369,6 +371,8 @@ enum HomeDemo: String, CaseIterable {
         var records = (0..<3).flatMap { back in meals.map { meal in record(at:at(meal.0, meal.1, daysBack:back), meal.2, meal.3) } }
             .filter { ($0.moment(calendar:school) ?? now) <= now.addingTimeInterval(-15 * 60) }
         records.append(record(at:now.addingTimeInterval(-showerAgo + 60), "蓝牙热水", "1.32"))
+        // The demo laundry order, as the card has it a minute after it was paid.
+        records.append(record(at:now.addingTimeInterval(-laundryAgo + 60), "洗衣", "4.00"))
         records.append(record(at:at(13, 5, daysBack:1), "校园卡充值", "50.00", flag:nil))
         records.sort { ($0.moment(calendar:school) ?? now) > ($1.moment(calendar:school) ?? now) }
         s.activity.succeed(CardActivity(records:records, begin:range.begin, end:range.end, complete:true), at:read)
