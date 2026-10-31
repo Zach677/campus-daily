@@ -102,6 +102,41 @@ final class HomeFiguresTests: XCTestCase {
         }
     }
 
+    // MARK: 电量 without a meter
+
+    func powerWith(_ meter: HomeFigure.MeterState, signedIn: Bool = true) -> HomeFigure {
+        HomeFigures.power(snapshot(), signedIn: signedIn, meter: meter, lines: lines, now: now, calendar: calendar)
+    }
+
+    /// No meter bound: 「—」 with 「还没找到电表 · 去设置」 under it; the cell opens the meter page.
+    func testNoMeterSaysSoAndOpensTheMeterPage() {
+        let f = powerWith(.notFound)
+        XCTAssertEqual(f, HomeFigure(value: nil, low: false, subline: .meterNotFound))
+        XCTAssertEqual(f.subline?.text, "还没找到电表 · 去设置")
+        XCTAssertEqual(f.spokenPower, "电量，还没找到电表，去设置")
+        XCTAssertTrue(f.tappable)
+    }
+
+    /// The automatic lookup running: 「—」 with 「正在找电表…」 under it (a spinner beside), not tappable.
+    func testFindingTheMeterSaysSoAndIsNotTappable() {
+        let f = powerWith(.finding)
+        XCTAssertEqual(f, HomeFigure(value: nil, low: false, subline: .findingMeter))
+        XCTAssertEqual(f.subline?.text, "正在找电表…")
+        XCTAssertEqual(f.spokenPower, "电量，正在找电表")
+        XCTAssertFalse(f.tappable)
+    }
+
+    /// A bound meter shows its numbers as before; signed out is 「登录后显示」 whatever the meter.
+    func testBoundAndSignedOutAreAsBefore() {
+        XCTAssertEqual(powerWith(.bound), power(snapshot()))
+        XCTAssertNil(powerWith(.bound).spokenPower, "the numbers are spoken by the cell")
+        XCTAssertTrue(powerWith(.bound).tappable)
+        for meter in [HomeFigure.MeterState.notFound, .finding] {
+            XCTAssertEqual(powerWith(meter, signedIn: false), HomeFigure(value: nil, low: false, subline: .afterSignIn))
+            XCTAssertTrue(powerWith(meter, signedIn: false).tappable)
+        }
+    }
+
     // MARK: 校园卡
 
     func testCardYesterdaySpent() {

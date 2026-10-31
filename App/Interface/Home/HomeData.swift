@@ -64,6 +64,8 @@ struct HomeData {
     var dormLocation: String?
     var meterLocation: String?
     var powerBound = true
+    /// No meter bound and the automatic lookup is running.
+    var findingMeter = false
     /// Balance, meter and card records with their own read times and errors.
     var snapshot = HomeSnapshot()
     var lines = ReminderLines()
@@ -94,8 +96,8 @@ struct HomeData {
         HomeFigures.card(snapshot, signedIn:signedIn, lines:lines, now:now)
     }
     func powerFigure(now: Date = Date()) -> HomeFigure {
-        guard !signedIn || powerBound else { return HomeFigure(value:nil, low:false, subline:nil) }
-        return HomeFigures.power(snapshot, signedIn:signedIn, lines:lines, now:now)
+        let meter: HomeFigure.MeterState = powerBound ? .bound : findingMeter ? .finding : .notFound
+        return HomeFigures.power(snapshot, signedIn:signedIn, meter:meter, lines:lines, now:now)
     }
     var updateLine: HomeUpdateLine {
         HomeUpdateLine.of(snapshot, signedIn:signedIn, meterBound:powerBound, refreshing:refreshing,
@@ -122,6 +124,7 @@ extension HomeData {
         meterLocation = campus.profile?.meterLocation
         snapshot = campus.snapshot
         powerBound = campus.powerConfigured
+        findingMeter = campus.matchingPower
         refreshing = campus.loading
         notSaving = campus.notSaving
         lines = ReminderKey.lines
@@ -229,6 +232,9 @@ enum HomeDemo: String, CaseIterable {
     case noRecords = "home-notx"
     /// The update line when reads keep ending without storing their numbers.
     case notSaving = "home-notsaving"
+    /// 电量 with no meter bound: not found (opens the meter page) / being looked for.
+    case noMeter = "home-nometer"
+    case findingMeter = "home-findingmeter"
 
     static func handle(_ url: URL) -> (HomeData, SettlementResult?)?? {
         guard url.scheme == "campusdaily", url.host == "demo" else { return nil }
@@ -269,6 +275,14 @@ enum HomeDemo: String, CaseIterable {
             return (data, nil)
         case .notSaving:
             data.notSaving = true
+            return (data, nil)
+        case .noMeter:
+            data.powerBound = false
+            data.meterLocation = nil
+            return (data, nil)
+        case .findingMeter:
+            data.powerBound = false; data.findingMeter = true
+            data.meterLocation = nil
             return (data, nil)
         case .settingsResetShower:
             data.shower = .showering(now.addingTimeInterval(-(8 * 60 + 42)))

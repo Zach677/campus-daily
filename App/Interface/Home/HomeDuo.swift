@@ -50,6 +50,8 @@ struct HomeDuo: View {
 
     /// 「电量，42.6 度，够用约 9 天」
     static func spokenPower(_ figure: HomeFigure) -> String {
+        // No meter: 「电量，还没找到电表，去设置」 / 「电量，正在找电表」.
+        if let spoken = figure.spokenPower { return spoken }
         var parts = ["电量"]
         if let value = figure.value { parts.append(Theme.kwh(value) + " 度") } else { parts.append("未读取") }
         if figure.low { parts.append("电量不足") }
@@ -75,7 +77,7 @@ struct HomeDuoColumn: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action:action) {
+        Button(action:{ if figure.tappable { action() } }) {
             VStack(alignment:.leading, spacing:0) {
                 HStack(spacing:6) {
                     Text(emoji)
@@ -94,10 +96,18 @@ struct HomeDuoColumn: View {
                 }
                 .lineLimit(1).minimumScaleFactor(0.7)
                 .padding(.top,8)
-                if let subline = figure.subline {
+                if figure.subline == .findingMeter {
+                    // As 「正在更新…」 under the numbers.
+                    HStack(spacing:6) {
+                        ProgressView().controlSize(.mini).frame(width:12, height:12)
+                        Text(HomeFigure.Subline.findingMeter.text)
+                    }
+                    .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                    .padding(.top,4)
+                } else if let subline = figure.subline {
                     Text(subline.text)
                         .scaledFont(13, relativeTo:.footnote)
-                        .foregroundStyle(figure.low ? Theme.redText : Theme.ink2)
+                        .foregroundStyle(figure.low ? Theme.redText : subline == .meterNotFound ? Theme.accentText : Theme.ink2)
                         .fixedSize(horizontal:false, vertical:true)
                         .padding(.top,4)
                 }
@@ -106,9 +116,11 @@ struct HomeDuoColumn: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(RowPressStyle())
+        // While the meter is looked for there is nothing to open.
+        .allowsHitTesting(figure.tappable)
         .animation(Theme.spring, value:value)
         .accessibilityElement(children:.ignore)
         .accessibilityLabel(spoken)
-        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(figure.tappable ? .isButton : [])
     }
 }

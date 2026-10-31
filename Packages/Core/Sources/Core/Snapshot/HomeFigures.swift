@@ -4,6 +4,8 @@ import Foundation
 /// (red), and the small line under it. Pure; the home screen and its tests share it.
 public struct HomeFigure: Sendable, Equatable {
     public enum Night: Sendable, Equatable { case tonight, tomorrow }
+    /// 电量's meter: bound, being looked for automatically, or not found (yet).
+    public enum MeterState: Sendable, Equatable { case bound, finding, notFound }
     public enum Subline: Sendable, Equatable {
         /// 「昨天花了 ¥12.00」
         case spent(Money)
@@ -15,6 +17,10 @@ public struct HomeFigure: Sendable, Equatable {
         case lastsUntil(Night)
         /// 「登录后显示」
         case afterSignIn
+        /// 「还没找到电表 · 去设置」
+        case meterNotFound
+        /// 「正在找电表…」 (with a spinner)
+        case findingMeter
 
         public var text: String {
             switch self {
@@ -24,6 +30,8 @@ public struct HomeFigure: Sendable, Equatable {
             case .lastsUntil(.tonight): return "只够到今晚"
             case .lastsUntil(.tomorrow): return "只够到明晚"
             case .afterSignIn: return "登录后显示"
+            case .meterNotFound: return "还没找到电表 · 去设置"
+            case .findingMeter: return "正在找电表…"
             }
         }
     }
@@ -38,6 +46,18 @@ public struct HomeFigure: Sendable, Equatable {
     public init(value: Decimal?, low: Bool, subline: Subline?) {
         self.value = value; self.low = low; self.subline = subline
     }
+
+    /// 电量 without a meter, for VoiceOver (nil: the cell speaks its numbers).
+    public var spokenPower: String? {
+        switch subline {
+        case .meterNotFound: return "电量，还没找到电表，去设置"
+        case .findingMeter: return "电量，正在找电表"
+        default: return nil
+        }
+    }
+
+    /// False while the meter is being looked for: there is nothing to open yet.
+    public var tappable: Bool { subline != .findingMeter }
 }
 
 /// The rules behind the two home numbers.
@@ -55,10 +75,17 @@ public enum HomeFigures {
 
     /// 电量: low under the user's power line or when the estimate is a day or less. The estimate
     /// (remaining ÷ the previous day's use, counted from the reading) needs a previous day's use
-    /// above zero; without it the subline is hidden.
-    public static func power(_ snapshot: HomeSnapshot, signedIn: Bool, lines: ReminderLines, now: Date,
+    /// above zero; without it the subline is hidden. Without a meter: 「—」 and whether it is
+    /// being looked for or not found.
+    public static func power(_ snapshot: HomeSnapshot, signedIn: Bool, meter: HomeFigure.MeterState = .bound,
+                             lines: ReminderLines, now: Date,
                              calendar: Calendar = .current) -> HomeFigure {
         guard signedIn else { return HomeFigure(value: nil, low: false, subline: .afterSignIn) }
+        switch meter {
+        case .bound: break
+        case .finding: return HomeFigure(value: nil, low: false, subline: .findingMeter)
+        case .notFound: return HomeFigure(value: nil, low: false, subline: .meterNotFound)
+        }
         guard let meter = snapshot.power.value, let remaining = meter.remainingKWh else {
             return HomeFigure(value: nil, low: false, subline: nil)
         }
