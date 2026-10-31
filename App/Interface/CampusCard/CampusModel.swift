@@ -26,12 +26,11 @@ struct PowerChoice: Identifiable, Equatable {
     /// Several refreshes in a row ended without storing their numbers (the Keychain refusing
     /// writes): the home update line says so.
     @Published private(set) var notSaving = false
-    @Published private(set) var matchingPower = false
-    @Published private(set) var powerChoices: [PowerChoice] = []
+    /// The automatic meter lookup: when it starts, and the list or stopped level it left.
+    @Published private(set) var lookup = MeterLookupGate()
+    /// A same-name choice is being saved.
+    @Published private(set) var savingChoice = false
     @Published private(set) var powerMatchIssue: String?
-    /// Where the automatic lookup stopped (a level that did not match the dorm exactly once):
-    /// the meter page opens there.
-    @Published private(set) var powerStop: MeterWalkStop?
     /// The account signed in with the app's own form (kept by a web sign-in only when the card
     /// shows the same person). Its password is present only when the user chose to save it.
     @Published private(set) var account: SchoolAccount?
@@ -48,10 +47,6 @@ struct PowerChoice: Identifiable, Equatable {
     /// same): pages showing the previous person's school data close.
     @Published private(set) var personChanges = 0
     private var lastRefresh: Date?
-    /// When the automatic meter lookup starts by itself (launch, foreground, after a refresh).
-    private var autoFind = MeterAutoFind()
-    /// A sign-in came while the lookup ran (`matchPowerAutomatically`).
-    private var signedInDuringLookup = false
     /// The last refresh read the card (its session alive, or renewed).
     private var lastReadCard = false
     private var refreshesRunning = 0
@@ -96,6 +91,12 @@ struct PowerChoice: Identifiable, Equatable {
         return Theme.dorm(snapshot.roomLabel ?? profile?.meter?.label ?? "") ?? "未配置"
     }
     var powerConfigured: Bool { profile?.meter != nil }
+    /// The lookup is running, or a same-name choice is being saved.
+    var matchingPower: Bool { lookup.running || savingChoice }
+    var powerChoices: [PowerChoice] { lookup.choices.map { PowerChoice(candidate:$0, stamp:lookup.choicesStamp ?? -1) } }
+    /// Where the automatic lookup stopped (a level that did not match the dorm exactly once):
+    /// the meter page opens there.
+    var powerStop: MeterWalkStop? { lookup.stop }
     var balance: Decimal? { snapshot.card.value?.yuan }
     var meter: Meter? { snapshot.power.value }
 
@@ -144,8 +145,6 @@ struct PowerChoice: Identifiable, Equatable {
         Reminders.shared.evaluateCampus(snapshot)
         if report.outcome == .ok {
             Reminders.shared.campusRead(snapshot)
-            // A lookup that failed earlier (a slow school) is tried again, at most every ten minutes.
-            matchPowerAutomatically(.refreshed)
         }
     }
 
@@ -191,7 +190,7 @@ struct PowerChoice: Identifiable, Equatable {
             try AppEnvironment.schoolVault.saveProfile(stored)
         }
         reload(); issue = nil; lastRefresh = nil
-        powerChoices = []; powerMatchIssue = nil; powerStop = nil
+        lookup.clear(); powerMatchIssue = nil
         // Every sign-in, from any screen: the meter is looked for when none is bound.
         matchPowerAutomatically(.signedIn)
     }
@@ -215,7 +214,7 @@ struct PowerChoice: Identifiable, Equatable {
         }
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
-        powerChoices = []; powerMatchIssue = nil; powerStop = nil
+        lookup.clear(); powerMatchIssue = nil
         // Every sign-in, from any screen: the meter is looked for when none is bound.
         matchPowerAutomatically(.signedIn)
     }
@@ -267,7 +266,7 @@ struct PowerChoice: Identifiable, Equatable {
         signOutGeneration += 1; personChanges += 1
         _ = await signOuts.start().value
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
-        powerChoices = []; powerMatchIssue = nil; powerStop = nil; lastRefresh = nil
+        lookup.clear(); powerMatchIssue = nil; lastRefresh = nil
     }
 
     func signOut() {
@@ -282,66 +281,51 @@ struct PowerChoice: Identifiable, Equatable {
             signOutFailed = true
         }
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
-        powerChoices = []; powerMatchIssue = nil; powerStop = nil
+        lookup.clear(); powerMatchIssue = nil
     }
 
     // MARK: Electricity
 
-    /// Match the dorm's meter from the portal address: at launch, back in the foreground, after a
-    /// refresh (those two at most every ten minutes, with the dorm known; `MeterAutoFind`), after
-    /// every sign-in, or 「再找一次电表」 (`manual`, the default).
-    func matchPowerAutomatically(_ trigger: MeterAutoFind.Trigger = .manual) {
-        // A sign-in while a lookup runs may have brought another dorm: looked for once that one ends.
-        if trigger == .signedIn, matchingPower { signedInDuringLookup = true; return }
-        guard configured, !matchingPower, !powerConfigured,
-              autoFind.start(trigger, signedIn:configured, meterBound:powerConfigured, addressKnown:address != nil,
-                             choosing:!powerChoices.isEmpty, now:Date())
-        else { return }
-        lookUpPower()
-    }
-
-    private func lookUpPower() {
-        guard configured, !matchingPower, !powerConfigured else { return }
-        matchingPower = true; powerMatchIssue = nil; powerChoices = []
+    /// Look for the dorm's meter (`MeterLookupGate`): at launch, after every sign-in, or
+    /// 「再找一次电表」 (`manual`, the default). Never by itself in the foreground or after a refresh.
+    func matchPowerAutomatically(_ trigger: MeterLookupGate.Trigger = .manual) {
+        guard lookup.start(trigger, signedIn:configured, meterBound:powerConfigured) else { return }
+        powerMatchIssue = nil
         Task {
             let before = await session.personStamp()
             var again = false
+            var found: ElectricityResolution?
             do {
                 // Core runs it again for the next person if someone else signed in meanwhile.
-                let (stamp, found) = try await session.matchElectricity()
+                let (stamp, answer) = try await session.matchElectricity()
                 // Someone else signed in after it answered: none of it is theirs, their own runs.
                 if await session.isSamePerson(since:stamp) {
-                    var notFound = found == .noAddress
-                    if case .stopped = found { notFound = true }
-                    autoFind.finished(notFound:notFound)
-                    switch found {
-                    case .matched, .alreadyBound:
-                        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
-                        await refresher.noteChange()
-                        await refresh(force:true)
-                    case .chooseAmong(let candidates): powerChoices = candidates.map { PowerChoice(candidate:$0, stamp:stamp) }
-                    case .stopped(let stop):
-                        powerStop = stop
-                        powerMatchIssue = "没自动找到电表，去「电表」里选一下。"
+                    lookup.answered(answer, stamp:stamp)
+                    found = answer
+                    switch answer {
+                    case .matched, .alreadyBound, .chooseAmong: break
+                    case .stopped: powerMatchIssue = "没自动找到电表，去「电表」里选一下。"
                     case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「电表」里选一下。"
                     }
                 } else {
                     again = true
                 }
             } catch {
-                // Signed out or someone else signed in meanwhile: this match was theirs, say
+                // Signed out or someone else signed in meanwhile: this lookup was theirs, say
                 // nothing; whoever is signed in now gets their own (signed out: `configured` is
-                // false and nothing runs).
-                if await session.isSamePerson(since:before) {
-                    autoFind.finished(notFound:false)
-                    powerMatchIssue = AppErrorText.text(error)
-                } else { again = true }
+                // false and nothing runs). What was shown before stays.
+                if await session.isSamePerson(since:before) { powerMatchIssue = AppErrorText.text(error) } else { again = true }
             }
-            matchingPower = false
-            let signedIn = signedInDuringLookup
-            signedInDuringLookup = false
-            // The next person's own lookup, not held back by this one.
-            if again { lookUpPower() } else if signedIn { matchPowerAutomatically(.signedIn) }
+            // Ended before the refresh below: a lookup asked for meanwhile may start from here on.
+            let signedInMeanwhile = lookup.ended()
+            var bound = false
+            if case .matched? = found { bound = true } else if case .alreadyBound? = found { bound = true }
+            if bound { profile = (try? AppEnvironment.schoolVault.profile()) ?? nil }
+            if again || signedInMeanwhile { matchPowerAutomatically(.signedIn) }
+            if bound {
+                await refresher.noteChange()
+                await refresh(force:true)
+            }
         }
     }
 
@@ -349,8 +333,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// `powerMatchIssue`, the choices kept) when it could not be.
     @discardableResult func choosePower(_ choice: PowerChoice) async -> Bool {
         guard !matchingPower else { return false }
-        matchingPower = true
-        defer { matchingPower = false }
+        savingChoice = true
+        defer { savingChoice = false }
         do {
             try await session.chooseMatchedMeter(choice.candidate, since:choice.stamp)
         } catch {
@@ -358,7 +342,7 @@ struct PowerChoice: Identifiable, Equatable {
             return false
         }
         await refresher.noteChange()
-        powerChoices = []; powerMatchIssue = nil; powerStop = nil
+        lookup.clear(); powerMatchIssue = nil
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         Task { await refresh(force:true) }
         return true
@@ -372,7 +356,7 @@ struct PowerChoice: Identifiable, Equatable {
         try await session.chooseMeter(nodeID:nodeID, meter:meter, path:path, since:stamp)
         await refresher.noteChange()
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
-        powerChoices = []; powerMatchIssue = nil; powerStop = nil
+        lookup.clear(); powerMatchIssue = nil
         await refresh(force:true)
     }
 
