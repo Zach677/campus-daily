@@ -19,7 +19,7 @@ import Core
             CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry)
                 .onChange(of:campus.room,initial:true) { ShowerActivityController.shared.dorm = Theme.dorm(campus.room) ?? "" }
                 .task {
-                    campus.matchPowerAutomatically()
+                    campus.matchPowerAutomatically(.launch)
                     await campus.refresh()
                     await laundry.refresh()
                 }
@@ -28,6 +28,8 @@ import Core
         .onChange(of:phase) { _, value in
             if value == .background { BackgroundRefresh.scheduleRefresh() }
             if value == .active {
+                // A meter lookup that failed (a slow school) is tried again, at most every ten minutes.
+                campus.matchPowerAutomatically(.foreground)
                 Task { await Reminders.shared.refreshAuthorization() }
                 // Back from Alipay without a callback URL (checkout links): read the order.
                 Task { await laundry.refreshOrder() }

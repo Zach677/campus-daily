@@ -45,6 +45,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// same): pages showing the previous person's school data close.
     @Published private(set) var personChanges = 0
     private var lastRefresh: Date?
+    /// When the automatic meter lookup starts by itself (launch, foreground, after a refresh).
+    private var autoFind = MeterAutoFind()
     /// The last refresh read the card (its session alive, or renewed).
     private var lastReadCard = false
     private var refreshesRunning = 0
@@ -130,7 +132,11 @@ struct PowerChoice: Identifiable, Equatable {
         }
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         Reminders.shared.evaluateCampus(snapshot)
-        if report.outcome == .ok { Reminders.shared.campusRead(snapshot) }
+        if report.outcome == .ok {
+            Reminders.shared.campusRead(snapshot)
+            // A lookup that failed earlier (a slow school) is tried again, at most every ten minutes.
+            matchPowerAutomatically(.refreshed)
+        }
     }
 
     /// 校园卡记录 found the card session expired: renewed the way home renews it (a forced
@@ -267,8 +273,17 @@ struct PowerChoice: Identifiable, Equatable {
 
     // MARK: Electricity
 
-    /// Match the dorm's meter from the portal address (once after sign-in, or 「再找一次电表」).
-    func matchPowerAutomatically() {
+    /// Match the dorm's meter from the portal address: at launch, back in the foreground, after a
+    /// refresh (those two at most every ten minutes, with the dorm known; `MeterAutoFind`), or
+    /// 「再找一次电表」 (`manual`, the default).
+    func matchPowerAutomatically(_ trigger: MeterAutoFind.Trigger = .manual) {
+        guard configured, !matchingPower, !powerConfigured,
+              autoFind.start(trigger, signedIn:configured, meterBound:powerConfigured, addressKnown:address != nil, now:Date())
+        else { return }
+        lookUpPower()
+    }
+
+    private func lookUpPower() {
         guard configured, !matchingPower, !powerConfigured else { return }
         matchingPower = true; powerMatchIssue = nil; powerChoices = []
         Task {
@@ -298,7 +313,8 @@ struct PowerChoice: Identifiable, Equatable {
                 if await session.isSamePerson(since:before) { powerMatchIssue = AppErrorText.text(error) } else { again = true }
             }
             matchingPower = false
-            if again { matchPowerAutomatically() }
+            // The next person's own lookup, not held back by this one.
+            if again { lookUpPower() }
         }
     }
 
