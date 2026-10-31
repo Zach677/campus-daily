@@ -157,7 +157,9 @@ enum ShowerProfileFiles {
         observer?.cancel(); observer = nil; engine = nil
         syncGate.reset()
         guard binding != nil else {
-            state = ((try? AppEnvironment.showerVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle
+            // No engine to report it: the restored state is this run's first, and the lock
+            // screen and the reminder follow it like an engine's first report.
+            apply(((try? AppEnvironment.showerVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle)
             return
         }
         let bleName: String
