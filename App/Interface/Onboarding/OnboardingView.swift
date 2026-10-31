@@ -120,7 +120,6 @@ struct OnboardingView: View {
                     issue = nil; loginState = .idle; password = ""
                     // The sheet shows 「正在读电量…」 until the card and meter are read.
                     await campus.refresh(force:true)
-                    campus.matchPowerAutomatically()
                     // Only from the login step: a repeated delivery must not skip the dorm step.
                     if step == .login { advance() }
                 } catch {
@@ -497,7 +496,6 @@ struct OnboardingView: View {
                 try await campus.signIn(account:name, password:secret, savePassword:save)
                 password = ""
                 await campus.refresh(force:true)
-                campus.matchPowerAutomatically()
                 loginState = .idle
                 if step == .login { advance() }
             } catch SchoolLoginFailure.wrongCredentials {

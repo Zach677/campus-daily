@@ -34,7 +34,7 @@ final class MeterAutoFindTests: XCTestCase {
 
     func testOnlySignedInWithoutAMeter() {
         var f = MeterAutoFind()
-        for trigger in [MeterAutoFind.Trigger.launch, .foreground, .refreshed, .manual] {
+        for trigger in [MeterAutoFind.Trigger.launch, .foreground, .refreshed, .manual, .signedIn] {
             XCTAssertFalse(start(&f, trigger, after: 0, signedIn: false), "\(trigger)")
             XCTAssertFalse(start(&f, trigger, after: 0, meterBound: true), "\(trigger)")
         }
@@ -55,6 +55,18 @@ final class MeterAutoFindTests: XCTestCase {
         var f = MeterAutoFind()
         XCTAssertTrue(start(&f, .launch, after: 0))
         XCTAssertFalse(start(&f, .foreground, after: 1), "the launch's own foreground")
+    }
+
+    /// Every sign-in starts it, whichever screen it came from: right after another start, and
+    /// before the dorm is known (the lookup reads it first). It counts like any start.
+    func testASignInIsNotHeldBack() {
+        var f = MeterAutoFind()
+        XCTAssertTrue(start(&f, .foreground, after: 0))
+        XCTAssertTrue(start(&f, .signedIn, after: 60))
+        XCTAssertTrue(start(&f, .signedIn, after: 70, addressKnown: false))
+        XCTAssertFalse(start(&f, .signedIn, after: 80, meterBound: true), "the same person's meter was kept")
+        XCTAssertFalse(start(&f, .signedIn, after: 90, signedIn: false))
+        XCTAssertFalse(start(&f, .refreshed, after: 100), "the sign-in's own refresh")
     }
 
     /// The clock set back: the limit does not hold the lookup off until it catches up.

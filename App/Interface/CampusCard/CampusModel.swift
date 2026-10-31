@@ -182,6 +182,8 @@ struct PowerChoice: Identifiable, Equatable {
         }
         reload(); issue = nil; lastRefresh = nil
         powerChoices = []; powerMatchIssue = nil
+        // Every sign-in, from any screen: the meter is looked for when none is bound.
+        matchPowerAutomatically(.signedIn)
     }
 
     /// The app's own login form. Throws `SchoolLoginFailure` for the login itself (shown on the
@@ -204,6 +206,8 @@ struct PowerChoice: Identifiable, Equatable {
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
         powerChoices = []; powerMatchIssue = nil
+        // Every sign-in, from any screen: the meter is looked for when none is bound.
+        matchPowerAutomatically(.signedIn)
     }
 
     /// The login was someone else, or nothing showed it was the same person: Core already
@@ -274,8 +278,8 @@ struct PowerChoice: Identifiable, Equatable {
     // MARK: Electricity
 
     /// Match the dorm's meter from the portal address: at launch, back in the foreground, after a
-    /// refresh (those two at most every ten minutes, with the dorm known; `MeterAutoFind`), or
-    /// 「再找一次电表」 (`manual`, the default).
+    /// refresh (those two at most every ten minutes, with the dorm known; `MeterAutoFind`), after
+    /// every sign-in, or 「再找一次电表」 (`manual`, the default).
     func matchPowerAutomatically(_ trigger: MeterAutoFind.Trigger = .manual) {
         guard configured, !matchingPower, !powerConfigured,
               autoFind.start(trigger, signedIn:configured, meterBound:powerConfigured, addressKnown:address != nil, now:Date())

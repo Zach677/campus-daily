@@ -173,7 +173,6 @@ struct CampusOnboardingView: View {
                     try await campus.adoptWebState(value)
                     flow.reset()
                     await campus.refresh(force:true)
-                    campus.matchPowerAutomatically()
                     Task { await flow.prepare(campus:campus,water:water) }
                 } catch {
                     // The widget is refreshing (and may be signing in): nothing was stored.
@@ -183,7 +182,6 @@ struct CampusOnboardingView: View {
             .sheet(isPresented:$relogin) {
                 SchoolReloginSheet(signedIn:{
                     flow.reset()
-                    campus.matchPowerAutomatically()
                     Task { await flow.prepare(campus:campus,water:water) }
                 })
             }
