@@ -136,7 +136,9 @@ struct PowerChoice: Identifiable, Equatable {
         let summary = try await refresher.holdingLease {
             try await session.adoptWebState(state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
         }
-        if summary.switchedAccount || summary.previousPersonUnconfirmed { await previousPersonCleared() }
+        if summary.switchedAccount || summary.previousPersonUnconfirmed {
+            await previousPersonCleared(unconfirmed:!summary.switchedAccount)
+        }
         await refresher.noteChange()
         // Signed out (or reset) while that ran: the dorm must not be written back.
         guard started == signOutGeneration else { return }
@@ -160,7 +162,9 @@ struct PowerChoice: Identifiable, Equatable {
         let summary = try await refresher.holdingLease {
             try await session.signIn(account:account, password:password, savePassword:savePassword)
         }
-        if summary.switchedAccount || summary.previousPersonUnconfirmed { await previousPersonCleared() }
+        if summary.switchedAccount || summary.previousPersonUnconfirmed {
+            await previousPersonCleared(unconfirmed:!summary.switchedAccount)
+        }
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
         powerChoices = []; powerMatchIssue = nil
@@ -170,13 +174,13 @@ struct PowerChoice: Identifiable, Equatable {
     /// dropped their school data. Here: the widget
     /// snapshot, the hot-water binding made with their identity, and the one-time alert.
     /// Laundry (U净) is its own login and stays.
-    private func previousPersonCleared() async {
+    private func previousPersonCleared(unconfirmed: Bool) async {
         let refresher = refresher
         let hotWater = await AccountSwitch.clearPreviousPerson(
             snapshot:{ try await refresher.clear() },
             hotWater:{ ShowerModel.shared.clearBindingForAccountSwitch() })
         snapshot = .empty
-        switchNotice = AccountSwitchNotice(hotWaterCleared:hotWater.noticed)
+        switchNotice = AccountSwitchNotice(previousPersonUnconfirmed:unconfirmed, hotWaterCleared:hotWater.noticed)
     }
 
     /// Settings › 学校账号 › 保存密码 on / 重新输入密码: one login checks the password before it

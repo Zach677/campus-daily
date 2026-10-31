@@ -1,15 +1,19 @@
 import SwiftUI
+import Core
 
-/// After a login turned out to be a different person: the old school data, and maybe the
-/// hot-water binding, were cleared. Shown once, by the top-most screen.
+/// After a login turned out to be a different person, or couldn't tell whether it was: the old
+/// school data, and maybe the hot-water binding, were cleared. Shown once, by the top-most screen.
 struct AccountSwitchNotice: Equatable, Identifiable {
     let id = UUID()
+    /// The login couldn't tell whether it was the previous person (not a confirmed switch).
+    var previousPersonUnconfirmed = false
     /// The hot-water binding was the previous person's and was removed.
     var hotWaterCleared: Bool
 
-    static let title = "换了账号，上一个账号的宿舍和电表已经清掉。"
-    static let hotWater = "热水要重新设置。"
-    static let openHotWater = "去设置热水"
+    /// The wording (Core decides it).
+    var text: AccountSwitch.Notice {
+        AccountSwitch.Notice(previousPersonUnconfirmed:previousPersonUnconfirmed, hotWaterCleared:hotWaterCleared)
+    }
 }
 
 /// Screens that may show the account-switch alert register here; only the last one shows it.
@@ -39,15 +43,15 @@ private struct AccountSwitchAlert: ViewModifier {
                 // The system tint: on iOS 27 an alert fills its main button with the default
                 // blue, and accent-coloured text on it can't be read.
                 Color.clear
-                    .alert(AccountSwitchNotice.title, isPresented:presented, presenting:campus.switchNotice) { notice in
-                        if notice.hotWaterCleared, let openHotWater {
-                            Button(AccountSwitchNotice.openHotWater) { campus.switchNotice = nil; openHotWater() }
+                    .alert(campus.switchNotice?.text.title ?? "", isPresented:presented, presenting:campus.switchNotice) { notice in
+                        if let label = notice.text.openHotWater, let openHotWater {
+                            Button(label) { campus.switchNotice = nil; openHotWater() }
                             Button("好", role:.cancel) { campus.switchNotice = nil }
                         } else {
                             Button("好") { campus.switchNotice = nil }
                         }
                     } message: { notice in
-                        if notice.hotWaterCleared { Text(AccountSwitchNotice.hotWater) }
+                        if let message = notice.text.message { Text(message) }
                     }
                     .tint(nil)
             }

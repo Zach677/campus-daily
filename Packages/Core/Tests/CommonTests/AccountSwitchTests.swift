@@ -7,6 +7,25 @@ import CoreTestSupport
 final class AccountSwitchTests: XCTestCase {
     struct Failed: Error {}
 
+    /// A confirmed switch and a login that couldn't tell the previous person say different things;
+    /// the hot-water line and its button are the same for both.
+    func testTheNoticeWordingForEveryCase() {
+        let switched = AccountSwitch.Notice(previousPersonUnconfirmed: false, hotWaterCleared: false)
+        XCTAssertEqual(switched.title, "换了账号，上一个账号的宿舍和电表已经清掉。")
+        XCTAssertNil(switched.message)
+        XCTAssertNil(switched.openHotWater)
+        let unconfirmed = AccountSwitch.Notice(previousPersonUnconfirmed: true, hotWaterCleared: false)
+        XCTAssertEqual(unconfirmed.title, "认不出是不是之前那个账号，宿舍和电表先清掉了，重新选一下。")
+        XCTAssertNil(unconfirmed.message)
+        XCTAssertNil(unconfirmed.openHotWater)
+        for previousPersonUnconfirmed in [false, true] {
+            let water = AccountSwitch.Notice(previousPersonUnconfirmed: previousPersonUnconfirmed, hotWaterCleared: true)
+            XCTAssertEqual(water.title, previousPersonUnconfirmed ? unconfirmed.title : switched.title)
+            XCTAssertEqual(water.message, "热水要重新设置。")
+            XCTAssertEqual(water.openHotWater, "去设置热水")
+        }
+    }
+
     func testHotWaterForEveryCase() {
         var deleted = 0
         XCTAssertEqual(AccountSwitch.clearHotWater(hasBinding: false, mayClear: true) { deleted += 1 }, .none)

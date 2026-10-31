@@ -5,6 +5,24 @@ import Foundation
 /// shower may still need it (a shower running or not yet settled): then the new person is asked
 /// to check the dorm instead, and so too when deleting it failed.
 public enum AccountSwitch {
+    /// The one-time alert after the clean-up. A confirmed switch says so; a login that couldn't
+    /// tell whether it was the previous person says the dorm and meter were cleared to be safe.
+    /// A removed hot-water binding adds the same line and button to either.
+    public struct Notice: Sendable, Equatable {
+        public let title: String
+        public let message: String?
+        /// The button that opens the hot-water setup; nil = only 「好」.
+        public let openHotWater: String?
+
+        public init(previousPersonUnconfirmed: Bool, hotWaterCleared: Bool) {
+            title = previousPersonUnconfirmed
+                ? "认不出是不是之前那个账号，宿舍和电表先清掉了，重新选一下。"
+                : "换了账号，上一个账号的宿舍和电表已经清掉。"
+            message = hotWaterCleared ? "热水要重新设置。" : nil
+            openHotWater = hotWaterCleared ? "去设置热水" : nil
+        }
+    }
+
     public enum HotWater: Sendable, Equatable {
         /// There was no binding.
         case none

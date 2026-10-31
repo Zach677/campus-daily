@@ -42,11 +42,13 @@ extension HomeView {
                 Task { try? await Task.sleep(for:.milliseconds(350)); path = [.card] }
                 return
             }
-            if url.host == "demo", url.lastPathComponent.hasPrefix("account-switched") {
-                // Account-switch alert over the home demo; 「-water」 adds the hot-water line and button.
+            if url.host == "demo", url.lastPathComponent.hasPrefix("account-switched") || url.lastPathComponent.hasPrefix("account-unconfirmed") {
+                // Account-switch alert over the home demo (「account-unconfirmed」: the login couldn't
+                // tell the previous person); 「-water」 adds the hot-water line and button.
                 onboarding = nil; settings = false; path = []
                 demo = HomeDemo.normal.content().0
-                campus.switchNotice = AccountSwitchNotice(hotWaterCleared:url.lastPathComponent.hasSuffix("-water"))
+                campus.switchNotice = AccountSwitchNotice(previousPersonUnconfirmed:url.lastPathComponent.hasPrefix("account-unconfirmed"),
+                                                          hotWaterCleared:url.lastPathComponent.hasSuffix("-water"))
                 return
             }
             if url.host == "demo", url.lastPathComponent == "permission" {
