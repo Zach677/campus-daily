@@ -151,11 +151,15 @@ struct PowerChoice: Identifiable, Equatable {
         let started = signOutGeneration
         let session = session, state = login.state
         // Under the lease like the password sign-in: never beside the widget's own login.
-        let summary = try await refresher.holdingLease { owning in
-            try await session.adoptWebState(state, userAgent:EcyktSession.defaultUserAgent, owning:owning)
-        }
+        // A sign-in that throws after its writes began has changed the person too.
+        var counted = false
+        let summary = try await SchoolSession.watchingPerson(on:session, {
+            try await refresher.holdingLease { owning in
+                try await session.adoptWebState(state, userAgent:EcyktSession.defaultUserAgent, owning:owning)
+            }
+        }, changed:{ personChanges += 1; counted = true })
         if summary.switchedAccount || summary.previousPersonUnconfirmed {
-            personChanges += 1
+            if !counted { personChanges += 1 }
             await previousPersonCleared(unconfirmed:!summary.switchedAccount, dormAndMeterCleared:summary.dormAndMeterCleared)
         }
         await refresher.noteChange()
@@ -180,11 +184,15 @@ struct PowerChoice: Identifiable, Equatable {
         // A sign-out asked for just before must not delete what this stores.
         await signOuts.finished()
         let session = session
-        let summary = try await refresher.holdingLease { owning in
-            try await session.signIn(account:account, password:password, savePassword:savePassword, owning:owning)
-        }
+        // A sign-in that throws after its writes began has changed the person too.
+        var counted = false
+        let summary = try await SchoolSession.watchingPerson(on:session, {
+            try await refresher.holdingLease { owning in
+                try await session.signIn(account:account, password:password, savePassword:savePassword, owning:owning)
+            }
+        }, changed:{ personChanges += 1; counted = true })
         if summary.switchedAccount || summary.previousPersonUnconfirmed {
-            personChanges += 1
+            if !counted { personChanges += 1 }
             await previousPersonCleared(unconfirmed:!summary.switchedAccount, dormAndMeterCleared:summary.dormAndMeterCleared)
         }
         await refresher.noteChange()

@@ -1103,6 +1103,21 @@ public actor SchoolSession {
     /// Nobody signed out and nobody else signed in since `stamp` was taken.
     public func isSamePerson(since stamp: Int) -> Bool { stamp == personGeneration }
 
+    /// Runs a sign-in (`attempt`) on `session` and calls `changed` when it changed who is signed
+    /// in, whether it returned or threw (one that throws after its writes began has changed it).
+    public static func watchingPerson<T>(on session: SchoolSession, isolation: isolated (any Actor)? = #isolation,
+                                         _ attempt: () async throws -> T, changed: () -> Void) async throws -> T {
+        let before = await session.personStamp()
+        do {
+            let result = try await attempt()
+            if await session.personStamp() != before { changed() }
+            return result
+        } catch {
+            if await session.personStamp() != before { changed() }
+            throw error
+        }
+    }
+
     /// A sign-in not known to be the same person: what was started before it is stale.
     private func newPerson() -> Int {
         personGeneration += 1

@@ -70,6 +70,40 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         XCTAssertTrue(summary.switchedAccount)
     }
 
+    /// Someone else's sign-in fails after its writes began (the previous person's items are
+    /// gone): it still counts as a change of person, so pages showing the previous person's
+    /// data close. One that fails before writing anything does not, and one that succeeds does.
+    func testASignInThatFailsAfterItsWritesBeganIsAChangeOfPerson() async throws {
+        let h = try previousPerson()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        let session = h.session()
+        h.store.failWrites(to: .schoolProfile)
+        var changes = 0
+        do {
+            try await SchoolSession.watchingPerson(on: session, { try await self.signInSomeoneElse(session) }, changed: { changes += 1 })
+            XCTFail("the sign-in's profile write was meant to fail")
+        } catch {
+            XCTAssertTrue(error is StorageError, "\(error)")
+        }
+        XCTAssertEqual(changes, 1, "the wipe began")
+    }
+
+    func testASignInThatFailsBeforeWritingIsNoChangeOfPerson() async throws {
+        let h = try previousPerson()
+        let session = h.session()
+        var changes = 0
+        do {
+            try await SchoolSession.watchingPerson(on: session, { try await self.signInSomeoneElse(session) }, changed: { changes += 1 })
+            XCTFail("nothing answers the liveness check")
+        } catch {}
+        XCTAssertEqual(changes, 0)
+        XCTAssertEqual(try h.vault.ecyktSession()?.cardUnionID, SchoolAccountSwitchTests.otherCard, "nothing was written")
+
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try await SchoolSession.watchingPerson(on: session, { try await self.signInSomeoneElse(session) }, changed: { changes += 1 })
+        XCTAssertEqual(changes, 1, "someone else signed in")
+    }
+
     func testSwitchDuringElectricityMatchWritesNothing() async throws {
         let h = try previousPerson()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
