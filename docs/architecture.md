@@ -283,6 +283,10 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   went out, so it is not sent again for a while. Only deletions skip the lease check: sign-out and
   reset remove the lease first (below), and the first 保存密码 off-write removes the password at
   once, its second write under the lease taking out one a refresh wrote back;
+- each `holdingLease` call (a login, 保存密码, recharge, the hot-water hand-off) takes the lease
+  under its own owner (the process's owner plus `-login-` and a random UUID): two of them at once
+  (the login sheet closed and submitted again) take turns like the two processes, and the first
+  giving its lease back never releases the second's;
 - a cancelled read (the widget past its deadline) checks for cancellation before taking the lock
   and then writes nothing back, so a process about to be suspended never holds it;
 - sign-out and reset remove the lease first and wait for its file lock on a background thread,

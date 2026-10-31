@@ -18,6 +18,7 @@
 - Do not count refunds, reversals and grants as money spent yesterday.
 - Do not send a password login when the other process (app or widget) stored new school credentials meanwhile.
 - Do not write a sign-in, a saved password or a password login's token over newer school credentials the widget stored while the app was suspended; the sign-in says 「正在更新，等一下再试。」 instead.
+- Let a second sign-in started while one is still running wait for it, so the first one ending does not let the widget read in the middle of the second.
 - Count 最近's today and yesterday in the school's time zone, as 昨天花了 does.
 - Bind the campus instead of a room when more same-named rooms exist than are read, or when one meter is found in two of them.
 - Keep a running shower's Live Activity and reminder after a reset that stopped behind the school sign-out.

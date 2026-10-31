@@ -196,8 +196,10 @@ public actor SnapshotRefresher {
     /// lease (tests, previews) `body` just runs with `.unchecked`.
     public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable (_ owning: LeaseOwnership) async throws -> T) async throws -> T {
         guard let shared = lease else { return try await body(.unchecked) }
-        // Its own owner: the lease this process's refresh holds is not "ours" to reuse here.
-        let lease = shared.with(owner: shared.owner + "-login")
+        // Its own owner, one per call: neither the lease this process's refresh holds nor one
+        // another login, recharge or hand-off here holds is "ours" to reuse, so a second one waits
+        // for the first, and the first giving its lease back never releases the second's.
+        let lease = shared.with(owner: shared.owner + "-login-" + UUID().uuidString)
         var waited: TimeInterval = 0
         while !lease.acquire() {
             guard lease.isAvailable else { throw SchoolLoginFailure.busy }
