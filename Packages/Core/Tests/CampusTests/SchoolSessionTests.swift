@@ -342,8 +342,10 @@ final class SchoolElectricityTests: XCTestCase {
         XCTAssertTrue(others.allSatisfy { $0.timeout < URLSessionHTTPClient.longestTimeout }, "\(others.map(\.timeout))")
     }
 
-    /// A refresh reading a meter bound to the campus node is not the lookup: no longer wait.
-    func testARefreshOfACampusWideBindingKeepsTheClientsWait() async throws {
+    /// A meter the lookup could only bind to the campus node is read campus-wide on every
+    /// refresh: the same slow read, given the same longest wait (else it is bound and never read).
+    /// Only that read: the card's own reads keep the client's wait.
+    func testARefreshOfACampusWideBindingWaitsAsLongAsTheLookup() async throws {
         let h = Harness()
         try h.signedIn(meter: MeterBinding(nodeID: "991001", comAddress: "000000000991", label: "99栋 991", nodeIsRoom: false))
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
@@ -352,8 +354,24 @@ final class SchoolElectricityTests: XCTestCase {
         try h.server.serve("ecykt/card-getRecordList-ok")
         _ = await h.refresher().refresh(inBackground: true)
         let wide = h.server.requests(path: "/electricnew/service").filter { $0.bodyField("buildingID") == "991001" }
-        XCTAssertEqual(wide.count, 1)
-        XCTAssertLessThan(wide[0].timeout, URLSessionHTTPClient.longestTimeout)
+        XCTAssertEqual(wide.map(\.timeout), [URLSessionHTTPClient.longestTimeout])
+        let others = h.server.requests.filter { $0.url.path.hasSuffix("/electricnew/service") == false }
+        XCTAssertFalse(others.isEmpty)
+        XCTAssertTrue(others.allSatisfy { $0.timeout < URLSessionHTTPClient.longestTimeout }, "\(others.map(\.timeout))")
+    }
+
+    /// A meter bound to its room node is one row: the client's own wait.
+    func testARefreshOfARoomBindingKeepsTheClientsWait() async throws {
+        let h = Harness()
+        try h.signedIn(meter: Harness.roomBinding)
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        try h.server.serve("ecykt/electric-getMeterStatus-room", matchBody: ["server", "buildingID"])
+        try h.server.serve("ecykt/card-getRecordList-ok")
+        _ = await h.refresher().refresh(inBackground: true)
+        let room = h.server.requests(path: "/electricnew/service").filter { $0.bodyField("buildingID") == Harness.roomBinding.nodeID }
+        XCTAssertEqual(room.count, 1)
+        XCTAssertLessThan(room[0].timeout, URLSessionHTTPClient.longestTimeout)
     }
 
     func testFallsBackToCampusNodeWhenRoomNodeNotFound() async throws {

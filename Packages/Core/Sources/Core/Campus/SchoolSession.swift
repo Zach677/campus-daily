@@ -1207,8 +1207,10 @@ public actor SchoolSession {
 
     nonisolated func readMeter(_ session: EcyktSession, binding: MeterBinding?) async -> Result<Meter?, ServiceError>? {
         guard let binding else { return nil }
+        // Bound to the campus node: every meter on the campus, as slow as the lookup's own read.
+        let timeout = binding.nodeIsRoom ? nil : URLSessionHTTPClient.longestTimeout
         return await capture {
-            let rows = try await self.ecykt.meters(session, nodeID: binding.nodeID, wide: !binding.nodeIsRoom)
+            let rows = try await self.ecykt.meters(session, nodeID: binding.nodeID, wide: !binding.nodeIsRoom, timeout: timeout)
             return MeterMatcher.pick(rows, binding: binding)
         }
     }
