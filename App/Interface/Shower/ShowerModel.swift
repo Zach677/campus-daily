@@ -85,6 +85,7 @@ enum ShowerProfileFiles {
     private var observer: Task<Void, Never>?
     private let gateway = ShowerGatewayBox()
     private let bluetooth = BluetoothTransport()
+    private var syncGate = ShowerSyncGate()
 
     init() {
         binding = (try? AppEnvironment.showerVault.binding()) ?? nil
@@ -154,6 +155,7 @@ enum ShowerProfileFiles {
     private func rebuildEngine() {
         guard !busy else { return }
         observer?.cancel(); observer = nil; engine = nil
+        syncGate.reset()
         guard binding != nil else {
             state = ((try? AppEnvironment.showerVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle
             return
@@ -189,7 +191,7 @@ enum ShowerProfileFiles {
     private func apply(_ next: ShowerState) {
         let old = state
         state = next
-        if next != old {
+        if syncGate.shouldSync(next, after:old) {
             ShowerActivityController.shared.sync(state:next)
             Reminders.shared.syncShower(started:next.mayBeFlowing ? next.startedAt : nil)
         }
