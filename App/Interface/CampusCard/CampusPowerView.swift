@@ -10,6 +10,8 @@ struct CampusPowerSetupView: View {
     @State private var busy = false
     @State private var issue: String?
     @State private var search = ""
+    /// Who was signed in when the picker (re)opened: a pick after someone else signed in is refused.
+    @State private var stamp: Int?
     var body: some View {
         List {
             AutomaticPowerSection()
@@ -26,9 +28,9 @@ struct CampusPowerSetupView: View {
                 }
                 ForEach(meters, id:\.comAddress) { meter in
                     Button {
-                        guard let building = path.last else { return }
+                        guard let building = path.last, let stamp else { return }
                         Task {
-                            do { try await campus.chooseMeter(nodeID:building.id, meter:meter, nodeIsRoom:true, path:path.map(\.name)); dismiss() }
+                            do { try await campus.chooseMeter(nodeID:building.id, meter:meter, nodeIsRoom:true, path:path.map(\.name), since:stamp); dismiss() }
                             catch { issue = "没保存上，再试一次。" }
                         }
                     } label: {
@@ -51,6 +53,7 @@ struct CampusPowerSetupView: View {
         guard !busy, campus.configured else { issue = "先登录学校账号。"; return }
         busy = true; issue = nil; path = []; meters = []; search = ""
         defer { busy = false }
+        stamp = await campus.personStamp()
         do { options = try await campus.directory(parent:nil) }
         catch { issue = (error as? ServiceError)?.userMessage ?? "位置列表读取失败" }
     }

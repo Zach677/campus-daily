@@ -632,19 +632,25 @@ public actor SchoolSession {
             try ensureSignedIn(since: started)
             try vault.saveProfile(profile)
         }
-        guard let address = profile.residence?.address else { return .noAddress }
+        // Every answer, a list or a hint included, is the person's who started: someone else
+        // signed in meanwhile gets none of it.
+        guard let address = profile.residence?.address else { try ensureSignedIn(since: started); return .noAddress }
 
         let campuses = try await ecykt.buildings(session, parent: nil).filter { address.matchesCampus($0.name) }
-        guard campuses.count == 1, let campus = campuses.first else { return .manualPicker }
+        guard campuses.count == 1, let campus = campuses.first else { try ensureSignedIn(since: started); return .manualPicker }
         let rows = try await ecykt.meters(session, nodeID: campus.id, wide: true)
         let meter: Meter
         switch MeterMatcher.match(rows, address: address) {
-        case .none: return .manualPicker
+        case .none:
+            try ensureSignedIn(since: started)
+            return .manualPicker
         case .many(let all):
             // The same comAddress twice: the campus-wide rows can't tell the rooms apart, and a
             // room found by its meter could be either one. The user picks the room by hand.
-            guard Set(all.map(\.comAddress)).count == all.count else { return .manualPicker }
-            return .chooseAmong(try await candidates(all, session: session, campus: campus, address: address))
+            guard Set(all.map(\.comAddress)).count == all.count else { try ensureSignedIn(since: started); return .manualPicker }
+            let list = try await candidates(all, session: session, campus: campus, address: address)
+            try ensureSignedIn(since: started)
+            return .chooseAmong(list)
         case .one(let m): meter = m
         }
 
@@ -665,7 +671,10 @@ public actor SchoolSession {
 
     /// Manual choice from the picker (`buildings(parent:)` walk in the UI, then a meter row).
     /// `path` = the directory names walked down to `nodeID`, kept as the full location.
-    public func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool, path: [String] = []) throws {
+    /// `stamp` = `personStamp()` when the picker opened: a pick made after someone else signed
+    /// in is refused.
+    public func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool, path: [String] = [], since stamp: Int) throws {
+        try ensureSignedIn(since: stamp)
         var profile = try vault.profile() ?? SchoolProfile()
         profile.meter = MeterBinding(nodeID: nodeID, comAddress: meter.comAddress, label: meter.name, nodeIsRoom: nodeIsRoom,
                                      location: path.isEmpty ? nil : PowerLocation.label(path))
@@ -674,9 +683,11 @@ public actor SchoolSession {
 
     /// Choice among several same-name meters (`.chooseAmong`): saved against its room node
     /// (1 row) when the walk found it, else against the campus node (wide read, picked by `comAddress`).
-    public func chooseMatchedMeter(_ candidate: MeterCandidate) async throws {
+    /// `stamp` = `personStamp()` taken before the match that offered the list.
+    public func chooseMatchedMeter(_ candidate: MeterCandidate, since stamp: Int) async throws {
+        let started = stamp
+        try ensureSignedIn(since: started)
         guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
-        let started = personGeneration
         var profile = try vault.profile() ?? SchoolProfile()
         guard let address = profile.residence?.address else { throw ServiceError.malformed(.portal, "data.gydz") }
         let meter = candidate.meter

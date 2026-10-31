@@ -380,7 +380,7 @@ final class SchoolElectricityTests: XCTestCase {
         XCTAssertTrue(h.server.unmatched.isEmpty)
         XCTAssertNil(try h.vault.profile()?.meter, "nothing is saved until the user picks")
 
-        try await session.chooseMatchedMeter(list[1])
+        try await session.chooseMatchedMeter(list[1], since: await session.personStamp())
         XCTAssertEqual(try h.vault.profile()?.meter,
                        MeterBinding(nodeID: "991001002000109000001003", comAddress: "000000000992", label: "99栋 991", nodeIsRoom: true,
                                     location: "星湖校区 · 樱花公寓 · 99栋 · 991"))

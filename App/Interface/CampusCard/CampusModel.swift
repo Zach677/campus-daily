@@ -6,6 +6,9 @@ import Core
 struct PowerChoice: Identifiable, Equatable {
     var id: String { candidate.id }
     let candidate: MeterCandidate
+    /// Who was signed in when the match that offered it started: a pick after someone else
+    /// signed in is refused.
+    let stamp: Int
     var meter: Meter { candidate.meter }
     var location: String { candidate.location }
     /// Row for the shared same-name list: short 「3 栋 108」 over the full location.
@@ -238,12 +241,15 @@ struct PowerChoice: Identifiable, Equatable {
             defer { matchingPower = false }
             let stamp = await session.personStamp()
             do {
-                switch try await session.resolveElectricity() {
+                let found = try await session.resolveElectricity()
+                // Someone else signed in while the answer was on its way: none of it is theirs.
+                guard await session.isSamePerson(since:stamp) else { return }
+                switch found {
                 case .matched:
                     profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
                     await refresher.noteChange()
                     await refresh(force:true)
-                case .chooseAmong(let candidates): powerChoices = candidates.map(PowerChoice.init)
+                case .chooseAmong(let candidates): powerChoices = candidates.map { PowerChoice(candidate:$0, stamp:stamp) }
                 case .manualPicker: powerMatchIssue = "没自动找到电表，去「绑定电表」里选一下。"
                 case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「绑定电表」里选一下。"
                 }
@@ -262,7 +268,7 @@ struct PowerChoice: Identifiable, Equatable {
         matchingPower = true
         defer { matchingPower = false }
         do {
-            try await session.chooseMatchedMeter(choice.candidate)
+            try await session.chooseMatchedMeter(choice.candidate, since:choice.stamp)
         } catch {
             powerMatchIssue = AppErrorText.text(error)
             return false
@@ -277,8 +283,9 @@ struct PowerChoice: Identifiable, Equatable {
     /// Manual picker.
     func directory(parent: String?) async throws -> [PowerNode] { try await session.directory(parent:parent) }
     func meterRows(nodeID: String) async throws -> [Meter] { try await session.meterRows(nodeID:nodeID) }
-    func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool, path: [String] = []) async throws {
-        try await session.chooseMeter(nodeID:nodeID, meter:meter, nodeIsRoom:nodeIsRoom, path:path)
+    /// `stamp`: `personStamp()` when the picker opened.
+    func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool, path: [String] = [], since stamp: Int) async throws {
+        try await session.chooseMeter(nodeID:nodeID, meter:meter, nodeIsRoom:nodeIsRoom, path:path, since:stamp)
         await refresher.noteChange()
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         powerChoices = []; powerMatchIssue = nil

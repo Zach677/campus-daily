@@ -50,7 +50,8 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
     }
 
     func session(_ h: Harness, _ hold: Hold) -> SchoolSession {
-        SchoolSession(portal: PortalClient(http: hold), ecykt: EcyktClient(http: hold), vault: h.vault, now: h.clock.function)
+        SchoolSession(portal: PortalClient(http: hold), ecykt: EcyktClient(http: hold), vault: h.vault,
+                      passwordLogin: h.passwordLogin, now: h.clock.function)
     }
 
     /// Signed in as a person whose card differs from the one the web sign-in fixture shows.
@@ -89,6 +90,70 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         XCTAssertNil(try h.vault.profile(), "no dorm or meter of the previous person")
     }
 
+    /// The match found several same-name meters (or none) for the previous person: no list and
+    /// no picker hint reaches the next person, whichever way they signed in.
+    func testSwitchWhileSameNamedMetersAreFoundOffersNoChoice() async throws {
+        for (extra, byForm) in [(["99栋991", "99栋 991"], false), (["99栋991", "99栋 991"], true), ([], false)] {
+            var h = try previousPerson()
+            h.passwordLogin = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+            if byForm {
+                h.server.serve(try T.eCardWithTicket())
+                h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "NEXT-TOKEN"))
+            }
+            try h.server.serve("ecykt/getSysBindCustInfo-ok")
+            h.server.serve(try SchoolElectricityTests.campusMeters(extra: extra), matchBody: ["server", "buildingID"])
+            try h.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
+            h.server.respond("POST", "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service",
+                             bodyMatch: ["server": "/api/getBuildingInfo"], body: Data(#"{"code":0,"msg":"获取成功","data":"[]"}"#.utf8))
+            let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
+            let session = session(h, hold)
+            async let result = session.resolveElectricity()
+            await fulfillment(of: [hold.reached], timeout: 5)
+            if byForm {
+                let summary = try await session.signIn(account: "99100992", password: "synthetic-pw-992", savePassword: false)
+                XCTAssertTrue(summary.switchedAccount)
+            } else {
+                try await signInSomeoneElse(session)
+            }
+            hold.release()
+            do {
+                let late = try await result
+                XCTFail("the previous person's match reached the next one: \(late)")
+            } catch {
+                XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
+            }
+            XCTAssertNil(try h.vault.profile()?.meter)
+        }
+    }
+
+    /// A same-name list or the manual picker opened for the previous person: the next person's
+    /// pick from it is refused, though their own sign-in is current.
+    func testAPickFromThePreviousPersonsListSavesNothing() async throws {
+        let h = try previousPerson()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        let session = h.session()
+        let stamp = await session.personStamp()
+        try await signInSomeoneElse(session)
+        let meter = Meter(comAddress: "000000000991", name: "99栋991")
+        let room = PowerNode(id: "991001001000109000001003", name: "991")
+        do {
+            try await session.chooseMatchedMeter(MeterCandidate(meter: meter, path: [room]), since: stamp)
+            XCTFail("a pick from the previous person's list must not be saved")
+        } catch {
+            XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
+        }
+        do {
+            try await session.chooseMeter(nodeID: room.id, meter: meter, nodeIsRoom: true, since: stamp)
+            XCTFail("a pick from the previous person's picker must not be saved")
+        } catch {
+            XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
+        }
+        XCTAssertNil(try h.vault.profile()?.meter)
+        let now = await session.personStamp()
+        try await session.chooseMeter(nodeID: room.id, meter: meter, nodeIsRoom: true, since: now)
+        XCTAssertEqual(try h.vault.profile()?.meter?.comAddress, "000000000991", "their own pick is kept")
+    }
+
     func testSwitchWhileReadingTheDormWritesNothing() async throws {
         let h = try previousPerson(portal: true)
         try h.vault.saveProfile(nil)
@@ -110,7 +175,7 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         try h.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
         let hold = Hold(h, self, suffix: "/electricnew/service")
         let session = session(h, hold)
-        async let result: Void = session.chooseMatchedMeter(MeterCandidate(meter: Meter(comAddress: "000000000991", name: "99栋991"), path: []))
+        async let result: Void = session.chooseMatchedMeter(MeterCandidate(meter: Meter(comAddress: "000000000991", name: "99栋991"), path: []), since: 0)
         await fulfillment(of: [hold.reached], timeout: 5)
         try await signInSomeoneElse(session)
         hold.release()
