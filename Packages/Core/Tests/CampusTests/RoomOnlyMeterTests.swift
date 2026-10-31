@@ -13,24 +13,28 @@ final class RoomOnlyMeterTests: XCTestCase {
         h.server.requests(path: "/electricnew/service").filter { $0.bodyField("server") == "/api/getMeterStatus" }
     }
 
-    func testACampusWideBindingIsDroppedAtLaunchAndTheDormKept() throws {
+    func testACampusWideBindingIsDroppedAtLaunchAndTheDormKept() async throws {
         let h = Harness()
         try h.signedIn(meter: Self.campusBinding)
-        XCTAssertTrue(try SchoolSession.dropCampusWideMeter(h.vault))
+        let dropped1 = try await h.session().dropCampusWideMeter()
+        XCTAssertTrue(dropped1)
         let profile = try h.vault.profile()
         XCTAssertNil(profile?.meter)
         XCTAssertEqual(profile?.residence?.raw, "星湖校区99栋9号1层991房", "the dorm stays: the lookup walks to it")
-        XCTAssertFalse(try SchoolSession.dropCampusWideMeter(h.vault), "once")
+        let dropped2 = try await h.session().dropCampusWideMeter()
+        XCTAssertFalse(dropped2, "once")
         XCTAssertTrue(h.server.requests.isEmpty)
     }
 
-    func testARoomBindingOrNoneIsLeftAlone() throws {
+    func testARoomBindingOrNoneIsLeftAlone() async throws {
         let h = Harness()
         try h.signedIn(meter: Harness.roomBinding)
-        XCTAssertFalse(try SchoolSession.dropCampusWideMeter(h.vault))
+        let dropped3 = try await h.session().dropCampusWideMeter()
+        XCTAssertFalse(dropped3)
         XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
         let empty = Harness()
-        XCTAssertFalse(try SchoolSession.dropCampusWideMeter(empty.vault))
+        let dropped4 = try await empty.session().dropCampusWideMeter()
+        XCTAssertFalse(dropped4)
         XCTAssertNil(try empty.vault.profile())
     }
 
@@ -73,7 +77,8 @@ final class RoomOnlyMeterTests: XCTestCase {
         var old = HomeSnapshot(roomLabel: "99栋 991", checkedAt: Date(timeIntervalSince1970: 1))
         old.power.succeed(Meter(comAddress: "000000000991", name: "99栋991", remainingKWh: 42), at: Date(timeIntervalSince1970: 1))
         try store.saveSnapshot(old)
-        XCTAssertTrue(try SchoolSession.dropCampusWideMeter(h.vault))
+        let dropped5 = try await h.session().dropCampusWideMeter()
+        XCTAssertTrue(dropped5)
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-ok")
         try h.server.serve("ecykt/card-getRecordList-ok")
@@ -118,5 +123,22 @@ final class RoomOnlyMeterTests: XCTestCase {
         let meter = try h.vault.profile()?.meter
         XCTAssertEqual(meter?.nodeIsRoom, true)
         XCTAssertEqual(meter?.location, "星湖校区 · 半山公寓 · 99栋 · 991")
+    }
+
+    /// The drop is a compare-and-write: only the campus-node meter just read is removed. A meter
+    /// stored in between (a pick, another process) stays.
+    func testOnlyTheCampusWideMeterJustReadIsDropped() {
+        let profile = SchoolProfile(residence: PortalResidence(raw: "星湖校区99栋9号1层991房"), meter: Self.campusBinding)
+        var expected = profile; expected.meter = nil
+        XCTAssertEqual(SchoolSession.withoutCampusWideMeter(profile, seen: Self.campusBinding), expected)
+        var picked = profile; picked.meter = Harness.roomBinding
+        XCTAssertNil(SchoolSession.withoutCampusWideMeter(picked, seen: Self.campusBinding), "a meter picked meanwhile stays")
+        var other = Self.campusBinding; other.comAddress = "000000000994"
+        XCTAssertNil(SchoolSession.withoutCampusWideMeter(profile, seen: other), "not the one read")
+        var none = profile; none.meter = nil
+        XCTAssertNil(SchoolSession.withoutCampusWideMeter(none, seen: Self.campusBinding))
+        XCTAssertNil(SchoolSession.withoutCampusWideMeter(nil, seen: Self.campusBinding))
+        var room = profile; room.meter = Harness.roomBinding
+        XCTAssertNil(SchoolSession.withoutCampusWideMeter(room, seen: Harness.roomBinding), "a room meter is never dropped")
     }
 }

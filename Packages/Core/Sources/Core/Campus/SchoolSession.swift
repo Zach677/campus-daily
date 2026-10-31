@@ -1021,12 +1021,21 @@ public actor SchoolSession {
         }
     }
 
-    /// Launch: a meter bound to the campus node (older builds) is dropped. True when one was.
-    /// The dorm stays, so the launch lookup walks to the room's own meter.
-    public static func dropCampusWideMeter(_ vault: SchoolVault) throws -> Bool {
-        guard var profile = try vault.profile(), let meter = profile.meter, !meter.nodeIsRoom else { return false }
+    /// The profile without `seen`, a campus-node meter, if it is still the one stored; nil when
+    /// there is nothing to drop (another meter, or none, is stored now).
+    public static func withoutCampusWideMeter(_ profile: SchoolProfile?, seen: MeterBinding) -> SchoolProfile? {
+        guard !seen.nodeIsRoom, var profile, profile.meter == seen else { return nil }
         profile.meter = nil
-        try vault.saveProfile(profile)
+        return profile
+    }
+
+    /// Launch: a meter bound to the campus node (older builds) is dropped. True when one was.
+    /// The dorm stays, so the launch lookup walks to the room's own meter. Compare-and-write in
+    /// this actor: only the campus-node meter just read is removed, with no wait in between.
+    public func dropCampusWideMeter() throws -> Bool {
+        guard let seen = try vault.profile()?.meter, !seen.nodeIsRoom else { return false }
+        guard let next = Self.withoutCampusWideMeter(try vault.profile(), seen: seen) else { return false }
+        try vault.saveProfile(next)
         return true
     }
 

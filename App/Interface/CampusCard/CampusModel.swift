@@ -59,11 +59,12 @@ struct PowerChoice: Identifiable, Equatable {
     /// Sign-outs in order; sign-ins wait for them (`finished()`).
     private let signOuts = SchoolSignOut(session:AppEnvironment.school, refresher:AppEnvironment.refresher)
 
-    init() {
-        // A meter an older build bound to the campus node counts as none: the launch lookup
-        // walks to the room's own.
-        _ = try? SchoolSession.dropCampusWideMeter(AppEnvironment.schoolVault)
-        reload()
+    init() { reload() }
+
+    /// Launch, before the launch lookup: a meter an older build bound to the campus node counts
+    /// as none, so the lookup walks to the room's own (`SchoolSession.dropCampusWideMeter`).
+    func dropCampusWideMeter() async {
+        if (try? await session.dropCampusWideMeter()) == true { reload() }
     }
 
     /// Re-read the Keychain (launch, after sign-in/out).
