@@ -27,7 +27,7 @@ public struct MeterLookupGate: Sendable, Equatable {
     public private(set) var stopStamp: Int?
     /// Several apartments (or campuses) to tell apart, one not read (`.unfinished`): the meter
     /// page shows no list, only the message and 「再找一次电表」.
-    public private(set) var unfinished: MeterLevel?
+    public private(set) var unfinished: MeterWalkStop?
     private var signedInMeanwhile = false
 
     public init() {}
@@ -54,7 +54,7 @@ public struct MeterLookupGate: Sendable, Equatable {
         switch found {
         case .chooseAmong(let list): choices = list; choicesStamp = stamp
         case .stopped(let at): stop = at; stopStamp = stamp
-        case .unfinished(let level): unfinished = level
+        case .unfinished(let at): unfinished = at
         case .matched, .alreadyBound, .noAddress: break
         }
         return true

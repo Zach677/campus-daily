@@ -14,6 +14,7 @@ final class MeterLookupGateTests: XCTestCase {
     static let stop = MeterWalkStop(level: .floor, path: [MeterWalkTests.campus, MeterWalkTests.apartment, MeterWalkTests.building],
                                     options: [MeterWalkTests.floor])
     static let binding = Harness.roomBinding
+    static let apartments = MeterWalkStop(level: .apartment, path: [MeterWalkTests.campus], options: [MeterWalkTests.apartment])
 
     func testOnlyLaunchASignInOrTheButtonStartIt() {
         XCTAssertEqual(MeterLookupGate.Trigger.allCases, [.launch, .signedIn, .manual], "no foreground or after-refresh start")
@@ -182,15 +183,15 @@ final class MeterLookupGateTests: XCTestCase {
         gate.answered(.stopped(Self.stop), stamp: 1)
         _ = gate.ended()
         _ = gate.start(.manual, signedIn: true, meterBound: false)
-        gate.answered(.unfinished(.apartment), stamp: 1)
-        XCTAssertEqual(gate.unfinished, .apartment)
+        gate.answered(.unfinished(Self.apartments), stamp: 1)
+        XCTAssertEqual(gate.unfinished, Self.apartments)
         XCTAssertNil(gate.stop)
         XCTAssertNil(gate.pageStop(meterBound: false))
         _ = gate.start(.manual, signedIn: true, meterBound: false)
-        XCTAssertEqual(gate.unfinished, .apartment, "stays while it runs again")
+        XCTAssertEqual(gate.unfinished, Self.apartments, "stays while it runs again")
         gate.answered(.stopped(Self.stop), stamp: 1)
         XCTAssertNil(gate.unfinished)
-        gate.answered(.unfinished(.campus), stamp: 1)
+        gate.answered(.unfinished(Self.apartments), stamp: 1)
         gate.clear()
         XCTAssertNil(gate.unfinished)
     }

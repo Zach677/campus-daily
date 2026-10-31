@@ -9,7 +9,8 @@ public enum ElectricityResolution: Sendable, Equatable {
     case stopped(MeterWalkStop)
     /// Several apartments (or campuses) hold the dorm's building and one of them could not be
     /// read (slow school, no connection): which one has the room is not known. Nothing bound.
-    case unfinished(MeterLevel)
+    /// The stop is that level's, as a plain stop would be (its `path` for the page's path card).
+    case unfinished(MeterWalkStop)
     /// No parsed portal dorm address.
     case noAddress
     /// A meter was bound meanwhile (picked by hand while the lookup ran): it stays, and is
@@ -871,7 +872,7 @@ public actor SchoolSession {
         case .open(var current):
             switch walked {
             case .stopped(let stop): return .stopped(stop)
-            case .unfinished(let level): return .unfinished(level)
+            case .unfinished(let at): return .unfinished(at)
             case .rooms(let list): return .chooseAmong(list)
             case .room(let found):
                 guard let room = found.room else { return .chooseAmong([found]) }
@@ -888,7 +889,7 @@ public actor SchoolSession {
     enum Walked {
         case room(MeterCandidate), rooms([MeterCandidate]), stopped(MeterWalkStop)
         /// A split at this level with one branch not read.
-        case unfinished(MeterLevel)
+        case unfinished(MeterWalkStop)
         /// The rooms of the dorm's name this branch found with a meter.
         var found: [MeterCandidate] {
             switch self {
@@ -915,7 +916,7 @@ public actor SchoolSession {
         /// (with the rooms of all of them when several have).
         func split(_ walked: [(PowerNode, Walked)], _ stop: MeterWalkStop) -> Walked {
             if walked.contains(where: { if case .unfinished = $0.1 { return true } else { return false } }) {
-                return .unfinished(stop.level)
+                return .unfinished(stop)
             }
             let having = walked.filter { !$0.1.found.isEmpty }
             if having.count == 1 { return having[0].1 }
@@ -1005,7 +1006,7 @@ public actor SchoolSession {
             var walked: [(PowerNode, Walked)] = []
             for (apartment, kids) in holding {
                 guard let down = try await unlessUnread({ try await fromBuildings(kids, path: path + [apartment]) }) else {
-                    return .unfinished(.apartment)
+                    return .unfinished(stop)
                 }
                 walked.append((apartment, down))
             }
@@ -1021,7 +1022,7 @@ public actor SchoolSession {
         default:
             var walked: [(PowerNode, Walked)] = []
             for campus in campusHits {
-                guard let down = try await unlessUnread({ try await fromCampus(campus) }) else { return .unfinished(.campus) }
+                guard let down = try await unlessUnread({ try await fromCampus(campus) }) else { return .unfinished(stop) }
                 walked.append((campus, down))
             }
             return split(walked, stop)

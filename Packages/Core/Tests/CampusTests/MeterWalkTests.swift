@@ -207,7 +207,11 @@ final class MeterWalkTests: XCTestCase {
             Self.secondNinetyNine(h, rooms: [("991", Self.lanxiangRoom.id)], meter: ("990000007991", "99栋991"))
             try SchoolElectricityTests.serveTree(h)
             let (_, found) = try await h.session().matchElectricity()
-            XCTAssertEqual(found, .unfinished(.apartment), "\(failing) \(error)")
+            guard case .unfinished(let at) = found else { XCTFail("\(failing) \(error): \(found)"); continue }
+            XCTAssertEqual(at.level, .apartment, failing)
+            XCTAssertEqual(at.path, [Self.campus], "the matched levels, for the page's path card")
+            XCTAssertEqual(at.options.count, 9)
+            XCTAssertEqual(at.candidates, [])
             XCTAssertNil(try h.vault.profile()?.meter, failing)
             XCTAssertEqual(waits.asked, [5, 20], failing)
         }

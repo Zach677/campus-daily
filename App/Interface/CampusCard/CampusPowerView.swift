@@ -13,6 +13,8 @@ struct CampusPowerSetupView: View {
     @State private var suggested: [String] = []
     /// Showing where the automatic lookup stopped (not walked away from yet).
     @State private var atStop = false
+    /// Opened where the lookup ended unfinished (one of several apartments not read).
+    @State private var unread = false
     @State private var busy = false
     @State private var issue: String?
     @State private var search = ""
@@ -20,23 +22,14 @@ struct CampusPowerSetupView: View {
     @State private var stamp: Int?
     var body: some View {
         List {
-            AutomaticPowerSection(onMeterPage:true)
-            // One of several apartments not read: only the message and 「再找一次电表」 above.
-            if !campus.powerUnfinished {
-                Section {
-                    if path.isEmpty {
-                        LocationPathHeader(path:[], placeholder:MeterPageText.pickerPrompt)
-                    } else {
-                        HStack(spacing:12) {
-                            LocationPathHeader(path:[MeterPageText.matchedLine(path)])
-                            Spacer(minLength:8)
-                            Button(MeterPageText.rechoose) { Task { await loadRoot() } }
-                                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
-                                .buttonStyle(.borderless).disabled(busy)
-                                .accessibilityIdentifier("meterRechoose")
-                        }
-                    }
-                }.listRowBackground(Theme.group)
+            if unreadShown {
+                // One of several apartments not read: the matched levels, then only the message
+                // and 「再找一次电表」, no list.
+                pathCard
+                AutomaticPowerSection(onMeterPage:true)
+            } else {
+                AutomaticPowerSection(onMeterPage:true)
+                pathCard
                 if busy { Text("正在读取电表信息…").foregroundStyle(.secondary).listRowBackground(Theme.group) }
                 if let issue { Text(issue).foregroundStyle(.orange).font(.footnote).listRowBackground(Theme.group) }
                 if meters.isEmpty, atStop, let question = campus.powerQuestion {
@@ -114,20 +107,46 @@ struct CampusPowerSetupView: View {
                 show(stop)
             }
     }
-    /// Where the lookup stopped, else the campuses.
+    /// The matched levels with 「重选」 (or the prompt before any).
+    private var pathCard: some View {
+        Section {
+            if path.isEmpty {
+                LocationPathHeader(path:[], placeholder:MeterPageText.pickerPrompt)
+            } else {
+                HStack(spacing:12) {
+                    LocationPathHeader(path:[MeterPageText.matchedLine(path)])
+                    Spacer(minLength:8)
+                    Button(MeterPageText.rechoose) { Task { await loadRoot() } }
+                        .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+                        .buttonStyle(.borderless).disabled(busy)
+                        .accessibilityIdentifier("meterRechoose")
+                }
+            }
+        }.listRowBackground(Theme.group)
+    }
+    /// Unfinished and not walked away from (「重选」 opens the list from the campuses).
+    private var unreadShown: Bool { unread && campus.powerUnfinished != nil }
+    /// Where the lookup stopped (or ended unfinished), else the campuses.
     private func open() async {
         // Nil once a meter is bound (`MeterLookupGate.pageStop`): the page starts at the campuses.
-        guard let stop = campus.powerStop else { await loadRoot(); return }
-        stamp = await campus.personStamp()
-        show(stop)
+        if let stop = campus.powerStop {
+            stamp = await campus.personStamp()
+            show(stop)
+        } else if let unfinished = campus.powerUnfinished {
+            stamp = await campus.personStamp()
+            show(unfinished)
+            unread = true
+        } else {
+            await loadRoot()
+        }
     }
     private func show(_ stop: MeterWalkStop) {
         path = stop.path; options = stop.options; level = stop.level; suggested = stop.suggested
-        meters = []; issue = nil; search = ""; atStop = true
+        meters = []; issue = nil; search = ""; atStop = true; unread = false
     }
     private func loadRoot() async {
         guard !busy, campus.configured else { issue = "先登录学校账号。"; return }
-        busy = true; issue = nil; path = []; meters = []; search = ""; atStop = false; level = nil; suggested = []
+        busy = true; issue = nil; path = []; meters = []; search = ""; atStop = false; unread = false; level = nil; suggested = []
         defer { busy = false }
         stamp = await campus.personStamp()
         do {

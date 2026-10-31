@@ -105,7 +105,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// The dorm of a DEBUG demo stop (nil otherwise): the question names its building and room.
     private var demoDorm: DormAddress?
     /// Several apartments to tell apart and one not read: the meter page shows no list.
-    var powerUnfinished: Bool { lookup.unfinished != nil && !powerConfigured }
+    var powerUnfinished: MeterWalkStop? { powerConfigured ? nil : lookup.unfinished }
     /// The stamp a pick of `powerQuestion`'s rows is saved under.
     var powerQuestionStamp: Int { lookup.stopStamp ?? -1 }
     /// What onboarding's 「你住哪间」 step says about the meter.
@@ -322,7 +322,7 @@ struct PowerChoice: Identifiable, Equatable {
                         switch answer {
                         case .matched, .alreadyBound, .chooseAmong: break
                         case .stopped: powerMatchIssue = Self.stoppedIssue
-                        case .unfinished(let level): powerMatchIssue = MeterPageText.unfinished(level)
+                        case .unfinished(let at): powerMatchIssue = MeterPageText.unfinished(at.level)
                         case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「电表」里选一下。"
                         }
                     }
@@ -415,14 +415,16 @@ struct PowerChoice: Identifiable, Equatable {
     /// Demo: the lookup stopped at the dorm's buildings (two named 99栋); `running` looks again,
     /// `slow` failed on a slow school. Synthetic, nothing is read.
     func demoMeterStop(running: Bool = false, slow: Bool = false, ask: Bool = false, unfinished: Bool = false) {
-        let stop = ask ? Self.demoApartmentStop : MeterWalkStop(level:.building,
+        let stop = ask || unfinished ? Self.demoApartmentStop : MeterWalkStop(level:.building,
                                  path:[PowerNode(id:"991001", name:"星湖校区"), PowerNode(id:"991001001", name:"半山公寓")],
                                  options:[PowerNode(id:"991001001000108", name:"98栋"), PowerNode(id:"991001001000109", name:"99栋"),
                                           PowerNode(id:"991001001000110", name:"99 栋"), PowerNode(id:"991001001000111", name:"100栋")],
                                  suggested:["991001001000109", "991001001000110"])
         var gate = MeterLookupGate()
         _ = gate.start(.manual, signedIn:true, meterBound:false)
-        gate.answered(unfinished ? .unfinished(.apartment) : .stopped(stop), stamp:0)
+        var unread = stop
+        unread.candidates = []
+        gate.answered(unfinished ? .unfinished(unread) : .stopped(stop), stamp:0)
         _ = gate.ended()
         if running { _ = gate.start(.manual, signedIn:true, meterBound:false) }
         lookup = gate
