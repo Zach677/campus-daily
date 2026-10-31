@@ -22,13 +22,37 @@ public enum SchoolLoginFailure: Error, Sendable, Equatable {
     /// suspended past it) and may have stored newer credentials: what came back was not written.
     /// Try again in a moment.
     case busy
+    /// Saving a password while the stored login can't be read (damaged, or an older shape): it
+    /// can't be told who is signed in, so nothing was sent or saved. Signing out and in again
+    /// fixes it.
+    case unreadableAccount
 
     /// The password the user typed stays in the field: nothing said it was wrong (it was not
     /// sent, or no answer came back), so it can be tried again as it is.
     public var keepsTypedPassword: Bool {
         switch self {
         case .busy, .offline, .noAnswer: return true
-        case .wrongCredentials, .cannotLoginDirectly, .differentAccount: return false
+        case .wrongCredentials, .cannotLoginDirectly, .differentAccount, .unreadableAccount: return false
+        }
+    }
+
+    /// Why a password was not saved, as Settings says it (alert title and message).
+    public struct SavePasswordRefusal: Sendable, Equatable {
+        public var title: String
+        public var message: String
+        /// Both in one line, for places without an alert.
+        public var text: String { title + message }
+    }
+
+    /// The two refusals that are not about the password itself; nil for every other failure.
+    public var savePasswordRefusal: SavePasswordRefusal? {
+        switch self {
+        case .differentAccount:
+            return SavePasswordRefusal(title: "这不是现在登录的账号，没保存。", message: "要换账号，先退出登录。")
+        case .unreadableAccount:
+            return SavePasswordRefusal(title: "认不出现在登录的是哪个账号，没保存。", message: "先退出登录，再重新登录一次。")
+        case .wrongCredentials, .cannotLoginDirectly, .offline, .noAnswer, .busy:
+            return nil
         }
     }
 }

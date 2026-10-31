@@ -164,7 +164,7 @@ public actor SchoolSession {
     public func savePassword(_ password: String, account given: String? = nil, owning: LeaseOwnership) async throws {
         let start = try Self.storedCredentials(vault)
         // Nobody can tell who is signed in: the password can't be checked against them.
-        if start.unreadablePerson { throw SchoolLoginFailure.differentAccount }
+        if start.unreadablePerson { throw SchoolLoginFailure.unreadableAccount }
         let stored = start.account
         if let known = stored?.account, let given, given != known { throw SchoolLoginFailure.differentAccount }
         guard let account = given ?? stored?.account, !account.isEmpty else {

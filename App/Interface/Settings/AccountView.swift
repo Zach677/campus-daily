@@ -45,7 +45,8 @@ struct AccountView: View {
     @State private var saving = false
     @State private var saveIssue: String?
     /// The typed account isn't the signed-in one: nothing saved, nobody switched.
-    @State private var differentAccount = false
+    /// Why 保存密码 was refused (another account, or the stored login can't be read).
+    @State private var refusal: SchoolLoginFailure.SavePasswordRefusal?
     /// 重新输入密码 (only while automatic sign-in is paused).
     @State private var askReenter = false
     /// 重新登录学校账号: the account-and-password sheet.
@@ -181,10 +182,10 @@ struct AccountView: View {
                 .alert(AccountText.signOutFailed, isPresented:$campus.signOutFailed) {
                     Button("好", role:.cancel) {}
                 }
-                .alert(SchoolLoginText.differentAccountTitle, isPresented:$differentAccount) {
+                .alert(refusal?.title ?? "", isPresented:Binding(get:{ refusal != nil }, set:{ if !$0 { refusal = nil } })) {
                     Button("好", role:.cancel) {}
                 } message: {
-                    Text(SchoolLoginText.differentAccountMessage)
+                    Text(refusal?.message ?? "")
                 }
                 .tint(nil)
         }
@@ -208,7 +209,7 @@ struct AccountView: View {
         guard !password.isEmpty else { return }
         if preview != nil {
             // DEBUG demo of the web-login case: any account but the demo one is someone else.
-            if askedAccount, !name.isEmpty, name != "99100991" { differentAccount = true } else { previewSaved = true }
+            if askedAccount, !name.isEmpty, name != "99100991" { refusal = SchoolLoginFailure.differentAccount.savePasswordRefusal } else { previewSaved = true }
             return
         }
         saving = true
@@ -218,8 +219,8 @@ struct AccountView: View {
                 try await campus.savePassword(password, account:account == nil ? name : nil)
             } catch SchoolLoginFailure.wrongCredentials {
                 saveIssue = askedAccount ? "账号或密码不对，没保存。" : AccountText.wrongPassword
-            } catch SchoolLoginFailure.differentAccount {
-                differentAccount = true
+            } catch let failure as SchoolLoginFailure where failure.savePasswordRefusal != nil {
+                refusal = failure.savePasswordRefusal
             } catch {
                 saveIssue = SchoolLoginText.text(error)
                 // Not sent (正在更新) or no answer: what was typed is there for the next try.

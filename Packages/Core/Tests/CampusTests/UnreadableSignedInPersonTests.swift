@@ -61,10 +61,20 @@ final class UnreadableSignedInPersonTests: XCTestCase {
                 try await h.session().savePassword("synthetic-pw-991", account: "99100991", owning: .unchecked)
                 XCTFail("\(key): saved for a person nobody could confirm")
             } catch {
-                XCTAssertEqual(error as? SchoolLoginFailure, .differentAccount, "\(key)")
+                XCTAssertEqual(error as? SchoolLoginFailure, .unreadableAccount, "\(key)")
             }
             XCTAssertTrue(login.calls.isEmpty, "\(key): no password sent")
             XCTAssertEqual(try h.vault.credentialBytes(), before, "\(key): nothing written")
         }
+    }
+
+    /// What Settings says for each refusal to save a password.
+    func testEachRefusalToSaveAPasswordSaysWhy() {
+        XCTAssertEqual(SchoolLoginFailure.unreadableAccount.savePasswordRefusal?.text,
+                       "认不出现在登录的是哪个账号，没保存。先退出登录，再重新登录一次。")
+        XCTAssertEqual(SchoolLoginFailure.differentAccount.savePasswordRefusal?.text,
+                       "这不是现在登录的账号，没保存。要换账号，先退出登录。")
+        XCTAssertNil(SchoolLoginFailure.wrongCredentials.savePasswordRefusal)
+        XCTAssertFalse(SchoolLoginFailure.unreadableAccount.keepsTypedPassword)
     }
 }
