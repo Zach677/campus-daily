@@ -100,7 +100,8 @@ enum ShowerProfileFiles {
     /// The build has no usable profile (neither bundled nor imported).
     var platformMissing: Bool { binding != nil && profile == nil }
     var mayStart: Bool {
-        configured && !platformMissing && !residenceReviewRequired && engine != nil && !busy && !storageBlocked && state.canStart
+        ShowerLinkRule.mayStart(state, ready:configured && !platformMissing && !residenceReviewRequired && engine != nil && !storageBlocked,
+                                busy:busy, inspecting:inspecting)
     }
     var mayFinish: Bool { configured && engine != nil && !busy && !storageBlocked && state.canFinish }
     var mayResolveManually: Bool { engine != nil && !busy && state.canResolveManually }
@@ -339,7 +340,7 @@ enum ShowerProfileFiles {
         guard !inspecting else { return }
         // Only this check's answer counts: an earlier one must not read as found.
         inspectionOutcome = nil
-        guard let binding, mayImport else { return }
+        guard let binding, mayImport, ShowerLinkRule.mayInspect(state, busy:busy, inspecting:inspecting) else { return }
         let bleName = profile?.bleName ?? ""
         guard !bleName.isEmpty else { inspectionStatus = Self.platformMissingText; inspectionOutcome = .failed(Self.platformMissingText); return }
         inspecting = true; inspectionStatus = nil; verifiedDevice = nil; inspectionFoundBusy = false; inspectionOutcome = nil
