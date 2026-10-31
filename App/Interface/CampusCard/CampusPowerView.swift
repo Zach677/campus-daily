@@ -46,10 +46,15 @@ struct CampusPowerSetupView: View {
                                     show(halted); atStop = false
                                 }
                             } label: {
-                                VStack(alignment:.leading, spacing:2) {
-                                    Text(row.title)
-                                    Text(row.location).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                                        .fixedSize(horizontal:false, vertical:true)
+                                HStack(spacing:8) {
+                                    VStack(alignment:.leading, spacing:2) {
+                                        Text(row.title)
+                                        Text(row.location).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                                            .fixedSize(horizontal:false, vertical:true)
+                                    }
+                                    Spacer(minLength:0)
+                                    // Only a halted apartment opens a list; a room binds at the tap.
+                                    if row.picker != nil { RowChevron() }
                                 }
                             }
                             .disabled(busy || campus.matchingPower)

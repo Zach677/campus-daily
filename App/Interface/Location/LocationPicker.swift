@@ -10,6 +10,8 @@ struct LocationChoice: Identifiable, Equatable {
     let location: String
     /// What VoiceOver reads instead, when given.
     var voice: String?
+    /// Not a choice but a way on (an apartment the meter lookup stopped in): no check, a chevron.
+    var opens = false
 
     /// VoiceOver reads the location as words, not as 「点」 separators.
     var spoken: String { voice ?? title + "，" + location.replacingOccurrences(of:" · ", with:"，") }
@@ -62,13 +64,15 @@ struct LocationChoiceRow: View {
     var body: some View {
         Button(action:action) {
             HStack(alignment:.center, spacing:14) {
-                LocationCheck(selected:selected, size:compact ? 22 : 24)
+                // A row that opens: the check's slot kept empty so the titles line up.
+                LocationCheck(selected:selected, size:compact ? 22 : 24).opacity(choice.opens ? 0 : 1)
                 VStack(alignment:.leading, spacing:3) {
                     Text(title).scaledFont(compact ? 16 : 17, compact ? .regular : .medium).foregroundStyle(Theme.ink)
                     Text(choice.location).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                         .fixedSize(horizontal:false, vertical:true)
                 }
                 Spacer(minLength:0)
+                if choice.opens { RowChevron() }
             }
             .padding(.vertical,compact ? 9 : 12)
             .frame(minHeight:compact ? 56 : 72).contentShape(Rectangle())
@@ -76,7 +80,15 @@ struct LocationChoiceRow: View {
         .buttonStyle(RowPressStyle())
         .accessibilityElement(children:.ignore)
         .accessibilityLabel(choice.spoken)
-        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAddTraits(selected && !choice.opens ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// A row that opens another page: chevron.right, 13 pt semibold, ink3.
+struct RowChevron: View {
+    var body: some View {
+        Image(systemName:"chevron.right").scaledFont(13, .semibold).foregroundStyle(Theme.ink3)
+            .accessibilityHidden(true)
     }
 }
 

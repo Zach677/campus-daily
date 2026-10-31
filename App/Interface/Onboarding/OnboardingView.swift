@@ -360,7 +360,7 @@ struct OnboardingView: View {
                 Text(question.text).scaledFont(17, .semibold).foregroundStyle(Theme.ink)
                     .fixedSize(horizontal:false, vertical:true)
                     .accessibilityAddTraits(.isHeader)
-                LocationChoiceList(choices:question.rows.map { LocationChoice(id:$0.id, title:$0.title, location:$0.location, voice:$0.spoken) },
+                LocationChoiceList(choices:question.rows.map { LocationChoice(id:$0.id, title:$0.title, location:$0.location, voice:$0.spoken, opens:$0.picker != nil) },
                                    selection:Binding(get:{ meterPick }, set:{ id in pickMeter(id, in:question) }), compact:true)
                     .padding(.top,10)
                     .sensoryFeedback(.selection, trigger:meterPick)
@@ -391,7 +391,7 @@ struct OnboardingView: View {
     private func pickMeter(_ id: String?, in question: MeterQuestion) {
         guard let id, let row = question.rows.first(where:{ $0.id == id }) else { return }
         if let halted = row.picker {
-            guard preview == nil else { return }
+            // Opens in the demos too: the page shows the stop as given.
             meterHalted = halted; meterPage = true
             return
         }
