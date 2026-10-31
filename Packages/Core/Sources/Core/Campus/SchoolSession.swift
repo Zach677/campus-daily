@@ -1058,6 +1058,21 @@ public actor SchoolSession {
         }
     }
 
+    // MARK: Card records page
+
+    /// One page of 校园卡记录 (`card/getRecordList`), read with the stored card session as it is:
+    /// a read that validates nothing, so nothing is minted or written and no lease is needed.
+    /// Nobody signed in, or another person signed in since `stamp` (`personStamp()`): the
+    /// records are not given (`sessionExpired`).
+    public func cardHistoryPage(_ query: CardHistoryQuery, since stamp: Int) async throws -> CardRecordPage {
+        try ensureSignedIn(since: stamp)
+        guard let s = try vault.ecyktSession(), let custid = s.custid else { throw ServiceError.sessionExpired(.ecykt) }
+        let page = try await ecykt.cardRecords(s, custid: custid, begin: query.begin, end: query.end,
+                                               page: query.page, pageSize: query.pageSize)
+        try ensureSignedIn(since: stamp)
+        return page
+    }
+
     // MARK: Helpers
 
     /// Keeps `live` (latest ciphertexts) only while the stored session is still `base` (same
