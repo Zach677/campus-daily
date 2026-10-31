@@ -107,6 +107,10 @@ public actor SchoolSession {
     /// Sign-in, the dorm and meter, the hot-water hand-off and recharge check it before writing,
     /// so the previous person's late answer never lands in the next person's account.
     private var personGeneration = 0
+    /// Bumped whenever the saved password is set or removed here (sign-in, 保存密码 on and off,
+    /// sign-out): a late second off-write (`forgetPasswordAgain`) leaves alone what was saved
+    /// after it, even the same password typed again.
+    private var passwordGeneration = 0
     /// How long the card records may take after the numbers were handed over.
     let recordsTimeout: TimeInterval
     /// Upper bound on directory calls when locating the room node.
@@ -137,6 +141,7 @@ public actor SchoolSession {
         try ensureSignedIn(since: started)
         let summary = try await signIn(portalToken: token, account: account, before: before, started: &started)
         try ensureSignedIn(since: started)
+        passwordGeneration += 1
         try vault.saveAccount(SchoolAccount(account: account, password: savePassword ? password : nil))
         return summary
     }
@@ -167,24 +172,34 @@ public actor SchoolSession {
             try vault.saveEcyktSession(updated)
         }
         try vault.savePortalToken(stamped(token))
+        passwordGeneration += 1
         try vault.saveAccount(SchoolAccount(account: account, password: password))
     }
 
+    /// What `forgetPassword()` removed, for `forgetPasswordAgain(forgotten:)`.
+    public struct ForgottenPassword: Sendable, Equatable {
+        /// The account as it was before.
+        public let account: SchoolAccount
+        let generation: Int
+    }
+
     /// Turning 保存密码 off: the password goes at once; the account name stays for display.
-    /// 保存密码 off: the account stays for display. Returns it as it was, for
-    /// `forgetPasswordAgain(forgotten:)`.
-    @discardableResult public func forgetPassword() throws -> SchoolAccount? {
+    @discardableResult public func forgetPassword() throws -> ForgottenPassword? {
         guard let stored = try vault.account() else { return nil }
+        passwordGeneration += 1
         try vault.saveAccount(SchoolAccount(account: stored.account))
-        return stored
+        return ForgottenPassword(account: stored, generation: passwordGeneration)
     }
 
     /// The same once more, under the lease: a refresh that read the account before the first
     /// write may have written it back with the password. Only that password goes (the rest of
-    /// that write stays); a password saved since (switched back on) or another account is left.
-    public func forgetPasswordAgain(forgotten: SchoolAccount) throws {
-        guard var stored = try vault.account(), stored.account == forgotten.account,
-              stored.password != nil, stored.password == forgotten.password else { return }
+    /// that write stays). Left alone: anything saved here since (switched back on, even with the
+    /// same password; signed in or out), another account, another password.
+    public func forgetPasswordAgain(forgotten: ForgottenPassword) throws {
+        guard forgotten.generation == passwordGeneration else { return }
+        let before = forgotten.account
+        guard var stored = try vault.account(), stored.account == before.account,
+              stored.password != nil, stored.password == before.password else { return }
         stored.password = nil
         try vault.saveAccount(stored)
     }
@@ -313,6 +328,7 @@ public actor SchoolSession {
     public func signOut() throws {
         signOutGeneration += 1
         personGeneration += 1
+        passwordGeneration += 1
         loggedExpiries = []
         var failed: [String] = []
         let steps: [(String, () throws -> Void)] = [

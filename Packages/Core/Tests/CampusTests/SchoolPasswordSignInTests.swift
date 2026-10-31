@@ -148,24 +148,39 @@ final class SchoolPasswordSignInTests: XCTestCase {
         let saved = SchoolAccount(account: "99100991", password: "synthetic-old-pw")
         try h.vault.saveAccount(saved)
         let session = h.session()
-        let forgotten = try await session.forgetPassword()
-        XCTAssertEqual(forgotten, saved)
+        let first = try await session.forgetPassword()
+        let forgotten = try XCTUnwrap(first)
+        XCTAssertEqual(forgotten.account, saved)
         XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
 
         try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-new-pw"))
-        try await session.forgetPasswordAgain(forgotten: try XCTUnwrap(forgotten))
+        try await session.forgetPasswordAgain(forgotten: forgotten)
         XCTAssertEqual(try h.vault.account()?.password, "synthetic-new-pw", "saved again since: kept")
 
         var writtenBack = saved
         writtenBack.paused = true
         try h.vault.saveAccount(writtenBack)
-        try await session.forgetPasswordAgain(forgotten: saved)
+        try await session.forgetPasswordAgain(forgotten: forgotten)
         XCTAssertNil(try h.vault.account()?.password, "the old password written back goes")
         XCTAssertEqual(try h.vault.account()?.paused, true, "the rest of that write stays")
 
         try h.vault.saveAccount(SchoolAccount(account: "99100992", password: "synthetic-old-pw"))
-        try await session.forgetPasswordAgain(forgotten: saved)
+        try await session.forgetPasswordAgain(forgotten: forgotten)
         XCTAssertEqual(try h.vault.account()?.password, "synthetic-old-pw", "another account is not touched")
+    }
+
+    /// Switched off, then on again with the same password while the second off-write waited
+    /// for the lease (the widget held it): the password saved again stays, though it is the
+    /// one that was forgotten.
+    func testTheSecondForgetLeavesTheSamePasswordSavedAgain() async throws {
+        let h = harness(FakePasswordLogin(.success(Self.freshToken)))
+        try h.signedIn()
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        let session = h.session()
+        let forgotten = try await session.forgetPassword()
+        try await session.savePassword("synthetic-pw-991")
+        try await session.forgetPasswordAgain(forgotten: try XCTUnwrap(forgotten))
+        XCTAssertEqual(try h.vault.account()?.password, "synthetic-pw-991", "saved again since: kept")
     }
 
     // MARK: Refresh ladder
