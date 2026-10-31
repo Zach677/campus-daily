@@ -188,9 +188,14 @@ struct PowerChoice: Identifiable, Equatable {
         if known == nil { await refresh(force:true) }
     }
 
-    /// 保存密码 off: the password goes at once; the account stays for display.
+    /// 保存密码 off: the password goes at once; the account stays for display. Then once more
+    /// under the lease: a widget refresh that read the account before and writes it back (a pause
+    /// or a hold) would otherwise bring the password back.
     func forgetPassword() async {
+        let session = session
         try? await session.forgetPassword()
+        reload()
+        try? await refresher.holdingLease { try await session.forgetPassword() }
         reload()
     }
 
@@ -282,7 +287,11 @@ struct PowerChoice: Identifiable, Equatable {
 
     // MARK: Recharge / hot water hand-off
 
-    func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession { try await session.rechargeSession(kind) }
+    /// Writes the live card session back: under the lease, so never beside the widget's refresh.
+    func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession {
+        let session = session
+        return try await refresher.holdingLease { try await session.rechargeSession(kind) }
+    }
     func showerHandoff() async throws -> ShowerHandoff { try await session.showerHandoff() }
     /// Taken before `showerHandoff()`; `isSamePerson(since:)` says whether its identity still
     /// belongs to whoever is signed in.

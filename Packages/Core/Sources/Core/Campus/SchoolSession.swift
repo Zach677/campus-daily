@@ -795,7 +795,8 @@ public actor SchoolSession {
 
     // MARK: Recharge
 
-    /// Liveness check, then one `loginBySysId`; the fresh token goes into `logintoken`.
+    /// Liveness check, then one `loginBySysId`; the fresh token goes into `logintoken`. The app
+    /// runs it under the refresh lease; the live session is kept only over the one it started from.
     public func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = personGeneration
@@ -804,7 +805,7 @@ public actor SchoolSession {
         var updated = live
         updated.syscustid = fresh.syscustid   // latest ciphertext, valid as input next time
         try ensureSignedIn(since: started)
-        try? vault.saveEcyktSession(updated)
+        saveIfUnchanged(updated, over: stored)
         return try RechargeWebSessionBuilder.build(kind: kind, session: updated, fresh: fresh, card: card)
     }
 
@@ -821,6 +822,15 @@ public actor SchoolSession {
     }
 
     // MARK: Helpers
+
+    /// Keeps `live` (latest ciphertexts) only while the stored session is still `base` (same
+    /// token and syscustid). The other process may have stored a newer one meanwhile, which
+    /// stays; this call used its own live session all the same.
+    private func saveIfUnchanged(_ live: EcyktSession, over base: EcyktSession) {
+        guard let current = (try? vault.ecyktSession()) ?? nil,
+              current.token == base.token, current.syscustid == base.syscustid else { return }
+        try? vault.saveEcyktSession(live)
+    }
 
     /// Work that awaited the network checks this before writing: a sign-out or another person
     /// signing in meanwhile wins, and the late result is dropped as if the session had expired.
