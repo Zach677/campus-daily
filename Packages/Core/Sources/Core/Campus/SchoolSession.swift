@@ -844,7 +844,8 @@ public actor SchoolSession {
 
         let campuses = try await ecykt.buildings(session, parent: nil).filter { address.matchesCampus($0.name) }
         guard campuses.count == 1, let campus = campuses.first else { try ensureSignedIn(since: started); return .manualPicker }
-        let rows = try await ecykt.meters(session, nodeID: campus.id, wide: true)
+        // Every meter on the campus: often slower than the client's own wait, so it alone gets the longest.
+        let rows = try await ecykt.meters(session, nodeID: campus.id, wide: true, timeout: URLSessionHTTPClient.longestTimeout)
         let meter: Meter
         switch MeterMatcher.match(rows, address: address) {
         case .none:

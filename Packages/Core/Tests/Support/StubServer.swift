@@ -7,6 +7,8 @@ public struct RecordedRequest: Sendable {
     public var url: URL
     public var headers: [String: String]
     public var body: Data
+    /// The request's own wait (`URLRequest.timeoutInterval`) as the session handed it over.
+    public var timeout: TimeInterval = 0
 
     public var bodyJSON: JSONValue? { body.isEmpty ? nil : try? JSONValue.parse(body) }
 
@@ -191,7 +193,8 @@ public final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         }
         var headers = request.allHTTPHeaderFields ?? [:]
         headers[Self.routingHeader] = nil
-        let recorded = RecordedRequest(method: request.httpMethod ?? "GET", url: url, headers: headers, body: Self.body(of: request))
+        let recorded = RecordedRequest(method: request.httpMethod ?? "GET", url: url, headers: headers, body: Self.body(of: request),
+                                       timeout: request.timeoutInterval)
         switch server.handle(recorded) {
         case .failure(let code):
             client?.urlProtocol(self, didFailWithError: URLError(code))

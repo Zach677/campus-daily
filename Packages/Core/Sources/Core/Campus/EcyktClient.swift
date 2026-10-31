@@ -139,10 +139,11 @@ public struct EcyktClient: Sendable {
     /// `electricnew/service server=/api/getMeterStatus`. Works at any level; at a campus it
     /// returns every meter (≈2.3k rows), so `wide` raises the body cap to 1 MiB.
     /// `[]` is a successful "no meter here".
-    public func meters(_ s: EcyktSession, nodeID: String, wide: Bool = false) async throws -> [Meter] {
+    /// `timeout`: a longer wait for the lookup's campus-wide read (nil = the client's).
+    public func meters(_ s: EcyktSession, nodeID: String, wide: Bool = false, timeout: TimeInterval? = nil) async throws -> [Meter] {
         let rows = try await electricRows(s, extra: [
             "server": .string("/api/getMeterStatus"), "areacode": .string(s.areacode), "buildingID": .string(nodeID),
-        ], bodyLimit: wide ? HTTPRequest.largeBodyLimit : HTTPRequest.defaultBodyLimit, name: "getMeterStatus")
+        ], bodyLimit: wide ? HTTPRequest.largeBodyLimit : HTTPRequest.defaultBodyLimit, name: "getMeterStatus", timeout: timeout)
         return try rows.enumerated().map { i, row in try Self.meter(row, index: i) }
     }
 
@@ -197,8 +198,9 @@ public struct EcyktClient: Sendable {
         return h
     }
 
-    private func electricRows(_ s: EcyktSession, extra: [String: JSONValue], bodyLimit: Int, name: String) async throws -> [JSONValue] {
-        let data = try await call("/api/electricnew/service", s, validating: false, extra: extra,
+    private func electricRows(_ s: EcyktSession, extra: [String: JSONValue], bodyLimit: Int, name: String,
+                              timeout: TimeInterval? = nil) async throws -> [JSONValue] {
+        let data = try await call("/api/electricnew/service", s, validating: false, timeout: timeout, extra: extra,
                                   referer: .power(areacode: s.areacode), bodyLimit: bodyLimit, name: name)
         // `data` is a JSON **string** holding an array; accept a plain array too.
         switch data {

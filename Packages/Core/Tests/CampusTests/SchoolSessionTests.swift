@@ -323,6 +323,36 @@ final class SchoolElectricityTests: XCTestCase {
                        "one campus-wide meter read")
     }
 
+    /// The campus-wide read is the slow one (every meter on the campus): it alone is given the
+    /// longest wait; the directory walk and the room's own read keep the client's.
+    func testOnlyTheCampusWideReadWaitsLonger() async throws {
+        let h = Harness()
+        try h.signedIn()
+        h.server.serve(try Self.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+        try Self.serveTree(h)
+        _ = try await h.session().resolveElectricity()
+        let electric = h.server.requests(path: "/electricnew/service")
+        let wide = electric.filter { $0.bodyField("server") == "/api/getMeterStatus" && $0.bodyField("buildingID") == "991001" }
+        XCTAssertEqual(wide.map(\.timeout), [URLSessionHTTPClient.longestTimeout])
+        let others = electric.filter { !($0.bodyField("server") == "/api/getMeterStatus" && $0.bodyField("buildingID") == "991001") }
+        XCTAssertFalse(others.isEmpty)
+        XCTAssertTrue(others.allSatisfy { $0.timeout < URLSessionHTTPClient.longestTimeout }, "\(others.map(\.timeout))")
+    }
+
+    /// A refresh reading a meter bound to the campus node is not the lookup: no longer wait.
+    func testARefreshOfACampusWideBindingKeepsTheClientsWait() async throws {
+        let h = Harness()
+        try h.signedIn(meter: MeterBinding(nodeID: "991001", comAddress: "000000000991", label: "99栋 991", nodeIsRoom: false))
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
+        h.server.serve(try Self.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+        try h.server.serve("ecykt/card-getRecordList-ok")
+        _ = await h.refresher().refresh(inBackground: true)
+        let wide = h.server.requests(path: "/electricnew/service").filter { $0.bodyField("buildingID") == "991001" }
+        XCTAssertEqual(wide.count, 1)
+        XCTAssertLessThan(wide[0].timeout, URLSessionHTTPClient.longestTimeout)
+    }
+
     func testFallsBackToCampusNodeWhenRoomNodeNotFound() async throws {
         let h = Harness()
         try h.signedIn()
