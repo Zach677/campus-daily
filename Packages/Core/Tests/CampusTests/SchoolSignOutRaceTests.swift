@@ -28,7 +28,6 @@ final class SchoolSignOutRaceTests: XCTestCase {
     func testSignOutDuringElectricityMatchKeepsTheProfileEmpty() async throws {
         let h = Harness()
         try h.signedIn()
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try SchoolElectricityTests.serveTree(h)
         let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
         let session = h.session()

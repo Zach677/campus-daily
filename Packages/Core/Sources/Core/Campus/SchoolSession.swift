@@ -3,10 +3,10 @@ import Foundation
 public enum ElectricityResolution: Sendable, Equatable {
     /// Exactly one meter matched; the binding is saved.
     case matched(MeterBinding, Meter)
-    /// Several meters carry this room name: the user picks one by its full location.
+    /// Several rooms carry the dorm's number: the user picks one by its full location.
     case chooseAmong([MeterCandidate])
-    /// No meter with this room name (or no unique campus): manual picker over `buildings(parent:)`.
-    case manualPicker
+    /// A level of the directory did not match the dorm exactly once: the picker opens there.
+    case stopped(MeterWalkStop)
     /// No parsed portal dorm address.
     case noAddress
     /// A meter was bound meanwhile (picked by hand while the lookup ran): it stays, and is
@@ -125,13 +125,11 @@ public actor SchoolSession {
     private var passwordGeneration = 0
     /// How long the card records may take after the numbers were handed over.
     let recordsTimeout: TimeInterval
-    /// Upper bound on directory calls when locating the room node.
-    static let maxDirectoryCalls = 40
-    /// Same-name rooms read one by one for a meter match; more and the binding stays campus-wide.
-    static let maxRoomPaths = 4
-    /// Room meter reads spent placing same-name candidates.
+    /// Apartments whose buildings the lookup reads to find the dorm's; more and it stops there.
+    static let maxApartments = 40
+    /// Rooms of the dorm's number read for a meter; more and it stops at the rooms.
     static let maxCandidateRooms = 8
-    /// The automatic meter lookup after a timeout or no connection: the waits before each try again.
+    /// Each read of the automatic meter lookup after a timeout or no connection: the waits before each try again.
     public static let meterRetryDelays: [TimeInterval] = [5, 20]
     let meterRetryWait: @Sendable (TimeInterval) async -> Void
 
@@ -833,9 +831,12 @@ public actor SchoolSession {
 
     // MARK: Electricity
 
-    /// Onboarding: one campus-wide `getMeterStatus`, match `piplineName == "<栋>栋<room>"`,
-    /// then locate the room-level node so daily refreshes read 1 row. If the room node cannot
-    /// be found, the campus node + `comAddress` is saved instead (wide read).
+    /// The automatic lookup: walks the directory the picker walks (校区 → 公寓 → 楼栋 → 楼层 →
+    /// 房间), one small read per level, matching the dorm address. Every level matched once:
+    /// the room's meter is bound (its node read, 1 row). A level matching none or several:
+    /// stopped there (`.stopped`), the levels above kept, nothing bound. Several rooms of the
+    /// dorm's number: the list to choose from. Each read is tried again after a timeout or no
+    /// connection (`meterRetryDelays`).
     public func resolveElectricity() async throws -> ElectricityResolution {
         guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = personGeneration
@@ -850,55 +851,122 @@ public actor SchoolSession {
                 try vault.saveProfile(profile)
             }
         }
-        // Every answer, a list or a hint included, is the person's who started: someone else
+        // Every answer, a list or a stop included, is the person's who started: someone else
         // signed in meanwhile gets none of it. A meter bound meanwhile (picked by hand) wins
         // over whatever the lookup found.
         guard let address = profile.residence?.address else {
             if case .bound(let b) = try settle(nil, since: started) { return .alreadyBound(b) }
             return .noAddress
         }
-
-        let campuses = try await ecykt.buildings(session, parent: nil).filter { address.matchesCampus($0.name) }
-        guard campuses.count == 1, let campus = campuses.first else {
-            if case .bound(let b) = try settle(address, since: started) { return .alreadyBound(b) }
-            return .manualPicker
-        }
-        // Every meter on the campus: often slower than the client's own wait, so it alone gets the longest.
-        let rows = try await ecykt.meters(session, nodeID: campus.id, wide: true, timeout: URLSessionHTTPClient.longestTimeout)
-        let meter: Meter
-        switch MeterMatcher.match(rows, address: address) {
-        case .none:
-            if case .bound(let b) = try settle(address, since: started) { return .alreadyBound(b) }
-            return .manualPicker
-        case .many(let all):
-            // The same comAddress twice: the campus-wide rows can't tell the rooms apart, and a
-            // room found by its meter could be either one. The user picks the room by hand.
-            guard Set(all.map(\.comAddress)).count == all.count else {
-                if case .bound(let b) = try settle(address, since: started) { return .alreadyBound(b) }
-                return .manualPicker
-            }
-            let list = try await candidates(all, session: session, campus: campus, address: address)
-            if case .bound(let b) = try settle(address, since: started) { return .alreadyBound(b) }
-            return .chooseAmong(list)
-        case .one(let m): meter = m
-        }
-
-        var binding = MeterBinding(nodeID: campus.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: false,
-                                   location: MeterCandidate(meter: meter, path: [campus]).location)
-        var found = meter
-        if let located = try await locateRoomNode(session, campus: campus, address: address, comAddress: meter.comAddress),
-           let room = located.room {
-            binding = MeterBinding(nodeID: room.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: true,
-                                   location: located.location)
-            found = located.meter
-        }
-        // Only the meter is written, onto the profile as it is now.
+        let walked = try await walk(session, address: address, since: started)
         switch try settle(address, since: started) {
         case .bound(let b): return .alreadyBound(b)
         case .open(var current):
-            current.meter = binding
-            try vault.saveProfile(current)
-            return .matched(binding, found)
+            switch walked {
+            case .stopped(let stop): return .stopped(stop)
+            case .rooms(let list): return .chooseAmong(list)
+            case .room(let found):
+                guard let room = found.room else { return .chooseAmong([found]) }
+                // Only the meter is written, onto the profile as it is now.
+                let binding = MeterBinding(nodeID: room.id, comAddress: found.meter.comAddress, label: address.roomLabel,
+                                           nodeIsRoom: true, location: found.location)
+                current.meter = binding
+                try vault.saveProfile(current)
+                return .matched(binding, found.meter)
+            }
+        }
+    }
+
+    enum Walked { case room(MeterCandidate), rooms([MeterCandidate]), stopped(MeterWalkStop) }
+
+    /// The walk itself. The portal names no apartment: when the campus lists apartments, the
+    /// apartment is the one holding the dorm's building (each apartment's buildings read).
+    func walk(_ s: EcyktSession, address: DormAddress, since started: Int) async throws -> Walked {
+        func children(_ parent: String?) async throws -> [PowerNode] {
+            try await patiently(since: started) { try await self.ecykt.buildings(s, parent: parent) }
+        }
+        func ids(_ nodes: [PowerNode]) -> [String] { nodes.map(\.id) }
+
+        let campuses = try await children(nil)
+        let campusHits = campuses.filter { address.matchesCampus($0.name) }
+        guard campusHits.count == 1, let campus = campusHits.first else {
+            return .stopped(MeterWalkStop(level: .campus, path: [], options: campuses, suggested: ids(campusHits)))
+        }
+        var path = [campus]
+        let level1 = try await children(campus.id)
+        var buildings = level1, buildingHits = level1.filter { address.matchesBuilding($0.name) }
+        if buildingHits.isEmpty {
+            // Apartments: those holding a building of the dorm's name.
+            guard level1.count <= Self.maxApartments else {
+                return .stopped(MeterWalkStop(level: .apartment, path: path, options: level1))
+            }
+            var holding: [(PowerNode, [PowerNode])] = []
+            for apartment in level1 {
+                let kids = try await children(apartment.id)
+                if kids.contains(where: { address.matchesBuilding($0.name) }) { holding.append((apartment, kids)) }
+            }
+            guard holding.count == 1, let (apartment, kids) = holding.first else {
+                return .stopped(MeterWalkStop(level: .apartment, path: path, options: level1, suggested: holding.map(\.0.id)))
+            }
+            path.append(apartment)
+            buildings = kids
+            buildingHits = kids.filter { address.matchesBuilding($0.name) }
+        }
+        guard buildingHits.count == 1, let building = buildingHits.first else {
+            return .stopped(MeterWalkStop(level: .building, path: path, options: buildings, suggested: ids(buildingHits)))
+        }
+        path.append(building)
+        let floors = try await children(building.id)
+        var rooms = floors
+        let floorHits = floors.filter { address.matchesFloor($0.name) }
+        if floorHits.count == 1, let floor = floorHits.first {
+            path.append(floor)
+            rooms = try await children(floor.id)
+        } else if !floors.contains(where: { address.matchesRoom($0.name) }) {
+            // No floor level only when the building lists the rooms itself.
+            return .stopped(MeterWalkStop(level: .floor, path: path, options: floors, suggested: ids(floorHits)))
+        }
+        let roomHits = rooms.filter { address.matchesRoom($0.name) }
+        guard !roomHits.isEmpty, roomHits.count <= Self.maxCandidateRooms else {
+            return .stopped(MeterWalkStop(level: .room, path: path, options: rooms, suggested: ids(roomHits)))
+        }
+        var found: [MeterCandidate] = []
+        for room in roomHits {
+            let rows = try await patiently(since: started) { try await self.ecykt.meters(s, nodeID: room.id) }
+            // The row of the dorm's name; a room's only row whatever its name.
+            let meter: Meter?
+            switch MeterMatcher.match(rows, address: address) {
+            case .one(let m): meter = m
+            case .none: meter = rows.count == 1 ? rows.first : nil
+            case .many: meter = nil
+            }
+            if let meter { found.append(MeterCandidate(meter: meter, path: path + [room])) }
+        }
+        switch found.count {
+        case 0: return .stopped(MeterWalkStop(level: .room, path: path, options: rooms, suggested: ids(roomHits)))
+        case 1: return .room(found[0])
+        default: return .rooms(found)
+        }
+    }
+
+    /// One read of the lookup, tried again after each of `meterRetryDelays` on a timeout or no
+    /// connection. Signed out while waiting: the failure stands. Someone else signed in: dropped
+    /// (`matchElectricity` runs theirs).
+    private func patiently<T: Sendable>(since started: Int, _ read: () async throws -> T) async throws -> T {
+        let signedOut = signOutGeneration
+        var retries = 0
+        while true {
+            do {
+                return try await read()
+            } catch let error as ServiceError where (error == .timedOut || error == .offline) && retries < Self.meterRetryDelays.count {
+                try ensureSignedIn(since: started)
+                guard signedOut == signOutGeneration else { throw error }
+                await meterRetryWait(Self.meterRetryDelays[retries])
+                retries += 1
+                try Task.checkCancellation()
+                guard signedOut == signOutGeneration, (try? vault.ecyktSession()) ?? nil != nil else { throw error }
+                try ensureSignedIn(since: started)
+            }
         }
     }
 
@@ -923,26 +991,18 @@ public actor SchoolSession {
     /// the answer belongs to (a same-name choice carries it into `chooseMatchedMeter`). Dropped
     /// because someone else signed in meanwhile, it runs again for them, a few times at most;
     /// signed out meanwhile (even where the sign-out failed), the drop is thrown.
-    /// A timeout or no connection is tried again after each of `meterRetryDelays` (the same
-    /// person still signed in); any other failure is thrown at once.
-    /// The dorm changed while it ran: looked up again for the new one, a few times at most
-    /// (then the picker).
+    /// Each read's timeouts are tried again inside (`meterRetryDelays`); any other failure is
+    /// thrown at once. The dorm changed while it ran: looked up again for the new one, a few
+    /// times at most (then the picker from the campuses).
     public func matchElectricity() async throws -> (stamp: Int, ElectricityResolution) {
-        var attempts = 0, retries = 0, dormChanges = 0
+        var attempts = 0, dormChanges = 0
         while true {
             let stamp = personGeneration, signedOut = signOutGeneration
             do {
                 return (stamp, try await resolveElectricity())
             } catch is DormChangedDuringLookup {
                 dormChanges += 1
-                guard dormChanges < 3 else { return (stamp, .manualPicker) }
-            } catch let error as ServiceError where (error == .timedOut || error == .offline) && stamp == personGeneration
-                && signedOut == signOutGeneration && retries < Self.meterRetryDelays.count {
-                await meterRetryWait(Self.meterRetryDelays[retries])
-                retries += 1
-                try Task.checkCancellation()
-                // Signed out while waiting: the failure stands. Someone else signed in: theirs runs.
-                guard signedOut == signOutGeneration, (try? vault.ecyktSession()) ?? nil != nil else { throw error }
+                guard dormChanges < 3 else { return (stamp, .stopped(MeterWalkStop(level: .campus, path: [], options: []))) }
             } catch {
                 attempts += 1
                 // A sign-out in between ends it, even one that could not delete the card session.
@@ -1013,80 +1073,6 @@ public actor SchoolSession {
         try ensureSignedIn(since: started)
         saveIfUnchanged(live, over: stored, owning: owning)
         return try await ecykt.signData(live, custid: card.custid)
-    }
-
-    /// Walks campus → (apartment) → building → floor → room with name filters. Returns the
-    /// room-level row whose meter has `comAddress`, with its path. When more than one room
-    /// reports that meter, none is trusted (nil): the campus-wide read by `comAddress` is
-    /// still exact, a guessed room might bill the wrong dorm. More than `maxRoomPaths` same-name
-    /// rooms are not all read, so none is trusted either.
-    func locateRoomNode(_ s: EcyktSession, campus: PowerNode, address: DormAddress, comAddress: String) async throws -> MeterCandidate? {
-        guard let paths = try await roomPaths(s, campus: campus, address: address), paths.count <= Self.maxRoomPaths else { return nil }
-        var found: MeterCandidate?
-        for path in paths {
-            guard let room = path.last else { continue }
-            let meters = try await ecykt.meters(s, nodeID: room.id)
-            guard let m = meters.first(where: { $0.comAddress == comAddress }) else { continue }
-            if found != nil { return nil }
-            found = MeterCandidate(meter: m, path: path)
-        }
-        return found
-    }
-
-    /// Several same-name meters: each one with the directory path down to its room, found by
-    /// reading the matching rooms' meters (1 row each) and pairing them by `comAddress`.
-    /// Meters whose room is not found keep just the campus as their path.
-    func candidates(_ matched: [Meter], session s: EcyktSession, campus: PowerNode, address: DormAddress) async throws -> [MeterCandidate] {
-        var located: [String: MeterCandidate] = [:]
-        let wanted = Set(matched.map(\.comAddress))
-        do {
-            for path in (try await roomPaths(s, campus: campus, address: address) ?? []).prefix(Self.maxCandidateRooms) {
-                guard located.count < wanted.count, let room = path.last else { break }
-                for row in try await ecykt.meters(s, nodeID: room.id) where wanted.contains(row.comAddress) && located[row.comAddress] == nil {
-                    located[row.comAddress] = MeterCandidate(meter: row, path: path)
-                }
-            }
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            // The walk only adds the location; a failed read leaves the rest campus-wide.
-        }
-        return matched.map { located[$0.comAddress] ?? MeterCandidate(meter: $0, path: [campus]) }
-    }
-
-    /// Every directory path campus → (apartment) → building → floor → room whose names match
-    /// the dorm address (nil = the call budget ran out first). Keeping the whole path is what
-    /// lets same-named buildings in different apartments be told apart.
-    func roomPaths(_ s: EcyktSession, campus: PowerNode, address: DormAddress) async throws -> [[PowerNode]]? {
-        var calls = 0
-        // First find building nodes, allowing one intermediate (apartment) level.
-        var buildings: [[PowerNode]] = []
-        guard let level1 = try await directoryChildren(s, campus.id, calls: &calls) else { return nil }
-        let direct = level1.filter { address.matchesBuilding($0.name) }
-        if !direct.isEmpty {
-            buildings = direct.map { [campus, $0] }
-        } else {
-            for apartment in level1 {
-                guard let kids = try await directoryChildren(s, apartment.id, calls: &calls) else { return nil }
-                buildings += kids.filter { address.matchesBuilding($0.name) }.map { [campus, apartment, $0] }
-            }
-        }
-        var rooms: [[PowerNode]] = []
-        for b in buildings {
-            guard let building = b.last, let floors = try await directoryChildren(s, building.id, calls: &calls) else { return nil }
-            for f in floors where address.matchesFloor(f.name) {
-                guard let rs = try await directoryChildren(s, f.id, calls: &calls) else { return nil }
-                rooms += rs.filter { address.matchesRoom($0.name) }.map { b + [f, $0] }
-            }
-        }
-        return rooms
-    }
-
-    /// One directory call, bounded by `maxDirectoryCalls` (nil = budget spent).
-    private func directoryChildren(_ s: EcyktSession, _ id: String, calls: inout Int) async throws -> [PowerNode]? {
-        guard calls < Self.maxDirectoryCalls else { return nil }
-        calls += 1
-        return try await ecykt.buildings(s, parent: id)
     }
 
     // MARK: Recharge

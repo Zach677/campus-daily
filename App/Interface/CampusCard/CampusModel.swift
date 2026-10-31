@@ -29,6 +29,9 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var matchingPower = false
     @Published private(set) var powerChoices: [PowerChoice] = []
     @Published private(set) var powerMatchIssue: String?
+    /// Where the automatic lookup stopped (a level that did not match the dorm exactly once):
+    /// the meter page opens there.
+    @Published private(set) var powerStop: MeterWalkStop?
     /// The account signed in with the app's own form (kept by a web sign-in only when the card
     /// shows the same person). Its password is present only when the user chose to save it.
     @Published private(set) var account: SchoolAccount?
@@ -183,7 +186,7 @@ struct PowerChoice: Identifiable, Equatable {
             try AppEnvironment.schoolVault.saveProfile(stored)
         }
         reload(); issue = nil; lastRefresh = nil
-        powerChoices = []; powerMatchIssue = nil
+        powerChoices = []; powerMatchIssue = nil; powerStop = nil
         // Every sign-in, from any screen: the meter is looked for when none is bound.
         matchPowerAutomatically(.signedIn)
     }
@@ -207,7 +210,7 @@ struct PowerChoice: Identifiable, Equatable {
         }
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
-        powerChoices = []; powerMatchIssue = nil
+        powerChoices = []; powerMatchIssue = nil; powerStop = nil
         // Every sign-in, from any screen: the meter is looked for when none is bound.
         matchPowerAutomatically(.signedIn)
     }
@@ -259,7 +262,7 @@ struct PowerChoice: Identifiable, Equatable {
         signOutGeneration += 1; personChanges += 1
         _ = await signOuts.start().value
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
-        powerChoices = []; powerMatchIssue = nil; lastRefresh = nil
+        powerChoices = []; powerMatchIssue = nil; powerStop = nil; lastRefresh = nil
     }
 
     func signOut() {
@@ -274,7 +277,7 @@ struct PowerChoice: Identifiable, Equatable {
             signOutFailed = true
         }
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
-        powerChoices = []; powerMatchIssue = nil
+        powerChoices = []; powerMatchIssue = nil; powerStop = nil
     }
 
     // MARK: Electricity
@@ -303,14 +306,18 @@ struct PowerChoice: Identifiable, Equatable {
                 let (stamp, found) = try await session.matchElectricity()
                 // Someone else signed in after it answered: none of it is theirs, their own runs.
                 if await session.isSamePerson(since:stamp) {
-                    autoFind.finished(notFound:found == .manualPicker || found == .noAddress)
+                    var notFound = found == .noAddress
+                    if case .stopped = found { notFound = true }
+                    autoFind.finished(notFound:notFound)
                     switch found {
                     case .matched, .alreadyBound:
                         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
                         await refresher.noteChange()
                         await refresh(force:true)
                     case .chooseAmong(let candidates): powerChoices = candidates.map { PowerChoice(candidate:$0, stamp:stamp) }
-                    case .manualPicker: powerMatchIssue = "没自动找到电表，去「电表」里选一下。"
+                    case .stopped(let stop):
+                        powerStop = stop
+                        powerMatchIssue = "没自动找到电表，去「电表」里选一下。"
                     case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「电表」里选一下。"
                     }
                 } else {
@@ -346,7 +353,7 @@ struct PowerChoice: Identifiable, Equatable {
             return false
         }
         await refresher.noteChange()
-        powerChoices = []; powerMatchIssue = nil
+        powerChoices = []; powerMatchIssue = nil; powerStop = nil
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         Task { await refresh(force:true) }
         return true
@@ -360,7 +367,7 @@ struct PowerChoice: Identifiable, Equatable {
         try await session.chooseMeter(nodeID:nodeID, meter:meter, nodeIsRoom:nodeIsRoom, path:path, since:stamp)
         await refresher.noteChange()
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
-        powerChoices = []; powerMatchIssue = nil
+        powerChoices = []; powerMatchIssue = nil; powerStop = nil
         await refresh(force:true)
     }
 

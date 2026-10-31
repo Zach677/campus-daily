@@ -33,7 +33,6 @@ final class MeterLookupOverlapTests: XCTestCase {
         h.meterRetryWait = { _ in try? await Self.pickByHand(box.session!) }
         try h.signedIn()
         h.server.fail("POST", MeterLookupRetryTests.service, bodyMatch: MeterLookupRetryTests.campusRead, with: .timedOut, times: 1)
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try SchoolElectricityTests.serveTree(h)
         let session = h.session()
         box.session = session
@@ -42,11 +41,10 @@ final class MeterLookupOverlapTests: XCTestCase {
         XCTAssertEqual(found, .alreadyBound(Self.picked))
     }
 
-    /// Picked while the campus-wide read was still under way: the same.
+    /// Picked while the room's meter was still being read: the same.
     func testAPickMadeDuringTheReadStays() async throws {
         let h = Harness()
         try h.signedIn()
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try SchoolElectricityTests.serveTree(h)
         let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
         let session = held(h, hold)
@@ -59,14 +57,13 @@ final class MeterLookupOverlapTests: XCTestCase {
         XCTAssertEqual(found, .alreadyBound(Self.picked))
     }
 
-    /// Same-name meters found after the user picked one: no list to choose from again.
+    /// Same-name rooms found after the user picked one: no list to choose from again.
     func testNoSameNameListOnceAMeterIsPicked() async throws {
         let h = Harness()
         try h.signedIn()
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991", "99栋 991"]), matchBody: ["server", "buildingID"])
-        try h.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
-        h.server.respond("POST", MeterLookupRetryTests.service, bodyMatch: ["server": "/api/getBuildingInfo"],
-                         body: Data(#"{"code":0,"msg":"获取成功","data":"[]"}"#.utf8))
+        MeterWalkTests.level(h, MeterWalkTests.floor.id, [("991", MeterWalkTests.room.id), ("991", "991001001000109000001004")])
+        MeterWalkTests.meters(h, "991001001000109000001004", [("000000000994", "99栋991")])
+        try SchoolElectricityTests.serveTree(h)
         let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
         let session = held(h, hold)
         async let result = session.matchElectricity()
@@ -83,9 +80,13 @@ final class MeterLookupOverlapTests: XCTestCase {
 
     static let newDorm = "星湖校区98栋8号1层881房"
 
-    func serveBothDorms(_ h: Harness) throws {
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991", "98栋881"], comAddresses: ["000000000991", "000000000881"]),
-                       matchBody: ["server", "buildingID"])
+    /// 99栋 in 半山公寓 (room 991) and 98栋 in 樱花公寓 (room 881), each with its meter.
+    func serveBothDorms(_ h: Harness, oldRoomMeter: Bool = true) throws {
+        MeterWalkTests.level(h, "991001002", [("98栋", "991001002000108")])
+        MeterWalkTests.level(h, "991001002000108", [("1楼", "991001002000108000001")])
+        MeterWalkTests.level(h, "991001002000108000001", [("881", "991001002000108000001001")])
+        MeterWalkTests.meters(h, "991001002000108000001001", [("000000000881", "98栋881")])
+        if !oldRoomMeter { MeterWalkTests.meters(h, MeterWalkTests.room.id, []) }
         try SchoolElectricityTests.serveTree(h)
     }
 
@@ -117,9 +118,7 @@ final class MeterLookupOverlapTests: XCTestCase {
     func testANewDormDuringALookupThatFoundNothingIsLookedUp() async throws {
         let h = Harness()
         try h.signedIn()
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["98栋881"], comAddresses: ["000000000881"]),
-                       matchBody: ["server", "buildingID"])
-        try SchoolElectricityTests.serveTree(h)
+        try serveBothDorms(h, oldRoomMeter: false)
         let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
         let session = held(h, hold)
         async let result = session.matchElectricity()
@@ -127,7 +126,7 @@ final class MeterLookupOverlapTests: XCTestCase {
         try h.vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: Self.newDorm)))
         hold.release()
         let (_, found) = try await result
-        XCTAssertNotEqual(found, .manualPicker, "the old dorm's 'not found'")
+        if case .stopped = found { XCTFail("the old dorm's 'not found'") }
         XCTAssertEqual(try h.vault.profile()?.meter?.comAddress, "000000000881")
         XCTAssertEqual(try h.vault.profile()?.residence?.raw, Self.newDorm)
     }

@@ -2,14 +2,14 @@ import Foundation
 
 public enum MeterMatch: Sendable, Equatable {
     case one(Meter)
-    /// Zero rows match: let the user pick manually.
+    /// Zero rows match.
     case none
-    /// Several rows match: let the user pick manually among them.
+    /// Several rows match: nothing tells them apart.
     case many([Meter])
 }
 
 public enum MeterMatcher {
-    /// Matches campus-wide `getMeterStatus` rows on `piplineName == "<building>栋<room>"`.
+    /// Matches a room's `getMeterStatus` rows on `piplineName == "<building>栋<room>"`.
     public static func match(_ rows: [Meter], address: DormAddress) -> MeterMatch {
         let hits = rows.filter { address.matchesMeterName($0.name) }
         switch hits.count {

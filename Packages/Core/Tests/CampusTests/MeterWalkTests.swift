@@ -1,0 +1,235 @@
+import XCTest
+@testable import Core
+import CoreTestSupport
+
+/// The automatic meter lookup walks the picker's own levels (校区 → 公寓 → 楼栋 → 楼层 → 房间),
+/// one small read each, matching the dorm address. All matched: the room's meter is bound.
+/// Otherwise it stops at the level that did not match exactly once, with the levels above kept.
+final class MeterWalkTests: XCTestCase {
+    static let service = "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service"
+    static let campus = PowerNode(id: "991001", name: "星湖校区")
+    static let apartment = PowerNode(id: "991001001", name: "半山公寓")
+    static let building = PowerNode(id: "991001001000109", name: "99栋")
+    static let floor = PowerNode(id: "991001001000109000001", name: "1楼")
+    static let room = PowerNode(id: "991001001000109000001003", name: "991")
+
+    /// One level of a synthetic tree (`parent` nil = the campuses).
+    static func level(_ h: Harness, _ parent: String?, _ children: [(String, String)]) {
+        let rows = children.map { #"{\"buildingName\":\"\#($0.0)\",\"buildingID\":\"\#($0.1)\"}"# }.joined(separator: ",")
+        h.server.respond("POST", service, bodyMatch: ["server": "/api/getBuildingInfo", "buildingID": parent],
+                         body: Data(#"{"code":0,"msg":"获取成功","data":"[\#(rows)]"}"#.utf8))
+    }
+
+    /// One node's meters: (comAddress, piplineName).
+    static func meters(_ h: Harness, _ node: String, _ rows: [(String, String)]) {
+        let list = rows.map { #"{\"comAddress\":\"\#($0.0)\",\"piplineName\":\"\#($0.1)\",\"leftMoney\":\"12.00\"}"# }.joined(separator: ",")
+        h.server.respond("POST", service, bodyMatch: ["server": "/api/getMeterStatus", "buildingID": node],
+                         body: Data(#"{"code":0,"msg":"获取成功","data":"[\#(list)]"}"#.utf8))
+    }
+
+    /// The campus-wide meter list is still served: a lookup that asked for it would find it.
+    static func serveCampusList(_ h: Harness) throws {
+        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+    }
+
+    static func campusWideReads(_ h: Harness) -> Int {
+        h.server.requests(path: "/electricnew/service").filter {
+            $0.bodyField("server") == "/api/getMeterStatus" && $0.bodyField("buildingID") == campus.id
+        }.count
+    }
+
+    func stopped(_ h: Harness, file: StaticString = #filePath, line: UInt = #line) async throws -> MeterWalkStop {
+        let result = try await h.session().resolveElectricity()
+        guard case .stopped(let stop) = result else {
+            XCTFail("\(result)", file: file, line: line)
+            throw CancellationError()
+        }
+        XCTAssertNil(try h.vault.profile()?.meter, "nothing bound", file: file, line: line)
+        XCTAssertEqual(Self.campusWideReads(h), 0, "never the campus-wide list", file: file, line: line)
+        return stop
+    }
+
+    // MARK: Every level matched
+
+    func testEveryLevelMatchedBindsTheRoomsMeterWithSmallReadsOnly() async throws {
+        let h = Harness()
+        try h.signedIn()
+        try Self.serveCampusList(h)
+        try SchoolElectricityTests.serveTree(h)
+        let result = try await h.session().resolveElectricity()
+        guard case .matched(let binding, let meter) = result else { return XCTFail("\(result)") }
+        XCTAssertEqual(binding, MeterBinding(nodeID: Self.room.id, comAddress: "000000000991", label: "99栋 991", nodeIsRoom: true,
+                                             location: "星湖校区 · 半山公寓 · 99栋 · 991"))
+        XCTAssertEqual(meter.leftMoney, Money(fen: 3692))
+        XCTAssertEqual(try h.vault.profile()?.meter, binding)
+        XCTAssertEqual(Self.campusWideReads(h), 0)
+        let meterReads = h.server.requests(path: "/electricnew/service").filter { $0.bodyField("server") == "/api/getMeterStatus" }
+        XCTAssertEqual(meterReads.map { $0.bodyField("buildingID") }, [Self.room.id], "only the room's own row")
+        XCTAssertTrue(h.server.requests.allSatisfy { $0.timeout == URLSessionHTTPClient.requestTimeout }, "every read keeps the client's wait")
+        XCTAssertTrue(h.server.unmatched.isEmpty)
+    }
+
+    /// No apartment level: the campus lists the buildings itself.
+    func testACampusListingBuildingsDirectlyIsWalkedToo() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, nil, [("星湖校区", "991001")])
+        Self.level(h, "991001", [("98栋", "991001098"), ("99栋", "991001099")])
+        Self.level(h, "991001099", [("1层", "991001099001")])
+        Self.level(h, "991001099001", [("991", "991001099001991")])
+        Self.meters(h, "991001099001991", [("000000000991", "99栋991")])
+        let result = try await h.session().resolveElectricity()
+        guard case .matched(let binding, _) = result else { return XCTFail("\(result)") }
+        XCTAssertEqual(binding.nodeID, "991001099001991")
+        XCTAssertTrue(binding.nodeIsRoom)
+        XCTAssertEqual(binding.location, "星湖校区 · 99栋 · 991")
+    }
+
+    // MARK: Stopped at a level
+
+    func testNoMatchingCampusStopsAtTheCampuses() async throws {
+        let h = Harness()
+        try h.signedIn(residence: "示例校区99栋9号1层991房")
+        try Self.serveCampusList(h)
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .campus)
+        XCTAssertEqual(stop.path, [])
+        XCTAssertEqual(stop.options.map(\.id), ["991001", "001002", "001003", "001004"])
+        XCTAssertEqual(stop.suggested, [])
+    }
+
+    /// The portal names no apartment: the apartment is the one holding the dorm's building.
+    func testNoApartmentHoldingTheBuildingStopsAtTheApartments() async throws {
+        let h = Harness()
+        try h.signedIn(residence: "星湖校区97栋9号1层991房")
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .apartment)
+        XCTAssertEqual(stop.path, [Self.campus])
+        XCTAssertEqual(stop.options.count, 9)
+        XCTAssertEqual(stop.options.first, Self.apartment)
+        XCTAssertEqual(stop.suggested, [])
+    }
+
+    func testTwoApartmentsHoldingTheBuildingStopWithBothSuggested() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, "991001002", [("99栋", "991001002000109")])
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .apartment)
+        XCTAssertEqual(stop.path, [Self.campus])
+        XCTAssertEqual(stop.suggested, ["991001001", "991001002"])
+        XCTAssertFalse(h.server.requests.contains { $0.bodyField("buildingID") == Self.building.id }, "not walked past the apartments")
+    }
+
+    func testTwoMatchingBuildingsStopAtTheBuildings() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, nil, [("星湖校区", "991001")])
+        Self.level(h, "991001", [("半山公寓", "991001001")])
+        Self.level(h, "991001001", [("99栋", "991001001000109"), ("99幢", "991001001000199")])
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .building)
+        XCTAssertEqual(stop.path, [Self.campus, Self.apartment])
+        XCTAssertEqual(stop.suggested, ["991001001000109", "991001001000199"])
+    }
+
+    func testNoMatchingFloorStopsAtTheFloors() async throws {
+        let h = Harness()
+        try h.signedIn(residence: "星湖校区99栋9号7层991房")
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .floor)
+        XCTAssertEqual(stop.path, [Self.campus, Self.apartment, Self.building])
+        XCTAssertEqual(stop.options.map(\.name), ["1楼", "2楼", "3楼"])
+        XCTAssertEqual(stop.suggested, [])
+    }
+
+    func testNoMatchingRoomStopsAtTheRooms() async throws {
+        let h = Harness()
+        try h.signedIn(residence: "星湖校区99栋9号1层998房")
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .room)
+        XCTAssertEqual(stop.path, [Self.campus, Self.apartment, Self.building, Self.floor])
+        XCTAssertEqual(stop.options.map(\.name), ["989", "990", "991"])
+        XCTAssertEqual(stop.suggested, [])
+    }
+
+    /// The room is there but reports no meter: stopped at the rooms, the dorm's own suggested.
+    func testTheRoomWithoutAMeterStopsAtTheRoomsWithItSuggested() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.meters(h, Self.room.id, [])
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .room)
+        XCTAssertEqual(stop.path.last, Self.floor)
+        XCTAssertEqual(stop.suggested, [Self.room.id])
+    }
+
+    // MARK: Same-name rooms
+
+    /// Two rooms on the floor carry the dorm's number: the list to choose from, each with its own
+    /// room (bound to that room when picked).
+    func testSameNameRoomsAreOfferedToChooseFrom() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, Self.floor.id, [("990", "991001001000109000001002"), ("991", Self.room.id), ("991", "991001001000109000001004")])
+        Self.meters(h, "991001001000109000001004", [("000000000994", "99栋991")])
+        try SchoolElectricityTests.serveTree(h)
+        let session = h.session()
+        let result = try await session.resolveElectricity()
+        guard case .chooseAmong(let list) = result else { return XCTFail("\(result)") }
+        XCTAssertEqual(list.map(\.room?.id), [Self.room.id, "991001001000109000001004"])
+        XCTAssertEqual(list.map(\.meter.comAddress), ["000000000991", "000000000994"])
+        XCTAssertEqual(list.map(\.location), ["星湖校区 · 半山公寓 · 99栋 · 991", "星湖校区 · 半山公寓 · 99栋 · 991"])
+        XCTAssertNil(try h.vault.profile()?.meter, "nothing is saved until the user picks")
+        XCTAssertEqual(Self.campusWideReads(h), 0)
+
+        try await session.chooseMatchedMeter(list[1], since: await session.personStamp())
+        XCTAssertEqual(try h.vault.profile()?.meter?.nodeID, "991001001000109000001004")
+        XCTAssertEqual(try h.vault.profile()?.meter?.nodeIsRoom, true)
+    }
+
+    // MARK: Slow reads
+
+    /// Each small read is tried again on its own: a floor list timing out twice, then the room's
+    /// meter once, still ends bound.
+    func testEachSmallReadIsTriedAgainOnItsOwn() async throws {
+        let waits = MeterLookupRetryTests.Waits()
+        var h = Harness()
+        h.meterRetryWait = { waits.record($0) }
+        try h.signedIn()
+        h.server.fail("POST", Self.service, bodyMatch: ["server": "/api/getBuildingInfo", "buildingID": Self.building.id],
+                      with: .timedOut, times: 2)
+        h.server.fail("POST", Self.service, bodyMatch: ["server": "/api/getMeterStatus", "buildingID": Self.room.id],
+                      with: .notConnectedToInternet, times: 1)
+        try SchoolElectricityTests.serveTree(h)
+        let (_, found) = try await h.session().matchElectricity()
+        guard case .matched(let binding, _) = found else { return XCTFail("\(found)") }
+        XCTAssertEqual(binding.nodeID, Self.room.id)
+        XCTAssertEqual(waits.asked, [5, 20, 5], "two waits for the floors, one for the room")
+        let roots = h.server.requests(path: "/electricnew/service").filter { $0.bodyField("buildingID") == nil }
+        XCTAssertEqual(roots.count, 1, "what was read already is not read again")
+    }
+
+    /// A small read that times out three times ends the lookup as too slow; nothing is bound.
+    func testASmallReadTimingOutThreeTimesEndsIt() async throws {
+        let waits = MeterLookupRetryTests.Waits()
+        var h = Harness()
+        h.meterRetryWait = { waits.record($0) }
+        try h.signedIn()
+        h.server.fail("POST", Self.service, bodyMatch: ["server": "/api/getBuildingInfo", "buildingID": Self.floor.id],
+                      with: .timedOut, times: 3)
+        try SchoolElectricityTests.serveTree(h)
+        do { _ = try await h.session().matchElectricity(); XCTFail("expected timedOut") } catch {
+            XCTAssertEqual(error as? ServiceError, .timedOut)
+        }
+        XCTAssertEqual(waits.asked, [5, 20])
+        XCTAssertNil(try h.vault.profile()?.meter)
+        XCTAssertEqual(Self.campusWideReads(h), 0)
+    }
+}

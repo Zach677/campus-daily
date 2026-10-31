@@ -2,11 +2,12 @@ import XCTest
 @testable import Core
 import CoreTestSupport
 
-/// The automatic meter lookup after a slow or unreachable school: tried again twice, waiting
-/// longer each time; any other failure, a sign-out or someone else signing in ends it.
+/// The automatic meter lookup after a slow or unreachable school: each read tried again twice,
+/// waiting longer each time; any other failure, a sign-out or someone else signing in ends it.
 final class MeterLookupRetryTests: XCTestCase {
     static let service = "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service"
-    static let campusRead: [String: String?] = ["server": "/api/getMeterStatus", "buildingID": "991001"]
+    /// The campus's apartments: one of the lookup's small reads.
+    static let campusRead: [String: String?] = ["server": "/api/getBuildingInfo", "buildingID": "991001"]
 
     /// Records the waits asked for; `then` runs inside each (a sign-out, say).
     final class Waits: @unchecked Sendable {
@@ -24,13 +25,12 @@ final class MeterLookupRetryTests: XCTestCase {
     }
 
     func serveMeters(_ h: Harness) throws {
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try SchoolElectricityTests.serveTree(h)
     }
 
     func campusReads(_ h: Harness) -> Int {
         h.server.requests(path: "/electricnew/service").filter {
-            $0.bodyField("server") == "/api/getMeterStatus" && $0.bodyField("buildingID") == "991001"
+            $0.bodyField("server") == "/api/getBuildingInfo" && $0.bodyField("buildingID") == "991001"
         }.count
     }
 

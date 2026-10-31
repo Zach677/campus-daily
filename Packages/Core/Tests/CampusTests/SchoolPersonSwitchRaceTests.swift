@@ -107,7 +107,6 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
     func testSwitchDuringElectricityMatchWritesNothing() async throws {
         let h = try previousPerson()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try SchoolElectricityTests.serveTree(h)
         let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
         let session = session(h, hold)
@@ -124,10 +123,10 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         XCTAssertNil(try h.vault.profile(), "no dorm or meter of the previous person")
     }
 
-    /// The match found several same-name meters (or none) for the previous person: no list and
-    /// no picker hint reaches the next person, whichever way they signed in.
+    /// The match found several same-name rooms (or a room with no meter) for the previous
+    /// person: no list and no picker stop reaches the next person, whichever way they signed in.
     func testSwitchWhileSameNamedMetersAreFoundOffersNoChoice() async throws {
-        for (extra, byForm) in [(["99栋991", "99栋 991"], false), (["99栋991", "99栋 991"], true), ([], false)] {
+        for (sameName, byForm) in [(true, false), (true, true), (false, false)] {
             var h = try previousPerson()
             h.passwordLogin = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
             if byForm {
@@ -135,10 +134,13 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
                 h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "NEXT-TOKEN"))
             }
             try h.server.serve("ecykt/getSysBindCustInfo-ok")
-            h.server.serve(try SchoolElectricityTests.campusMeters(extra: extra), matchBody: ["server", "buildingID"])
-            try h.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
-            h.server.respond("POST", "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service",
-                             bodyMatch: ["server": "/api/getBuildingInfo"], body: Data(#"{"code":0,"msg":"获取成功","data":"[]"}"#.utf8))
+            if sameName {
+                MeterWalkTests.level(h, MeterWalkTests.floor.id, [("991", MeterWalkTests.room.id), ("991", "991001001000109000001004")])
+                MeterWalkTests.meters(h, "991001001000109000001004", [("000000000994", "99栋991")])
+            } else {
+                MeterWalkTests.meters(h, MeterWalkTests.room.id, [])
+            }
+            try SchoolElectricityTests.serveTree(h)
             let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
             let session = session(h, hold)
             async let result = session.resolveElectricity()
@@ -173,8 +175,7 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
                 h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "NEXT-TOKEN"))
             }
             try h.server.serve("ecykt/getSysBindCustInfo-ok")
-            h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
-            try SchoolElectricityTests.serveTree(h)
+                try SchoolElectricityTests.serveTree(h)
             let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
             let session = session(h, hold)
             let stamp = await session.personStamp()
@@ -212,7 +213,6 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
     func testAMatchDroppedBySomeoneElsesSignInRunsForThem() async throws {
         let h = try previousPerson()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try SchoolElectricityTests.serveTree(h)
         let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
         let session = session(h, hold)
@@ -229,7 +229,6 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
 
     func testAMatchDroppedBySignOutIsNotRunAgain() async throws {
         let h = try previousPerson()
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try SchoolElectricityTests.serveTree(h)
         let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
         let session = session(h, hold)
@@ -247,7 +246,6 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
     /// match is not run again on what was left behind.
     func testAMatchDroppedByAFailedSignOutIsNotRunAgain() async throws {
         let h = try previousPerson()
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
         try SchoolElectricityTests.serveTree(h)
         let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
         let session = session(h, hold)
