@@ -13,7 +13,7 @@ struct CampusRechargeView: View {
     @EnvironmentObject private var campus: CampusModel
     let kind: CampusRechargeKind
     @State private var context: RechargeWebSession?
-    @State private var issue: String?
+    @State private var issue: RechargeOpenIssue?
     @State private var loading = false
     @State private var login = false
     @State private var revision = UUID()
@@ -29,17 +29,19 @@ struct CampusRechargeView: View {
             if pageBlocked {
                 WebPageUnavailable(text:Self.blockedText) { revision = UUID() }
             } else if let context {
-                CampusRechargeBrowser(context:context) { issue = "学校登录过期了，重新登录一下。" }
+                CampusRechargeBrowser(context:context) { issue = RechargeOpenIssue(text:"学校登录过期了，重新登录一下。") }
                     .id(revision)
             } else if loading {
                 ProgressView("正在确认学校登录…").frame(maxWidth:.infinity,maxHeight:.infinity)
             } else {
                 ContentUnavailableView("暂时无法打开充值",systemImage:"person.crop.circle",
-                    description:Text(issue ?? "先登录学校账号。"))
+                    description:Text(issue?.text ?? "先登录学校账号。"))
             }
             if let issue, !pageBlocked {
-                Text(issue).font(.footnote).foregroundStyle(.orange).padding(.horizontal)
-                Button("重新登录学校账号") { login = true }.buttonStyle(.borderedProminent).padding()
+                Text(issue.text).font(.footnote).foregroundStyle(.orange).padding(.horizontal)
+                if issue.offersSignIn {
+                    Button("重新登录学校账号") { login = true }.buttonStyle(.borderedProminent).padding()
+                }
             }
         }.background(NativeTheme.background).tint(NativeTheme.tint)
             .navigationTitle(kind.title).navigationBarTitleDisplayMode(.inline)
@@ -51,15 +53,16 @@ struct CampusRechargeView: View {
     private func prepare() async {
         context = nil; issue = nil; loading = true
         defer { loading = false }
-        guard campus.configured else { issue = "先登录学校账号。"; return }
+        guard campus.configured else { issue = RechargeOpenIssue(text:"先登录学校账号。"); return }
         do {
             let result = try await campus.rechargeSession(kind.school)
             try Task.checkCancellation()
             context = result
         } catch is CancellationError { }
           catch {
-            // Only a real expiry says 「过期」; other refusals show what the school said.
-            issue = (error as? ServiceError)?.userMessage ?? "学校页面暂时打不开，再试一次。"
+            // Only a real expiry says 「过期」; other refusals show what the school said, and a
+            // refresh in progress asks to wait without offering a sign-in.
+            issue = RechargeOpenIssue(error)
         }
     }
 }
