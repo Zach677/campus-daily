@@ -7,7 +7,8 @@ extension CardRecordsSource {
         let session = AppEnvironment.school
         return CardRecordsSource(stamp:{ await session.personStamp() },
                                  page:{ query, stamp in try await session.cardHistoryPage(query, since:stamp) },
-                                 samePerson:{ await session.isSamePerson(since:$0) })
+                                 samePerson:{ await session.isSamePerson(since:$0) },
+                                 renew:{ await CampusModel.shared.renewCardSession() })
     }
 }
 

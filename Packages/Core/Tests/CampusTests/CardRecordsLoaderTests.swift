@@ -17,7 +17,8 @@ import XCTest
     func makeLoader(_ school: School) -> CardRecordsLoader {
         CardRecordsLoader(source: CardRecordsSource(stamp: { await school.nextStamp() },
                                                     page: { query, stamp in try await school.page(query, stamp: stamp) },
-                                                    samePerson: { await school.isPerson($0) }),
+                                                    samePerson: { await school.isPerson($0) },
+                                                    renew: { await school.renew() }),
                           now: { [noon] in noon })
     }
 
@@ -38,6 +39,18 @@ import XCTest
         var person = 1
         func nextStamp() -> Int { person }
         func switchPerson() { person += 1 }
+        /// The card session has expired; `renew()` brings a new one when `renewWorks`.
+        var expired = false
+        var renewWorks = true
+        var renewals = 0
+        /// What a read with the expired session throws (getRecordList itself does not validate).
+        var expiredError = ServiceError.sessionExpired(.ecykt)
+        func expire(renewWorks: Bool, as error: ServiceError = .sessionExpired(.ecykt)) {
+            expired = true; self.renewWorks = renewWorks; expiredError = error
+        }
+        var offline = false
+        func goOffline() { offline = true }
+        func renew() -> Bool { renewals += 1; if renewWorks { expired = false }; return renewWorks }
         func isPerson(_ stamp: Int) -> Bool { person == stamp }
         func set(today: [CardRecord]) { todayRows = today }
         func set(older: [CardRecord]) { olderRows = older }
@@ -55,6 +68,8 @@ import XCTest
             calls.append((query, stamp))
             // As SchoolSession.cardHistoryPage: nothing for a person no longer signed in.
             if stamp != person { throw ServiceError.sessionExpired(.ecykt) }
+            if offline { throw ServiceError.offline }
+            if expired { throw expiredError }
             let key = query.end == CardRecordsLoaderTests.today ? "today" : "older"
             if held.contains(key) { await withCheckedContinuation { waiting[key, default: []].append($0) } }
             if key == "today" {
@@ -195,6 +210,71 @@ import XCTest
         await loader.loadMore()
         XCTAssertFalse(loader.state.moreFailed)
         XCTAssertEqual(loader.state.history?.records.count, 2)
+    }
+
+    // MARK: An expired card session
+
+    /// The card session expired since home last read it: it is renewed (as home renews it) and
+    /// the page read again, so a pull here recovers by itself.
+    func testAnExpiredSessionIsRenewedAndThePageReadAgain() async {
+        let row = Self.record(Self.today, "090000")
+        let school = School(today: [row])
+        await school.expire(renewWorks: true)
+        let loader = makeLoader(school)
+        await loader.reload()
+        XCTAssertEqual(loader.state.phase, .loaded)
+        XCTAssertEqual(loader.state.history?.records, [row])
+        let renewals = await school.renewals
+        XCTAssertEqual(renewals, 1)
+    }
+
+    /// getRecordList does not check the session: an expired one answers in its own words
+    /// (code -1) or with an empty reply. Either is renewed the same way.
+    func testARefusalFromAnExpiredSessionIsRenewedToo() async {
+        for error in [ServiceError.rejected(.ecykt, code: "-1", message: "x"), .badRequest(.ecykt)] {
+            let row = Self.record(Self.today, "090000")
+            let school = School(today: [row])
+            await school.expire(renewWorks: true, as: error)
+            let loader = makeLoader(school)
+            await loader.reload()
+            XCTAssertEqual(loader.state.phase, .loaded, "\(error)")
+            XCTAssertEqual(loader.state.history?.records, [row], "\(error)")
+            let renewals = await school.renewals
+            XCTAssertEqual(renewals, 1, "\(error)")
+        }
+    }
+
+    /// Offline says nothing about the session: nothing is renewed.
+    func testNothingIsRenewedWhenOffline() async {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        await school.goOffline()
+        let loader = makeLoader(school)
+        await loader.reload()
+        XCTAssertEqual(loader.state.phase, .failed)
+        let renewals = await school.renewals
+        XCTAssertEqual(renewals, 0)
+    }
+
+    func testARenewalThatFailsLeavesTheFailedLineAndIsTriedOnce() async {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        await school.expire(renewWorks: false)
+        let loader = makeLoader(school)
+        await loader.reload()
+        XCTAssertEqual(loader.state.phase, .failed)
+        let renewals = await school.renewals
+        XCTAssertEqual(renewals, 1)
+    }
+
+    /// Someone else signed in: nothing is renewed for the list read for the one before.
+    func testNothingIsRenewedForAPersonNoLongerSignedIn() async {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        await school.set(older: [Self.record("20261010", "120000")])
+        let loader = makeLoader(school)
+        await loader.reload()
+        await school.switchPerson()
+        await loader.loadMore()
+        let renewals = await school.renewals
+        XCTAssertEqual(renewals, 0)
     }
 
     // MARK: Another person

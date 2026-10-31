@@ -8,11 +8,14 @@ public struct CardRecordsSource: Sendable {
     public var page: @Sendable (CardHistoryQuery, Int) async throws -> CardRecordPage
     /// Nobody signed out and nobody else signed in since the stamp (`SchoolSession.isSamePerson`).
     public var samePerson: @Sendable (Int) async -> Bool
+    /// The card session expired: renew it as home does; true when the card was read again.
+    public var renew: @Sendable () async -> Bool
 
     public init(stamp: @escaping @Sendable () async -> Int,
                 page: @escaping @Sendable (CardHistoryQuery, Int) async throws -> CardRecordPage,
-                samePerson: @escaping @Sendable (Int) async -> Bool = { _ in true }) {
-        self.stamp = stamp; self.page = page; self.samePerson = samePerson
+                samePerson: @escaping @Sendable (Int) async -> Bool = { _ in true },
+                renew: @escaping @Sendable () async -> Bool = { false }) {
+        self.stamp = stamp; self.page = page; self.samePerson = samePerson; self.renew = renew
     }
 }
 
@@ -100,8 +103,15 @@ public struct CardRecordsState: Sendable, Equatable {
         state = next
     }
 
+    /// Pages from `history` on. A definite refusal (getRecordList does not validate the session,
+    /// so an expired one comes back as a rejection or an empty reply rather than as expired) has
+    /// the card session renewed once, as home renews it, for the person the list was read for
+    /// only, and the read goes on from the same page. Nothing is renewed when the network failed.
     nonisolated static func read(_ history: CardHistory, source: CardRecordsSource, stamp: Int) async -> CardHistory.Load {
         let page = source.page
-        return await CardHistory.loadMore(history) { query in try await page(query, stamp) }
+        let load = await CardHistory.loadMore(history) { query in try await page(query, stamp) }
+        guard let failure = load.failure, !failure.isIndefinite,
+              await source.samePerson(stamp), await source.renew() else { return load }
+        return await CardHistory.loadMore(load.history) { query in try await page(query, stamp) }
     }
 }

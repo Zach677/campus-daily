@@ -45,6 +45,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// same): pages showing the previous person's school data close.
     @Published private(set) var personChanges = 0
     private var lastRefresh: Date?
+    /// The last refresh read the card (its session alive, or renewed).
+    private var lastReadCard = false
     private var refreshesRunning = 0
     /// Refreshes the Keychain interrupted one after another (writes refused).
     private var interruptions = InterruptionStreak()
@@ -98,6 +100,7 @@ struct PowerChoice: Identifiable, Equatable {
         defer { refreshesRunning -= 1; loading = refreshesRunning > 0 }
         let started = signOutGeneration
         let report = await refresher.refresh(inBackground:inBackground, includingChanges:force)
+        lastReadCard = report.outcome == .ok
         guard started == signOutGeneration else { return }
         snapshot = report.snapshot
         reloadAccount()
@@ -128,6 +131,14 @@ struct PowerChoice: Identifiable, Equatable {
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         Reminders.shared.evaluateCampus(snapshot)
         if report.outcome == .ok { Reminders.shared.campusRead(snapshot) }
+    }
+
+    /// 校园卡记录 found the card session expired: renewed the way home renews it (a forced
+    /// refresh, under the lease). True when that read the card again.
+    func renewCardSession() async -> Bool {
+        guard configured else { return false }
+        await refresh(force:true)
+        return lastReadCard
     }
 
     // MARK: Sign-in
