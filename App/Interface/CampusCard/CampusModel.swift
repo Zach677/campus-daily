@@ -193,13 +193,14 @@ struct PowerChoice: Identifiable, Equatable {
 
     /// 保存密码 off: the password goes at once; the account stays for display. Then once more
     /// under the lease: a widget refresh that read the account before and writes it back (a pause
-    /// or a hold) would otherwise bring the password back.
-    func forgetPassword() async {
+    /// or a hold) would otherwise bring the password back. That second write leaves a password
+    /// saved since (switched back on) alone. A failed write is thrown: the switch shows it.
+    func forgetPassword() async throws {
         let session = session
-        try? await session.forgetPassword()
+        defer { reload() }
+        guard let forgotten = try await session.forgetPassword() else { return }
         reload()
-        try? await refresher.holdingLease { try await session.forgetPassword() }
-        reload()
+        try await refresher.holdingLease { try await session.forgetPasswordAgain(forgotten:forgotten) }
     }
 
     /// Reset, before the stores are cleared: a refresh still running must not write the old

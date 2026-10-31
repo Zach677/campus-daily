@@ -74,7 +74,11 @@ struct AccountView: View {
             } else if preview != nil {
                 previewSaved = false
             } else {
-                Task { await campus.forgetPassword() }
+                Task {
+                    // Not stored as asked (the Keychain refused, or an update held the lease):
+                    // the switch shows what is stored, and this says why.
+                    do { try await campus.forgetPassword() } catch { saveIssue = SchoolLoginText.text(error) }
+                }
             }
         })
     }

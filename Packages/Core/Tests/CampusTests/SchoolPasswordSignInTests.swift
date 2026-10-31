@@ -135,8 +135,37 @@ final class SchoolPasswordSignInTests: XCTestCase {
         try await h.session().savePassword("synthetic-pw-991")
         XCTAssertEqual(try h.vault.account()?.usablePassword, "synthetic-pw-991")
         XCTAssertEqual(login.calls.map(\.account), ["99100991", "99100991"])
-        try await h.session().forgetPassword()
+        _ = try await h.session().forgetPassword()
         XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
+    }
+
+    /// 保存密码 off, written twice: at once, and again under the lease in case a refresh that
+    /// read the account before writes the password back. A password saved again in between
+    /// (switched back on) stays; the old one written back goes.
+    func testTheSecondForgetLeavesAPasswordSavedSinceAndUndoesAWriteBack() async throws {
+        let h = harness(FakePasswordLogin())
+        try h.signedIn()
+        let saved = SchoolAccount(account: "99100991", password: "synthetic-old-pw")
+        try h.vault.saveAccount(saved)
+        let session = h.session()
+        let forgotten = try await session.forgetPassword()
+        XCTAssertEqual(forgotten, saved)
+        XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
+
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-new-pw"))
+        try await session.forgetPasswordAgain(forgotten: try XCTUnwrap(forgotten))
+        XCTAssertEqual(try h.vault.account()?.password, "synthetic-new-pw", "saved again since: kept")
+
+        var writtenBack = saved
+        writtenBack.paused = true
+        try h.vault.saveAccount(writtenBack)
+        try await session.forgetPasswordAgain(forgotten: saved)
+        XCTAssertNil(try h.vault.account()?.password, "the old password written back goes")
+        XCTAssertEqual(try h.vault.account()?.paused, true, "the rest of that write stays")
+
+        try h.vault.saveAccount(SchoolAccount(account: "99100992", password: "synthetic-old-pw"))
+        try await session.forgetPasswordAgain(forgotten: saved)
+        XCTAssertEqual(try h.vault.account()?.password, "synthetic-old-pw", "another account is not touched")
     }
 
     // MARK: Refresh ladder

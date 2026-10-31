@@ -171,9 +171,22 @@ public actor SchoolSession {
     }
 
     /// Turning 保存密码 off: the password goes at once; the account name stays for display.
-    public func forgetPassword() throws {
-        guard let stored = try vault.account() else { return }
+    /// 保存密码 off: the account stays for display. Returns it as it was, for
+    /// `forgetPasswordAgain(forgotten:)`.
+    @discardableResult public func forgetPassword() throws -> SchoolAccount? {
+        guard let stored = try vault.account() else { return nil }
         try vault.saveAccount(SchoolAccount(account: stored.account))
+        return stored
+    }
+
+    /// The same once more, under the lease: a refresh that read the account before the first
+    /// write may have written it back with the password. Only that password goes (the rest of
+    /// that write stays); a password saved since (switched back on) or another account is left.
+    public func forgetPasswordAgain(forgotten: SchoolAccount) throws {
+        guard var stored = try vault.account(), stored.account == forgotten.account,
+              stored.password != nil, stored.password == forgotten.password else { return }
+        stored.password = nil
+        try vault.saveAccount(stored)
     }
 
     /// The signed-in account (nil after a web sign-in that did not show the same person: the
