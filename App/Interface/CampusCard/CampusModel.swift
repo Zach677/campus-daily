@@ -138,7 +138,7 @@ struct PowerChoice: Identifiable, Equatable {
         let session = session, state = login.state
         // Under the lease like the password sign-in: never beside the widget's own login.
         let summary = try await refresher.holdingLease { owning in
-            try await session.adoptWebState(state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent, owning:owning)
+            try await session.adoptWebState(state, userAgent:EcyktSession.defaultUserAgent, owning:owning)
         }
         if summary.switchedAccount || summary.previousPersonUnconfirmed {
             await previousPersonCleared(unconfirmed:!summary.switchedAccount, dormAndMeterCleared:summary.dormAndMeterCleared)

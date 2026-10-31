@@ -378,10 +378,11 @@ public actor SchoolSession {
 
     /// Fallback while the ticket exchange is uncaptured: adopt the
     /// `localStorage.elecampus_state` the official page wrote, then validate it.
-    /// The card session, account and token are written in one locked step under `owning`
+    /// The card session and account are written in one locked step under `owning`
     /// (`commitLogin`): the lease lost meanwhile, nothing is written and `busy` is thrown.
-    public func adoptWebState(_ elecampusState: Data, portalToken: PortalToken?,
-                              userAgent: String = EcyktSession.defaultUserAgent, owning: LeaseOwnership) async throws -> SignInSummary {
+    /// No portal token comes with it, so no dorm is read here (the app keeps the dorm address
+    /// the portal page showed).
+    public func adoptWebState(_ elecampusState: Data, userAgent: String = EcyktSession.defaultUserAgent, owning: LeaseOwnership) async throws -> SignInSummary {
         guard let root = try? JSONValue.parse(elecampusState),
               let token = (root["logintoken"] ?? root["loginInfo"]?["token"])?.text, !token.isEmpty,
               let sys = root["loginInfo"]?["syscustid"]?.text, !sys.isEmpty else {
@@ -391,7 +392,7 @@ public actor SchoolSession {
         let session = EcyktSession(token: token, syscustid: sys, custid: root["custInfo"]?["custid"]?.text,
                                    cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: userAgent,
                                    obtainedAt: now())
-        var started = personGeneration
+        let started = personGeneration
         let start = try Self.storedCredentials(vault)
         let before = signedInPerson()
         let (card, updated) = try await liveCard(session)
@@ -399,9 +400,9 @@ public actor SchoolSession {
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: nil)
         let switched = match == .different
         // As for the form sign-in: without the new dorm, a dorm and meter that may be someone
-        // else's are not kept. No portal token: no dorm is read, so that happens right here.
+        // else's are not kept. No dorm is read here, so that happens right here.
         let dropDorm = match == .unknown && before != nil
-        let vault = vault, webToken = portalToken.map(stamped)
+        let vault = vault
         var writing = false
         let old: SchoolProfile?
         do {
@@ -412,32 +413,17 @@ public actor SchoolSession {
                 // The web page never tells us the account: a saved password stays only when the
                 // card shows it is the same person (the widget keeps signing in with it).
                 if match != .same { try vault.saveAccount(nil) }
-                if let webToken { try vault.savePortalToken(webToken) }
                 try vault.saveEcyktSession(updated)
-                if webToken == nil, dropDorm { try vault.saveProfile(SchoolProfile()) }
+                if dropDorm { try vault.saveProfile(SchoolProfile()) }
                 return old
             }
         } catch {
             // As for the form sign-in: begun writes make the previous person's work stale.
-            if writing, match != .same { started = newPerson() }
+            if writing, match != .same { _ = newPerson() }
             throw error
         }
-        if match != .same { started = newPerson() }
-        var residence: PortalResidence?
-        if let portalToken, let r = try? await portal.myInfo(portalToken) {
-            try ensureSignedIn(since: started)
-            residence = r
-            _ = try owning.write {
-                var profile = (try? vault.profile()) ?? SchoolProfile()
-                if profile.residence?.address != r.address { profile.meter = nil }
-                profile.residence = r
-                try vault.saveProfile(profile)
-            }
-        } else if portalToken != nil, dropDorm {
-            try ensureSignedIn(since: started)
-            _ = try owning.write { try vault.saveProfile(SchoolProfile()) }
-        }
-        return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: switched,
+        if match != .same { _ = newPerson() }
+        return SignInSummary(cardholder: card.displayName, residence: nil, switchedAccount: switched,
                              previousPersonUnconfirmed: before != nil && match == .unknown,
                              dormAndMeterCleared: Self.cleared(old, now: (try? vault.profile()) ?? nil))
     }

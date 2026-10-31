@@ -353,7 +353,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
         try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
-        _ = try await h.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
+        _ = try await h.session().adoptWebState(try state.encoded(), owning: .unchecked)
         XCTAssertNil(try h.vault.account(), "the web page never says whose password it was")
     }
 

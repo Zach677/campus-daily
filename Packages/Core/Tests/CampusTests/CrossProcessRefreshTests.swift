@@ -356,7 +356,7 @@ final class LoginUnderLeaseTests: XCTestCase {
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"]).encoded()
         let session = h.session()
         do {
-            _ = try await app.holdingLease { owning in try await session.adoptWebState(state, portalToken: nil, owning: owning) }
+            _ = try await app.holdingLease { owning in try await session.adoptWebState(state, owning: owning) }
             XCTFail("the lease is held")
         } catch {
             XCTAssertEqual(error as? SchoolLoginFailure, .busy)

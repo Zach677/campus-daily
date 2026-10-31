@@ -489,12 +489,12 @@ final class SchoolSignInTests: XCTestCase {
         let h = Harness()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
-        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
+        let summary = try await h.session().adoptWebState(try state.encoded(), owning: .unchecked)
         XCTAssertEqual(summary.cardholder, "测试员")
         let s = try XCTUnwrap(try h.vault.ecyktSession())
         XCTAssertEqual(s.token, "REDACTED_TOKEN_2")
         XCTAssertEqual(s.syscustid, T.syscustid)
-        await T.expectError(.malformed(.ecykt, "elecampus_state")) { _ = try await h.session().adoptWebState(Data("{}".utf8), portalToken: nil, owning: .unchecked) }
+        await T.expectError(.malformed(.ecykt, "elecampus_state")) { _ = try await h.session().adoptWebState(Data("{}".utf8), owning: .unchecked) }
     }
 
     func testSignInWithBadTicketExchangeSavesNothing() async throws {

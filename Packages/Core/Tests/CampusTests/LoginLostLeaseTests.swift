@@ -105,7 +105,7 @@ final class LoginLostLeaseTests: XCTestCase {
         let session = h.session()
         await expectBusy("web sign-in") {
             _ = try await self.app(h, session).holdingLease { owning in
-                try await session.adoptWebState(state, portalToken: nil, owning: owning)
+                try await session.adoptWebState(state, owning: owning)
             }
         }
         try assertWidgetsCredentialsKept(h, account: Self.savedAccount, "web sign-in")
