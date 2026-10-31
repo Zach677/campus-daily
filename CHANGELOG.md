@@ -27,6 +27,7 @@
 - Keep the saved password when the same person signs in with the school's web page, so the widget still signs in by itself; a different person still clears it.
 - Fill in the saved account in the first-run login, and tick 保存密码 by default only while the account typed is the saved one, so another person's password is not kept unless they tick it.
 - Let 取消 tapped while a shower starts wait for the start, and show a refusal instead of closing the page.
+- Treat a stored school login that no longer reads as someone signed in: a new sign-in drops their dorm, meter and (web sign-in) portal token and says it could not tell who it was, and 保存密码 is refused until the user signs in again.
 - Start the shower timer, its Live Activity, the 「还在计时」 reminder and the shower's minutes when the water starts, not when 开始洗澡 is tapped, so the time spent connecting is not counted.
 
 ### Removed

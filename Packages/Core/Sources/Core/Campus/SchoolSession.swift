@@ -148,7 +148,7 @@ public actor SchoolSession {
     public func signIn(account: String, password: String, savePassword: Bool, owning: LeaseOwnership) async throws -> SignInSummary {
         var started = personGeneration
         let start = try Self.storedCredentials(vault)
-        let before = signedInPerson()
+        let before = Self.signedInPerson(start)
         let token = try await passwordLoginOnce(account: account, password: password, owning: owning)
         try ensureSignedIn(since: started)
         return try await signIn(portalToken: token, account: account,
@@ -163,13 +163,15 @@ public actor SchoolSession {
     /// any pause.
     public func savePassword(_ password: String, account given: String? = nil, owning: LeaseOwnership) async throws {
         let start = try Self.storedCredentials(vault)
+        // Nobody can tell who is signed in: the password can't be checked against them.
+        if start.unreadablePerson { throw SchoolLoginFailure.differentAccount }
         let stored = start.account
         if let known = stored?.account, let given, given != known { throw SchoolLoginFailure.differentAccount }
         guard let account = given ?? stored?.account, !account.isEmpty else {
             throw SchoolLoginFailure.wrongCredentials
         }
         let started = personGeneration
-        let before = signedInPerson()
+        let before = Self.signedInPerson(start)
         let token = try await passwordLoginOnce(account: account, password: password, owning: owning)
         try ensureSignedIn(since: started)
         var exchanged: EcyktSession?
@@ -237,12 +239,12 @@ public actor SchoolSession {
         do { return try vault.ecyktSession() != nil } catch { return true }
     }
 
-    /// The person signed in now, or nil when nobody is.
-    private func signedInPerson() -> SignedInPerson? {
-        let session = (try? vault.ecyktSession()) ?? nil
-        let account = (try? vault.account()) ?? nil
-        guard session != nil || account != nil else { return nil }
-        return SignedInPerson(cardUnionID: session?.cardUnionID, account: account?.account)
+    /// The person signed in when `stored` was read, or nil when nobody was. A card session or
+    /// account that is stored but no longer decodes still means someone was: a person nobody can
+    /// tell (what it does tell, the other item, still counts).
+    static func signedInPerson(_ stored: StoredCredentials) -> SignedInPerson? {
+        guard stored.session != nil || stored.account != nil || stored.unreadablePerson else { return nil }
+        return SignedInPerson(cardUnionID: stored.session?.cardUnionID, account: stored.account?.account)
     }
 
     /// Whether a sign-in removed the dorm or meter that `old` had (another dorm counts).
@@ -288,11 +290,17 @@ public actor SchoolSession {
     /// shape) compares equal to itself, so the login writes over it and repairs it, as before;
     /// one the other process rewrote meanwhile compares unequal, decodable or not.
     struct StoredCredentials: Equatable {
+        /// Card session, portal token, account (`SchoolVault.credentialBytes()`).
         var bytes: [Data?]
         /// Decoded for the login's own use; nil when absent or no longer decodable.
         var session: EcyktSession?
         var account: SchoolAccount?
         static func == (a: StoredCredentials, b: StoredCredentials) -> Bool { a.bytes == b.bytes }
+        /// The card session or the account is stored and doesn't decode: someone was signed in,
+        /// and it can't be told who.
+        var unreadablePerson: Bool {
+            bytes.count == 3 && ((bytes[0] != nil && session == nil) || (bytes[2] != nil && account == nil))
+        }
     }
 
     /// Throws only when the store can't be read (before the first unlock, say).
@@ -324,7 +332,7 @@ public actor SchoolSession {
                        owning: LeaseOwnership) async throws -> SignInSummary {
         var started = personGeneration
         let start = try Self.storedCredentials(vault)
-        return try await signIn(portalToken: portalToken, account: nil, saving: nil, before: signedInPerson(), start: start,
+        return try await signIn(portalToken: portalToken, account: nil, saving: nil, before: Self.signedInPerson(start), start: start,
                                 started: &started, owning: owning, userAgent: userAgent)
     }
 
@@ -394,7 +402,7 @@ public actor SchoolSession {
                                    obtainedAt: now())
         let started = personGeneration
         let start = try Self.storedCredentials(vault)
-        let before = signedInPerson()
+        let before = Self.signedInPerson(start)
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: nil)
@@ -412,7 +420,11 @@ public actor SchoolSession {
                 if switched { try Self.clearPreviousPerson(vault) }
                 // The web page never tells us the account: a saved password stays only when the
                 // card shows it is the same person (the widget keeps signing in with it).
-                if match != .same { try vault.saveAccount(nil) }
+                // Nor its portal token: a re-exchange with it would sign the previous person in again.
+                if match != .same {
+                    try vault.saveAccount(nil)
+                    try vault.savePortalToken(nil)
+                }
                 try vault.saveEcyktSession(updated)
                 if dropDorm { try vault.saveProfile(SchoolProfile()) }
                 return old
