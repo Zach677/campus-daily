@@ -159,8 +159,8 @@ struct CampusWidgetFace: View {
 
     private var smallBody: some View {
         VStack(alignment:.leading, spacing:8) {
-            smallStack(emoji:"⚡", number:model.remainingKWh.map(CampusFormat.kwh), unit:"度", low:model.powerLow, label:"宿舍电量")
-            smallStack(emoji:"💳", number:model.balance.map(CampusFormat.yuan), unit:nil, low:false, label:"校园卡")
+            smallStack(symbol:"bolt", number:model.remainingKWh.map(CampusFormat.kwh), unit:"度", low:model.powerLow, label:"宿舍电量")
+            smallStack(symbol:"creditcard", number:model.balance.map(CampusFormat.yuan), unit:nil, low:false, label:"校园卡")
             Spacer(minLength:0)
             footer
         }
@@ -168,7 +168,7 @@ struct CampusWidgetFace: View {
     /// The card line only, then what to do.
     private var smallExpired: some View {
         VStack(alignment:.leading, spacing:8) {
-            smallStack(emoji:"💳", number:model.balance.map(CampusFormat.yuan), unit:nil, low:false, label:"校园卡")
+            smallStack(symbol:"creditcard", number:model.balance.map(CampusFormat.yuan), unit:nil, low:false, label:"校园卡")
             Spacer(minLength:0)
             VStack(alignment:.leading, spacing:2) {
                 Text("登录过期了").font(.system(size:15, weight:.semibold)).foregroundStyle(P.ink).lineLimit(1)
@@ -176,10 +176,10 @@ struct CampusWidgetFace: View {
             }
         }
     }
-    private func smallStack(emoji: String, number: String?, unit: String?, low: Bool, label: String) -> some View {
+    private func smallStack(symbol: String, number: String?, unit: String?, low: Bool, label: String) -> some View {
         VStack(alignment:.leading, spacing:4) {
             HStack(alignment:.firstTextBaseline, spacing:4) {
-                Text(emoji).font(.system(size:15)).frame(width:22, alignment:.leading)
+                icon(symbol, size:15).frame(width:22, alignment:.leading)
                 HStack(alignment:.firstTextBaseline, spacing:3) {
                     numberText(number, size:30, low:low)
                     if let unit, number != nil { Text(unit).font(.system(size:14, weight:.medium)).foregroundStyle(P.ink2) }
@@ -195,7 +195,7 @@ struct CampusWidgetFace: View {
         VStack(alignment:.leading, spacing:6) {
             HStack(alignment:.top, spacing:0) {
                 VStack(alignment:.leading, spacing:0) {
-                    header("⚡ 宿舍电量")
+                    header(symbol:"bolt", "宿舍电量")
                     HStack(alignment:.firstTextBaseline, spacing:3) {
                         numberText(model.remainingKWh.map(CampusFormat.kwh), size:34, low:model.powerLow)
                         if model.remainingKWh != nil { Text("度").font(.system(size:15, weight:.medium)).foregroundStyle(P.ink2) }
@@ -210,7 +210,7 @@ struct CampusWidgetFace: View {
                 .frame(maxWidth:.infinity, maxHeight:.infinity, alignment:.topLeading)
                 Rectangle().fill(P.separator).frame(width:0.5)
                 VStack(alignment:.leading, spacing:0) {
-                    header("💳 校园卡")
+                    header(symbol:"creditcard", "校园卡")
                     numberText(model.balance.map(CampusFormat.yuan), size:34, low:false).padding(.top,8)
                     if model.balance != nil {
                         Text("余额").font(.system(size:13)).foregroundStyle(P.ink2).padding(.top,4)
@@ -223,8 +223,11 @@ struct CampusWidgetFace: View {
             footer
         }
     }
-    private func header(_ text: String) -> some View {
-        Text(text).font(.system(size:13, weight:.semibold)).foregroundStyle(P.ink2).lineLimit(1)
+    private func header(symbol: String, _ text: String) -> some View {
+        HStack(spacing:4) {
+            icon(symbol, size:13)
+            Text(text).font(.system(size:13, weight:.semibold)).foregroundStyle(P.ink2).lineLimit(1)
+        }
     }
     /// 13 ink2, the number inside in ink medium (ink3 when expired).
     private func mini(_ lead: String, _ number: String, _ tail: String) -> some View {
@@ -233,6 +236,14 @@ struct CampusWidgetFace: View {
     }
 
     // MARK: Shared pieces
+
+    /// The line icons of home (creditcard, bolt): outline, regular, grey in every state; a low
+    /// value turns only the number red.
+    private func icon(_ symbol: String, size: CGFloat) -> some View {
+        Image(systemName:symbol).symbolRenderingMode(.monochrome)
+            .font(.system(size:size, weight:.regular)).foregroundStyle(P.ink2)
+            .accessibilityHidden(true)
+    }
 
     private func numberText(_ number: String?, size: CGFloat, low: Bool) -> some View {
         Text(number ?? "—")
