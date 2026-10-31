@@ -279,6 +279,28 @@ final class EcyktBalanceTests: XCTestCase {
         XCTAssertFalse(page.isComplete(pageSize: 5))
     }
 
+    /// A voucher sent as a number is kept only when it is exact: a long one read as a double
+    /// has lost digits (two purchases could share it), so that row has no voucher.
+    func testCardRecordVoucherSentAsANumber() async throws {
+        let ok = try FixtureLoader.load("ecykt/card-getRecordList-ok")
+        let server = StubServer()
+        // As JSON sends it: 20 digits do not fit an integer, so they are read as a double.
+        let long = try JSONValue.parse("99000000000000000001")
+        guard case .double = long else { return XCTFail("\(long)") }
+        server.serve(T.editingData(ok) {
+            guard case .object(var d) = $0, case .array(var rows)? = d["rows"],
+                  case .object(var first) = rows[0], case .object(var second) = rows[1] else { return XCTFail("rows") }
+            first["voucherno"] = long
+            second["voucherno"] = .int(990000000000000002)
+            rows[0] = .object(first); rows[1] = .object(second)
+            d["rows"] = .array(rows); $0 = .object(d)
+        })
+        let page = try await EcyktClient(http: server.makeClient()).cardRecords(T.session(), custid: T.custid, begin: "20260930", end: "20261030", pageSize: 5)
+        XCTAssertNil(page.rows[0].voucher)
+        XCTAssertEqual(page.rows[1].voucher, "990000000000000002")
+        XCTAssertEqual(page.rows[2].voucher, "99000000000000000002")
+    }
+
     /// A reply without a total is complete only when the page was not filled.
     func testCardRecordsWithoutATotal() async throws {
         let ok = try FixtureLoader.load("ecykt/card-getRecordList-ok")

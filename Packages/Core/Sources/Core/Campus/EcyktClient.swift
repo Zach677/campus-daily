@@ -109,9 +109,19 @@ public struct EcyktClient: Sendable {
                               amount: amount,
                               balanceAfter: row["balance"]?.text.flatMap(Money.init(yuanString:)),
                               direction: row["dcflag"]?.text,
-                              voucher: row["voucherno"]?.text)
+                              voucher: Self.voucher(row["voucherno"]))
         }
         return CardRecordPage(total: data["total"]?.intValue, rows: records)
+    }
+
+    /// A record's voucher number as sent: a string or an exact integer. A number read as a
+    /// double may have lost digits (two purchases could share it): no voucher then.
+    static func voucher(_ value: JSONValue?) -> String? {
+        switch value {
+        case .string(let s)?: return s
+        case .int(let i)?: return String(i)
+        default: return nil
+        }
     }
 
     /// `electricnew/service server=/api/getBuildingInfo`. `parent == nil` → campuses.
