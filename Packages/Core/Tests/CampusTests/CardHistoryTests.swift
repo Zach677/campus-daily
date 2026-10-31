@@ -145,6 +145,25 @@ final class CardHistoryTests: XCTestCase {
         XCTAssertEqual(retried.history.records.count, 2)
     }
 
+    /// A short page while the total says more: the range goes on, and if the rest never comes
+    /// its days from the cut back stay without a total.
+    func testAShortPageIsNotTheLastWhileTheTotalSaysMore() {
+        var history = CardHistory(now: noon)
+        let first = history.nextQuery!
+        history.receive(CardRecordPage(total: 55, rows: meals("20261030", 12) + meals("20261029", 8)), for: first)
+        XCTAssertEqual(history.nextQuery, CardHistoryQuery(begin: first.begin, end: first.end, page: 2, pageSize: CardHistory.pageSize),
+                       "35 more records in this range")
+        XCTAssertFalse(history.isComplete(day: "20261029"))
+
+        history.receive(CardRecordPage(total: 55, rows: []), for: history.nextQuery!)
+        XCTAssertEqual(history.nextQuery?.end, "20261016")
+        XCTAssertTrue(history.isComplete(day: "20261030"), "newer than the cut")
+        XCTAssertFalse(history.isComplete(day: "20261029"), "the school said there was more")
+        XCTAssertFalse(history.isComplete(day: "20261017"))
+        let groups = CardDays.groups(history: history, app: [], now: noon)
+        XCTAssertNil(groups[1].total)
+    }
+
     // MARK: Day totals
 
     func testADayTotalCountsMoneyOutOnly() {

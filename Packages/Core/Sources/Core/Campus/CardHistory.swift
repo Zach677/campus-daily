@@ -46,6 +46,8 @@ public struct CardHistory: Sendable, Equatable {
     private var rangeEnd = 0
     private var page = 1
     private var emptyRanges = 0
+    /// The current range came up short of the total the school gave for it.
+    private var shortOfTotal = false
     /// No older records to ask for.
     public private(set) var reachedEnd = false
 
@@ -94,13 +96,20 @@ public struct CardHistory: Sendable, Equatable {
         // A record that came on the previous page too (a new one at the top pushed it down).
         let fresh = answer.rows.filter { !current.contains($0) }
         current += fresh
-        let last = answer.rows.count < query.pageSize || (answer.total.map { query.page * query.pageSize >= $0 } ?? false)
+        // The total, when given, decides; a page with room left over is the last one only without it.
+        let last: Bool
+        if let total = answer.total {
+            last = answer.rows.isEmpty || query.page * query.pageSize >= total
+            if answer.rows.count < query.pageSize && query.page * query.pageSize < total { shortOfTotal = true }
+        } else {
+            last = answer.rows.count < query.pageSize
+        }
         let stuck = !last && (fresh.isEmpty || query.page >= Self.maxPagesPerRange)
         if !last && !stuck {
             page += 1
             return
         }
-        if stuck {
+        if stuck || shortOfTotal {
             // From the cut day back, this range's days may miss records.
             let cut = cutDay
             for back in rangeEnd..<(rangeEnd + Self.rangeDays) {
@@ -114,6 +123,7 @@ public struct CardHistory: Sendable, Equatable {
         readFrom = day(back: rangeEnd + Self.rangeDays - 1)
         rangeEnd += Self.rangeDays
         page = 1
+        shortOfTotal = false
         if emptyRanges >= Self.emptyRangesBeforeEnd || rangeEnd >= Self.maxDaysBack { reachedEnd = true }
     }
 
