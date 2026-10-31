@@ -81,6 +81,29 @@ final class MeterAutoFindTests: XCTestCase {
         XCTAssertFalse(start(&f, .refreshed, after: 100), "the sign-in's own refresh")
     }
 
+    /// The school answered that this dorm has no meter to match (or no dorm): reading the whole
+    /// campus again every ten minutes would answer the same. Re-finds stop until a launch, a
+    /// sign-in or 「再找一次电表」; a timeout or no connection keeps them going.
+    func testADefiniteNotFoundStopsTheRefinds() {
+        var f = MeterAutoFind()
+        XCTAssertTrue(start(&f, .launch, after: 0))
+        f.finished(notFound: true)
+        XCTAssertFalse(start(&f, .foreground, after: 700))
+        XCTAssertFalse(start(&f, .refreshed, after: 5_000))
+        XCTAssertTrue(start(&f, .manual, after: 5_100))
+        f.finished(notFound: false)
+        XCTAssertTrue(start(&f, .foreground, after: 5_700), "timed out: tried again")
+
+        f.finished(notFound: true)
+        XCTAssertTrue(start(&f, .signedIn, after: 5_800))
+        XCTAssertTrue(start(&f, .refreshed, after: 6_400), "a sign-in starts them again")
+
+        f.finished(notFound: true)
+        var relaunched = MeterAutoFind()
+        XCTAssertTrue(start(&relaunched, .launch, after: 7_000))
+        XCTAssertFalse(start(&f, .foreground, after: 9_000), "only the next launch's own keeper starts afresh")
+    }
+
     /// The clock set back: the limit does not hold the lookup off until it catches up.
     func testAClockSetBackDoesNotHoldItOff() {
         var f = MeterAutoFind()

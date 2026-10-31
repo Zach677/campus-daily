@@ -303,6 +303,7 @@ struct PowerChoice: Identifiable, Equatable {
                 let (stamp, found) = try await session.matchElectricity()
                 // Someone else signed in after it answered: none of it is theirs, their own runs.
                 if await session.isSamePerson(since:stamp) {
+                    autoFind.finished(notFound:found == .manualPicker || found == .noAddress)
                     switch found {
                     case .matched, .alreadyBound:
                         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
@@ -319,7 +320,10 @@ struct PowerChoice: Identifiable, Equatable {
                 // Signed out or someone else signed in meanwhile: this match was theirs, say
                 // nothing; whoever is signed in now gets their own (signed out: `configured` is
                 // false and nothing runs).
-                if await session.isSamePerson(since:before) { powerMatchIssue = AppErrorText.text(error) } else { again = true }
+                if await session.isSamePerson(since:before) {
+                    autoFind.finished(notFound:false)
+                    powerMatchIssue = AppErrorText.text(error)
+                } else { again = true }
             }
             matchingPower = false
             let signedIn = signedInDuringLookup

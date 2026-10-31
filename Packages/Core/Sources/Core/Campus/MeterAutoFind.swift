@@ -4,7 +4,8 @@ import Foundation
 /// signed in with no meter bound. Back in the foreground and after a home refresh it re-finds
 /// only with the dorm address known, at most once every `interval` counted from the last start
 /// of any kind, and not while a same-name list is being chosen from (`choosing`); launch, a
-/// sign-in and 「再找一次电表」 (`manual`) are not held back. Pure; the app keeps one.
+/// sign-in and 「再找一次电表」 (`manual`) are not held back. After a definite "not found"
+/// (`finished(notFound:)`) the re-finds stop until one of those. Pure; the app keeps one.
 public struct MeterAutoFind: Sendable, Equatable {
     public enum Trigger: Sendable, Equatable {
         /// The app's cold launch.
@@ -21,6 +22,8 @@ public struct MeterAutoFind: Sendable, Equatable {
 
     public static let interval: TimeInterval = 600
     private var lastStart: Date?
+    private enum Answer: Sendable, Equatable { case open, notFound }
+    private var answer = Answer.open
 
     public init() {}
 
@@ -32,11 +35,17 @@ public struct MeterAutoFind: Sendable, Equatable {
         case .launch, .manual, .signedIn: break
         case .foreground, .refreshed:
             // A same-name list being chosen from would be cleared under the user's finger.
-            guard addressKnown, !choosing else { return false }
+            guard addressKnown, !choosing, answer != .notFound else { return false }
             // A clock set back (now before the last start) does not hold it off.
             if let lastStart, now >= lastStart, now.timeIntervalSince(lastStart) < Self.interval { return false }
         }
         lastStart = now
+        answer = .open
         return true
     }
+
+    /// The last lookup's answer. A definite "not found" (no meter matched the dorm, or no dorm)
+    /// stops the re-finds until the next launch, sign-in or 「再找一次电表」; anything else (a
+    /// timeout, no connection) keeps them.
+    public mutating func finished(notFound: Bool) { answer = notFound ? .notFound : .open }
 }
