@@ -881,25 +881,90 @@ public actor SchoolSession {
         }
     }
 
-    enum Walked { case room(MeterCandidate), rooms([MeterCandidate]), stopped(MeterWalkStop) }
+    enum Walked {
+        case room(MeterCandidate), rooms([MeterCandidate]), stopped(MeterWalkStop)
+        /// The rooms of the dorm's name this branch found with a meter.
+        var found: [MeterCandidate] {
+            switch self {
+            case .room(let c): return [c]
+            case .rooms(let list): return list
+            case .stopped(let stop): return stop.candidates
+            }
+        }
+    }
 
     /// The walk itself. The portal names no apartment: when the campus lists apartments, the
     /// apartment is the one holding the dorm's building (each apartment's buildings read).
+    /// Several apartments (or campuses) holding it: each is walked down to the rooms. Only one
+    /// with the dorm's room: that one, as if it were the only one. Several: stopped at that
+    /// level with their rooms as `candidates`. None: stopped there with nothing to choose.
     func walk(_ s: EcyktSession, address: DormAddress, since started: Int) async throws -> Walked {
         func children(_ parent: String?) async throws -> [PowerNode] {
             try await patiently(since: started) { try await self.ecykt.buildings(s, parent: parent) }
         }
         func ids(_ nodes: [PowerNode]) -> [String] { nodes.map(\.id) }
 
-        let campuses = try await children(nil)
-        let campusHits = campuses.filter { address.matchesCampus($0.name) }
-        guard campusHits.count == 1, let campus = campusHits.first else {
-            return .stopped(MeterWalkStop(level: .campus, path: [], options: campuses, suggested: ids(campusHits)))
+        /// Each branch walked down: the one with rooms of the dorm's name answers, else `stop`
+        /// (with the rooms of all of them when several have).
+        func split(_ walked: [(PowerNode, Walked)], _ stop: MeterWalkStop) -> Walked {
+            let having = walked.filter { !$0.1.found.isEmpty }
+            if having.count == 1 { return having[0].1 }
+            var stop = stop
+            if having.count > 1 {
+                stop.suggested = having.map(\.0.id)
+                stop.candidates = having.flatMap(\.1.found)
+            }
+            return .stopped(stop)
         }
-        var path = [campus]
-        let level1 = try await children(campus.id)
-        var buildings = level1, buildingHits = level1.filter { address.matchesBuilding($0.name) }
-        if buildingHits.isEmpty {
+
+        /// From a building list (`buildings`, under `path`) down to the room's meter.
+        func fromBuildings(_ buildings: [PowerNode], path: [PowerNode]) async throws -> Walked {
+            var path = path
+            let buildingHits = buildings.filter { address.matchesBuilding($0.name) }
+            guard buildingHits.count == 1, let building = buildingHits.first else {
+                return .stopped(MeterWalkStop(level: .building, path: path, options: buildings, suggested: ids(buildingHits)))
+            }
+            path.append(building)
+            let floors = try await children(building.id)
+            var rooms = floors
+            let floorHits = floors.filter { address.matchesFloor($0.name) }
+            if floorHits.count == 1, let floor = floorHits.first {
+                path.append(floor)
+                rooms = try await children(floor.id)
+            } else if !floors.contains(where: { address.matchesRoom($0.name) }) {
+                // No floor level only when the building lists the rooms itself.
+                return .stopped(MeterWalkStop(level: .floor, path: path, options: floors, suggested: ids(floorHits)))
+            }
+            let roomHits = rooms.filter { address.matchesRoom($0.name) }
+            guard !roomHits.isEmpty, roomHits.count <= Self.maxCandidateRooms else {
+                return .stopped(MeterWalkStop(level: .room, path: path, options: rooms, suggested: ids(roomHits)))
+            }
+            var found: [MeterCandidate] = []
+            for room in roomHits {
+                let rows = try await patiently(since: started) { try await self.ecykt.meters(s, nodeID: room.id) }
+                // The row of the dorm's name. A node's only row of another name is its meter only
+                // when nothing is under it (a room): a bare-number floor of the room's number is not.
+                let meter: Meter?
+                switch MeterMatcher.match(rows, address: address) {
+                case .one(let m): meter = m
+                case .none:
+                    if rows.count == 1 { meter = try await children(room.id).isEmpty ? rows.first : nil } else { meter = nil }
+                case .many: meter = nil
+                }
+                if let meter { found.append(MeterCandidate(meter: meter, path: path + [room])) }
+            }
+            switch found.count {
+            case 0: return .stopped(MeterWalkStop(level: .room, path: path, options: rooms, suggested: ids(roomHits)))
+            case 1: return .room(found[0])
+            default: return .rooms(found)
+            }
+        }
+
+        /// From a campus down: its buildings, or the apartments holding the dorm's building.
+        func fromCampus(_ campus: PowerNode) async throws -> Walked {
+            let path = [campus]
+            let level1 = try await children(campus.id)
+            if level1.contains(where: { address.matchesBuilding($0.name) }) { return try await fromBuildings(level1, path: path) }
             // The campus lists buildings itself and none is the dorm's: they are not apartments.
             if level1.contains(where: { MeterLevel.isBuilding($0.name) }) {
                 return .stopped(MeterWalkStop(level: .building, path: path, options: level1))
@@ -913,49 +978,26 @@ public actor SchoolSession {
                 let kids = try await children(apartment.id)
                 if kids.contains(where: { address.matchesBuilding($0.name) }) { holding.append((apartment, kids)) }
             }
-            guard holding.count == 1, let (apartment, kids) = holding.first else {
-                return .stopped(MeterWalkStop(level: .apartment, path: path, options: level1, suggested: holding.map(\.0.id)))
+            if holding.count == 1, let (apartment, kids) = holding.first {
+                return try await fromBuildings(kids, path: path + [apartment])
             }
-            path.append(apartment)
-            buildings = kids
-            buildingHits = kids.filter { address.matchesBuilding($0.name) }
+            let stop = MeterWalkStop(level: .apartment, path: path, options: level1, suggested: holding.map(\.0.id))
+            guard holding.count > 1 else { return .stopped(stop) }
+            var walked: [(PowerNode, Walked)] = []
+            for (apartment, kids) in holding { walked.append((apartment, try await fromBuildings(kids, path: path + [apartment]))) }
+            return split(walked, stop)
         }
-        guard buildingHits.count == 1, let building = buildingHits.first else {
-            return .stopped(MeterWalkStop(level: .building, path: path, options: buildings, suggested: ids(buildingHits)))
-        }
-        path.append(building)
-        let floors = try await children(building.id)
-        var rooms = floors
-        let floorHits = floors.filter { address.matchesFloor($0.name) }
-        if floorHits.count == 1, let floor = floorHits.first {
-            path.append(floor)
-            rooms = try await children(floor.id)
-        } else if !floors.contains(where: { address.matchesRoom($0.name) }) {
-            // No floor level only when the building lists the rooms itself.
-            return .stopped(MeterWalkStop(level: .floor, path: path, options: floors, suggested: ids(floorHits)))
-        }
-        let roomHits = rooms.filter { address.matchesRoom($0.name) }
-        guard !roomHits.isEmpty, roomHits.count <= Self.maxCandidateRooms else {
-            return .stopped(MeterWalkStop(level: .room, path: path, options: rooms, suggested: ids(roomHits)))
-        }
-        var found: [MeterCandidate] = []
-        for room in roomHits {
-            let rows = try await patiently(since: started) { try await self.ecykt.meters(s, nodeID: room.id) }
-            // The row of the dorm's name. A node's only row of another name is its meter only
-            // when nothing is under it (a room): a bare-number floor of the room's number is not.
-            let meter: Meter?
-            switch MeterMatcher.match(rows, address: address) {
-            case .one(let m): meter = m
-            case .none:
-                if rows.count == 1 { meter = try await children(room.id).isEmpty ? rows.first : nil } else { meter = nil }
-            case .many: meter = nil
-            }
-            if let meter { found.append(MeterCandidate(meter: meter, path: path + [room])) }
-        }
-        switch found.count {
-        case 0: return .stopped(MeterWalkStop(level: .room, path: path, options: rooms, suggested: ids(roomHits)))
-        case 1: return .room(found[0])
-        default: return .rooms(found)
+
+        let campuses = try await children(nil)
+        let campusHits = campuses.filter { address.matchesCampus($0.name) }
+        let stop = MeterWalkStop(level: .campus, path: [], options: campuses, suggested: ids(campusHits))
+        switch campusHits.count {
+        case 0: return .stopped(stop)
+        case 1: return try await fromCampus(campusHits[0])
+        default:
+            var walked: [(PowerNode, Walked)] = []
+            for campus in campusHits { walked.append((campus, try await fromCampus(campus))) }
+            return split(walked, stop)
         }
     }
 

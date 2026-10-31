@@ -70,4 +70,29 @@ final class MeterPickerTextTests: XCTestCase {
         XCTAssertEqual(MeterPageText.noteAtStop(finding: false, issue: ServiceError.offline.userMessage), ServiceError.offline.userMessage)
         XCTAssertEqual(MeterPageText.stoppedIssue, "没自动找到电表，去「电表」里选一下。")
     }
+
+    /// The lookup stopped with rooms in several apartments (or campuses): the question names how
+    /// many, the dorm's building and room; nil when there is nothing to choose from.
+    func testAStopWithCandidatesAsksWhichApartment() {
+        let campus = PowerNode(id: "991001", name: "星湖校区")
+        func candidate(_ apartment: PowerNode, _ room: String) -> MeterCandidate {
+            MeterCandidate(meter: Meter(comAddress: "c" + room, name: "99栋991", leftMoney: nil),
+                           path: [campus, apartment, PowerNode(id: apartment.id + "9", name: "99栋"), PowerNode(id: room, name: "991")])
+        }
+        let banshan = PowerNode(id: "991001001", name: "半山公寓"), lanxiang = PowerNode(id: "991001007", name: "兰香公寓")
+        let stop = MeterWalkStop(level: .apartment, path: [campus], options: [banshan, lanxiang], suggested: [banshan.id, lanxiang.id],
+                                 candidates: [candidate(banshan, "1"), candidate(lanxiang, "2")])
+        XCTAssertEqual(MeterPageText.question(stop, address: Self.address), "2 个公寓都有 99 栋 991，你住哪个？")
+        XCTAssertEqual(stop.candidates.map(stop.branchName), ["半山公寓", "兰香公寓"])
+        let east = PowerNode(id: "992001", name: "东湖校区")
+        let atCampus = MeterWalkStop(level: .campus, path: [], options: [campus, east], candidates: [
+            candidate(banshan, "1"),
+            MeterCandidate(meter: Meter(comAddress: "c3", name: "99栋991", leftMoney: nil),
+                           path: [east, PowerNode(id: "9920019", name: "99栋"), PowerNode(id: "3", name: "991")]),
+        ])
+        XCTAssertEqual(MeterPageText.question(atCampus, address: Self.address), "2 个校区都有 99 栋 991，你住哪个？")
+        XCTAssertEqual(atCampus.candidates.map(atCampus.branchName), ["星湖校区", "东湖校区"])
+        XCTAssertNil(MeterPageText.question(MeterWalkStop(level: .apartment, path: [campus], options: [banshan]), address: Self.address))
+        XCTAssertNil(MeterPageText.question(stop, address: nil))
+    }
 }

@@ -9,13 +9,30 @@ public enum MeterLevel: String, Sendable, Equatable, Codable, CaseIterable {
 /// one did not match exactly once. The meter page opens here with `options` (this level's rows
 /// as read); `suggested` are the rows that matched (several), or the dorm's own room when it
 /// reports no meter; empty when nothing matched.
+///
+/// `candidates`: several rows of this level (apartments, or campuses) were walked down and more
+/// than one holds a room of the dorm's name with a meter. Each is a room to bind as it is
+/// (`SchoolSession.chooseMatchedMeter`); empty when there is nothing to choose from but the list.
 public struct MeterWalkStop: Sendable, Equatable {
     public var level: MeterLevel
     public var path: [PowerNode]
     public var options: [PowerNode]
     public var suggested: [String]
+    public var candidates: [MeterCandidate]
 
-    public init(level: MeterLevel, path: [PowerNode], options: [PowerNode], suggested: [String] = []) {
+    public init(level: MeterLevel, path: [PowerNode], options: [PowerNode], suggested: [String] = [],
+                candidates: [MeterCandidate] = []) {
         self.level = level; self.path = path; self.options = options; self.suggested = suggested
+        self.candidates = candidates
+    }
+
+    /// The row of this level a candidate lies under (「半山公寓」, or a campus).
+    public func branch(of candidate: MeterCandidate) -> PowerNode? {
+        candidate.path.indices.contains(path.count) ? candidate.path[path.count] : nil
+    }
+
+    /// The name of `branch(of:)`, what the choice is titled with.
+    public func branchName(_ candidate: MeterCandidate) -> String {
+        branch(of: candidate)?.name ?? candidate.location
     }
 }

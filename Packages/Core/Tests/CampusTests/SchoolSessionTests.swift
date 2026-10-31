@@ -386,11 +386,11 @@ final class SchoolElectricityTests: XCTestCase {
         XCTAssertNil(try many.vault.profile()?.meter)
     }
 
-    /// Two 99栋 in different apartments: the walk stops at the apartments with both offered;
-    /// nothing is guessed.
+    /// Two 99栋 in different apartments, neither listing the dorm's room: the walk stops at the
+    /// apartments with both offered; nothing is guessed.
     func testSameNamedBuildingsStopAtTheirApartments() async throws {
         let h = Harness()
-        try h.signedIn()
+        try h.signedIn(residence: "星湖校区99栋9号1层998房")
         MeterWalkTests.level(h, "991001002", [("99栋", "991001002000109")])
         try Self.serveTree(h)
         let result = try await h.session().resolveElectricity()

@@ -41,6 +41,16 @@ extension MeterPageText {
         return self.issue(issue)
     }
 
+    /// The question over a stop's candidates, 「2 个公寓都有 3 栋 108，你住哪个？」 (校区 when the
+    /// split is at the campuses). nil without candidates or without the dorm.
+    public static func question(_ stop: MeterWalkStop, address: DormAddress?) -> String? {
+        guard let address, !stop.candidates.isEmpty else { return nil }
+        var seen: [String] = []
+        for c in stop.candidates { if let id = stop.branch(of: c)?.id, !seen.contains(id) { seen.append(id) } }
+        let unit = stop.level == .campus ? "校区" : "公寓"
+        return "\(seen.count) 个\(unit)都有 \(address.building) 栋 \(address.room)，你住哪个？"
+    }
+
     /// The meter page's search field.
     public static let searchPrompt = "搜索楼栋或房间"
     /// While the lookup runs, on the meter page.
