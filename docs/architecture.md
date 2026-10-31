@@ -272,6 +272,10 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   and renewed, the stored value compared and the new one written in one locked step, so the other
   process can't take the lease or store its own value in between; the step is synchronous (a
   Keychain write), with no `await` inside the lock;
+- a cancelled read (the widget past its deadline) checks for cancellation before taking the lock
+  and then writes nothing back, so a process about to be suspended never holds it;
+- sign-out and reset remove the lease first and wait for its file lock on a background thread,
+  never on the app's main thread, before the school items are deleted;
 - snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
   dropped (unless more than 30 minutes older: the clock moved back, and the reading is written), and a "nobody signed in" reading leaves an emptied snapshot empty.
 - signed without the App Group (no container), the app refreshes on its own and the widget never
