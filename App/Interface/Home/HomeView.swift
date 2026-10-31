@@ -46,6 +46,8 @@ struct HomeView: View {
     @State var loginDemo = false
     /// campusdaily://demo/recharge-blocked: the top-up page when its web view can't be allowed to load.
     @State var rechargeBlockedDemo = false
+    /// campusdaily://demo/records/<state>: 校园卡记录 on synthetic pages.
+    @State var recordsDemo: RecordsDemo?
     #endif
 
     func openOnboarding() {

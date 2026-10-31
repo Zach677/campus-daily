@@ -34,6 +34,15 @@ extension HomeView {
                 Task { try? await Task.sleep(for:.milliseconds(350)); path = [.laundry] }
                 return
             }
+            if let records = RecordsDemo.handle(url) {
+                // 校园卡记录 over the home demo; a fresh push so the page starts from this demo.
+                onboarding = nil; settings = false; panel = nil; laundryDemo = nil
+                demo = HomeDemo.normal.content().0
+                recordsDemo = records
+                path = []
+                Task { try? await Task.sleep(for:.milliseconds(350)); path = [.records] }
+                return
+            }
             if url.host == "demo", url.lastPathComponent == "recharge-blocked" {
                 onboarding = nil; settings = false
                 demo = HomeDemo.normal.content().0
@@ -123,7 +132,7 @@ extension HomeView {
                                                                   "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized]
             reminders.demoStatus = settingsDemos[url.lastPathComponent]
             guard let result = HomeDemo.handle(url) else { return }
-            onboarding = nil; settings = false; path = []; laundryDemo = nil
+            onboarding = nil; settings = false; path = []; laundryDemo = nil; recordsDemo = nil
             withAnimation(Theme.spring) {
                 demo = result?.0
                 panel = result?.1
