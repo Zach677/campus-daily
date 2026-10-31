@@ -78,4 +78,57 @@ final class MeterLookupOverlapTests: XCTestCase {
         XCTAssertEqual(found, .alreadyBound(Self.picked))
         XCTAssertEqual(try h.vault.profile()?.meter, Self.picked)
     }
+
+    // MARK: Same person, another dorm
+
+    static let newDorm = "星湖校区98栋8号1层881房"
+
+    func serveBothDorms(_ h: Harness) throws {
+        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991", "98栋881"], comAddresses: ["000000000991", "000000000881"]),
+                       matchBody: ["server", "buildingID"])
+        try SchoolElectricityTests.serveTree(h)
+    }
+
+    /// The same person signs in again while the lookup runs and the school now shows another
+    /// dorm (what such a sign-in leaves: the new dorm, no meter). The late answer for the old
+    /// dorm is dropped: the new dorm stays, and its own meter is looked up and bound.
+    func testANewDormDuringTheLookupGetsTheNewDormsMeter() async throws {
+        let h = Harness()
+        try h.signedIn()
+        try serveBothDorms(h)
+        let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
+        let session = held(h, hold)
+        async let result = session.matchElectricity()
+        await fulfillment(of: [hold.reached], timeout: 5)
+        try h.vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: Self.newDorm)))
+        hold.release()
+        let (stamp, found) = try await result
+        let profile = try h.vault.profile()
+        XCTAssertEqual(profile?.residence?.raw, Self.newDorm, "the new dorm stays")
+        XCTAssertEqual(profile?.meter?.comAddress, "000000000881", "the new dorm's meter")
+        guard case .matched(let binding, _) = found else { return XCTFail("\(found)") }
+        XCTAssertEqual(binding.comAddress, "000000000881")
+        let current = await session.personStamp()
+        XCTAssertEqual(stamp, current, "still the same person")
+    }
+
+    /// The same, where the old dorm's meter was not found: no hint about the old dorm, the new
+    /// one's lookup answers.
+    func testANewDormDuringALookupThatFoundNothingIsLookedUp() async throws {
+        let h = Harness()
+        try h.signedIn()
+        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["98栋881"], comAddresses: ["000000000881"]),
+                       matchBody: ["server", "buildingID"])
+        try SchoolElectricityTests.serveTree(h)
+        let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
+        let session = held(h, hold)
+        async let result = session.matchElectricity()
+        await fulfillment(of: [hold.reached], timeout: 5)
+        try h.vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: Self.newDorm)))
+        hold.release()
+        let (_, found) = try await result
+        XCTAssertNotEqual(found, .manualPicker, "the old dorm's 'not found'")
+        XCTAssertEqual(try h.vault.profile()?.meter?.comAddress, "000000000881")
+        XCTAssertEqual(try h.vault.profile()?.residence?.raw, Self.newDorm)
+    }
 }

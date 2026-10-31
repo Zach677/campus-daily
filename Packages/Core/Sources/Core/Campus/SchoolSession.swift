@@ -854,13 +854,13 @@ public actor SchoolSession {
         // signed in meanwhile gets none of it. A meter bound meanwhile (picked by hand) wins
         // over whatever the lookup found.
         guard let address = profile.residence?.address else {
-            if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
+            if case .bound(let b) = try settle(nil, since: started) { return .alreadyBound(b) }
             return .noAddress
         }
 
         let campuses = try await ecykt.buildings(session, parent: nil).filter { address.matchesCampus($0.name) }
         guard campuses.count == 1, let campus = campuses.first else {
-            if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
+            if case .bound(let b) = try settle(address, since: started) { return .alreadyBound(b) }
             return .manualPicker
         }
         // Every meter on the campus: often slower than the client's own wait, so it alone gets the longest.
@@ -868,17 +868,17 @@ public actor SchoolSession {
         let meter: Meter
         switch MeterMatcher.match(rows, address: address) {
         case .none:
-            if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
+            if case .bound(let b) = try settle(address, since: started) { return .alreadyBound(b) }
             return .manualPicker
         case .many(let all):
             // The same comAddress twice: the campus-wide rows can't tell the rooms apart, and a
             // room found by its meter could be either one. The user picks the room by hand.
             guard Set(all.map(\.comAddress)).count == all.count else {
-                if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
+                if case .bound(let b) = try settle(address, since: started) { return .alreadyBound(b) }
                 return .manualPicker
             }
             let list = try await candidates(all, session: session, campus: campus, address: address)
-            if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
+            if case .bound(let b) = try settle(address, since: started) { return .alreadyBound(b) }
             return .chooseAmong(list)
         case .one(let m): meter = m
         }
@@ -893,7 +893,7 @@ public actor SchoolSession {
             found = located.meter
         }
         // Only the meter is written, onto the profile as it is now.
-        switch try settle(since: started) {
+        switch try settle(address, since: started) {
         case .bound(let b): return .alreadyBound(b)
         case .open(var current):
             current.meter = binding
@@ -904,12 +904,18 @@ public actor SchoolSession {
 
     private enum Settled { case bound(MeterBinding), open(SchoolProfile) }
 
-    /// The lookup's reads are done: the profile as it is now, unless a meter was bound meanwhile.
-    /// Someone else signed in meanwhile: thrown as an expired session.
-    private func settle(since started: Int) throws -> Settled {
+    /// The dorm changed while the lookup ran (the same person signed in again and the school
+    /// shows another one): what it found was for the old dorm. `matchElectricity` looks again.
+    struct DormChangedDuringLookup: Error {}
+
+    /// The lookup's reads for `address` are done: the profile as it is now, unless a meter was
+    /// bound meanwhile. Someone else signed in meanwhile: thrown as an expired session; the dorm
+    /// changed meanwhile: `DormChangedDuringLookup`.
+    private func settle(_ address: DormAddress?, since started: Int) throws -> Settled {
         try ensureSignedIn(since: started)
         let current = try vault.profile() ?? SchoolProfile()
         if let bound = current.meter { return .bound(bound) }
+        guard current.residence?.address == address else { throw DormChangedDuringLookup() }
         return .open(current)
     }
 
@@ -919,12 +925,17 @@ public actor SchoolSession {
     /// signed out meanwhile (even where the sign-out failed), the drop is thrown.
     /// A timeout or no connection is tried again after each of `meterRetryDelays` (the same
     /// person still signed in); any other failure is thrown at once.
+    /// The dorm changed while it ran: looked up again for the new one, a few times at most
+    /// (then the picker).
     public func matchElectricity() async throws -> (stamp: Int, ElectricityResolution) {
-        var attempts = 0, retries = 0
+        var attempts = 0, retries = 0, dormChanges = 0
         while true {
             let stamp = personGeneration, signedOut = signOutGeneration
             do {
                 return (stamp, try await resolveElectricity())
+            } catch is DormChangedDuringLookup {
+                dormChanges += 1
+                guard dormChanges < 3 else { return (stamp, .manualPicker) }
             } catch let error as ServiceError where (error == .timedOut || error == .offline) && stamp == personGeneration
                 && signedOut == signOutGeneration && retries < Self.meterRetryDelays.count {
                 await meterRetryWait(Self.meterRetryDelays[retries])

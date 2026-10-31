@@ -47,6 +47,8 @@ struct PowerChoice: Identifiable, Equatable {
     private var lastRefresh: Date?
     /// When the automatic meter lookup starts by itself (launch, foreground, after a refresh).
     private var autoFind = MeterAutoFind()
+    /// A sign-in came while the lookup ran (`matchPowerAutomatically`).
+    private var signedInDuringLookup = false
     /// The last refresh read the card (its session alive, or renewed).
     private var lastReadCard = false
     private var refreshesRunning = 0
@@ -281,6 +283,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// refresh (those two at most every ten minutes, with the dorm known; `MeterAutoFind`), after
     /// every sign-in, or 「再找一次电表」 (`manual`, the default).
     func matchPowerAutomatically(_ trigger: MeterAutoFind.Trigger = .manual) {
+        // A sign-in while a lookup runs may have brought another dorm: looked for once that one ends.
+        if trigger == .signedIn, matchingPower { signedInDuringLookup = true; return }
         guard configured, !matchingPower, !powerConfigured,
               autoFind.start(trigger, signedIn:configured, meterBound:powerConfigured, addressKnown:address != nil, now:Date())
         else { return }
@@ -317,8 +321,10 @@ struct PowerChoice: Identifiable, Equatable {
                 if await session.isSamePerson(since:before) { powerMatchIssue = AppErrorText.text(error) } else { again = true }
             }
             matchingPower = false
+            let signedIn = signedInDuringLookup
+            signedInDuringLookup = false
             // The next person's own lookup, not held back by this one.
-            if again { lookUpPower() }
+            if again { lookUpPower() } else if signedIn { matchPowerAutomatically(.signedIn) }
         }
     }
 
