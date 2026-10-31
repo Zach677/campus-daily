@@ -28,6 +28,7 @@
 ### Fixed
 
 - Do not let pages waiting for the settings sheet to close replace a page opened after them directly.
+- Do not let a page asked for while the settings sheet was up (a tapped 「衣服洗好了」) come up after a later widget link (home, 学校账号, login), an account-switch alert or a reset.
 - Offer same-named electricity meters (one building name in two apartments) with their full location instead of identical names, and bind the chosen one at room level.
 - Do not count refunds, reversals and grants as money spent yesterday.
 - Do not send a password login when the other process (app or widget) stored new school credentials meanwhile.

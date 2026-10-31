@@ -71,7 +71,7 @@ struct HomeView: View {
 
     /// Reset finished: back to the first-run guide as on a fresh install, no toast.
     func afterReset() {
-        settings = false; path = []; panel = nil
+        settings = false; path = []; pathAfterSettings = nil; panel = nil
         #if DEBUG
         demo = nil; laundryDemo = nil
         #endif
@@ -162,7 +162,7 @@ struct HomeView: View {
         .sensoryFeedback(.impact(weight:.medium), trigger:startTick)
         .sensoryFeedback(.success, trigger:successTick)
         .sensoryFeedback(.error, trigger:errorTick)
-        .accountSwitchAlert { campus.hotWaterSetupRequested = true; settings = true }
+        .accountSwitchAlert { pathAfterSettings = nil; campus.hotWaterSetupRequested = true; settings = true }
         .sheet(isPresented:$settings, onDismiss:{
             if let routes = pathAfterSettings { pathAfterSettings = nil; path = routes }
         }) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
@@ -253,6 +253,8 @@ struct HomeView: View {
                                          laundryOpen:path.contains(.laundry), laundry:laundry.checkout?.phase) {
                 return
             }
+            // Newer than pages still waiting for the settings sheet to close: those are dropped.
+            if url.scheme == "campusdaily", ["home", "login", "settings"].contains(url.host ?? "") { pathAfterSettings = nil }
             if url.scheme == "campusdaily", url.host == "home" { settings = false; path = []; return }
             // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
             if url.scheme == "campusdaily", url.host == "settings", url.path == "/account" {

@@ -187,7 +187,7 @@ extension HomeView {
     /// when it is up (`open(_:)`), otherwise a moment after home's pages are popped.
     func freshPush(_ route: HomeRoute) {
         if settings { open([route]); return }
-        path = []
+        path = []; pathAfterSettings = nil
         Task { try? await Task.sleep(for:.milliseconds(350)); path = [route] }
     }
 
