@@ -128,14 +128,18 @@ public actor SchoolSession {
     static let maxRoomPaths = 4
     /// Room meter reads spent placing same-name candidates.
     static let maxCandidateRooms = 8
+    /// The automatic meter lookup after a timeout or no connection: the waits before each try again.
+    public static let meterRetryDelays: [TimeInterval] = [5, 20]
+    let meterRetryWait: @Sendable (TimeInterval) async -> Void
 
     public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, passwordLogin: SchoolPasswordLogin? = nil,
                 now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in },
                 credentialLog: CredentialLifetimeLog? = nil, createsLoginDeviceID: Bool = true,
-                recordsTimeout: TimeInterval = CardActivity.timeout) {
+                recordsTimeout: TimeInterval = CardActivity.timeout,
+                meterRetryWait: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }) {
         self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
         self.diagnostic = diagnostic; self.credentialLog = credentialLog; self.createsLoginDeviceID = createsLoginDeviceID
-        self.recordsTimeout = recordsTimeout
+        self.recordsTimeout = recordsTimeout; self.meterRetryWait = meterRetryWait
     }
 
     // MARK: Account and password
@@ -880,12 +884,21 @@ public actor SchoolSession {
     /// the answer belongs to (a same-name choice carries it into `chooseMatchedMeter`). Dropped
     /// because someone else signed in meanwhile, it runs again for them, a few times at most;
     /// signed out meanwhile (even where the sign-out failed), the drop is thrown.
+    /// A timeout or no connection is tried again after each of `meterRetryDelays` (the same
+    /// person still signed in); any other failure is thrown at once.
     public func matchElectricity() async throws -> (stamp: Int, ElectricityResolution) {
-        var attempts = 0
+        var attempts = 0, retries = 0
         while true {
             let stamp = personGeneration, signedOut = signOutGeneration
             do {
                 return (stamp, try await resolveElectricity())
+            } catch let error as ServiceError where (error == .timedOut || error == .offline) && stamp == personGeneration
+                && signedOut == signOutGeneration && retries < Self.meterRetryDelays.count {
+                await meterRetryWait(Self.meterRetryDelays[retries])
+                retries += 1
+                try Task.checkCancellation()
+                // Signed out while waiting: the failure stands. Someone else signed in: theirs runs.
+                guard signedOut == signOutGeneration, (try? vault.ecyktSession()) ?? nil != nil else { throw error }
             } catch {
                 attempts += 1
                 // A sign-out in between ends it, even one that could not delete the card session.

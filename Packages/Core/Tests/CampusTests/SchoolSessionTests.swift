@@ -15,6 +15,8 @@ struct Harness {
     var recordsTimeout = CardActivity.timeout
     /// Runs before the card records request is sent (the stub server's gate would block every request).
     var beforeRecords: (@Sendable () async -> Void)? = nil
+    /// The automatic meter lookup's wait before trying again (the app's sleeps).
+    var meterRetryWait: @Sendable (TimeInterval) async -> Void = { _ in }
     var vault: StoredSchoolVault { StoredSchoolVault(store: store) }
     var snapshots: SharedSnapshotStore { SharedSnapshotStore(store: store) }
 
@@ -24,7 +26,8 @@ struct Harness {
         return SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http), vault: vault,
                              passwordLogin: passwordLogin, now: clock.function, diagnostic: diagnostic,
                              credentialLog: keepsCredentialLog ? CredentialLifetimeLog(store: store) : nil,
-                             createsLoginDeviceID: createsLoginDeviceID, recordsTimeout: recordsTimeout)
+                             createsLoginDeviceID: createsLoginDeviceID, recordsTimeout: recordsTimeout,
+                             meterRetryWait: meterRetryWait)
     }
 
     /// The refresher over this harness's session and shared store.

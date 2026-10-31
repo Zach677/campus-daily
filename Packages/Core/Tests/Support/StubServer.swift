@@ -130,9 +130,10 @@ public final class StubServer: @unchecked Sendable {
     }
 
     @discardableResult
-    public func fail(_ method: String, _ urlString: String, with code: URLError.Code, times: Int? = nil) -> StubServer {
+    public func fail(_ method: String, _ urlString: String, bodyMatch: [String: String?] = [:], with code: URLError.Code,
+                     times: Int? = nil) -> StubServer {
         let url = URL(string: urlString)!
-        add(StubRoute(method: method, host: url.host ?? "", path: url.path, bodyMatch: [:], reply: .failure(code), remaining: times))
+        add(StubRoute(method: method, host: url.host ?? "", path: url.path, bodyMatch: bodyMatch, reply: .failure(code), remaining: times))
         return self
     }
 
