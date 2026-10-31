@@ -42,14 +42,19 @@ extension MeterPageText {
     }
 
     /// The question over a stop's candidates, 「2 个公寓都有 3 栋 108，你住哪个？」 (校区 when the
-    /// split is at the campuses). nil without candidates or without the dorm.
+    /// split is at the campuses). nil without candidates or halted branches, or without the dorm.
+    /// With branches halted before their rooms among the rows: 「3 栋 108 在哪个公寓？」.
     public static func question(_ stop: MeterWalkStop, address: DormAddress?) -> String? {
-        guard let address, !stop.candidates.isEmpty else { return nil }
+        guard let address, !stop.candidates.isEmpty || !stop.halted.isEmpty else { return nil }
+        let unit = stop.level == .campus ? "校区" : "公寓"
+        guard stop.halted.isEmpty else { return "\(address.building) 栋 \(address.room) 在哪个\(unit)？" }
         var seen: [String] = []
         for c in stop.candidates { if let id = stop.branch(of: c)?.id, !seen.contains(id) { seen.append(id) } }
-        let unit = stop.level == .campus ? "校区" : "公寓"
         return "\(seen.count) 个\(unit)都有 \(address.building) 栋 \(address.room)，你住哪个？"
     }
+
+    /// Under a branch halted before its rooms: tapped, the picker opens where it halted.
+    public static let haltedRow = "这边没对上，点进去自己选"
 
     /// Several apartments (or campuses) to tell apart and one could not be read.
     public static func unfinished(_ level: MeterLevel) -> String {

@@ -23,6 +23,7 @@
 - Look for the meter at launch, after a sign-in and on 「再找一次电表」 only, no longer on return to the app or after a refresh.
 - When several apartments (or campuses) hold a building of the dorm's name, walk each down to the rooms: the one with the dorm's room is bound without asking; when several have it, the lookup stops with those rooms to choose from, each with its full location.
 - When one of those apartments could not be read (the school too slow, no connection), do not take it for one without the room: the lookup ends with 「有个公寓没读完，还分不出是哪间。」 and 「再找一次电表」 (plus 「电表先跳过，之后在设置 › 电表里选。」 in the first-run guide), binding nothing; the 电表 page shows no list then.
+- Do not take an apartment whose walk stopped before its rooms (floors not matched, two buildings of the dorm's name, more rooms of its name than are read) for one without the room: nothing is bound, and the lookup stops at the apartments asking 「3 栋 108 在哪个公寓？」 (「校区」 at the campuses), the found rooms binding at a tap and each stopped apartment as a row 「这边没对上，点进去自己选」 that opens the 电表 page where it stopped. A room read without a meter still counts as without the room.
 
 ### Fixed
 

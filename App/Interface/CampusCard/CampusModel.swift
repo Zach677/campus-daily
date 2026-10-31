@@ -412,10 +412,22 @@ struct PowerChoice: Identifiable, Equatable {
                              suggested:apartments.map(\.id), candidates:candidates)
     }
 
+    /// Demo: as `demoApartmentStop`, but 半山公寓's 99栋 names its floors 「A区」「B区」 (halted at
+    /// 选楼层): its row opens the picker there; 兰香公寓's room binds.
+    nonisolated static var demoMixedStop: MeterWalkStop {
+        var stop = demoApartmentStop
+        let banshan = stop.options[0]
+        stop.candidates = Array(stop.candidates.dropFirst())
+        stop.halted = [MeterWalkStop(level:.floor, path:[stop.path[0], banshan, PowerNode(id:banshan.id + "000109", name:"99栋")],
+                                     options:[PowerNode(id:banshan.id + "000109091", name:"A区"),
+                                              PowerNode(id:banshan.id + "000109092", name:"B区")])]
+        return stop
+    }
+
     /// Demo: the lookup stopped at the dorm's buildings (two named 99栋); `running` looks again,
     /// `slow` failed on a slow school. Synthetic, nothing is read.
-    func demoMeterStop(running: Bool = false, slow: Bool = false, ask: Bool = false, unfinished: Bool = false) {
-        let stop = ask || unfinished ? Self.demoApartmentStop : MeterWalkStop(level:.building,
+    func demoMeterStop(running: Bool = false, slow: Bool = false, ask: Bool = false, unfinished: Bool = false, mixed: Bool = false) {
+        let stop = mixed ? Self.demoMixedStop : ask || unfinished ? Self.demoApartmentStop : MeterWalkStop(level:.building,
                                  path:[PowerNode(id:"991001", name:"星湖校区"), PowerNode(id:"991001001", name:"半山公寓")],
                                  options:[PowerNode(id:"991001001000108", name:"98栋"), PowerNode(id:"991001001000109", name:"99栋"),
                                           PowerNode(id:"991001001000110", name:"99 栋"), PowerNode(id:"991001001000111", name:"100栋")],
@@ -428,7 +440,7 @@ struct PowerChoice: Identifiable, Equatable {
         _ = gate.ended()
         if running { _ = gate.start(.manual, signedIn:true, meterBound:false) }
         lookup = gate
-        demoDorm = ask ? Self.demoAddress : nil
+        demoDorm = ask || mixed ? Self.demoAddress : nil
         powerMatchIssue = unfinished ? MeterPageText.unfinished(.apartment)
             : slow ? ServiceError.timedOut.userMessage : running ? nil : Self.stoppedIssue
     }

@@ -176,6 +176,88 @@ final class MeterWalkTests: XCTestCase {
         XCTAssertEqual(stop.candidates, [])
     }
 
+    // MARK: Branches that halted before the rooms
+
+    /// 半山公寓's 99栋 names its floors in a way not matched (stopped at 选楼层), 兰香公寓's has
+    /// 991: 半山公寓 is not taken for one without the room. Nothing bound; stopped at the
+    /// apartments with 半山公寓 to choose where it halted and 兰香公寓's room to bind.
+    func testAnApartmentHaltedAtItsFloorsIsNotTakenForOneWithoutTheRoom() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, Self.building.id, [("A区", "991001001000109000091"), ("B区", "991001001000109000092")])
+        Self.secondNinetyNine(h, rooms: [("991", Self.lanxiangRoom.id)], meter: ("990000007991", "99栋991"))
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .apartment)
+        XCTAssertEqual(stop.path, [Self.campus])
+        XCTAssertEqual(stop.suggested, [Self.apartment.id, Self.lanxiang.id])
+        XCTAssertEqual(stop.candidates.map(\.room?.id), [Self.lanxiangRoom.id])
+        XCTAssertEqual(stop.halted.map(\.level), [.floor])
+        XCTAssertEqual(stop.halted.first?.path, [Self.campus, Self.apartment, Self.building])
+        XCTAssertEqual(stop.halted.first?.options.map(\.name), ["A区", "B区"])
+        let q = try XCTUnwrap(MeterQuestion(stop, address: DormAddress.parse("星湖校区99栋9号1层991房")))
+        XCTAssertEqual(q.text, "99 栋 991 在哪个公寓？")
+        XCTAssertEqual(q.rows.map(\.title), ["半山公寓", "兰香公寓"])
+        XCTAssertEqual(q.rows.map(\.location), ["这边没对上，点进去自己选", "星湖校区 · 兰香公寓 · 99栋 · 991"])
+        XCTAssertEqual(q.rows.first?.picker, stop.halted.first)
+        XCTAssertNil(q.rows.first?.candidate)
+        XCTAssertEqual(q.rows.last?.candidate, stop.candidates.first)
+    }
+
+    /// Two buildings of the dorm's name inside 半山公寓 (stopped at 选楼栋): halted, not "no room".
+    func testAnApartmentHaltedAtItsBuildingsIsOffered() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, Self.apartment.id, [("99栋", Self.building.id), ("99幢", "991001001000199")])
+        Self.secondNinetyNine(h, rooms: [("991", Self.lanxiangRoom.id)], meter: ("990000007991", "99栋991"))
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .apartment)
+        XCTAssertEqual(stop.candidates.map(\.room?.id), [Self.lanxiangRoom.id])
+        XCTAssertEqual(stop.halted.map(\.level), [.building])
+        XCTAssertEqual(stop.halted.first?.suggested, [Self.building.id, "991001001000199"])
+    }
+
+    /// More same-name rooms in 半山公寓 than are read (stopped at 选房间): halted too.
+    func testAnApartmentWithTooManySameNameRoomsIsOffered() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, Self.floor.id, (1...9).map { ("991", "99100100100010900000100\($0)") })
+        Self.secondNinetyNine(h, rooms: [("991", Self.lanxiangRoom.id)], meter: ("990000007991", "99栋991"))
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.candidates.map(\.room?.id), [Self.lanxiangRoom.id])
+        XCTAssertEqual(stop.halted.map(\.level), [.room])
+        XCTAssertEqual(stop.halted.first?.suggested.count, 9)
+    }
+
+    /// The only apartment left halted, the other read without the room: the page opens where it
+    /// halted (nothing else to choose from).
+    func testTheOnlyHaltedApartmentOpensWhereItHalted() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, Self.building.id, [("A区", "991001001000109000091"), ("B区", "991001001000109000092")])
+        Self.secondNinetyNine(h, rooms: [("990", "991001007000109000001002")])
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .floor)
+        XCTAssertEqual(stop.path, [Self.campus, Self.apartment, Self.building])
+        XCTAssertEqual(stop.halted, [])
+    }
+
+    /// 兰香公寓's 991 reports no meter: read to the room, so it counts as without it; 半山公寓's
+    /// room is bound.
+    func testARoomWithoutAMeterCountsAsWithoutTheRoom() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.secondNinetyNine(h, rooms: [("991", Self.lanxiangRoom.id)])
+        Self.meters(h, Self.lanxiangRoom.id, [])
+        try SchoolElectricityTests.serveTree(h)
+        let result = try await h.session().resolveElectricity()
+        guard case .matched(let binding, _) = result else { return XCTFail("\(result)") }
+        XCTAssertEqual(binding.nodeID, Self.room.id)
+    }
+
     /// A read down the second apartment times out once: it is tried again on its own, and the
     /// walk still ends with both candidates.
     func testAReadDownAnotherApartmentIsTriedAgain() async throws {

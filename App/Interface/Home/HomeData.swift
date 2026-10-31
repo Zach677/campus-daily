@@ -417,14 +417,17 @@ enum OnboardingDemo {
                                    LocationChoice(id:"preview-1", title:"3 栋 108", location:"北校区 · 西苑公寓 · 3 栋 · 108")]
             if name == "3-samename-picked" { preview.picked = "preview-1" }
             return (.dorm, preview)
-        case "3-meter-finding", "3-meter-ask", "3-meter-ask-picked", "3-meter-slow", "3-meter-unfinished":
+        case "3-meter-finding", "3-meter-ask", "3-meter-ask-picked", "3-meter-slow", "3-meter-unfinished", "3-meter-ask-mixed":
             // The meter under the dorm (synthetic 99 栋 991): looking, two apartments to choose
-            // from (one picked), the school too slow, one apartment not read.
+            // from (one picked), the school too slow, one apartment not read, one apartment's room
+            // and one halted before its rooms.
             preview.dorm = "99 栋 991"
             switch name {
             case "3-meter-finding": preview.meter = .finding
             case "3-meter-slow": preview.meter = .failed(MeterPageText.tooSlow)
             case "3-meter-unfinished": preview.meter = .failed(MeterPageText.unfinished(.apartment))
+            case "3-meter-ask-mixed":
+                if let question = MeterQuestion(CampusModel.demoMixedStop, address:CampusModel.demoAddress) { preview.meter = .ask(question) }
             default:
                 if let question = MeterQuestion(CampusModel.demoApartmentStop, address:CampusModel.demoAddress) {
                     preview.meter = .ask(question)

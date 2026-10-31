@@ -871,7 +871,7 @@ public actor SchoolSession {
         case .bound(let b): return .alreadyBound(b)
         case .open(var current):
             switch walked {
-            case .stopped(let stop): return .stopped(stop)
+            case .stopped(let stop), .noRoom(let stop): return .stopped(stop)
             case .unfinished(let at): return .unfinished(at)
             case .rooms(let list): return .chooseAmong(list)
             case .room(let found):
@@ -887,13 +887,18 @@ public actor SchoolSession {
     }
 
     enum Walked {
-        case room(MeterCandidate), rooms([MeterCandidate]), stopped(MeterWalkStop)
+        case room(MeterCandidate), rooms([MeterCandidate])
+        /// Stopped before the rooms were read (a level not matched exactly once): the room may
+        /// be there.
+        case stopped(MeterWalkStop)
+        /// Read down to the end: no room of the dorm's name with a meter. Shown as a stop.
+        case noRoom(MeterWalkStop)
         /// A split at this level with one branch not read.
         case unfinished(MeterWalkStop)
         /// The rooms of the dorm's name this branch found with a meter.
         var found: [MeterCandidate] {
             switch self {
-            case .unfinished: return []
+            case .unfinished, .noRoom: return []
             case .room(let c): return [c]
             case .rooms(let list): return list
             case .stopped(let stop): return stop.candidates
@@ -912,19 +917,29 @@ public actor SchoolSession {
         }
         func ids(_ nodes: [PowerNode]) -> [String] { nodes.map(\.id) }
 
-        /// Each branch walked down: the one with rooms of the dorm's name answers, else `stop`
-        /// (with the rooms of all of them when several have).
+        /// Each branch walked down. Only a branch read to its rooms counts as without the room;
+        /// one stopped before them (`halted`) may have it. The one branch with rooms of the
+        /// dorm's name and none halted answers; one halted and none with rooms opens where it
+        /// halted; several (or rooms and halted ones): `stop` with the rooms as `candidates` and
+        /// the halted ones as `halted`. All without: `stop` as is.
         func split(_ walked: [(PowerNode, Walked)], _ stop: MeterWalkStop) -> Walked {
-            if walked.contains(where: { if case .unfinished = $0.1 { return true } else { return false } }) {
-                return .unfinished(stop)
+            var having: [(PowerNode, Walked)] = [], halted: [(PowerNode, MeterWalkStop)] = []
+            for (branch, down) in walked {
+                switch down {
+                case .unfinished: return .unfinished(stop)
+                case .noRoom: break
+                case .stopped(let at) where at.candidates.isEmpty && at.halted.isEmpty: halted.append((branch, at))
+                default: having.append((branch, down))
+                }
             }
-            let having = walked.filter { !$0.1.found.isEmpty }
-            if having.count == 1 { return having[0].1 }
+            if halted.isEmpty, having.count == 1 { return having[0].1 }
+            if having.isEmpty, halted.count == 1 { return .stopped(halted[0].1) }
+            if having.isEmpty, halted.isEmpty { return .noRoom(stop) }
             var stop = stop
-            if having.count > 1 {
-                stop.suggested = having.map(\.0.id)
-                stop.candidates = having.flatMap(\.1.found)
-            }
+            let chosen = Set(having.map(\.0.id) + halted.map(\.0.id))
+            stop.suggested = walked.map(\.0.id).filter(chosen.contains)
+            stop.candidates = having.flatMap(\.1.found)
+            stop.halted = halted.map(\.1)
             return .stopped(stop)
         }
 
@@ -946,6 +961,8 @@ public actor SchoolSession {
             }
             path.append(building)
             let floors = try await children(building.id)
+            // Nothing under the building: read to the end.
+            if floors.isEmpty { return .noRoom(MeterWalkStop(level: .floor, path: path, options: floors)) }
             var rooms = floors
             let floorHits = floors.filter { address.matchesFloor($0.name) }
             if floorHits.count == 1, let floor = floorHits.first {
@@ -956,7 +973,8 @@ public actor SchoolSession {
                 return .stopped(MeterWalkStop(level: .floor, path: path, options: floors, suggested: ids(floorHits)))
             }
             let roomHits = rooms.filter { address.matchesRoom($0.name) }
-            guard !roomHits.isEmpty, roomHits.count <= Self.maxCandidateRooms else {
+            if roomHits.isEmpty { return .noRoom(MeterWalkStop(level: .room, path: path, options: rooms)) }
+            guard roomHits.count <= Self.maxCandidateRooms else {
                 return .stopped(MeterWalkStop(level: .room, path: path, options: rooms, suggested: ids(roomHits)))
             }
             var found: [MeterCandidate] = []
@@ -974,7 +992,7 @@ public actor SchoolSession {
                 if let meter { found.append(MeterCandidate(meter: meter, path: path + [room])) }
             }
             switch found.count {
-            case 0: return .stopped(MeterWalkStop(level: .room, path: path, options: rooms, suggested: ids(roomHits)))
+            case 0: return .noRoom(MeterWalkStop(level: .room, path: path, options: rooms, suggested: ids(roomHits)))
             case 1: return .room(found[0])
             default: return .rooms(found)
             }
@@ -987,7 +1005,7 @@ public actor SchoolSession {
             if level1.contains(where: { address.matchesBuilding($0.name) }) { return try await fromBuildings(level1, path: path) }
             // The campus lists buildings itself and none is the dorm's: they are not apartments.
             if level1.contains(where: { MeterLevel.isBuilding($0.name) }) {
-                return .stopped(MeterWalkStop(level: .building, path: path, options: level1))
+                return .noRoom(MeterWalkStop(level: .building, path: path, options: level1))
             }
             // Apartments: those holding a building of the dorm's name.
             guard level1.count <= Self.maxApartments else {
@@ -1002,7 +1020,7 @@ public actor SchoolSession {
                 return try await fromBuildings(kids, path: path + [apartment])
             }
             let stop = MeterWalkStop(level: .apartment, path: path, options: level1, suggested: holding.map(\.0.id))
-            guard holding.count > 1 else { return .stopped(stop) }
+            guard holding.count > 1 else { return .noRoom(stop) }
             var walked: [(PowerNode, Walked)] = []
             for (apartment, kids) in holding {
                 guard let down = try await unlessUnread({ try await fromBuildings(kids, path: path + [apartment]) }) else {

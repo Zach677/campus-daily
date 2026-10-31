@@ -2,6 +2,8 @@ import SwiftUI
 import Core
 
 struct CampusPowerSetupView: View {
+    /// Opens here instead of where the lookup stopped (an apartment that halted before its rooms).
+    var start: MeterWalkStop?
     @EnvironmentObject private var campus: CampusModel
     @Environment(\.dismiss) private var dismiss
     @State private var options: [PowerNode] = []
@@ -36,7 +38,14 @@ struct CampusPowerSetupView: View {
                     // Rooms of the dorm's name in several apartments: which one. A tap binds it.
                     Section {
                         ForEach(question.rows) { row in
-                            Button { Task { if await campus.choosePower(PowerChoice(candidate:row.candidate, stamp:campus.powerQuestionStamp)) { dismiss() } } } label: {
+                            Button {
+                                if let candidate = row.candidate {
+                                    Task { if await campus.choosePower(PowerChoice(candidate:candidate, stamp:campus.powerQuestionStamp)) { dismiss() } }
+                                } else if let halted = row.picker {
+                                    // Where that apartment halted, with that level's list.
+                                    show(halted); atStop = false
+                                }
+                            } label: {
                                 VStack(alignment:.leading, spacing:2) {
                                     Text(row.title)
                                     Text(row.location).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
@@ -129,7 +138,10 @@ struct CampusPowerSetupView: View {
     /// Where the lookup stopped (or ended unfinished), else the campuses.
     private func open() async {
         // Nil once a meter is bound (`MeterLookupGate.pageStop`): the page starts at the campuses.
-        if let stop = campus.powerStop {
+        if let start {
+            stamp = await campus.personStamp()
+            show(start); atStop = false
+        } else if let stop = campus.powerStop {
             stamp = await campus.personStamp()
             show(stop)
         } else if let unfinished = campus.powerUnfinished {

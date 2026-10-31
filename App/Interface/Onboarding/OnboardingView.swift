@@ -77,6 +77,9 @@ struct OnboardingView: View {
     @State private var meterAskedStamp = -1
     /// The row of `meterAsked` picked (bound at once).
     @State private var meterPick: String?
+    /// An apartment that halted before its rooms, tapped: the meter page opens where it halted.
+    @State private var meterHalted: MeterWalkStop?
+    @State private var meterPage = false
     @State private var account: String
     @State private var password: String
     /// 「保存密码，让小组件自动刷新」: on by default only while the account is the saved one.
@@ -120,6 +123,7 @@ struct OnboardingView: View {
             .toolbar(.hidden, for:.navigationBar)
             .navigationDestination(isPresented:$dormPicker) { CampusOnboardingView() }
             .navigationDestination(isPresented:$washer) { WasherSetupView() }
+            .navigationDestination(isPresented:$meterPage) { CampusPowerSetupView(start:meterHalted) }
         }
         .tint(Theme.accentText)
         .typesettingLanguage(Theme.typesetting)
@@ -386,12 +390,18 @@ struct OnboardingView: View {
     /// A row of the question picked: bound at once (another pick binds that one instead).
     private func pickMeter(_ id: String?, in question: MeterQuestion) {
         guard let id, let row = question.rows.first(where:{ $0.id == id }) else { return }
+        if let halted = row.picker {
+            guard preview == nil else { return }
+            meterHalted = halted; meterPage = true
+            return
+        }
+        guard let candidate = row.candidate else { return }
         let before = meterPick
         meterPick = id
         guard preview == nil else { return }
         let stamp = meterAskedStamp
         Task {
-            if !(await campus.choosePower(PowerChoice(candidate:row.candidate, stamp:stamp))), meterPick == id { meterPick = before }
+            if !(await campus.choosePower(PowerChoice(candidate:candidate, stamp:stamp))), meterPick == id { meterPick = before }
         }
     }
 

@@ -4,25 +4,40 @@ import Foundation
 /// question asked in onboarding's 「你住哪间」 step and on the meter page, one row per room.
 public struct MeterQuestion: Sendable, Equatable {
     public struct Row: Sendable, Equatable, Identifiable {
-        public var candidate: MeterCandidate
-        /// The apartment (or campus) the room lies under, 「半山公寓」.
+        /// A room to bind as it is.
+        public var candidate: MeterCandidate?
+        /// A branch halted before its rooms: the picker opens here.
+        public var picker: MeterWalkStop?
+        /// The apartment (or campus) the room or branch lies under, 「半山公寓」.
         public var title: String
-        public var id: String { candidate.id }
-        /// 「星湖校区 · 半山公寓 · 3 栋 · 108」.
-        public var location: String { candidate.location }
+        public var id: String
+        /// 「星湖校区 · 半山公寓 · 3 栋 · 108」, or 「这边没对上，点进去自己选」.
+        public var location: String { candidate?.location ?? MeterPageText.haltedRow }
         /// VoiceOver: 「半山公寓，星湖校区 半山公寓 3 栋 108」.
         public var spoken: String { title + "，" + location.replacingOccurrences(of: " · ", with: " ") }
     }
 
-    /// 「2 个公寓都有 3 栋 108，你住哪个？」.
+    /// 「2 个公寓都有 3 栋 108，你住哪个？」, or 「3 栋 108 在哪个公寓？」 with a halted branch.
     public var text: String
+    /// In the order of the level's rows.
     public var rows: [Row]
 
-    /// nil for a stop without rooms to choose from, or without the dorm.
+    /// nil for a stop without rooms or halted branches to choose from, or without the dorm.
     public init?(_ stop: MeterWalkStop, address: DormAddress?) {
         guard let text = MeterPageText.question(stop, address: address) else { return nil }
         self.text = text
-        rows = stop.candidates.map { Row(candidate: $0, title: stop.branchName($0)) }
+        var rows: [(Int, Row)] = []
+        let order = Dictionary(stop.options.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func rank(_ node: PowerNode?) -> Int { node.flatMap { order[$0.id] } ?? Int.max }
+        for c in stop.candidates {
+            rows.append((rank(stop.branch(of: c)), Row(candidate: c, picker: nil, title: stop.branchName(c), id: c.id)))
+        }
+        for h in stop.halted {
+            let branch = stop.branch(of: h)
+            rows.append((rank(branch), Row(candidate: nil, picker: h, title: branch?.name ?? MeterPageText.matchedLine(h.path),
+                                           id: "halted|" + (h.path.last?.id ?? ""))))
+        }
+        self.rows = rows.enumerated().sorted { ($0.element.0, $0.offset) < ($1.element.0, $1.offset) }.map(\.element.1)
     }
 }
 

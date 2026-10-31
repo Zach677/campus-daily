@@ -27,7 +27,8 @@ final class MeterQuestionTests: XCTestCase {
         XCTAssertEqual(q.rows.map(\.title), ["半山公寓", "兰香公寓"])
         XCTAssertEqual(q.rows.map(\.location), ["星湖校区 · 半山公寓 · 99栋 · 991", "星湖校区 · 兰香公寓 · 99栋 · 991"])
         XCTAssertEqual(q.rows.map(\.spoken), ["半山公寓，星湖校区 半山公寓 99栋 991", "兰香公寓，星湖校区 兰香公寓 99栋 991"])
-        XCTAssertEqual(q.rows.map(\.candidate), Self.asking.candidates)
+        XCTAssertEqual(q.rows.compactMap(\.candidate), Self.asking.candidates)
+        XCTAssertEqual(q.rows.compactMap(\.picker), [])
         XCTAssertEqual(Set(q.rows.map(\.id)).count, 2)
         XCTAssertNil(MeterQuestion(Self.plain, address: Self.address))
         XCTAssertNil(MeterQuestion(Self.asking, address: nil))
@@ -51,5 +52,29 @@ final class MeterQuestionTests: XCTestCase {
         XCTAssertEqual(DormStepMeter.finding.text, "正在找电表…")
         XCTAssertEqual(DormStepMeter.retry, "再找一次电表")
         XCTAssertEqual(DormStepMeter.skipNote, "电表先跳过，之后在设置 › 电表里选。")
+    }
+
+    /// A branch halted before its rooms is a row that opens the picker where it halted; with one
+    /// among the rows the question asks where the room is.
+    func testAHaltedBranchIsARowToPickFrom() throws {
+        let halted = MeterWalkStop(level: .floor, path: [Self.campus, Self.banshan, PowerNode(id: "9910010010099", name: "99栋")],
+                                   options: [PowerNode(id: "a", name: "A区")])
+        let mixed = MeterWalkStop(level: .apartment, path: [Self.campus], options: [Self.banshan, Self.lanxiang],
+                                  suggested: [Self.banshan.id, Self.lanxiang.id],
+                                  candidates: [Self.candidate(Self.lanxiang, "7991")], halted: [halted])
+        let q = try XCTUnwrap(MeterQuestion(mixed, address: Self.address))
+        XCTAssertEqual(q.text, "99 栋 991 在哪个公寓？")
+        XCTAssertEqual(q.rows.map(\.title), ["半山公寓", "兰香公寓"], "in the apartments' order")
+        XCTAssertEqual(q.rows.map(\.location), [MeterPageText.haltedRow, "星湖校区 · 兰香公寓 · 99栋 · 991"])
+        XCTAssertEqual(MeterPageText.haltedRow, "这边没对上，点进去自己选")
+        XCTAssertEqual(q.rows.first?.spoken, "半山公寓，这边没对上，点进去自己选")
+        XCTAssertEqual(q.rows.first?.picker, halted)
+        XCTAssertEqual(Set(q.rows.map(\.id)).count, 2)
+        let east = PowerNode(id: "992001", name: "东湖校区")
+        let atCampus = MeterWalkStop(level: .campus, path: [], options: [Self.campus, east],
+                                     candidates: [Self.candidate(Self.lanxiang, "7991")],
+                                     halted: [MeterWalkStop(level: .apartment, path: [east], options: [])])
+        XCTAssertEqual(MeterQuestion(atCampus, address: Self.address)?.text, "99 栋 991 在哪个校区？")
+        XCTAssertEqual(MeterQuestion(atCampus, address: Self.address)?.rows.map(\.title), ["星湖校区", "东湖校区"])
     }
 }
