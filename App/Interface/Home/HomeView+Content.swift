@@ -28,6 +28,7 @@ extension HomeView {
                 recentRows(recents)
             }
         }
+        .coordinateSpace(name:HomeView.contentSpace)
         .frame(maxWidth:600)
         .frame(maxWidth:.infinity)
     }
@@ -152,10 +153,18 @@ extension HomeView {
         .padding(.horizontal,24).padding(.bottom,4)
     }
 
+    /// The whole rows that fit the screen under everything else (`RecentFit`): home never
+    /// scrolls. Every row given is measured, unseen, at the current text size.
+    func recentCount(_ items: [RecentItem]) -> Int {
+        RecentFit.count(viewport:homeViewport, above:recentsTop,
+                        rowHeights:items.map { Double(recentHeights[$0.id] ?? 0) })
+    }
+
     /// The app's own showers and orders open their page; card records are plain rows.
     @ViewBuilder func recentRows(_ items: [RecentItem]) -> some View {
+        let shown = items.prefix(recentCount(items))
         VStack(spacing:0) {
-            ForEach(Array(items.enumerated()), id:\.element.id) { index, item in
+            ForEach(Array(shown.enumerated()), id:\.element.id) { index, item in
                 VStack(spacing:0) {
                     if index > 0 { RowSeparator() }
                     if item.source == .app {
@@ -168,8 +177,27 @@ extension HomeView {
                 .transition(reduceMotion ? .opacity : .move(edge:.top).combined(with:.opacity))
             }
         }
-        .padding(.bottom,40)
-        .animation(Theme.spring, value:items.map(\.id))
+        .frame(maxWidth:.infinity, alignment:.top)
+        .background(alignment:.top) { recentMeasure(items) }
+        .onGeometryChange(for:CGFloat.self) { $0.frame(in:.named(HomeView.contentSpace)).minY } action: { recentsTop = $0 }
+        .animation(Theme.spring, value:shown.map(\.id))
+    }
+
+    /// Every row as it would be drawn, hidden, for its height.
+    func recentMeasure(_ items: [RecentItem]) -> some View {
+        VStack(spacing:0) {
+            ForEach(Array(items.enumerated()), id:\.element.id) { index, item in
+                VStack(spacing:0) {
+                    if index > 0 { RowSeparator() }
+                    RecentRow(item:item)
+                }
+                .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { recentHeights[item.id] = $0 }
+            }
+        }
+        .fixedSize(horizontal:false, vertical:true)
+        .hidden()
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder func destination(_ route: HomeRoute) -> some View {

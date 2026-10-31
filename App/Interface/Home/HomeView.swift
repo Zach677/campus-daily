@@ -18,6 +18,11 @@ struct HomeView: View {
     @State var relogin = false
     @State var onboarding: OnboardingRequest?
     @State var scrolledPastDate = false
+    /// For 「最近」 (`recentCount`): the visible height, where its rows start, and each row's height.
+    @State var homeViewport: CGFloat = 0
+    @State var recentsTop: CGFloat = 0
+    @State var recentHeights: [RecentItem.ID: CGFloat] = [:]
+    nonisolated static let contentSpace = "homeContent"
     @State var panel: SettlementResult?
     @State var startTick = 0
     /// The shower page's cover. Follows `shower.page.presented`, but only once no sheet is up:
@@ -122,9 +127,12 @@ struct HomeView: View {
         ZStack {
             NavigationStack(path:$path) {
                 ScrollViewReader { proxy in
+                    // Home fits the screen (「最近」 takes the rows that fit) and only bounces, for the pull.
                     ScrollView {
-                        content(data).padding(.bottom,24)
+                        content(data).padding(.bottom,CGFloat(RecentFit.bottomGap))
                     }
+                    // The height between the bars, where the content's top is.
+                    .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { homeViewport = $0 }
                     .background(Theme.bg.ignoresSafeArea())
                     .navigationTitle(scrolledPastDate ? dateTitle : "")
                     .navigationBarTitleDisplayMode(.inline)

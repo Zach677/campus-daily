@@ -82,8 +82,8 @@ public struct RecentItem: Sendable, Equatable, Identifiable {
 /// 最近: card records and the app's own records, newest first; the same shower or laundry
 /// order appears once (the app's record, which knows the minutes or the program).
 public enum RecentFeed {
-    /// Rows on home: six under the 洗衣 block, eight when it is not shown.
-    public static func homeLimit(laundryShown: Bool) -> Int { laundryShown ? 6 : 8 }
+    /// Rows given to home, which shows the whole ones that fit its screen (`RecentFit`).
+    public static let homeCandidates = 20
     /// A card record this close to an app record of the same kind (and the same amount, when
     /// both are known) is the same shower or order.
     public static let sameEventWindow: TimeInterval = 30 * 60

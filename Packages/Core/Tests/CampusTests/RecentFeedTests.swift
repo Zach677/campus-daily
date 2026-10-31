@@ -92,20 +92,18 @@ final class RecentFeedTests: XCTestCase {
     }
 
     /// Home shows six rows under the 洗衣 block, eight when there is none.
-    func testHomeShowsSixRowsWithLaundryAndEightWithout() {
-        XCTAssertEqual(RecentFeed.homeLimit(laundryShown: true), 6)
-        XCTAssertEqual(RecentFeed.homeLimit(laundryShown: false), 8)
-        let card = (0..<12).map { record("20261030", String(format: "%02d0000", 6 + $0), "示例超市", "1") }
-        let six = RecentFeed.items(card: card, app: [], limit: RecentFeed.homeLimit(laundryShown: true))
-        XCTAssertEqual(six.map(\.date), (0..<6).map { moment(30, 17 - $0) })
-        let eight = RecentFeed.items(card: card, app: [], limit: RecentFeed.homeLimit(laundryShown: false))
-        XCTAssertEqual(eight.map(\.date), (0..<8).map { moment(30, 17 - $0) })
+    /// Home is given twenty rows and shows the whole ones that fit its screen.
+    func testHomeGetsTwentyRowsToFitTheScreen() {
+        XCTAssertEqual(RecentFeed.homeCandidates, 20)
+        let card = (0..<24).map { record("20261030", String(format: "%02d0000", $0), "示例超市", "1") }
+        let rows = RecentFeed.items(card: card, app: [], limit: RecentFeed.homeCandidates)
+        XCTAssertEqual(rows.map(\.date), (0..<20).map { moment(30, 23 - $0) })
     }
 
     /// A full page of records (the school's long names) is saved whole in the snapshot the
     /// widget shares, and after the app's own shower and laundry order take the place of their
-    /// card records, eight rows are still there.
-    func testEightRowsSurviveTheSavedSnapshotAndTheMerge() throws {
+    /// card records, home's twenty rows are still there.
+    func testTwentyRowsSurviveTheSavedSnapshotAndTheMerge() throws {
         let canteen = "POS消费(示例饭堂POS)(示例饭堂POS)01档口示例面馆"
         var records = (0..<CardActivity.pageSize - 2).map { i in
             record(i < 24 ? "20261030" : "20261029", String(format: "%02d%02d00", 11 - (i % 24) / 3, 50 - (i % 3) * 10), canteen, "9")
@@ -120,13 +118,13 @@ final class RecentFeedTests: XCTestCase {
         let shower = AppActivity(id: "s1", kind: .shower(minutes: 11), date: moment(30, 11, 54), amount: Money(fen: 132))
         let laundry = AppActivity(id: "l1", kind: .laundry(program: "标准洗"), date: moment(30, 11, 51),
                                   amount: Money(fen: 400), detail: "3 号机")
-        let withLaundry = RecentFeed.items(card: saved, app: [shower, laundry], limit: RecentFeed.homeLimit(laundryShown: true))
-        XCTAssertEqual(withLaundry.count, 6)
+        let withLaundry = RecentFeed.items(card: saved, app: [shower, laundry], limit: RecentFeed.homeCandidates)
+        XCTAssertEqual(withLaundry.count, 20)
         XCTAssertEqual(withLaundry.prefix(2).map(\.title), ["热水 · 11 分钟", "洗衣 · 标准洗"])
         XCTAssertEqual(withLaundry.filter { $0.kind == .shower || $0.kind == .laundry }.count, 2, "each once")
 
-        let withoutLaundry = RecentFeed.items(card: saved, app: [shower], limit: RecentFeed.homeLimit(laundryShown: false))
-        XCTAssertEqual(withoutLaundry.count, 8)
+        let withoutLaundry = RecentFeed.items(card: saved, app: [shower], limit: RecentFeed.homeCandidates)
+        XCTAssertEqual(withoutLaundry.count, 20)
         XCTAssertEqual(withoutLaundry.filter { $0.kind == .shower }.map(\.source), [.app])
     }
 

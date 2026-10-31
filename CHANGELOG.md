@@ -6,7 +6,7 @@
 
 ### Added
 
-- Show 最近 on the home screen: the card's records from the last three school days merged with the app's own showers and laundry orders, newest first: six rows under the 洗衣 block, eight when it is not shown.
+- Show 最近 on the home screen: the card's records from the last three school days merged with the app's own showers and laundry orders, newest first, as many whole rows as fit the screen, so home does not scroll.
 - Show the full location 「校区 · 公寓 · 楼栋 · 房间」 of the dorm and the electricity meter in Settings.
 - Add a 扫洗衣机 button to the laundry page's navigation bar.
 - Check the dorm's hot-water controller in the first-run guide (登录 → 学校洗衣机 → 宿舍 → 核对宿舍的水控 → 好了); the check is read-only and can be left for Settings.
