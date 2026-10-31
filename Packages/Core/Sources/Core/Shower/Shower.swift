@@ -41,6 +41,14 @@ public enum ShowerFailureReason: String, Sendable, Codable, Equatable {
     case settleUncertain
     /// The app stopped while settling (relaunch) or before the request left: "结算待核对".
     case settleUnconfirmed
+
+    /// Failed before an authorization reached the controller: no water ran, so no timer.
+    public var isBeforeWater: Bool {
+        switch self {
+        case .deviceUnavailable, .wrongDevice, .deviceBusy, .authorizeRefused, .authorizeUncertain, .authorizationInvalid: return true
+        case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed: return false
+        }
+    }
 }
 
 public struct ShowerFailure: Sendable, Codable, Equatable {
@@ -72,7 +80,11 @@ public struct ShowerState: Sendable, Codable, Equatable {
     public var machineID: String?
     /// The controller this session talks to; finish/review never use another one.
     public var peripheralID: String?
-    /// Display only (timer); never used for billing.
+    /// When water may start flowing (出水: the authorization arrived and is being written), not
+    /// the 开始洗澡 tap: connecting and authorizing are not shower time. The one origin of the
+    /// in-app timer, the Live Activity, the 「还没结束洗澡？」 reminder and the shown duration.
+    /// Never used for billing (the controller's consumption frame is). Nil before the water.
+    /// Records saved before this rule hold the tap time here (see `ShowerReducer.restore`).
     public var startedAt: Date?
     /// Persisted right before the authorize request leaves.
     public var authorizeSent: Bool
@@ -137,6 +149,15 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// The reminder ("还没结束洗澡？") runs while water may be flowing.
     public var mayBeFlowing: Bool { phase == .writePending || phase == .running }
 
+    /// Whole minutes of water on `done` (「上次 11 分钟」, the done page, the settled lock screen).
+    public var minutes: Int? { phase == .done ? endedAt.flatMap(minutes(until:)) : nil }
+
+    /// Whole minutes from the water start to `end`, at least 1.
+    public func minutes(until end: Date) -> Int? {
+        guard let start = startedAt else { return nil }
+        return max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
+    }
+
     /// What goes to the Keychain. A failure that issued nothing leaves no record.
     public var persistable: ShowerState {
         var s = self
@@ -154,11 +175,12 @@ public struct ShowerState: Sendable, Codable, Equatable {
 }
 
 public enum ShowerEvent: Sendable, Equatable {
-    case start(machineID: String, preferredPeripheral: String?, at: Date)
+    case start(machineID: String, preferredPeripheral: String?)
     /// Connected and probed (`AA`) before authorize.
     case connected(peripheralID: String, probe: Data)
     case connectFailed(ShowerDeviceError)
-    case authorized(ShowerAuthorization)
+    /// `at`: when the authorization arrived, i.e. when water may start (the timer's origin).
+    case authorized(ShowerAuthorization, at: Date)
     case authorizeFailed(ServiceError)
     case writeReplied(Data)
     case writeFailed(ShowerDeviceError)
@@ -214,11 +236,11 @@ public enum ShowerReducer {
         switch (state.phase, event) {
 
         // MARK: start
-        case (_, .start(let machine, let preferred, let at)) where state.canStart:
+        case (_, .start(let machine, let preferred)) where state.canStart:
             // Keep the controller remembered for this machine, so a failed connect does not
             // forget it and the next start can still try it before scanning.
             let remembered = preferred ?? (state.machineID == machine.uppercased() ? state.peripheralID : nil)
-            let n = ShowerState(phase: .authorizing, machineID: machine.uppercased(), peripheralID: remembered, startedAt: at,
+            let n = ShowerState(phase: .authorizing, machineID: machine.uppercased(), peripheralID: remembered,
                                 lastReceipt: state.phase == .done ? state.receipt : state.lastReceipt)
             return (n, [.connectAndProbe(machineID: machine.uppercased(), preferred: preferred)])
 
@@ -251,7 +273,7 @@ public enum ShowerReducer {
             s.authorizeSent = false
             return (failed(s, .deviceUnavailable, review: false, device: .interrupted), [.releaseDevice])
 
-        case (.authorizing, .authorized(let auth)) where state.authorizeSent:
+        case (.authorizing, .authorized(let auth, let at)) where state.authorizeSent:
             guard auth.machineID.uppercased() == state.machineID,
                   auth.payload.count == ShowerFrames.authorizationLength,
                   ShowerFrames.closeCommand(authorizationID: auth.authorizationID) != nil else {
@@ -259,6 +281,8 @@ public enum ShowerReducer {
             }
             s.phase = .writePending
             s.authorizationID = auth.authorizationID.uppercased()
+            // 出水: the timer, the Live Activity and the reminder (scheduled here) start now.
+            s.startedAt = at
             return (s, [.scheduleReminder, .writeAuthorization(auth.payload)])
 
         case (.authorizing, .authorizeFailed(let e)) where state.authorizeSent:
@@ -406,6 +430,12 @@ public enum ShowerReducer {
     /// Relaunch: what a persisted record means now. Nothing is re-sent automatically.
     public static func restore(_ persisted: ShowerState?) -> ShowerState {
         guard var s = persisted else { return .idle }
+        // Records saved before the timer counted from the water hold the tap time in
+        // `startedAt`. A record that never reached the water drops it (no timer); one past it
+        // keeps it, so a running timer and its reminder don't jump back after the update.
+        if s.phase == .authorizing || (s.phase == .failed && s.failure?.reason.isBeforeWater == true) {
+            s.startedAt = nil
+        }
         s.notice = nil
         s.reviewing = false
         s.settleRetryArmed = false

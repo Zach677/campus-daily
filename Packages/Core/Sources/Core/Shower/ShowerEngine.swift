@@ -58,7 +58,8 @@ public enum ShowerTargetSelection {
 
 /// Reminder / diagnostics hooks (App: UNUserNotificationCenter, diagnostic log). Optional.
 public protocol ShowerHooks: Sendable {
-    /// "还没结束洗澡？" after the configured minutes in writePending/running.
+    /// "还没结束洗澡？" after the configured minutes in writePending/running; asked for when the
+    /// water starts (the same moment as `ShowerState.startedAt`).
     func scheduleUnsettledReminder(after seconds: TimeInterval) async
     func cancelUnsettledReminder() async
     /// Event names only (no ids, frames or tokens).
@@ -148,7 +149,7 @@ public actor ShowerEngine {
         guard state.canStart else { throw ShowerEngineError.blocked }
         let preferred = b.peripheralID ?? (state.machineID == b.machineId.uppercased() ? state.peripheralID : nil)
         startCancelled = false; authorizeLeft = false
-        return try await run(b, .start(machineID: b.machineId, preferredPeripheral: preferred, at: now()))
+        return try await run(b, .start(machineID: b.machineId, preferredPeripheral: preferred))
     }
 
     /// 取消 while connecting. True: the start stops before its authorize request leaves (nothing
@@ -280,7 +281,10 @@ public actor ShowerEngine {
         case .authorize(let frame):
             guard let b = binding, !Task.isCancelled, !startCancelled else { return .cancelledBeforeSend }
             authorizeLeft = true
-            do { return .authorized(try await gateway.authorize(b, frame: frame)) }
+            do {
+                let auth = try await gateway.authorize(b, frame: frame)
+                return .authorized(auth, at: now())
+            }
             catch let e as ServiceError { return .authorizeFailed(e) }
             catch { return .authorizeFailed(.uncertain(.lxt6)) }
 

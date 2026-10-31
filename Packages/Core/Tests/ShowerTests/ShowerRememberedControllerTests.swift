@@ -121,9 +121,9 @@ extension ShowerEngineTests {
 extension ShowerReducerTests {
     func testStartKeepsTheSameMachinesController() {
         let idle = ShowerState(phase: .idle, machineID: machine, peripheralID: "P")
-        XCTAssertEqual(reduce(idle, .start(machineID: machine, preferredPeripheral: nil, at: t0)).0.peripheralID, "P")
-        XCTAssertNil(reduce(idle, .start(machineID: "99999999", preferredPeripheral: nil, at: t0)).0.peripheralID)
-        let wrong = reduce(reduce(idle, .start(machineID: machine, preferredPeripheral: "P", at: t0)).0,
+        XCTAssertEqual(reduce(idle, .start(machineID: machine, preferredPeripheral: nil)).0.peripheralID, "P")
+        XCTAssertNil(reduce(idle, .start(machineID: "99999999", preferredPeripheral: nil)).0.peripheralID)
+        let wrong = reduce(reduce(idle, .start(machineID: machine, preferredPeripheral: "P")).0,
                            .connected(peripheralID: "Q", probe: FakeFrames.identity("99999999"))).0
         XCTAssertEqual(wrong.peripheralID, "P", "a controller with another identity never replaces the remembered one")
         XCTAssertEqual(wrong.persistable.peripheralID, "P")

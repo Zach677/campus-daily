@@ -142,11 +142,12 @@ extension HomeView {
         static func record(_ name: String, now: Date = Date()) -> ShowerState? {
             let start = now.addingTimeInterval(-(8 * 60 + 42))
             func failed(_ reason: ShowerFailureReason, review: Bool) -> ShowerState {
-                ShowerState(phase:.failed, startedAt:start,
+                // Only a failure after the water carries the timer's start.
+                ShowerState(phase:.failed, startedAt:reason.isBeforeWater ? nil : start,
                             failure:ShowerFailure(reason:reason, needsReview:review))
             }
             switch name {
-            case "sh-connect": return ShowerState(phase:.authorizing, startedAt:now)
+            case "sh-connect": return ShowerState(phase:.authorizing)
             case "sh-run", "sh-endfail": return ShowerState(phase:.running, startedAt:start)
             case "sh-check", "sh-check-rechecking", "sh-check-stopped", "sh-check-nocon",
                  "sh-check-bt", "sh-check-busy", "sh-check-failed", "sh-check-unavailable",

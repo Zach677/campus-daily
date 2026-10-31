@@ -31,8 +31,7 @@ public enum ShowerActivityAction: Sendable, Equatable {
             self = .settling(startedAt: started)
         case .done:
             guard let started = state.startedAt else { self = .end; return }
-            let ended = state.endedAt ?? now
-            let minutes = max(1, Int((ended.timeIntervalSince(started) / 60).rounded()))
+            let minutes = state.minutes(until: state.endedAt ?? now) ?? 1
             // Only the platform receipt's amount; nil means not reported, never an estimate.
             self = .settled(startedAt: started, minutes: minutes, amountYuan: state.receipt?.amount?.yuan,
                             dismissAfter: Self.settledDismissal)

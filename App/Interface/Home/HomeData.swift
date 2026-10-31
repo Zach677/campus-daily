@@ -137,8 +137,8 @@ extension HomeData {
         if model.problem, shower == .idle { showerIssue = model.status }
         showerUnconfirmed = state.phase == .writePending && shower.showering != nil
         var activities: [AppActivity] = []
-        if state.phase == .done, let start = model.sessionStarted, let end = model.lastEnded {
-            let minutes = max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
+        // Minutes of water (from 出水, as the timer counted), not from the 开始洗澡 tap.
+        if state.phase == .done, let start = model.sessionStarted, let end = model.lastEnded, let minutes = state.minutes {
             lastShowerMinutes = minutes; lastShowerCost = model.lastCost
             activities.append(AppActivity(id:"shower-\(start.timeIntervalSince1970)", kind:.shower(minutes:minutes),
                                           date:end, amount:model.lastCost.map { Money(yuan:$0) }))

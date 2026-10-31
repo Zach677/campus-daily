@@ -14,13 +14,13 @@ final class ShowerReducerTests: XCTestCase {
     func reduce(_ s: ShowerState, _ e: ShowerEvent) -> (ShowerState, [ShowerEffect]) { ShowerReducer.reduce(s, e) }
 
     func authorizing() -> ShowerState {
-        let (s, _) = reduce(.idle, .start(machineID: "11223344", preferredPeripheral: nil, at: t0))
+        let (s, _) = reduce(.idle, .start(machineID: "11223344", preferredPeripheral: nil))
         let (s2, _) = reduce(s, .connected(peripheralID: "P", probe: identity))
         return s2
     }
 
     func running() -> ShowerState {
-        let (s, _) = reduce(authorizing(), .authorized(auth))
+        let (s, _) = reduce(authorizing(), .authorized(auth, at: t0))
         return reduce(s, .writeReplied(FakeFrames.ack)).0
     }
 
@@ -33,16 +33,16 @@ final class ShowerReducerTests: XCTestCase {
     // MARK: start
 
     func testStartConnectsAndProbesBeforeAnythingIsSent() {
-        let (s, fx) = reduce(.idle, .start(machineID: "1a2b3c4d", preferredPeripheral: "P", at: t0))
+        let (s, fx) = reduce(.idle, .start(machineID: "1a2b3c4d", preferredPeripheral: "P"))
         XCTAssertEqual(s.phase, .authorizing)
         XCTAssertEqual(s.machineID, "1A2B3C4D")
         XCTAssertFalse(s.authorizeSent)
-        XCTAssertEqual(s.startedAt, t0)
+        XCTAssertNil(s.startedAt, "connecting is not shower time")
         XCTAssertEqual(fx, [.connectAndProbe(machineID: "1A2B3C4D", preferred: "P")])
     }
 
     func testIdleIdentityMarksAuthorizeSentAndPostsTheFrame() {
-        let (s, _) = reduce(.idle, .start(machineID: machine, preferredPeripheral: nil, at: t0))
+        let (s, _) = reduce(.idle, .start(machineID: machine, preferredPeripheral: nil))
         let (s2, fx) = reduce(s, .connected(peripheralID: "P", probe: identity))
         XCTAssertTrue(s2.authorizeSent)
         XCTAssertEqual(s2.peripheralID, "P")
@@ -50,7 +50,7 @@ final class ShowerReducerTests: XCTestCase {
     }
 
     func testProbeProblemsFailWithoutReviewAndNothingSent() {
-        let (s, _) = reduce(.idle, .start(machineID: machine, preferredPeripheral: nil, at: t0))
+        let (s, _) = reduce(.idle, .start(machineID: machine, preferredPeripheral: nil))
         let cases: [(ShowerEvent, ShowerFailureReason)] = [
             (.connected(peripheralID: "P", probe: FakeFrames.identity("99999999")), .wrongDevice),
             (.connected(peripheralID: "P", probe: FakeFrames.active), .deviceBusy),
@@ -75,7 +75,7 @@ final class ShowerReducerTests: XCTestCase {
                                       reduce(authorizing(), .authorizeFailed(.timedOut)).0]
         for s in blocked {
             XCTAssertFalse(s.canStart, "\(s.phase)")
-            let (n, fx) = reduce(s, .start(machineID: machine, preferredPeripheral: nil, at: t0))
+            let (n, fx) = reduce(s, .start(machineID: machine, preferredPeripheral: nil))
             XCTAssertEqual(n, s)
             XCTAssertTrue(fx.isEmpty)
         }
@@ -84,7 +84,7 @@ final class ShowerReducerTests: XCTestCase {
     // MARK: authorize
 
     func testAuthorizedMovesToWritePendingAndWritesPayload() {
-        let (s, fx) = reduce(authorizing(), .authorized(auth))
+        let (s, fx) = reduce(authorizing(), .authorized(auth, at: t0))
         XCTAssertEqual(s.phase, .writePending)
         XCTAssertEqual(s.authorizationID, "001122FF")
         XCTAssertEqual(fx, [.scheduleReminder, .writeAuthorization(Data(count: 15))])
@@ -96,7 +96,7 @@ final class ShowerReducerTests: XCTestCase {
                    ShowerAuthorization(machineID: machine, payload: Data(count: 14), authorizationID: "001122FF"),
                    ShowerAuthorization(machineID: machine, payload: Data(count: 15), authorizationID: "0011")]
         for a in bad {
-            let (s, fx) = reduce(authorizing(), .authorized(a))
+            let (s, fx) = reduce(authorizing(), .authorized(a, at: t0))
             XCTAssertEqual(s.failure?.reason, .authorizationInvalid)
             XCTAssertEqual(s.failure?.needsReview, true)
             XCTAssertEqual(fx, [.releaseDevice])
@@ -132,7 +132,7 @@ final class ShowerReducerTests: XCTestCase {
     // MARK: write
 
     func testAckMeansRunningOtherReplyKeepsWritePendingWithNotice() {
-        let (w, _) = reduce(authorizing(), .authorized(auth))
+        let (w, _) = reduce(authorizing(), .authorized(auth, at: t0))
         let (r, fx) = reduce(w, .writeReplied(FakeFrames.ack))
         XCTAssertEqual(r.phase, .running)
         XCTAssertTrue(fx.isEmpty, "link kept after authorization")
@@ -194,7 +194,7 @@ final class ShowerReducerTests: XCTestCase {
     }
 
     func testFinishFromWritePendingWithIdleControllerEndsWithoutCharge() {
-        let (w, _) = reduce(reduce(authorizing(), .authorized(auth)).0, .writeFailed(.timedOut))
+        let (w, _) = reduce(reduce(authorizing(), .authorized(auth, at: t0)).0, .writeFailed(.timedOut))
         let (c, _) = reduce(w, .finish)
         XCTAssertEqual(c.closingFrom, .writePending)
         let (i, fx) = reduce(c, .probeReplied(identity))
@@ -205,7 +205,7 @@ final class ShowerReducerTests: XCTestCase {
     }
 
     func testFinishFromWritePendingWhenActiveCloses() {
-        let (w, _) = reduce(authorizing(), .authorized(auth))
+        let (w, _) = reduce(authorizing(), .authorized(auth, at: t0))
         let (c, _) = reduce(w, .finish)
         let (c2, fx) = reduce(c, .probeReplied(FakeFrames.active))
         XCTAssertTrue(c2.closeSent)
@@ -266,7 +266,7 @@ final class ShowerReducerTests: XCTestCase {
         let (i, _) = reduce(d, .dismiss)
         XCTAssertEqual(i.phase, .idle)
         XCTAssertEqual(i.lastReceipt, receipt)
-        let (again, _) = reduce(d, .start(machineID: machine, preferredPeripheral: nil, at: t1))
+        let (again, _) = reduce(d, .start(machineID: machine, preferredPeripheral: nil))
         XCTAssertEqual(again.lastReceipt, receipt)
     }
 

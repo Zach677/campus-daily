@@ -467,8 +467,8 @@ idle ──start──► authorizing ──auth ok──► writePending ──
 | State | Persisted fields | UI | Allowed actions |
 |---|---|---|---|
 | `idle` | last receipt | 开水 | start |
-| `authorizing` | machineId, peripheral, startedAt | 正在开水… | none (await) |
-| `writePending` | + authorizationId | **洗澡中**, hint 「水控没回应，有热水就照常洗」 | finish, review |
+| `authorizing` | machineId, peripheral | 正在开水… | none (await) |
+| `writePending` | + authorizationId, startedAt | **洗澡中**, hint 「水控没回应，有热水就照常洗」 | finish, review |
 | `running` | same | 洗澡中 + timer; Live Activity | finish, review |
 | `closing` | + close requested | 正在结束… | none |
 | `settling` | + consumption frame | 正在结算… | none; on relaunch: show "结算待核对" |
@@ -488,6 +488,14 @@ Rules:
   the shower page shows a check face (去核对 / 「我在学校记录里核对过了」) and the home card's
   button reads 去核对. 「再查一次水控」 on that face runs the same read-only probe again: water
   still running returns to the timer; a stopped or unreachable controller is said under it.
+- `startedAt` is set when the authorization arrives and enters `writePending` (出水), not at the
+  开始洗澡 tap: the ~15 s of connecting and authorizing are not shower time. The in-app timer,
+  the Live Activity, the unsettled reminder and the shown duration (done page, settled lock
+  screen, 「上次 11 分钟」 and 最近) all count from it; billing uses the controller's consumption
+  frame, never a time. Nothing reads the tap time, so it is not kept. A record saved before
+  this rule holds the tap time there: past the water it is kept (the timer does not jump back),
+  before the water (`authorizing`, or a failure before the authorization reached the controller)
+  it is dropped.
 - Unsettled reminder after the configured minutes in `writePending/running`. The Live Activity
   mirrors `{phase, startedAt, writeUnconfirmed, amountYuan?}`; its "结束并结算" intent calls
   `ShowerEngine.finish()` in the app process.

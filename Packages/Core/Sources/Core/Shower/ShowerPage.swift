@@ -110,9 +110,9 @@ public struct ShowerPage: Sendable, Equatable {
     public var denial: Denial?
     /// The platform's amount; only on `done`, and only when it returned one.
     public var amount: Money?
-    /// Whole minutes from start to end, on `done`.
+    /// Whole minutes of water, on `done` (`ShowerState.minutes`).
     public var minutes: Int?
-    /// The timer's start on `running`.
+    /// The timer's start on `running`: when the water started (`ShowerState.startedAt`).
     public var startedAt: Date?
     /// The controller didn't confirm the authorization write; shown as running on purpose.
     public var writeUnconfirmed: Bool
@@ -135,9 +135,7 @@ public struct ShowerPage: Sendable, Equatable {
         case .done:
             phase = .done; steps = [.done, .done, .done]
             amount = s.receipt?.amount
-            if let start = s.startedAt, let end = s.endedAt {
-                minutes = max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
-            }
+            minutes = s.minutes
         case .failed:
             let reason = s.failure?.reason ?? .settleUnconfirmed
             switch reason {
@@ -256,7 +254,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var page: ShowerPage? {
         let shown = ShowerPage(record)
         if starting, record.canStart {
-            return ShowerPage(ShowerState(phase: .authorizing, startedAt: record.startedAt))
+            return ShowerPage(ShowerState(phase: .authorizing))
         }
         return shown
     }
