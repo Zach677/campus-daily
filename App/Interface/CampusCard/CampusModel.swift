@@ -287,12 +287,15 @@ struct PowerChoice: Identifiable, Equatable {
 
     // MARK: Recharge / hot water hand-off
 
-    /// Writes the live card session back: under the lease, so never beside the widget's refresh.
+    /// Both write the live card session back: under the lease, so never beside the widget's refresh.
     func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession {
         let session = session
         return try await refresher.holdingLease { try await session.rechargeSession(kind) }
     }
-    func showerHandoff() async throws -> ShowerHandoff { try await session.showerHandoff() }
+    func showerHandoff() async throws -> ShowerHandoff {
+        let session = session
+        return try await refresher.holdingLease { try await session.showerHandoff() }
+    }
     /// Taken before `showerHandoff()`; `isSamePerson(since:)` says whether its identity still
     /// belongs to whoever is signed in.
     func personStamp() async -> Int { await session.personStamp() }

@@ -709,13 +709,14 @@ public actor SchoolSession {
 
     // MARK: Hot-water hand-off
 
-    /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only).
+    /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only). The app
+    /// runs it under the refresh lease; the live session is kept only over the one it started from.
     public func showerHandoff() async throws -> ShowerHandoff {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = personGeneration
         let (card, live) = try await liveCard(stored)
         try ensureSignedIn(since: started)
-        try? vault.saveEcyktSession(live)
+        saveIfUnchanged(live, over: stored)
         return try await ecykt.signData(live, custid: card.custid)
     }
 

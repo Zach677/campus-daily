@@ -32,6 +32,23 @@ final class SchoolCredentialWriteBackTests: XCTestCase {
         XCTAssertEqual(stored.syscustid, "NEWER-SYSCUSTID")
     }
 
+    func testShowerHandoffKeepsANewerSessionStoredMeanwhile() async throws {
+        let h = Harness()
+        try h.signedIn()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getSignData-ok")
+        let hold = Hold(h, self, suffix: "/getSysBindCustInfo")
+        let session = session(h, hold)
+        async let result = session.showerHandoff()
+        await fulfillment(of: [hold.reached], timeout: 5)
+        try h.vault.saveEcyktSession(Self.newer)
+        hold.release()
+        _ = try await result
+        let stored = try XCTUnwrap(try h.vault.ecyktSession())
+        XCTAssertEqual(stored.token, "NEWER-TOKEN", "the older session is not written over the newer one")
+        XCTAssertEqual(stored.syscustid, "NEWER-SYSCUSTID")
+    }
+
     /// Nothing changed meanwhile: the latest ciphertexts are still kept for next time.
     func testRechargePreparationStillSavesTheLatestCiphertext() async throws {
         let h = Harness()
