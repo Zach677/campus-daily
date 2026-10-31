@@ -41,7 +41,9 @@ struct CardRecordsView: View {
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("校园卡记录")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await model.reload() }
+        // SwiftUI cancels the pull's own task when the list changes under it (the read starting
+        // does): a read cancelled that way would come back as failed. The read runs on its own.
+        .refreshable { await Task { await model.reload() }.value }
         .task { if model.phase == .loading { await model.reload() } }
     }
 
