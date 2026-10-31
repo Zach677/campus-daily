@@ -234,6 +234,10 @@ public actor SnapshotRefresher {
 
     private func run(inBackground: Bool) async -> RefreshReport {
         let started = generation
+        // Its own owner, one per run: a run whose lease ran out (suspended, the other process
+        // took and gave back the lease meanwhile) never passes as a later run of this process,
+        // whose lease that is.
+        let lease = self.lease.map { $0.with(owner: $0.owner + "-run-" + UUID().uuidString) }
         if let lease {
             guard await acquireLease(lease) else {
                 // The other process is still reading; its result lands in the shared snapshot.
@@ -242,7 +246,6 @@ public actor SnapshotRefresher {
                                      leaseBusy: true)
             }
         }
-        let lease = self.lease
         // Kept alive for the whole read: a slow chain must not let the other process take over
         // halfway and mint or log in a second time.
         let heartbeat = lease.map { Self.keepAlive($0, every: renewInterval) }
