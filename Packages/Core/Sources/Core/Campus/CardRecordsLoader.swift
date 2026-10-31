@@ -103,15 +103,25 @@ public struct CardRecordsState: Sendable, Equatable {
         state = next
     }
 
-    /// Pages from `history` on. A definite refusal (getRecordList does not validate the session,
-    /// so an expired one comes back as a rejection or an empty reply rather than as expired) has
-    /// the card session renewed once, as home renews it, for the person the list was read for
-    /// only, and the read goes on from the same page. Nothing is renewed when the network failed.
+    /// Pages from `history` on. A failure that says the card session is gone has it renewed
+    /// once, as home renews it, for the person the list was read for only, and the read goes on
+    /// from the same page. Nothing is renewed when the network failed or the school refused for
+    /// another reason.
     nonisolated static func read(_ history: CardHistory, source: CardRecordsSource, stamp: Int) async -> CardHistory.Load {
         let page = source.page
         let load = await CardHistory.loadMore(history) { query in try await page(query, stamp) }
-        guard let failure = load.failure, !failure.isIndefinite,
+        guard let failure = load.failure, sessionGone(failure),
               await source.samePerson(stamp), await source.renew() else { return load }
         return await CardHistory.loadMore(load.history) { query in try await page(query, stamp) }
+    }
+
+    /// getRecordList does not validate the session: an expired one comes back as the school's
+    /// code -1 or as an empty reply (`badRequest`), besides `sessionExpired` itself.
+    nonisolated static func sessionGone(_ failure: ServiceError) -> Bool {
+        switch failure {
+        case .sessionExpired, .badRequest: return true
+        case .rejected(_, let code, _): return code == "-1"
+        default: return false
+        }
     }
 }

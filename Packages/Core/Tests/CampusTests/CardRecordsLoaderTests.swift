@@ -244,6 +244,18 @@ import XCTest
         }
     }
 
+    /// The school refusing in its own words for another reason (a lost card, code 2) says
+    /// nothing about the session: nothing is renewed.
+    func testAnotherRefusalIsNotRenewed() async {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        await school.expire(renewWorks: true, as: .rejected(.ecykt, code: "2", message: "x"))
+        let loader = makeLoader(school)
+        await loader.reload()
+        XCTAssertEqual(loader.state.phase, .failed)
+        let renewals = await school.renewals
+        XCTAssertEqual(renewals, 0)
+    }
+
     /// Offline says nothing about the session: nothing is renewed.
     func testNothingIsRenewedWhenOffline() async {
         let school = School(today: [Self.record(Self.today, "090000")])
