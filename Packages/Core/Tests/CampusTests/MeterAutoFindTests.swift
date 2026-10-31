@@ -8,8 +8,20 @@ final class MeterAutoFindTests: XCTestCase {
     let t0 = Date(timeIntervalSince1970: 1_793_300_000)
 
     func start(_ f: inout MeterAutoFind, _ trigger: MeterAutoFind.Trigger, after seconds: TimeInterval,
-               signedIn: Bool = true, meterBound: Bool = false, addressKnown: Bool = true) -> Bool {
-        f.start(trigger, signedIn: signedIn, meterBound: meterBound, addressKnown: addressKnown, now: t0.addingTimeInterval(seconds))
+               signedIn: Bool = true, meterBound: Bool = false, addressKnown: Bool = true, choosing: Bool = false) -> Bool {
+        f.start(trigger, signedIn: signedIn, meterBound: meterBound, addressKnown: addressKnown, choosing: choosing,
+                now: t0.addingTimeInterval(seconds))
+    }
+
+    /// The user is choosing from a same-name list: a re-find would clear it under their finger.
+    /// Only the re-finds wait; 「再找一次电表」 and a sign-in still look. A refusal is not counted.
+    func testNoRefindWhileAListIsBeingChosenFrom() {
+        var f = MeterAutoFind()
+        XCTAssertFalse(start(&f, .foreground, after: 0, choosing: true))
+        XCTAssertFalse(start(&f, .refreshed, after: 700, choosing: true))
+        XCTAssertTrue(start(&f, .manual, after: 800, choosing: true))
+        XCTAssertTrue(start(&f, .signedIn, after: 900, choosing: true))
+        XCTAssertTrue(start(&f, .foreground, after: 1_500), "the list is gone")
     }
 
     func testForegroundAndRefreshShareOneTenMinuteLimit() {

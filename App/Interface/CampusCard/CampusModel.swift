@@ -286,7 +286,8 @@ struct PowerChoice: Identifiable, Equatable {
         // A sign-in while a lookup runs may have brought another dorm: looked for once that one ends.
         if trigger == .signedIn, matchingPower { signedInDuringLookup = true; return }
         guard configured, !matchingPower, !powerConfigured,
-              autoFind.start(trigger, signedIn:configured, meterBound:powerConfigured, addressKnown:address != nil, now:Date())
+              autoFind.start(trigger, signedIn:configured, meterBound:powerConfigured, addressKnown:address != nil,
+                             choosing:!powerChoices.isEmpty, now:Date())
         else { return }
         lookUpPower()
     }
