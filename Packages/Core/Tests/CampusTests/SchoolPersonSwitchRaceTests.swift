@@ -242,6 +242,41 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         XCTAssertNil(try h.vault.profile())
     }
 
+    /// Signed out while the walk reads a level: no further level or meter is read with the
+    /// signed-out card session.
+    func testASignOutMidWalkStopsTheReads() async throws {
+        let h = try previousPerson()
+        try SchoolElectricityTests.serveTree(h)
+        let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getBuildingInfo", "buildingID": MeterWalkTests.campus.id])
+        let session = session(h, hold)
+        async let result = session.matchElectricity()
+        await fulfillment(of: [hold.reached], timeout: 5)
+        try await session.signOut()
+        hold.release()
+        do { _ = try await result; XCTFail("signed out") } catch {
+            XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
+        }
+        let reads = h.server.requests(path: "/electricnew/service")
+        XCTAssertEqual(reads.map { $0.bodyField("buildingID") }, [nil, MeterWalkTests.campus.id], "nothing after the held read")
+    }
+
+    /// Someone else signed in while the walk reads a level: the rest of the walk is not read
+    /// for the one who left (theirs starts from the top).
+    func testAnotherPersonMidWalkStopsTheOldWalksReads() async throws {
+        let h = try previousPerson()
+        try SchoolElectricityTests.serveTree(h)
+        let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getBuildingInfo", "buildingID": MeterWalkTests.apartment.id])
+        let session = session(h, hold)
+        async let result = session.matchElectricity()
+        await fulfillment(of: [hold.reached], timeout: 5)
+        try await session.signOut()
+        try h.signedIn()
+        hold.release()
+        _ = try? await result
+        let floorsRead = h.server.requests(path: "/electricnew/service").filter { $0.bodyField("buildingID") == MeterWalkTests.building.id }
+        XCTAssertEqual(floorsRead.count, 0, "the old walk stopped at the held read")
+    }
+
     /// A sign-out that could not delete the card session is still a sign-out: the dropped
     /// match is not run again on what was left behind.
     func testAMatchDroppedByAFailedSignOutIsNotRunAgain() async throws {

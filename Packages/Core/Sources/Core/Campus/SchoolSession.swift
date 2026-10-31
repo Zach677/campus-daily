@@ -954,12 +954,15 @@ public actor SchoolSession {
     }
 
     /// One read of the lookup, tried again after each of `meterRetryDelays` on a timeout or no
-    /// connection. Signed out while waiting: the failure stands. Someone else signed in: dropped
-    /// (`matchElectricity` runs theirs).
+    /// connection. Signed out or someone else signed in since the lookup started: no read goes
+    /// out with the old card session (`matchElectricity` runs the next person's own). Signed out
+    /// while waiting to try again: the failure stands.
     private func patiently<T: Sendable>(since started: Int, _ read: () async throws -> T) async throws -> T {
         let signedOut = signOutGeneration
         var retries = 0
         while true {
+            try ensureSignedIn(since: started)
+            try Task.checkCancellation()
             do {
                 return try await read()
             } catch let error as ServiceError where (error == .timedOut || error == .offline) && retries < Self.meterRetryDelays.count {
