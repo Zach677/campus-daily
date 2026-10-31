@@ -103,9 +103,11 @@ struct HomeData {
         HomeUpdateLine.of(snapshot, signedIn:signedIn, meterBound:powerBound, refreshing:refreshing,
                           loginHeld:schoolAccount?.isHolding(at:Date()) ?? false, notSaving:notSaving)
     }
-    /// Newest first, at most four; card records only while signed in (the snapshot is empty otherwise).
+    /// Newest first, six rows under the 洗衣 block or eight without it; card records only while
+    /// signed in (the snapshot is empty otherwise).
     var recents: [RecentItem] {
-        RecentFeed.items(card:snapshot.activity.value?.records, app:recentActivities)
+        RecentFeed.items(card:snapshot.activity.value?.records, app:recentActivities,
+                         limit:RecentFeed.homeLimit(laundryShown:laundryEnabled))
     }
     /// The app's own records 最近 and 校园卡记录 show: laundry only while 学校洗衣机 is on.
     var recentActivities: [AppActivity] {

@@ -82,13 +82,14 @@ public struct RecentItem: Sendable, Equatable, Identifiable {
 /// 最近: card records and the app's own records, newest first; the same shower or laundry
 /// order appears once (the app's record, which knows the minutes or the program).
 public enum RecentFeed {
-    public static let limit = 4
+    /// Rows on home: six under the 洗衣 block, eight when it is not shown.
+    public static func homeLimit(laundryShown: Bool) -> Int { laundryShown ? 6 : 8 }
     /// A card record this close to an app record of the same kind (and the same amount, when
     /// both are known) is the same shower or order.
     public static let sameEventWindow: TimeInterval = 30 * 60
 
     /// `card` nil = the records could not be read: only the app's records.
-    public static func items(card: [CardRecord]?, app: [AppActivity], limit: Int = RecentFeed.limit,
+    public static func items(card: [CardRecord]?, app: [AppActivity], limit: Int,
                              calendar: Calendar = SchoolCalendar.shanghai) -> [RecentItem] {
         var cardItems: [(RecentItem, used: Bool)] = []
         for (index, record) in (card ?? []).enumerated() {
