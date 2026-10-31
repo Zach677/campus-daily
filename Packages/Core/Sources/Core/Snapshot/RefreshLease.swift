@@ -83,15 +83,18 @@ public struct RefreshLease: Sendable {
     /// is pushed forward and `body` runs inside the same lock, so the other process can neither
     /// take the lease nor clear it between the check and what `body` compares and writes. nil =
     /// not ours any more (ran out, taken, removed by a sign-out) or no usable file: `body` did not
-    /// run. `body` is synchronous and short (a Keychain or snapshot write); no `await` can run
-    /// inside the lock. What `body` throws is rethrown.
+    /// run. Once `body` ran its result is returned even when the pushed-forward expiry could not
+    /// be stored afterwards: the write happened, and the lease stays ours until its old expiry
+    /// (the next renewal finds out). `body` is synchronous and short (a Keychain or snapshot
+    /// write); no `await` can run inside the lock. What `body` throws is rethrown.
     public func withOwnership<T>(_ body: () throws -> T) throws -> T? {
-        let outcome: Result<T, Error>?? = update { current in
-            guard let holder = current, holder.owner == owner, holder.expiresAt > now() else { return (current, nil) }
-            return (Record(owner: owner, expiresAt: now().addingTimeInterval(duration)), Result { try body() })
+        var ran: Result<T, Error>?
+        _ = update { current -> (Record?, Void) in
+            guard let holder = current, holder.owner == owner, holder.expiresAt > now() else { return (current, ()) }
+            ran = Result { try body() }
+            return (Record(owner: owner, expiresAt: now().addingTimeInterval(duration)), ())
         }
-        guard let ran = outcome ?? nil else { return nil }
-        return try ran.get()
+        return try ran?.get()
     }
 
     /// `acquire()` without waiting for the lock: false while another step holds it. Tests use it
@@ -154,10 +157,14 @@ public struct LeaseFile: Sendable {
     /// Runs inside the lock right after the record was read (tests use it to let the other
     /// "process" try at exactly that moment).
     let insideLock: (@Sendable () -> Void)?
+    /// Every changed record fails to be written (tests: a full or broken container).
+    let failsWrites: Bool
 
     public init(url: URL) { self.init(url: url, insideLock: nil) }
 
-    init(url: URL, insideLock: (@Sendable () -> Void)?) { self.url = url; self.insideLock = insideLock }
+    init(url: URL, insideLock: (@Sendable () -> Void)?, failsWrites: Bool = false) {
+        self.url = url; self.insideLock = insideLock; self.failsWrites = failsWrites
+    }
 
     struct Failure: Error { let step: String; let code: Int32 }
 
@@ -178,7 +185,10 @@ public struct LeaseFile: Sendable {
         insideLock?()
         let (next, result) = body(current)
         let after = try next.map { try JSONEncoder().encode($0) } ?? Data()
-        if after != before { try writeAll(fd, after) }
+        if after != before {
+            if failsWrites { throw Failure(step: "write", code: EIO) }
+            try writeAll(fd, after)
+        }
         return result
     }
 

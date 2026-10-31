@@ -78,6 +78,26 @@ final class RefreshLeaseTests: XCTestCase {
         XCTAssertNil(store.leaseFile.storedOwner(), "the lease is gone once the lock was free")
     }
 
+    /// The write ran, but the pushed-forward expiry could not be stored: that is still a write
+    /// that happened (the caller must not treat it as skipped), and the lease stays ours until
+    /// its old expiry.
+    func testAWriteThatRanCountsEvenWhenTheRenewalCannotBeStored() throws {
+        let app = lease("app-1")
+        XCTAssertTrue(app.acquire())
+        clock.advance(10)
+        let failing = RefreshLease(file: LeaseFile(url: store.leaseFile.url, insideLock: nil, failsWrites: true),
+                                   owner: "app-1", now: clock.function)
+        var runs = 0
+        let value = try failing.withOwnership { () -> Int in runs += 1; return 7 }
+        XCTAssertEqual(runs, 1)
+        XCTAssertEqual(value, 7, "reported as run")
+        XCTAssertThrowsError(try failing.withOwnership { () -> Int in throw CocoaError(.fileWriteUnknown) },
+                             "what the write throws is still rethrown")
+        XCTAssertTrue(app.holds(), "still ours")
+        clock.advance(RefreshLease.defaultDuration - 10)
+        XCTAssertFalse(app.renew(), "not renewed: it runs out at the old expiry")
+    }
+
     /// The widget past its deadline (its task cancelled) writes nothing back under the lease
     /// and does not even take the file lock: a process about to be suspended must not hold it.
     func testAWriteUnderOwnershipIsSkippedOnceCancelled() async throws {
