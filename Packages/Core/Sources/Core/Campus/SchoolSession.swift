@@ -9,6 +9,9 @@ public enum ElectricityResolution: Sendable, Equatable {
     case manualPicker
     /// No parsed portal dorm address.
     case noAddress
+    /// A meter was bound meanwhile (picked by hand while the lookup ran): it stays, and is
+    /// what the lookup answers with.
+    case alreadyBound(MeterBinding)
 }
 
 /// What one school read found. Campus only reports; the snapshot refresher turns this into
@@ -838,29 +841,44 @@ public actor SchoolSession {
         let started = personGeneration
         var profile = try vault.profile() ?? SchoolProfile()
         if profile.residence?.address == nil, let token = try vault.portalToken() {
-            profile.residence = try await portal.myInfo(token)
+            let residence = try await portal.myInfo(token)
             try ensureSignedIn(since: started)
-            try vault.saveProfile(profile)
+            // Read again: a meter picked meanwhile is kept.
+            profile = try vault.profile() ?? SchoolProfile()
+            if profile.residence?.address == nil {
+                profile.residence = residence
+                try vault.saveProfile(profile)
+            }
         }
         // Every answer, a list or a hint included, is the person's who started: someone else
-        // signed in meanwhile gets none of it.
-        guard let address = profile.residence?.address else { try ensureSignedIn(since: started); return .noAddress }
+        // signed in meanwhile gets none of it. A meter bound meanwhile (picked by hand) wins
+        // over whatever the lookup found.
+        guard let address = profile.residence?.address else {
+            if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
+            return .noAddress
+        }
 
         let campuses = try await ecykt.buildings(session, parent: nil).filter { address.matchesCampus($0.name) }
-        guard campuses.count == 1, let campus = campuses.first else { try ensureSignedIn(since: started); return .manualPicker }
+        guard campuses.count == 1, let campus = campuses.first else {
+            if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
+            return .manualPicker
+        }
         // Every meter on the campus: often slower than the client's own wait, so it alone gets the longest.
         let rows = try await ecykt.meters(session, nodeID: campus.id, wide: true, timeout: URLSessionHTTPClient.longestTimeout)
         let meter: Meter
         switch MeterMatcher.match(rows, address: address) {
         case .none:
-            try ensureSignedIn(since: started)
+            if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
             return .manualPicker
         case .many(let all):
             // The same comAddress twice: the campus-wide rows can't tell the rooms apart, and a
             // room found by its meter could be either one. The user picks the room by hand.
-            guard Set(all.map(\.comAddress)).count == all.count else { try ensureSignedIn(since: started); return .manualPicker }
+            guard Set(all.map(\.comAddress)).count == all.count else {
+                if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
+                return .manualPicker
+            }
             let list = try await candidates(all, session: session, campus: campus, address: address)
-            try ensureSignedIn(since: started)
+            if case .bound(let b) = try settle(since: started) { return .alreadyBound(b) }
             return .chooseAmong(list)
         case .one(let m): meter = m
         }
@@ -874,10 +892,25 @@ public actor SchoolSession {
                                    location: located.location)
             found = located.meter
         }
-        profile.meter = binding
+        // Only the meter is written, onto the profile as it is now.
+        switch try settle(since: started) {
+        case .bound(let b): return .alreadyBound(b)
+        case .open(var current):
+            current.meter = binding
+            try vault.saveProfile(current)
+            return .matched(binding, found)
+        }
+    }
+
+    private enum Settled { case bound(MeterBinding), open(SchoolProfile) }
+
+    /// The lookup's reads are done: the profile as it is now, unless a meter was bound meanwhile.
+    /// Someone else signed in meanwhile: thrown as an expired session.
+    private func settle(since started: Int) throws -> Settled {
         try ensureSignedIn(since: started)
-        try vault.saveProfile(profile)
-        return .matched(binding, found)
+        let current = try vault.profile() ?? SchoolProfile()
+        if let bound = current.meter { return .bound(bound) }
+        return .open(current)
     }
 
     /// `resolveElectricity()` for whoever is signed in when it answers, with the person stamp

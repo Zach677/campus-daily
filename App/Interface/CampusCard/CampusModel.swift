@@ -299,7 +299,7 @@ struct PowerChoice: Identifiable, Equatable {
                 // Someone else signed in after it answered: none of it is theirs, their own runs.
                 if await session.isSamePerson(since:stamp) {
                     switch found {
-                    case .matched:
+                    case .matched, .alreadyBound:
                         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
                         await refresher.noteChange()
                         await refresh(force:true)
