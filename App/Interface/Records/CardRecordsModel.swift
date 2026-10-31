@@ -6,7 +6,8 @@ extension CardRecordsSource {
     @MainActor static var live: CardRecordsSource {
         let session = AppEnvironment.school
         return CardRecordsSource(stamp:{ await session.personStamp() },
-                                 page:{ query, stamp in try await session.cardHistoryPage(query, since:stamp) })
+                                 page:{ query, stamp in try await session.cardHistoryPage(query, since:stamp) },
+                                 samePerson:{ await session.isSamePerson(since:$0) })
     }
 }
 

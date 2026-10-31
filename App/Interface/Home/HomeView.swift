@@ -196,6 +196,10 @@ struct HomeView: View {
                                                                 set:{ if !$0 { resetter.resumeFailed = nil } })) {
             Button("好", role:.cancel) {}
         }
+        // 校园卡记录 shows one person's records: it closes when they sign out or someone else signs in.
+        .onChange(of:campus.personChanges) { _, _ in
+            if let index = path.firstIndex(of:.records) { path.removeSubrange(index...) }
+        }
         .onChange(of:phase) { _, value in
             if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
         }

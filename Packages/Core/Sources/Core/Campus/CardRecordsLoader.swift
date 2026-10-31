@@ -6,10 +6,13 @@ public struct CardRecordsSource: Sendable {
     public var stamp: @Sendable () async -> Int
     /// One page, for the person signed in at `stamp` (`SchoolSession.cardHistoryPage`).
     public var page: @Sendable (CardHistoryQuery, Int) async throws -> CardRecordPage
+    /// Nobody signed out and nobody else signed in since the stamp (`SchoolSession.isSamePerson`).
+    public var samePerson: @Sendable (Int) async -> Bool
 
     public init(stamp: @escaping @Sendable () async -> Int,
-                page: @escaping @Sendable (CardHistoryQuery, Int) async throws -> CardRecordPage) {
-        self.stamp = stamp; self.page = page
+                page: @escaping @Sendable (CardHistoryQuery, Int) async throws -> CardRecordPage,
+                samePerson: @escaping @Sendable (Int) async -> Bool = { _ in true }) {
+        self.stamp = stamp; self.page = page; self.samePerson = samePerson
     }
 }
 
@@ -82,6 +85,14 @@ public struct CardRecordsState: Sendable, Equatable {
         let load = await Self.read(current, source: source, stamp: stamp)
         // A read from today started meanwhile: it owns the list (and `loadingMore`) now.
         guard mine == generation, !state.reloading, state.history == current else { return }
+        if load.failure != nil, !(await source.samePerson(stamp)) {
+            // Signed out, or someone else signed in: their rows go, and the list is read again
+            // for whoever is signed in now (nothing, signed out).
+            guard mine == generation, !state.reloading else { return }
+            state = CardRecordsState()
+            await reload()
+            return
+        }
         var next = state
         next.history = load.history
         next.moreFailed = load.failure != nil

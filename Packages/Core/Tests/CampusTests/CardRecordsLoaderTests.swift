@@ -16,7 +16,8 @@ import XCTest
 
     func makeLoader(_ school: School) -> CardRecordsLoader {
         CardRecordsLoader(source: CardRecordsSource(stamp: { await school.nextStamp() },
-                                                    page: { query, stamp in try await school.page(query, stamp: stamp) }),
+                                                    page: { query, stamp in try await school.page(query, stamp: stamp) },
+                                                    samePerson: { await school.isPerson($0) }),
                           now: { [noon] in noon })
     }
 
@@ -30,11 +31,14 @@ import XCTest
         var held: Set<String> = []
         var waiting: [String: [CheckedContinuation<Void, Never>]] = [:]
         var calls: [(query: CardHistoryQuery, stamp: Int)] = []
-        var stamps = 0
 
         init(today: [CardRecord]) { todayRows = today }
 
-        func nextStamp() -> Int { stamps += 1; return stamps }
+        /// Who is signed in (`SchoolSession.personStamp()`): the same until someone else signs in.
+        var person = 1
+        func nextStamp() -> Int { person }
+        func switchPerson() { person += 1 }
+        func isPerson(_ stamp: Int) -> Bool { person == stamp }
         func set(today: [CardRecord]) { todayRows = today }
         func set(older: [CardRecord]) { olderRows = older }
         func set(failToday: Bool, failOlder: Bool) { self.failToday = failToday; self.failOlder = failOlder }
@@ -49,6 +53,8 @@ import XCTest
 
         func page(_ query: CardHistoryQuery, stamp: Int) async throws -> CardRecordPage {
             calls.append((query, stamp))
+            // As SchoolSession.cardHistoryPage: nothing for a person no longer signed in.
+            if stamp != person { throw ServiceError.sessionExpired(.ecykt) }
             let key = query.end == CardRecordsLoaderTests.today ? "today" : "older"
             if held.contains(key) { await withCheckedContinuation { waiting[key, default: []].append($0) } }
             if key == "today" {
@@ -132,8 +138,8 @@ import XCTest
 
     // MARK: Late reads from today
 
-    /// Two pulls: the first one's answer, back last, is dropped, and older pages are read for
-    /// the person the kept list was read for.
+    /// Two pulls with someone else signing in between: the first one's answer, back last, is
+    /// dropped, and older pages are read for the person the kept list was read for.
     func testAnEarlierPullBackLastIsDroppedAndItsStampWithIt() async {
         let early = Self.record(Self.today, "080000")
         let school = School(today: [early])
@@ -141,13 +147,14 @@ import XCTest
         await school.hold("today")
         let firstPull = Task { await loader.reload() }
         await waitUntil(school, waitingOn: "today")
+        await school.switchPerson()
 
         let late = Self.record(Self.today, "100000")
         await school.set(today: [late])
         await school.release("today")
         await loader.reload()
         await firstPull.value
-        XCTAssertEqual(loader.state.history?.records.count, 1)
+        XCTAssertEqual(loader.state.history?.records, [late])
 
         // Whichever answered first, the list is the second pull's (stamp 2) …
         let stampsBefore = await school.stampsUsed()
@@ -188,6 +195,27 @@ import XCTest
         await loader.loadMore()
         XCTAssertFalse(loader.state.moreFailed)
         XCTAssertEqual(loader.state.history?.records.count, 2)
+    }
+
+    // MARK: Another person
+
+    /// Someone else signed in while the list was open: its rows go, and the list is read again
+    /// for the person signed in now, instead of offering to retry the old one's older pages.
+    func testAnotherPersonSigningInDropsTheListOnTheNextRead() async {
+        let theirs = Self.record(Self.today, "090000")
+        let school = School(today: [theirs])
+        await school.set(older: [Self.record("20261010", "120000")])
+        let loader = makeLoader(school)
+        await loader.reload()
+        XCTAssertEqual(loader.state.history?.records, [theirs])
+
+        await school.switchPerson()
+        let mine = Self.record(Self.today, "100000", "3.00")
+        await school.set(today: [mine])
+        await loader.loadMore()
+        XCTAssertFalse(loader.state.moreFailed, "no retry offered for someone else's list")
+        XCTAssertEqual(loader.state.history?.records, [mine], "read again for whoever is signed in now")
+        XCTAssertFalse(loader.state.history?.records.contains(theirs) ?? false)
     }
 
     /// Nothing today and every older range failing: no rows came, so it is the failed line.

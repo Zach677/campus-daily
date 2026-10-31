@@ -41,6 +41,9 @@ struct PowerChoice: Identifiable, Equatable {
     /// Sign-out left something behind (a Keychain item or the widget snapshot could not be
     /// deleted): Settings › 学校账号 says so, and shows what is still stored.
     @Published var signOutFailed = false
+    /// Bumped by a sign-out and by a sign-in of someone else (or someone not known to be the
+    /// same): pages showing the previous person's school data close.
+    @Published private(set) var personChanges = 0
     private var lastRefresh: Date?
     private var refreshesRunning = 0
     /// Refreshes the Keychain interrupted one after another (writes refused).
@@ -141,6 +144,7 @@ struct PowerChoice: Identifiable, Equatable {
             try await session.adoptWebState(state, userAgent:EcyktSession.defaultUserAgent, owning:owning)
         }
         if summary.switchedAccount || summary.previousPersonUnconfirmed {
+            personChanges += 1
             await previousPersonCleared(unconfirmed:!summary.switchedAccount, dormAndMeterCleared:summary.dormAndMeterCleared)
         }
         await refresher.noteChange()
@@ -169,6 +173,7 @@ struct PowerChoice: Identifiable, Equatable {
             try await session.signIn(account:account, password:password, savePassword:savePassword, owning:owning)
         }
         if summary.switchedAccount || summary.previousPersonUnconfirmed {
+            personChanges += 1
             await previousPersonCleared(unconfirmed:!summary.switchedAccount, dormAndMeterCleared:summary.dormAndMeterCleared)
         }
         await refresher.noteChange()
@@ -220,14 +225,14 @@ struct PowerChoice: Identifiable, Equatable {
     /// Reset, before the stores are cleared: a refresh still running must not write the old
     /// values back afterwards, and the widget snapshot is cleared first so nothing rewrites it.
     func signOutForReset() async {
-        signOutGeneration += 1
+        signOutGeneration += 1; personChanges += 1
         _ = await signOuts.start().value
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         powerChoices = []; powerMatchIssue = nil; lastRefresh = nil
     }
 
     func signOut() {
-        signOutGeneration += 1
+        signOutGeneration += 1; personChanges += 1
         // The lease goes first: a widget read in the middle of a login loses it and writes
         // nothing. Waiting for its file lock happens off the main thread.
         let signedOut = signOuts.start()
