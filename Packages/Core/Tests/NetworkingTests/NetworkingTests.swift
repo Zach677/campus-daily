@@ -52,6 +52,15 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(Redactor.redactURL(URL(string: "https://ecykt.gdbtu.edu.cn/a?ticket=T&custid=C")!), "https://ecykt.gdbtu.edu.cn/a")
         XCTAssertEqual(Redactor.redactBody(Data()), "<empty>")
     }
+
+    /// A card record's voucher number is kept out of logs like the other ids.
+    func testMasksACardRecordVoucher() throws {
+        let body: JSONValue = .object(["rows": .array([.object(["voucherno": .string("99000000000000000001"), "amount": .string("1.30")])])])
+        let text = String(decoding: try Redactor.redact(body).encoded(), as: UTF8.self)
+        XCTAssertFalse(text.contains("99000000000000000001"), text)
+        XCTAssertTrue(text.contains("1.30"))
+        XCTAssertTrue(Redactor.isSecret("voucherNo"))
+    }
 }
 
 final class URLSessionHTTPClientTests: XCTestCase {

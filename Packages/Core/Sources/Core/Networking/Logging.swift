@@ -46,7 +46,7 @@ public enum Redactor {
     public static let secretKeys: Set<String> = [
         "token", "acctoken", "logintoken", "ticket", "sign", "sid", "secret", "custid", "syscustid",
         "xidtoken", "authorization", "nonce", "pcurl", "appurl", "location", "phone", "mobile",
-        "idno", "studentid", "custunionid", "comaddress", "machineid", "mac", "password", "captcha",
+        "idno", "studentid", "custunionid", "comaddress", "machineid", "mac", "password", "captcha", "voucherno",
     ]
     public static let mask = "<redacted>"
 
