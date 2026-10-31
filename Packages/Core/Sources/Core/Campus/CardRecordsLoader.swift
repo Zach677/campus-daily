@@ -35,6 +35,9 @@ public struct CardRecordsState: Sendable, Equatable {
     public var moreFailed = false
     /// A read from today is running (first visit, pull): no older page is asked for meanwhile.
     public var reloading = false
+    /// Reads from today that came in: the list's end is renewed with each, so one already in
+    /// view asks for older pages for the new list.
+    public var reloads = 0
     public init() {}
 }
 
@@ -70,6 +73,7 @@ public struct CardRecordsState: Sendable, Equatable {
         var next = state
         next.reloading = false
         next.loadingMore = false
+        next.reloads += 1
         if load.history.records.isEmpty, load.failure != nil {
             next.history = nil; next.phase = .failed; next.moreFailed = false
         } else {

@@ -27,6 +27,7 @@ extension CardRecordsSource {
     var history: CardHistory? { state.history }
     var loadingMore: Bool { state.loadingMore }
     var moreFailed: Bool { state.moreFailed }
+    var reloads: Int { state.reloads }
 
     /// From today again (first visit, pull).
     func reload() async { await loader.reload() }

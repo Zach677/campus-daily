@@ -129,6 +129,34 @@ import XCTest
         XCTAssertFalse(loader.state.reloading)
     }
 
+    /// The list's end was already in view when a pull came in: the view cannot see it appear
+    /// again, so each pull that comes in is counted (the view renews the end with it), and the
+    /// older pages are read from the pulled list.
+    func testEachPullThatComesInIsCountedForTheListsEnd() async {
+        let first = Self.record(Self.today, "090000")
+        let school = School(today: [first])
+        let older = Self.record("20261010", "120000")
+        await school.set(older: [older])
+        let loader = makeLoader(school)
+        XCTAssertEqual(loader.state.reloads, 0)
+        await loader.reload()
+        XCTAssertEqual(loader.state.reloads, 1)
+
+        await school.hold("today")
+        let pull = Task { await loader.reload() }
+        await waitUntil(school, waitingOn: "today")
+        await loader.loadMore()
+        XCTAssertEqual(loader.state.reloads, 1, "a pull still running is not counted")
+        let olderAsked = await school.olderCalls()
+        XCTAssertEqual(olderAsked, 0)
+        await school.release("today")
+        await pull.value
+        XCTAssertEqual(loader.state.reloads, 2)
+
+        await loader.loadMore()
+        XCTAssertTrue(loader.state.history?.records.contains(older) ?? false)
+    }
+
     /// An older page asked for before a pull, back after it: dropped, the pulled list stays.
     func testAnOlderPageBackAfterAPullIsDropped() async {
         let first = Self.record(Self.today, "090000")

@@ -150,9 +150,11 @@ struct CardRecordsView: View {
                         .frame(maxWidth:.infinity).frame(minHeight:56)
                 }
             } else {
-                // The end of the list came into view: read further back.
+                // The end of the list came into view: read further back. A new one with each
+                // pull that comes in, as one already in view does not appear again.
                 Color.clear.frame(height:56)
                     .onAppear { Task { await model.loadMore() } }
+                    .id(model.reloads)
             }
         }
     }
