@@ -14,11 +14,9 @@ struct CampusPowerSetupView: View {
     @State private var stamp: Int?
     var body: some View {
         List {
-            AutomaticPowerSection()
+            AutomaticPowerSection(onMeterPage:true)
             Section {
-                LocationPathHeader(path:path.map(\.name))
-                Text("电表与热水水控是独立绑定，核对宿舍后再保存。")
-                    .font(.footnote).foregroundStyle(.secondary)
+                LocationPathHeader(path:path.map(\.name), placeholder:MeterPageText.pickerPrompt)
             }
             if busy { Text("正在读取电表信息…").foregroundStyle(.secondary) }
             if let issue { Text(issue).foregroundStyle(.orange).font(.footnote) }
@@ -45,7 +43,7 @@ struct CampusPowerSetupView: View {
             }
             if !path.isEmpty { Button("重新选择位置") { Task { await loadRoot() } }.disabled(busy) }
         }.scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
-            .navigationTitle("绑定电表").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(MeterPageText.title).navigationBarTitleDisplayMode(.inline)
             .searchable(text:$search,prompt:"搜索楼栋或宿舍")
             .task { await loadRoot() }
     }
@@ -55,7 +53,7 @@ struct CampusPowerSetupView: View {
         defer { busy = false }
         stamp = await campus.personStamp()
         do { options = try await campus.directory(parent:nil) }
-        catch { issue = (error as? ServiceError)?.userMessage ?? "位置列表读取失败" }
+        catch { issue = MeterPageText.issue(error, otherwise:"位置列表读取失败") }
     }
     private func choose(_ option: PowerNode) async {
         guard !busy, campus.configured else { return }
@@ -68,12 +66,14 @@ struct CampusPowerSetupView: View {
                 meters = try await campus.meterRows(nodeID:option.id)
                 if meters.isEmpty { issue = "这里没有电表，重新选一下位置。" }
             }
-        } catch { issue = (error as? ServiceError)?.userMessage ?? "电表没读到，再试一次。" }
+        } catch { issue = MeterPageText.issue(error, otherwise:"电表没读到，再试一次。") }
     }
 }
 
 /// Same same-name choice as onboarding, on the meter settings page.
 struct AutomaticPowerSection: View {
+    /// On the meter page: a slow school reads 「学校那边太慢了，等一下再找。」 (`MeterPageText`).
+    var onMeterPage = false
     @EnvironmentObject private var campus: CampusModel
     @State private var selection: String?
     var body: some View {
@@ -93,7 +93,7 @@ struct AutomaticPowerSection: View {
                     .accessibilityIdentifier("powerApartmentConfirm")
                 } else if campus.powerConfigured {Label("电表已保存",systemImage:"checkmark.circle").foregroundStyle(Theme.ink2)}
                 if let issue = campus.powerMatchIssue {
-                    Text(issue).font(.footnote).foregroundStyle(.secondary)
+                    Text(onMeterPage ? MeterPageText.issue(issue) : issue).font(.footnote).foregroundStyle(.secondary)
                     Button("再找一次电表") {campus.matchPowerAutomatically()}
                 }
             }

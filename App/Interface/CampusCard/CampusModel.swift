@@ -304,8 +304,8 @@ struct PowerChoice: Identifiable, Equatable {
                         await refresher.noteChange()
                         await refresh(force:true)
                     case .chooseAmong(let candidates): powerChoices = candidates.map { PowerChoice(candidate:$0, stamp:stamp) }
-                    case .manualPicker: powerMatchIssue = "没自动找到电表，去「绑定电表」里选一下。"
-                    case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「绑定电表」里选一下。"
+                    case .manualPicker: powerMatchIssue = "没自动找到电表，去「电表」里选一下。"
+                    case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「电表」里选一下。"
                     }
                 } else {
                     again = true
