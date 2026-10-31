@@ -231,6 +231,7 @@ struct PowerChoice: Identifiable, Equatable {
         matchingPower = true; powerMatchIssue = nil; powerChoices = []
         Task {
             defer { matchingPower = false }
+            let stamp = await session.personStamp()
             do {
                 switch try await session.resolveElectricity() {
                 case .matched:
@@ -241,7 +242,11 @@ struct PowerChoice: Identifiable, Equatable {
                 case .manualPicker: powerMatchIssue = "没自动找到电表，去「绑定电表」里选一下。"
                 case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「绑定电表」里选一下。"
                 }
-            } catch { powerMatchIssue = AppErrorText.text(error) }
+            } catch {
+                // Signed out or someone else signed in meanwhile: this match was theirs, say nothing.
+                guard await session.isSamePerson(since:stamp) else { return }
+                powerMatchIssue = AppErrorText.text(error)
+            }
         }
     }
 
@@ -279,4 +284,8 @@ struct PowerChoice: Identifiable, Equatable {
 
     func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession { try await session.rechargeSession(kind) }
     func showerHandoff() async throws -> ShowerHandoff { try await session.showerHandoff() }
+    /// Taken before `showerHandoff()`; `isSamePerson(since:)` says whether its identity still
+    /// belongs to whoever is signed in.
+    func personStamp() async -> Int { await session.personStamp() }
+    func isSamePerson(since stamp: Int) async -> Bool { await session.isSamePerson(since:stamp) }
 }

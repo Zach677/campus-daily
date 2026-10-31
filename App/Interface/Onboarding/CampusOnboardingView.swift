@@ -223,10 +223,15 @@ struct CampusOnboardingView: View {
     @Published private(set) var saved = false
     @Published var issue: String?
     private var directory: ShowerDirectory?
+    /// Whose school login `identity` came from: a binding is saved only while that person is
+    /// still the one signed in.
+    private weak var campus: CampusModel?
+    private var personStamp: Int?
+    static let personChangedText = "学校账号换了人，重新读取一下宿舍。"
 
     func reset() {
         identity = nil; options = [[],[],[],[]]; selected = []; machines = []; saved = false; issue = nil
-        autoMatched = false; directory = nil
+        autoMatched = false; directory = nil; campus = nil; personStamp = nil
     }
 
     enum AutoBind: Equatable {
@@ -259,8 +264,9 @@ struct CampusOnboardingView: View {
         do {
             if let profile = water.profile {
                 let client = LxtClient(http:AppEnvironment.showerHTTP, profile:profile)
+                let stamp = await campus.personStamp()
                 let user = try await client.userInfo(campus.showerHandoff())
-                identity = user; directory = client
+                identity = user; directory = client; self.campus = campus; personStamp = stamp
                 let onboarding = ShowerOnboarding(directory:client)
                 if let address = campus.address {
                     apply(try await onboarding.match(address, schoolId:user.schoolId), address:address)
@@ -316,6 +322,10 @@ struct CampusOnboardingView: View {
     func save(_ machine: ShowerMachine, water: ShowerModel) async {
         guard selected.count == 4, let identity, water.mayImport else { return }
         busy = true; defer { busy = false }
+        guard let campus, let personStamp, await campus.isSamePerson(since:personStamp) else {
+            reset(); issue = Self.personChangedText
+            return
+        }
         do {
             let binding = ShowerBinding(studentId:identity.studentId, schoolId:identity.schoolId, machineId:machine.machineId,
                                        roomId:selected[3].id, roomLabel:ShowerOnboarding.roomLabel(selected),

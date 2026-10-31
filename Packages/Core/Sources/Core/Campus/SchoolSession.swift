@@ -100,9 +100,13 @@ public actor SchoolSession {
     let createsLoginDeviceID: Bool
     /// Expiries already logged by this process, so a dead credential read again is logged once.
     private var loggedExpiries: Set<String> = []
-    /// Bumped by `signOut()`. Work that awaited the network checks it before writing the
+    /// Bumped by `signOut()`. A refresh that awaited the network checks it before writing the
     /// Keychain, so a sign-out in the middle is never undone by a late write.
     private var signOutGeneration = 0
+    /// Bumped by `signOut()` and by every sign-in that is not known to be the same person.
+    /// Sign-in, the dorm and meter, the hot-water hand-off and recharge check it before writing,
+    /// so the previous person's late answer never lands in the next person's account.
+    private var personGeneration = 0
     /// How long the card records may take after the numbers were handed over.
     let recordsTimeout: TimeInterval
     /// Upper bound on directory calls when locating the room node.
@@ -127,11 +131,11 @@ public actor SchoolSession {
     /// token from the web page. The password is kept only when `savePassword` is on.
     /// Throws `SchoolLoginFailure` for the login itself, `ServiceError` for the steps after it.
     public func signIn(account: String, password: String, savePassword: Bool) async throws -> SignInSummary {
-        let started = signOutGeneration
+        var started = personGeneration
         let before = signedInPerson()
         let token = try await passwordLoginOnce(account: account, password: password)
         try ensureSignedIn(since: started)
-        let summary = try await signIn(portalToken: token, account: account, before: before)
+        let summary = try await signIn(portalToken: token, account: account, before: before, started: &started)
         try ensureSignedIn(since: started)
         try vault.saveAccount(SchoolAccount(account: account, password: savePassword ? password : nil))
         return summary
@@ -148,7 +152,7 @@ public actor SchoolSession {
         guard let account = given ?? stored?.account, !account.isEmpty else {
             throw SchoolLoginFailure.wrongCredentials
         }
-        let started = signOutGeneration
+        let started = personGeneration
         let before = signedInPerson()
         let token = try await passwordLoginOnce(account: account, password: password)
         try ensureSignedIn(since: started)
@@ -216,19 +220,22 @@ public actor SchoolSession {
     /// Native path after the CAS WebView produced the portal token: dorm address, ticket,
     /// ecykt exchange, bound card. Saves everything on success.
     public func signIn(portalToken: PortalToken, userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {
-        try await signIn(portalToken: portalToken, account: nil, before: signedInPerson(), userAgent: userAgent)
+        var started = personGeneration
+        return try await signIn(portalToken: portalToken, account: nil, before: signedInPerson(), started: &started, userAgent: userAgent)
     }
 
     /// A different person clears the previous one's data first. When the dorm address can't be
     /// read, the old dorm and meter are kept only if the card shows it is the same person.
-    private func signIn(portalToken: PortalToken, account: String?, before: SignedInPerson?,
+    /// Anyone but the same person makes work still running for the previous one stale; `started`
+    /// then moves on to the new person.
+    private func signIn(portalToken: PortalToken, account: String?, before: SignedInPerson?, started: inout Int,
                         userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {
-        let started = signOutGeneration
         let residence = try? await portal.myInfo(portalToken)
         let session = try await exchangeSession(portalToken: portalToken, userAgent: userAgent, previous: nil)
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: account)
+        if match != .same { started = newPerson() }
         if match == .different { try clearPreviousPerson() }
         try vault.savePortalToken(stamped(portalToken))
         try vault.saveEcyktSession(updated)
@@ -256,11 +263,12 @@ public actor SchoolSession {
         let session = EcyktSession(token: token, syscustid: sys, custid: root["custInfo"]?["custid"]?.text,
                                    cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: userAgent,
                                    obtainedAt: now())
-        let started = signOutGeneration
+        var started = personGeneration
         let before = signedInPerson()
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: nil)
+        if match != .same { started = newPerson() }
         let switched = match == .different
         if switched { try clearPreviousPerson() }
         // The web page never tells us the account: a saved password stays only when the card
@@ -291,6 +299,7 @@ public actor SchoolSession {
     /// together at the end.
     public func signOut() throws {
         signOutGeneration += 1
+        personGeneration += 1
         loggedExpiries = []
         var failed: [String] = []
         let steps: [(String, () throws -> Void)] = [
@@ -616,7 +625,7 @@ public actor SchoolSession {
     /// be found, the campus node + `comAddress` is saved instead (wide read).
     public func resolveElectricity() async throws -> ElectricityResolution {
         guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
-        let started = signOutGeneration
+        let started = personGeneration
         var profile = try vault.profile() ?? SchoolProfile()
         if profile.residence?.address == nil, let token = try vault.portalToken() {
             profile.residence = try await portal.myInfo(token)
@@ -667,7 +676,7 @@ public actor SchoolSession {
     /// (1 row) when the walk found it, else against the campus node (wide read, picked by `comAddress`).
     public func chooseMatchedMeter(_ candidate: MeterCandidate) async throws {
         guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
-        let started = signOutGeneration
+        let started = personGeneration
         var profile = try vault.profile() ?? SchoolProfile()
         guard let address = profile.residence?.address else { throw ServiceError.malformed(.portal, "data.gydz") }
         let meter = candidate.meter
@@ -703,7 +712,7 @@ public actor SchoolSession {
     /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only).
     public func showerHandoff() async throws -> ShowerHandoff {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
-        let started = signOutGeneration
+        let started = personGeneration
         let (card, live) = try await liveCard(stored)
         try ensureSignedIn(since: started)
         try? vault.saveEcyktSession(live)
@@ -789,7 +798,7 @@ public actor SchoolSession {
     /// Liveness check, then one `loginBySysId`; the fresh token goes into `logintoken`.
     public func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
-        let started = signOutGeneration
+        let started = personGeneration
         let (card, live) = try await liveCard(stored)
         let fresh = try await ecykt.freshLogin(live)
         var updated = live
@@ -813,10 +822,23 @@ public actor SchoolSession {
 
     // MARK: Helpers
 
-    /// Work that awaited the network checks this before writing: a sign-out in the meantime
-    /// wins, and the late result is dropped as if the session had expired.
+    /// Work that awaited the network checks this before writing: a sign-out or another person
+    /// signing in meanwhile wins, and the late result is dropped as if the session had expired.
     func ensureSignedIn(since started: Int) throws {
-        guard started == signOutGeneration else { throw ServiceError.sessionExpired(.ecykt) }
+        guard started == personGeneration else { throw ServiceError.sessionExpired(.ecykt) }
+    }
+
+    /// Who is signed in now, for work outside this actor that must not outlive the person (a
+    /// hot-water binding made from `showerHandoff()`): compare it with `isSamePerson(since:)`.
+    public func personStamp() -> Int { personGeneration }
+
+    /// Nobody signed out and nobody else signed in since `stamp` was taken.
+    public func isSamePerson(since stamp: Int) -> Bool { stamp == personGeneration }
+
+    /// A sign-in not known to be the same person: what was started before it is stale.
+    private func newPerson() -> Int {
+        personGeneration += 1
+        return personGeneration
     }
 
     /// `boundCards` + pick the saved card (by stable `custunionid`) or the first one.
