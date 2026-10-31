@@ -272,6 +272,17 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   and renewed, the stored value compared and the new one written in one locked step, so the other
   process can't take the lease or store its own value in between; the step is synchronous (a
   Keychain write), with no `await` inside the lock;
+- every other write of the card session, portal token, saved account or login device id goes the
+  same way: the app's logins (the form, 保存密码 / 重新输入密码, the web sign-in, the second 保存密码
+  off-write) through `holdingLease`'s `owning`, and the refresh's saved-password login (its hold,
+  its pause, the portal token it brings back). A login compares the stored session, portal token
+  and account with the ones it started from and writes everything in that one step; lost lease or
+  changed credentials (the app was suspended past the lease and the widget stored newer ones),
+  nothing is written and the login reports `busy` (「正在更新，等一下再试。」, the typed password
+  stays). A refresh's password accepted after its lease was lost keeps the hold written before it
+  went out, so it is not sent again for a while. Only deletions skip the lease check: sign-out and
+  reset remove the lease first (below), and the first 保存密码 off-write removes the password at
+  once, its second write under the lease taking out one a refresh wrote back;
 - a cancelled read (the widget past its deadline) checks for cancellation before taking the lock
   and then writes nothing back, so a process about to be suspended never holds it;
 - sign-out and reset remove the lease first and wait for its file lock on a background thread,

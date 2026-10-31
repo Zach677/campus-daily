@@ -103,9 +103,10 @@ final class LeaseLosingPasswordLogin: SchoolPasswordLogin, @unchecked Sendable {
 }
 
 final class PasswordLoginLostLeaseTests: XCTestCase {
-    /// The school accepted the password while the lease ran out: the portal token is kept and the
-    /// hold lifted, and the next refresh exchanges that token instead of sending the password again.
-    func testAnAcceptedPasswordIsKeptWhenTheLeaseIsLostMeanwhile() async throws {
+    /// The school accepted the password while the lease ran out (the other process took it):
+    /// nothing is written without the lease, not even the portal token, and the hold written
+    /// before the password went out stays, so the next refresh does not send it again.
+    func testAnAcceptedPasswordIsNotWrittenWhenTheLeaseIsLostMeanwhile() async throws {
         var h = Harness()
         let login = LeaseLosingPasswordLogin(leaseFile: h.store.leaseFile, clock: h.clock)
         h.passwordLogin = login
@@ -117,24 +118,21 @@ final class PasswordLoginLostLeaseTests: XCTestCase {
                               lease: RefreshLease(file: h.store.leaseFile, owner: owner, now: h.clock.function),
                               leaseWait: 0, sleep: { _ in })
         }
+        let sentAt = h.clock.now
         let first = await refresher("app-1").refresh(inBackground: false)
+        XCTAssertEqual(first.outcome, .leaseLost)
         XCTAssertFalse(first.snapshotSaved, "lost the lease: no session written")
-        XCTAssertEqual(try h.vault.portalToken()?.value, SchoolPasswordSignInTests.freshToken.value, "kept")
+        XCTAssertNil(try h.vault.portalToken(), "no token written without the lease")
         let account = try XCTUnwrap(try h.vault.account())
-        XCTAssertNil(account.unansweredAt)
+        XCTAssertEqual(account.unansweredAt, sentAt, "the hold stays")
         XCTAssertFalse(account.paused)
         XCTAssertEqual(try h.vault.ecyktSession()?.token, T.session().token)
 
-        // Next refresh, after the other process's lease ran out: the token is exchanged.
+        // Next refresh, after the other process's lease ran out: still held, nothing is sent.
         h.clock.advance(RefreshLease.defaultDuration + 1)
-        h.server.serve(try T.eCardWithTicket())
-        h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
-        try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        try h.server.serve("ecykt/getUserBalance-ok")
-        let second = await refresher("app-1").refresh(inBackground: false)
-        XCTAssertEqual(second.outcome, .ok)
+        _ = await refresher("app-1").refresh(inBackground: false)
         XCTAssertEqual(login.calls, 1, "the password was sent once")
-        XCTAssertEqual(try h.vault.ecyktSession()?.token, "AFTER-PASSWORD")
+        XCTAssertEqual(try h.vault.ecyktSession()?.token, T.session().token)
     }
 }
 

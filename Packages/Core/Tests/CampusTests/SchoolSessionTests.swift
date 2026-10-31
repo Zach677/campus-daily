@@ -477,7 +477,7 @@ final class SchoolSignInTests: XCTestCase {
         h.server.serve(try T.eCardWithTicket())
         h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "REDACTED_TOKEN_2"))
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        let summary = try await h.session().signIn(portalToken: PortalToken("PORTAL"))
+        let summary = try await h.session().signIn(portalToken: PortalToken("PORTAL"), owning: .unchecked)
         XCTAssertEqual(summary.cardholder, "测试员")
         XCTAssertEqual(summary.residence?.address?.meterName, "99栋991")
         XCTAssertEqual(try h.vault.portalToken(), stamped(PortalToken("PORTAL"), h))
@@ -489,12 +489,12 @@ final class SchoolSignInTests: XCTestCase {
         let h = Harness()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
-        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil)
+        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertEqual(summary.cardholder, "测试员")
         let s = try XCTUnwrap(try h.vault.ecyktSession())
         XCTAssertEqual(s.token, "REDACTED_TOKEN_2")
         XCTAssertEqual(s.syscustid, T.syscustid)
-        await T.expectError(.malformed(.ecykt, "elecampus_state")) { _ = try await h.session().adoptWebState(Data("{}".utf8), portalToken: nil) }
+        await T.expectError(.malformed(.ecykt, "elecampus_state")) { _ = try await h.session().adoptWebState(Data("{}".utf8), portalToken: nil, owning: .unchecked) }
     }
 
     func testSignInWithBadTicketExchangeSavesNothing() async throws {
@@ -502,7 +502,7 @@ final class SchoolSignInTests: XCTestCase {
         try h.server.serve("portal/getMyInfo-ok")
         h.server.serve(try T.eCardWithTicket())
         h.server.respond("POST", T.exchangeURL, body: Data())
-        await T.expectError(.badRequest(.ecykt)) { _ = try await h.session().signIn(portalToken: PortalToken("PORTAL")) }
+        await T.expectError(.badRequest(.ecykt)) { _ = try await h.session().signIn(portalToken: PortalToken("PORTAL"), owning: .unchecked) }
         XCTAssertNil(try h.vault.ecyktSession())
         XCTAssertNil(try h.vault.portalToken())
     }

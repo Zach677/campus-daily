@@ -143,16 +143,17 @@ public actor SchoolSession {
     /// Sign-in from the app's own form: one password login, then the same path as a portal
     /// token from the web page. The password is kept only when `savePassword` is on.
     /// Throws `SchoolLoginFailure` for the login itself, `ServiceError` for the steps after it.
-    public func signIn(account: String, password: String, savePassword: Bool) async throws -> SignInSummary {
+    /// Everything is written in one locked step under `owning` (see `commitLogin`): the lease
+    /// lost meanwhile, nothing is written and `SchoolLoginFailure.busy` is thrown.
+    public func signIn(account: String, password: String, savePassword: Bool, owning: LeaseOwnership) async throws -> SignInSummary {
         var started = personGeneration
+        let start = try Self.storedCredentials(vault)
         let before = signedInPerson()
-        let token = try await passwordLoginOnce(account: account, password: password)
+        let token = try await passwordLoginOnce(account: account, password: password, owning: owning)
         try ensureSignedIn(since: started)
-        let summary = try await signIn(portalToken: token, account: account, before: before, started: &started)
-        try ensureSignedIn(since: started)
-        passwordGeneration += 1
-        try vault.saveAccount(SchoolAccount(account: account, password: savePassword ? password : nil))
-        return summary
+        return try await signIn(portalToken: token, account: account,
+                                saving: SchoolAccount(account: account, password: savePassword ? password : nil),
+                                before: before, start: start, started: &started, owning: owning)
     }
 
     /// Settings › 学校账号 › 保存密码 / 重新输入密码: checks the password with one login before
@@ -160,17 +161,19 @@ public actor SchoolSession {
     /// (`differentAccount`) without a login when the account is known, and after a web sign-in
     /// (account unknown) the login's card must be the signed-in card. A saved password clears
     /// any pause.
-    public func savePassword(_ password: String, account given: String? = nil) async throws {
-        let stored = (try? vault.account()) ?? nil
+    public func savePassword(_ password: String, account given: String? = nil, owning: LeaseOwnership) async throws {
+        let start = try Self.storedCredentials(vault)
+        let stored = start.account
         if let known = stored?.account, let given, given != known { throw SchoolLoginFailure.differentAccount }
         guard let account = given ?? stored?.account, !account.isEmpty else {
             throw SchoolLoginFailure.wrongCredentials
         }
         let started = personGeneration
         let before = signedInPerson()
-        let token = try await passwordLoginOnce(account: account, password: password)
+        let token = try await passwordLoginOnce(account: account, password: password, owning: owning)
         try ensureSignedIn(since: started)
-        if stored?.account == nil, let current = (try? vault.ecyktSession()) ?? nil {
+        var exchanged: EcyktSession?
+        if stored?.account == nil, let current = start.session {
             // Web sign-in: only the card says whose login this was.
             let session = try await exchangeSession(portalToken: token, userAgent: current.userAgent, previous: current)
             let (card, updated) = try await liveCard(session)
@@ -178,11 +181,15 @@ public actor SchoolSession {
             guard SignedInPerson.match(before, cardUnionID: card.unionID, account: nil) == .same else {
                 throw SchoolLoginFailure.differentAccount
             }
-            try vault.saveEcyktSession(updated)
+            exchanged = updated
         }
-        try vault.savePortalToken(stamped(token))
+        let vault = vault, portalToken = stamped(token), saving = SchoolAccount(account: account, password: password)
+        try Self.commitLogin(owning, vault, from: start) {
+            if let exchanged { try vault.saveEcyktSession(exchanged) }
+            try vault.savePortalToken(portalToken)
+            try vault.saveAccount(saving)
+        }
         passwordGeneration += 1
-        try vault.saveAccount(SchoolAccount(account: account, password: password))
     }
 
     /// What `forgetPassword()` removed, for `forgetPasswordAgain(forgotten:)`.
@@ -206,13 +213,19 @@ public actor SchoolSession {
     /// write may have written it back with the password. Only that password goes (the rest of
     /// that write stays). Left alone: anything saved here since (switched back on, even with the
     /// same password; signed in or out), another account, another password.
-    public func forgetPasswordAgain(forgotten: ForgottenPassword) throws {
+    /// The compare and the write are one locked step under `owning`; lost, nothing is written
+    /// and `SchoolLoginFailure.busy` is thrown.
+    public func forgetPasswordAgain(forgotten: ForgottenPassword, owning: LeaseOwnership) throws {
         guard forgotten.generation == passwordGeneration else { return }
-        let before = forgotten.account
-        guard var stored = try vault.account(), stored.account == before.account,
-              stored.password != nil, stored.password == before.password else { return }
-        stored.password = nil
-        try vault.saveAccount(stored)
+        let before = forgotten.account, vault = vault
+        let ran = try owning.write { () -> Bool in
+            guard var stored = try vault.account(), stored.account == before.account,
+                  stored.password != nil, stored.password == before.password else { return true }
+            stored.password = nil
+            try vault.saveAccount(stored)
+            return true
+        }
+        guard ran == true else { throw SchoolLoginFailure.busy }
     }
 
     /// The signed-in account (nil after a web sign-in that did not show the same person: the
@@ -241,59 +254,106 @@ public actor SchoolSession {
 
     /// A different person signed in: drop the previous one's dorm, meter, saved account and
     /// tokens before the new ones are written. The login device id stays (same phone).
-    private func clearPreviousPerson() throws {
+    private static func clearPreviousPerson(_ vault: SchoolVault) throws {
         try vault.saveAccount(nil)
         try vault.savePortalToken(nil)
         try vault.saveEcyktSession(nil)
         try vault.saveProfile(nil)
     }
 
-    private func passwordLoginOnce(account: String, password: String) async throws -> PortalToken {
+    /// One login from the form or Settings. The lease lost before a new device id could be
+    /// stored: nothing is sent (`busy`).
+    private func passwordLoginOnce(account: String, password: String, owning: LeaseOwnership) async throws -> PortalToken {
         guard let passwordLogin else { throw SchoolLoginFailure.cannotLoginDirectly }
-        return try await passwordLogin.login(account: account, password: password, visitorID: loginDeviceID())
+        guard let visitorID = loginDeviceID(owning: owning) else { throw SchoolLoginFailure.busy }
+        return try await passwordLogin.login(account: account, password: password, visitorID: visitorID)
     }
 
     /// A random 32-hex id, kept for this install so the school sees the same browser each time.
-    private func loginDeviceID() -> String {
+    /// A new one is stored in one locked step under `owning`, only while none is stored (one
+    /// the other process stored meanwhile is used instead). nil = the lease is lost.
+    private func loginDeviceID(owning: LeaseOwnership) -> String? {
         if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return id }
-        let id = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
-        try? vault.saveLoginDeviceID(id)
-        return id
+        let fresh = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+        let vault = vault
+        return (try? owning.write { () -> String in
+            if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return id }
+            try? vault.saveLoginDeviceID(fresh)
+            return fresh
+        }) ?? nil
+    }
+
+    /// What a login compares again just before its writes: the stored card session, portal
+    /// token and account.
+    struct StoredCredentials: Equatable {
+        var session: EcyktSession?
+        var portalToken: PortalToken?
+        var account: SchoolAccount?
+    }
+
+    static func storedCredentials(_ vault: SchoolVault) throws -> StoredCredentials {
+        StoredCredentials(session: try vault.ecyktSession(), portalToken: try vault.portalToken(), account: try vault.account())
+    }
+
+    /// A login's writes (sign-in from the form or the web page, 保存密码) in one locked step:
+    /// the lease is still ours (`owning`) and the stored credentials are still the ones the login
+    /// started from, then `writes` runs. Otherwise the other process took over meanwhile (this
+    /// process was suspended past the lease, say) and may have stored newer credentials: nothing
+    /// is written and `SchoolLoginFailure.busy` is thrown, so the user tries again.
+    static func commitLogin<T>(_ owning: LeaseOwnership, _ vault: SchoolVault, from start: StoredCredentials,
+                               _ writes: () throws -> T) throws -> T {
+        let result = try owning.write { () throws -> T? in
+            guard (try? storedCredentials(vault)) == start else { return nil }
+            return try writes()
+        }
+        guard let done = result, let value = done else { throw SchoolLoginFailure.busy }
+        return value
     }
 
     // MARK: Sign-in
 
     /// Native path after the CAS WebView produced the portal token: dorm address, ticket,
     /// ecykt exchange, bound card. Saves everything on success.
-    public func signIn(portalToken: PortalToken, userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {
+    public func signIn(portalToken: PortalToken, userAgent: String = EcyktSession.defaultUserAgent,
+                       owning: LeaseOwnership) async throws -> SignInSummary {
         var started = personGeneration
-        return try await signIn(portalToken: portalToken, account: nil, before: signedInPerson(), started: &started, userAgent: userAgent)
+        let start = try Self.storedCredentials(vault)
+        return try await signIn(portalToken: portalToken, account: nil, saving: nil, before: signedInPerson(), start: start,
+                                started: &started, owning: owning, userAgent: userAgent)
     }
 
     /// A different person clears the previous one's data first. When the dorm address can't be
     /// read, the old dorm and meter are kept only if the card shows it is the same person.
     /// Anyone but the same person makes work still running for the previous one stale; `started`
-    /// then moves on to the new person.
-    private func signIn(portalToken: PortalToken, account: String?, before: SignedInPerson?, started: inout Int,
+    /// then moves on to the new person. `saving`: the account the form signed in with. Every
+    /// write is one locked step (`commitLogin`) over the credentials read at `start`.
+    private func signIn(portalToken: PortalToken, account: String?, saving: SchoolAccount?, before: SignedInPerson?,
+                        start: StoredCredentials, started: inout Int, owning: LeaseOwnership,
                         userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {
         let residence = try? await portal.myInfo(portalToken)
         let session = try await exchangeSession(portalToken: portalToken, userAgent: userAgent, previous: nil)
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: account)
-        let old = (try? vault.profile()) ?? nil
-        if match != .same { started = newPerson() }
-        if match == .different { try clearPreviousPerson() }
-        try vault.savePortalToken(stamped(portalToken))
-        try vault.saveEcyktSession(updated)
-        var profile = (try? vault.profile()) ?? SchoolProfile()
-        if let residence {
-            if profile.residence?.address != residence.address { profile.meter = nil }
-            profile.residence = residence
-        } else if match != .same {
-            profile = SchoolProfile()
+        let vault = vault, token = stamped(portalToken)
+        let (old, profile) = try Self.commitLogin(owning, vault, from: start) { () -> (SchoolProfile?, SchoolProfile) in
+            let old = (try? vault.profile()) ?? nil
+            if match == .different { try Self.clearPreviousPerson(vault) }
+            try vault.savePortalToken(token)
+            try vault.saveEcyktSession(updated)
+            var profile = (try? vault.profile()) ?? SchoolProfile()
+            if let residence {
+                if profile.residence?.address != residence.address { profile.meter = nil }
+                profile.residence = residence
+            } else if match != .same {
+                profile = SchoolProfile()
+            }
+            try vault.saveProfile(profile)
+            if let saving { try vault.saveAccount(saving) }
+            return (old, profile)
         }
-        try vault.saveProfile(profile)
+        if match != .same { started = newPerson() }
+        if saving != nil { passwordGeneration += 1 }
         return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: match == .different,
                              previousPersonUnconfirmed: before != nil && match == .unknown,
                              dormAndMeterCleared: Self.cleared(old, now: profile))
@@ -301,8 +361,10 @@ public actor SchoolSession {
 
     /// Fallback while the ticket exchange is uncaptured: adopt the
     /// `localStorage.elecampus_state` the official page wrote, then validate it.
+    /// The card session, account and token are written in one locked step under `owning`
+    /// (`commitLogin`): the lease lost meanwhile, nothing is written and `busy` is thrown.
     public func adoptWebState(_ elecampusState: Data, portalToken: PortalToken?,
-                              userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {
+                              userAgent: String = EcyktSession.defaultUserAgent, owning: LeaseOwnership) async throws -> SignInSummary {
         guard let root = try? JSONValue.parse(elecampusState),
               let token = (root["logintoken"] ?? root["loginInfo"]?["token"])?.text, !token.isEmpty,
               let sys = root["loginInfo"]?["syscustid"]?.text, !sys.isEmpty else {
@@ -313,32 +375,41 @@ public actor SchoolSession {
                                    cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: userAgent,
                                    obtainedAt: now())
         var started = personGeneration
+        let start = try Self.storedCredentials(vault)
         let before = signedInPerson()
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: nil)
-        let old = (try? vault.profile()) ?? nil
-        if match != .same { started = newPerson() }
         let switched = match == .different
-        if switched { try clearPreviousPerson() }
-        // The web page never tells us the account: a saved password stays only when the card
-        // shows it is the same person (the widget keeps signing in with it).
-        if match != .same { try vault.saveAccount(nil) }
-        if let portalToken { try vault.savePortalToken(stamped(portalToken)) }
-        try vault.saveEcyktSession(updated)
+        // As for the form sign-in: without the new dorm, a dorm and meter that may be someone
+        // else's are not kept. No portal token: no dorm is read, so that happens right here.
+        let dropDorm = match == .unknown && before != nil
+        let vault = vault, webToken = portalToken.map(stamped)
+        let old = try Self.commitLogin(owning, vault, from: start) { () -> SchoolProfile? in
+            let old = (try? vault.profile()) ?? nil
+            if switched { try Self.clearPreviousPerson(vault) }
+            // The web page never tells us the account: a saved password stays only when the card
+            // shows it is the same person (the widget keeps signing in with it).
+            if match != .same { try vault.saveAccount(nil) }
+            if let webToken { try vault.savePortalToken(webToken) }
+            try vault.saveEcyktSession(updated)
+            if webToken == nil, dropDorm { try vault.saveProfile(SchoolProfile()) }
+            return old
+        }
+        if match != .same { started = newPerson() }
         var residence: PortalResidence?
         if let portalToken, let r = try? await portal.myInfo(portalToken) {
             try ensureSignedIn(since: started)
             residence = r
-            var profile = (try? vault.profile()) ?? SchoolProfile()
-            if profile.residence?.address != r.address { profile.meter = nil }
-            profile.residence = r
-            try vault.saveProfile(profile)
-        } else if match == .unknown, before != nil {
-            // As for the form sign-in: without the new dorm, a dorm and meter that may be
-            // someone else's are not kept.
+            _ = try owning.write {
+                var profile = (try? vault.profile()) ?? SchoolProfile()
+                if profile.residence?.address != r.address { profile.meter = nil }
+                profile.residence = r
+                try vault.saveProfile(profile)
+            }
+        } else if portalToken != nil, dropDorm {
             try ensureSignedIn(since: started)
-            try vault.saveProfile(SchoolProfile())
+            _ = try owning.write { try vault.saveProfile(SchoolProfile()) }
         }
         return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: switched,
                              previousPersonUnconfirmed: before != nil && match == .unknown,
@@ -417,7 +488,7 @@ public actor SchoolSession {
                 base = current
                 live = found
             } else {
-                switch await renew(stored, firstError: e, since: started, mayMint: mayMint) {
+                switch await renew(stored, firstError: e, since: started, mayMint: mayMint, owning: owning) {
                 case .renewed(let found): reexchanged = true; live = found
                 case .stopped(let reading): return reading
                 }
@@ -475,7 +546,7 @@ public actor SchoolSession {
 
     /// The card session is dead: the portal token, else the saved password, once each.
     private func renew(_ stored: EcyktSession, firstError e: ServiceError, since started: Int,
-                       mayMint: @Sendable () async -> Bool) async -> Renewal {
+                       mayMint: @Sendable () async -> Bool, owning: LeaseOwnership) async -> Renewal {
         var lastError = e
         var triedPortal = false
         let seenPortalToken = (try? vault.portalToken()) ?? nil
@@ -495,7 +566,7 @@ public actor SchoolSession {
             }
         }
         switch await signInWithSavedPassword(previous: stored, seenPortalToken: seenPortalToken?.value,
-                                             since: started, mayMint: mayMint) {
+                                             since: started, mayMint: mayMint, owning: owning) {
         case .signedIn(let found): return .renewed(found)
         case .offline: return .stopped(SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: triedPortal))
         case .retryLater: return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: triedPortal))
@@ -587,8 +658,12 @@ public actor SchoolSession {
     /// `previous` and `seenPortalToken` are the credentials this refresh found dead. If the
     /// other process stored new ones meanwhile (its own password login was accepted), nothing
     /// is sent: the next refresh uses them.
+    /// Every write here (the hold, the pause, the portal token) is one locked step under
+    /// `owning` with the compare it depends on: with the lease lost, nothing is written. A
+    /// password accepted after that keeps its hold (its answer was not kept), so it is not sent
+    /// again right away; the other process, which holds the lease now, carries on.
     private func signInWithSavedPassword(previous: EcyktSession, seenPortalToken: String?, since started: Int,
-                                         mayMint: @Sendable () async -> Bool) async -> PasswordStep {
+                                         mayMint: @Sendable () async -> Bool, owning: LeaseOwnership) async -> PasswordStep {
         guard let saved = (try? vault.account()) ?? nil, let password = saved.automaticPassword(at: now()) else { return .unavailable }
         // Not moved to the shared group yet: like no network, nothing is paused or held.
         if !createsLoginDeviceID, ((try? vault.loginDeviceID()) ?? nil)?.isEmpty ?? true {
@@ -601,50 +676,73 @@ public actor SchoolSession {
             diagnostic("school.passwordLogin skipped reason=credentialsChanged")
             return .retryLater
         }
+        guard let passwordLogin else { return .unavailable }
+        guard let visitorID = loginDeviceID(owning: owning) else { return .lostLease }
         let sentAt = now()
         // Not written: signed out only when the account is really gone. Changed meanwhile (保存密码,
         // 重新输入密码) or a write that failed leave the user signed in, with nothing to report;
         // nothing is sent this time and the next refresh tries again.
-        guard updateSavedAccount(saved, since: started, { $0.unansweredAt = sentAt }) else {
-            return accountGone ? .signedOut : .retryLater
+        switch updateSavedAccount(saved, since: started, owning: owning, { $0.unansweredAt = sentAt }) {
+        case .written: break
+        case .lostLease: return .lostLease
+        case .changed: return accountGone ? .signedOut : .retryLater
         }
         let token: PortalToken
         do {
-            token = try await passwordLoginOnce(account: saved.account, password: password)
+            token = try await passwordLogin.login(account: saved.account, password: password, visitorID: visitorID)
         } catch SchoolLoginFailure.noAnswer {
             // The school may have counted this one: the hold written above stays.
             return .offline
         } catch SchoolLoginFailure.offline {
-            liftHold(saved, sentAt: sentAt, since: started)
+            liftHold(saved, sentAt: sentAt, since: started, owning: owning)
             return .offline
         } catch is CancellationError {
             // Cancelled before the password was sent (after it, the login reports noAnswer).
-            liftHold(saved, sentAt: sentAt, since: started)
+            liftHold(saved, sentAt: sentAt, since: started, owning: owning)
             return .unavailable
         } catch {
             // Only the password that was tried: one saved meanwhile (保存密码 / 重新输入密码) stays usable.
-            _ = updateSavedAccount(saved, since: started) { $0.paused = true; $0.unansweredAt = nil }
+            _ = updateSavedAccount(saved, since: started, owning: owning) { $0.paused = true; $0.unansweredAt = nil }
             return .unavailable
         }
-        // The school accepted the password: the portal token is kept at once, lease or not, so
-        // neither this process nor the other one sends the password again (a read given up or a
-        // lease lost after this point leaves a token to exchange). Only a sign-out in between
-        // (this process, or the account gone from the Keychain) drops it. The hold is lifted
-        // only once the token is stored.
+        // The school accepted the password: the portal token is kept at once, so neither this
+        // process nor the other one sends the password again (a read given up after this point
+        // leaves a token to exchange). It is written in one locked step while the lease is still
+        // ours and the stored account and portal token are still the ones this login started
+        // from: a token the other process stored after taking the lease is never overwritten.
+        // A sign-out in between (this process, or the account gone from the Keychain) drops it.
+        // The hold is lifted only once the token is stored.
         guard started == signOutGeneration else { return .unavailable }
-        guard let still = (try? vault.account()) ?? nil else { return accountGone ? .signedOut : .retryLater }
-        guard still.account == saved.account else { return .retryLater }
-        guard (try? vault.savePortalToken(stamped(token))) != nil else { return .retryLater }
-        // A sign-out in the other process can land between the read above and the write: read
-        // the account once more, and take the token back out if it has gone. A new sign-in there
-        // writes its token before its account, so a token that is no longer this one is theirs
-        // and stays.
-        if accountGone {
-            guard ((try? vault.portalToken()) ?? nil)?.value == token.value else { return .retryLater }
-            try? vault.savePortalToken(nil)
-            return .signedOut
+        enum TokenSave { case written, gone, changed }
+        let vault = vault, fresh = stamped(token)
+        let saveStep = (try? owning.write { () -> TokenSave in
+            let still: SchoolAccount?
+            do { still = try vault.account() } catch { return .changed }
+            guard let still else { return .gone }
+            let portal: PortalToken?
+            do { portal = try vault.portalToken() } catch { return .changed }
+            guard still.account == saved.account, portal?.value == seenPortalToken else { return .changed }
+            return (try? vault.savePortalToken(fresh)) != nil ? .written : .changed
+        }) ?? nil
+        switch saveStep {
+        // Lost to a sign-out (it removes the lease first, then the items): reported as one.
+        case nil: return accountGone ? .signedOut : .lostLease
+        case .gone?: return .signedOut
+        case .changed?: return .retryLater
+        case .written?: break
         }
-        liftHold(saved, sentAt: sentAt, since: started)
+        // The account gone right after all the same (a sign-out that deleted the items without
+        // removing the lease first: an older build, or a failed removal): the token is taken
+        // back out, in one more locked step. A new sign-in there writes its token before its
+        // account, so a token that is no longer this one is theirs and stays.
+        if accountGone {
+            let removed = (try? owning.write { () -> Bool in
+                guard ((try? vault.portalToken()) ?? nil)?.value == token.value else { return false }
+                return (try? vault.savePortalToken(nil)) != nil
+            }) ?? nil
+            return removed == true ? .signedOut : .retryLater
+        }
+        liftHold(saved, sentAt: sentAt, since: started, owning: owning)
         do {
             guard await mayMint() else { return .lostLease }
             let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)
@@ -659,18 +757,26 @@ public actor SchoolSession {
         } catch {
             // The password worked but the card login after it did not: paused as before, so the
             // next refresh does not log in again (the saved portal token is still tried first).
-            _ = updateSavedAccount(saved, since: started) { $0.paused = true }
+            _ = updateSavedAccount(saved, since: started, owning: owning) { $0.paused = true }
             return .unavailable
         }
     }
 
+    private enum AccountUpdate { case written, changed, lostLease }
+
     /// Changes the saved account only while it is still the one this login started from (same
-    /// account and password, not signed out). False = it has gone or changed.
-    private func updateSavedAccount(_ saved: SchoolAccount, since started: Int, _ change: (inout SchoolAccount) -> Void) -> Bool {
-        guard started == signOutGeneration, var current = (try? vault.account()) ?? nil,
-              current.account == saved.account, current.password == saved.password else { return false }
-        change(&current)
-        return (try? vault.saveAccount(current)) != nil
+    /// account and password, not signed out), in one locked step with the lease check.
+    private func updateSavedAccount(_ saved: SchoolAccount, since started: Int, owning: LeaseOwnership,
+                                    _ change: (inout SchoolAccount) -> Void) -> AccountUpdate {
+        guard started == signOutGeneration else { return .changed }
+        let vault = vault
+        let step = (try? owning.write { () -> AccountUpdate in
+            guard var current = (try? vault.account()) ?? nil,
+                  current.account == saved.account, current.password == saved.password else { return .changed }
+            change(&current)
+            return (try? vault.saveAccount(current)) != nil ? .written : .changed
+        }) ?? nil
+        return step ?? .lostLease
     }
 
     /// The saved account was read and is not there (a read that fails says nothing).
@@ -679,8 +785,8 @@ public actor SchoolSession {
     }
 
     /// An answer came back (or the password never left): the hold written for this login goes.
-    private func liftHold(_ saved: SchoolAccount, sentAt: Date, since started: Int) {
-        _ = updateSavedAccount(saved, since: started) { if $0.unansweredAt == sentAt { $0.unansweredAt = nil } }
+    private func liftHold(_ saved: SchoolAccount, sentAt: Date, since started: Int, owning: LeaseOwnership) {
+        _ = updateSavedAccount(saved, since: started, owning: owning) { if $0.unansweredAt == sentAt { $0.unansweredAt = nil } }
     }
 
     // MARK: Electricity

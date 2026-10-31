@@ -18,7 +18,9 @@ public enum SchoolLoginFailure: Error, Sendable, Equatable {
     /// nobody was switched (signing out comes first).
     case differentAccount
     /// The other process (the widget) is in the middle of a school refresh, which may log in
-    /// itself: nothing was sent. Try again in a moment.
+    /// itself: nothing was sent. Or it took the lease over while this login was out (the app was
+    /// suspended past it) and may have stored newer credentials: what came back was not written.
+    /// Try again in a moment.
     case busy
 
     /// The password the user typed stays in the field: nothing said it was wrong (it was not

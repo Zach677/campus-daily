@@ -217,7 +217,7 @@ final class CredentialLifetimeLogTests: XCTestCase {
         h.server.serve(try T.eCardWithTicket())
         h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "NEW"))
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        _ = try await h.session().signIn(portalToken: PortalToken("PORTAL"))
+        _ = try await h.session().signIn(portalToken: PortalToken("PORTAL"), owning: .unchecked)
         XCTAssertEqual(try h.vault.portalToken()?.obtainedAt, h.clock.now)
         XCTAssertEqual(try h.vault.ecyktSession()?.obtainedAt, h.clock.now)
     }
@@ -312,7 +312,7 @@ final class LoginUnderLeaseTests: XCTestCase {
         let app = refresher(h, owner: "app-1", wait: 3)
         let ran = Lines()
         do {
-            _ = try await app.holdingLease { ran.append("login") }
+            _ = try await app.holdingLease { _ in ran.append("login") }
             XCTFail("the lease is held")
         } catch {
             XCTAssertEqual(error as? SchoolLoginFailure, .busy)
@@ -325,7 +325,7 @@ final class LoginUnderLeaseTests: XCTestCase {
         let h = Harness()
         let app = refresher(h, owner: "app-1", wait: 3)
         let widget = RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function)
-        let value = try await app.holdingLease { () -> Int in
+        let value = try await app.holdingLease { _ -> Int in
             XCTAssertFalse(widget.acquire(), "the widget can't read during the login")
             return 7
         }
@@ -338,7 +338,7 @@ final class LoginUnderLeaseTests: XCTestCase {
         let h = Harness()
         let app = refresher(h, owner: "app-1", wait: 3)
         do {
-            _ = try await app.holdingLease { () -> Int in throw SchoolLoginFailure.wrongCredentials }
+            _ = try await app.holdingLease { _ -> Int in throw SchoolLoginFailure.wrongCredentials }
             XCTFail("rethrown")
         } catch {
             XCTAssertEqual(error as? SchoolLoginFailure, .wrongCredentials)
@@ -356,7 +356,7 @@ final class LoginUnderLeaseTests: XCTestCase {
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"]).encoded()
         let session = h.session()
         do {
-            _ = try await app.holdingLease { try await session.adoptWebState(state, portalToken: nil) }
+            _ = try await app.holdingLease { owning in try await session.adoptWebState(state, portalToken: nil, owning: owning) }
             XCTFail("the lease is held")
         } catch {
             XCTAssertEqual(error as? SchoolLoginFailure, .busy)
@@ -381,7 +381,7 @@ final class LoginUnderLeaseTests: XCTestCase {
         let app = refresher(h, owner: "app-1", wait: 3)
         XCTAssertTrue(RefreshLease(file: h.store.leaseFile, owner: "app-1", now: h.clock.function).acquire())
         do {
-            _ = try await app.holdingLease { 1 }
+            _ = try await app.holdingLease { _ in 1 }
             XCTFail("the read holds the lease")
         } catch {
             XCTAssertEqual(error as? SchoolLoginFailure, .busy)

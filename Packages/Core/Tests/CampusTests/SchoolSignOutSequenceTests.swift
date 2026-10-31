@@ -31,7 +31,7 @@ final class SchoolSignOutSequenceTests: XCTestCase {
             asked.fulfill()
             await signOuts.finished()
             XCTAssertNil(try vault.ecyktSession(), "the sign-out finished before the sign-in began")
-            return try await session.signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false)
+            return try await session.signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false, owning: .unchecked)
         }
         await fulfillment(of: [asked], timeout: 30)
         release.signal()

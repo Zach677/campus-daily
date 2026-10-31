@@ -17,6 +17,7 @@
 - Offer same-named electricity meters (one building name in two apartments) with their full location instead of identical names, and bind the chosen one at room level.
 - Do not count refunds, reversals and grants as money spent yesterday.
 - Do not send a password login when the other process (app or widget) stored new school credentials meanwhile.
+- Do not write a sign-in, a saved password or a password login's token over newer school credentials the widget stored while the app was suspended; the sign-in says 「正在更新，等一下再试。」 instead.
 - Count 最近's today and yesterday in the school's time zone, as 昨天花了 does.
 - Bind the campus instead of a room when more same-named rooms exist than are read, or when one meter is found in two of them.
 - Keep a running shower's Live Activity and reminder after a reset that stopped behind the school sign-out.

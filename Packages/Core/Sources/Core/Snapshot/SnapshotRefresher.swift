@@ -184,19 +184,16 @@ public actor SnapshotRefresher {
         if current?.id == id { current = nil }
     }
 
-    /// A login from the app's form or Settings (password login, saving a password) under the
-    /// lease, so it can't run beside the other process's automatic login. Waits up to
-    /// `leaseWait` for a read in either process; still held then, nothing is sent and
-    /// `SchoolLoginFailure.busy` is thrown. The lease is kept alive while `body` runs and given
-    /// back after it. Without a lease (tests, previews) `body` just runs.
-    public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable () async throws -> T) async throws -> T {
-        try await holdingLease { _ in try await body() }
-    }
-
-    /// The same, for a body that writes a credential back after waiting on the network:
-    /// `owning` runs the write in one locked step with the check that the lease is still ours. The heartbeat stops
-    /// quietly when a renewal fails (the app was suspended past the lease, and the other
-    /// process may have taken it), while the body keeps running; false = write nothing.
+    /// A login from the app's form or Settings (password login, saving a password, the web
+    /// sign-in), recharge and the hot-water hand-off under the lease, so none of them runs beside
+    /// the other process's automatic login. Waits up to `leaseWait` for a read in either
+    /// process; still held then, nothing is sent and `SchoolLoginFailure.busy` is thrown. The
+    /// lease is kept alive while `body` runs and given back after it. Every credential `body`
+    /// writes goes through `owning`: one locked step with the check that the lease is still
+    /// ours, so there is no variant without it. The heartbeat stops quietly when a renewal fails
+    /// (the app was suspended past the lease, and the other process may have taken it), while
+    /// the body keeps running; its writes then find the lease lost and write nothing. Without a
+    /// lease (tests, previews) `body` just runs with `.unchecked`.
     public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable (_ owning: LeaseOwnership) async throws -> T) async throws -> T {
         guard let shared = lease else { return try await body(.unchecked) }
         // Its own owner: the lease this process's refresh holds is not "ours" to reuse here.

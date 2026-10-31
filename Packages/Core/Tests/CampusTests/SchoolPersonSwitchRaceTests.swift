@@ -66,7 +66,7 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
     /// The next person signs in on the official web page (their card answers the liveness check).
     func signInSomeoneElse(_ session: SchoolSession) async throws {
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
-        let summary = try await session.adoptWebState(try state.encoded(), portalToken: nil)
+        let summary = try await session.adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertTrue(summary.switchedAccount)
     }
 
@@ -110,7 +110,7 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
             async let result = session.resolveElectricity()
             await fulfillment(of: [hold.reached], timeout: 5)
             if byForm {
-                let summary = try await session.signIn(account: "99100992", password: "synthetic-pw-992", savePassword: false)
+                let summary = try await session.signIn(account: "99100992", password: "synthetic-pw-992", savePassword: false, owning: .unchecked)
                 XCTAssertTrue(summary.switchedAccount)
             } else {
                 try await signInSomeoneElse(session)
@@ -263,7 +263,7 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         let session = h.session()
         let stamp = await session.personStamp()
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
-        let summary = try await session.adoptWebState(try state.encoded(), portalToken: nil)
+        let summary = try await session.adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertFalse(summary.switchedAccount)
         let same = await session.isSamePerson(since: stamp)
         XCTAssertTrue(same)

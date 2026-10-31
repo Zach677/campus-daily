@@ -137,8 +137,8 @@ struct PowerChoice: Identifiable, Equatable {
         let started = signOutGeneration
         let session = session, state = login.state
         // Under the lease like the password sign-in: never beside the widget's own login.
-        let summary = try await refresher.holdingLease {
-            try await session.adoptWebState(state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent)
+        let summary = try await refresher.holdingLease { owning in
+            try await session.adoptWebState(state, portalToken:nil, userAgent:EcyktSession.defaultUserAgent, owning:owning)
         }
         if summary.switchedAccount || summary.previousPersonUnconfirmed {
             await previousPersonCleared(unconfirmed:!summary.switchedAccount, dormAndMeterCleared:summary.dormAndMeterCleared)
@@ -165,8 +165,8 @@ struct PowerChoice: Identifiable, Equatable {
         // A sign-out asked for just before must not delete what this stores.
         await signOuts.finished()
         let session = session
-        let summary = try await refresher.holdingLease {
-            try await session.signIn(account:account, password:password, savePassword:savePassword)
+        let summary = try await refresher.holdingLease { owning in
+            try await session.signIn(account:account, password:password, savePassword:savePassword, owning:owning)
         }
         if summary.switchedAccount || summary.previousPersonUnconfirmed {
             await previousPersonCleared(unconfirmed:!summary.switchedAccount, dormAndMeterCleared:summary.dormAndMeterCleared)
@@ -200,7 +200,7 @@ struct PowerChoice: Identifiable, Equatable {
         let known = account?.account
         guard let name = known ?? typed, !name.isEmpty else { throw SchoolLoginFailure.wrongCredentials }
         let session = session
-        try await refresher.holdingLease { try await session.savePassword(password, account:name) }
+        try await refresher.holdingLease { owning in try await session.savePassword(password, account:name, owning:owning) }
         reload()
         if known == nil { await refresh(force:true) }
     }
@@ -214,7 +214,7 @@ struct PowerChoice: Identifiable, Equatable {
         defer { reload() }
         guard let forgotten = try await session.forgetPassword() else { return }
         reload()
-        try await refresher.holdingLease { try await session.forgetPasswordAgain(forgotten:forgotten) }
+        try await refresher.holdingLease { owning in try await session.forgetPasswordAgain(forgotten:forgotten, owning:owning) }
     }
 
     /// Reset, before the stores are cleared: a refresh still running must not write the old

@@ -48,7 +48,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
             let h = harness(login)
             try h.server.serve("portal/getMyInfo-ok")
             try serveExchange(h)
-            let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: save)
+            let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: save, owning: .unchecked)
             XCTAssertEqual(summary.cardholder, "测试员")
             XCTAssertEqual(try h.vault.portalToken(), stamped(Self.freshToken, h), "the expiry is kept with the token")
             XCTAssertEqual(try h.vault.ecyktSession()?.token, "PW-TOKEN")
@@ -67,7 +67,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
             try h.server.serve("portal/getMyInfo-ok")
             try serveExchange(h)
             let ticked = SchoolAccount.savesPasswordByDefault(try h.vault.account()) && !untick
-            _ = try await h.session().signIn(account: "99100991", password: password, savePassword: ticked)
+            _ = try await h.session().signIn(account: "99100991", password: password, savePassword: ticked, owning: .unchecked)
         }
 
         XCTAssertTrue(SchoolAccount.savesPasswordByDefault(try h.vault.account()))
@@ -108,7 +108,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
         for failure in [SchoolLoginFailure.wrongCredentials, .cannotLoginDirectly, .offline] {
             let login = FakePasswordLogin(.failure(failure))
             let h = harness(login)
-            do { _ = try await h.session().signIn(account: "99100991", password: "x", savePassword: true); XCTFail() }
+            do { _ = try await h.session().signIn(account: "99100991", password: "x", savePassword: true, owning: .unchecked); XCTFail() }
             catch { XCTAssertEqual(error as? SchoolLoginFailure, failure) }
             XCTAssertEqual(login.calls.count, 1)
             XCTAssertNil(try h.vault.account())
@@ -120,7 +120,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
     func testTheSameDeviceIdIsSentEveryTime() async throws {
         let login = FakePasswordLogin(.failure(.wrongCredentials), .failure(.wrongCredentials))
         let h = harness(login)
-        for _ in 0..<2 { _ = try? await h.session().signIn(account: "99100991", password: "x", savePassword: false) }
+        for _ in 0..<2 { _ = try? await h.session().signIn(account: "99100991", password: "x", savePassword: false, owning: .unchecked) }
         XCTAssertEqual(Set(login.calls.map(\.visitorID)).count, 1)
     }
 
@@ -129,10 +129,10 @@ final class SchoolPasswordSignInTests: XCTestCase {
         let h = harness(login)
         try h.signedIn()
         try h.vault.saveAccount(SchoolAccount(account: "99100991"))
-        do { try await h.session().savePassword("wrong"); XCTFail() }
+        do { try await h.session().savePassword("wrong", owning: .unchecked); XCTFail() }
         catch { XCTAssertEqual(error as? SchoolLoginFailure, .wrongCredentials) }
         XCTAssertNil(try h.vault.account()?.password)
-        try await h.session().savePassword("synthetic-pw-991")
+        try await h.session().savePassword("synthetic-pw-991", owning: .unchecked)
         XCTAssertEqual(try h.vault.account()?.usablePassword, "synthetic-pw-991")
         XCTAssertEqual(login.calls.map(\.account), ["99100991", "99100991"])
         _ = try await h.session().forgetPassword()
@@ -154,18 +154,18 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
 
         try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-new-pw"))
-        try await session.forgetPasswordAgain(forgotten: forgotten)
+        try await session.forgetPasswordAgain(forgotten: forgotten, owning: .unchecked)
         XCTAssertEqual(try h.vault.account()?.password, "synthetic-new-pw", "saved again since: kept")
 
         var writtenBack = saved
         writtenBack.paused = true
         try h.vault.saveAccount(writtenBack)
-        try await session.forgetPasswordAgain(forgotten: forgotten)
+        try await session.forgetPasswordAgain(forgotten: forgotten, owning: .unchecked)
         XCTAssertNil(try h.vault.account()?.password, "the old password written back goes")
         XCTAssertEqual(try h.vault.account()?.paused, true, "the rest of that write stays")
 
         try h.vault.saveAccount(SchoolAccount(account: "99100992", password: "synthetic-old-pw"))
-        try await session.forgetPasswordAgain(forgotten: forgotten)
+        try await session.forgetPasswordAgain(forgotten: forgotten, owning: .unchecked)
         XCTAssertEqual(try h.vault.account()?.password, "synthetic-old-pw", "another account is not touched")
     }
 
@@ -178,8 +178,8 @@ final class SchoolPasswordSignInTests: XCTestCase {
         try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
         let session = h.session()
         let forgotten = try await session.forgetPassword()
-        try await session.savePassword("synthetic-pw-991")
-        try await session.forgetPasswordAgain(forgotten: try XCTUnwrap(forgotten))
+        try await session.savePassword("synthetic-pw-991", owning: .unchecked)
+        try await session.forgetPasswordAgain(forgotten: try XCTUnwrap(forgotten), owning: .unchecked)
         XCTAssertEqual(try h.vault.account()?.password, "synthetic-pw-991", "saved again since: kept")
     }
 
@@ -194,13 +194,13 @@ final class SchoolPasswordSignInTests: XCTestCase {
         let session = h.session()
         let first = try await session.forgetPassword()
         let forgotten = try XCTUnwrap(first)
-        do { try await session.savePassword("synthetic-wrong-pw"); XCTFail("the login fails") } catch {}
+        do { try await session.savePassword("synthetic-wrong-pw", owning: .unchecked); XCTFail("the login fails") } catch {}
         let again = try await session.forgetPassword()
         XCTAssertNil(again, "no password to forget")
         XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
 
         try h.vault.saveAccount(saved)   // a refresh that read the account before the first off
-        try await session.forgetPasswordAgain(forgotten: forgotten)
+        try await session.forgetPasswordAgain(forgotten: forgotten, owning: .unchecked)
         XCTAssertNil(try h.vault.account()?.password, "the written-back password still goes")
     }
 
@@ -353,7 +353,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
         try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
-        _ = try await h.session().adoptWebState(try state.encoded(), portalToken: nil)
+        _ = try await h.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertNil(try h.vault.account(), "the web page never says whose password it was")
     }
 
@@ -400,7 +400,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
             let h = harness(FakePasswordLogin(.success(Self.freshToken)))
             try h.signedIn()
             try h.vault.saveAccount(stored)
-            try await h.session().savePassword("synthetic-pw-991")
+            try await h.session().savePassword("synthetic-pw-991", owning: .unchecked)
             let account = try XCTUnwrap(try h.vault.account())
             XCTAssertEqual(account.autoLogin(at: h.clock.now), .on)
             XCTAssertEqual(account.usablePassword, "synthetic-pw-991")

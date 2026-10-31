@@ -41,7 +41,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
                                         login: FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken)))
             if readsDorm { try h.server.serve("portal/getMyInfo-ok") }
             try serveExchange(h)
-            let summary = try await h.session().signIn(account: "99100992", password: "synthetic-pw-992", savePassword: false)
+            let summary = try await h.session().signIn(account: "99100992", password: "synthetic-pw-992", savePassword: false, owning: .unchecked)
             XCTAssertTrue(summary.switchedAccount)
             let profile = try XCTUnwrap(try h.vault.profile())
             XCTAssertNil(profile.meter, "the previous person's meter is gone")
@@ -56,7 +56,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
         let h = try signedInHarness(card: "TESTid00000000000000000000000001",
                                     login: FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken)))
         try serveExchange(h)   // no getMyInfo: the dorm can't be read this time
-        let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: true)
+        let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: true, owning: .unchecked)
         XCTAssertFalse(summary.switchedAccount)
         XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
         XCTAssertEqual(try h.vault.profile()?.residence?.raw, "星湖校区98栋8号1层881房")
@@ -66,7 +66,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
         var h = Harness()
         h.passwordLogin = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
         try serveExchange(h)
-        let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false)
+        let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false, owning: .unchecked)
         XCTAssertFalse(summary.switchedAccount)
         XCTAssertEqual(try h.vault.profile(), SchoolProfile())
     }
@@ -75,7 +75,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
         let h = try signedInHarness(card: Self.otherCard, password: "old-pw")
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
-        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil)
+        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertTrue(summary.switchedAccount)
         XCTAssertNil(try h.vault.profile())
         XCTAssertNil(try h.vault.account())
@@ -85,7 +85,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
         let h = try signedInHarness(card: "TESTid00000000000000000000000001", account: nil)
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
-        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil)
+        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertFalse(summary.switchedAccount)
         XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
     }
@@ -99,7 +99,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
         try h.vault.saveEcyktSession(unread)
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
-        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil)
+        let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertFalse(summary.switchedAccount)
         XCTAssertTrue(summary.previousPersonUnconfirmed)
         XCTAssertTrue(summary.dormAndMeterCleared)
@@ -118,7 +118,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
             try h.vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: raw), meter: Harness.roomBinding))
             try h.server.serve("portal/getMyInfo-ok")   // 星湖校区99栋9号1层991房
             try serveExchange(h)
-            let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false)
+            let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false, owning: .unchecked)
             XCTAssertTrue(summary.previousPersonUnconfirmed)
             XCTAssertEqual(summary.dormAndMeterCleared, cleared, raw)
             XCTAssertEqual(try h.vault.profile()?.meter == nil, cleared, raw)
@@ -129,12 +129,12 @@ final class SchoolAccountSwitchTests: XCTestCase {
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
         let same = try signedInHarness(card: "TESTid00000000000000000000000001")
         try same.server.serve("ecykt/getSysBindCustInfo-ok")
-        let kept = try await same.session().adoptWebState(try state.encoded(), portalToken: nil)
+        let kept = try await same.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertFalse(kept.previousPersonUnconfirmed)
 
         let first = Harness()
         try first.server.serve("ecykt/getSysBindCustInfo-ok")
-        let nobody = try await first.session().adoptWebState(try state.encoded(), portalToken: nil)
+        let nobody = try await first.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertFalse(nobody.previousPersonUnconfirmed, "nobody was signed in before")
         XCTAssertFalse(nobody.switchedAccount)
     }
@@ -144,13 +144,13 @@ final class SchoolAccountSwitchTests: XCTestCase {
         let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
         let same = try signedInHarness(card: "TESTid00000000000000000000000001", password: "synthetic-pw-991")
         try same.server.serve("ecykt/getSysBindCustInfo-ok")
-        let kept = try await same.session().adoptWebState(try state.encoded(), portalToken: nil)
+        let kept = try await same.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertFalse(kept.switchedAccount)
         XCTAssertEqual(try same.vault.account(), SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
 
         let other = try signedInHarness(card: Self.otherCard, password: "synthetic-pw-991")
         try other.server.serve("ecykt/getSysBindCustInfo-ok")
-        let switched = try await other.session().adoptWebState(try state.encoded(), portalToken: nil)
+        let switched = try await other.session().adoptWebState(try state.encoded(), portalToken: nil, owning: .unchecked)
         XCTAssertTrue(switched.switchedAccount)
         XCTAssertNil(try other.vault.account())
     }
@@ -158,7 +158,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
     func testSavingAPasswordForAnotherKnownAccountIsRefusedWithoutALogin() async throws {
         let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
         let h = try signedInHarness(card: "TESTid00000000000000000000000001", login: login)
-        do { try await h.session().savePassword("synthetic-pw-992", account: "99100992"); XCTFail() }
+        do { try await h.session().savePassword("synthetic-pw-992", account: "99100992", owning: .unchecked); XCTFail() }
         catch { XCTAssertEqual(error as? SchoolLoginFailure, .differentAccount) }
         XCTAssertTrue(login.calls.isEmpty)
         XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
@@ -170,7 +170,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
         let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
         let h = try signedInHarness(card: Self.otherCard, account: nil, login: login)
         try serveExchange(h)
-        do { try await h.session().savePassword("synthetic-pw-992", account: "99100992"); XCTFail() }
+        do { try await h.session().savePassword("synthetic-pw-992", account: "99100992", owning: .unchecked); XCTFail() }
         catch { XCTAssertEqual(error as? SchoolLoginFailure, .differentAccount) }
         XCTAssertNil(try h.vault.account())
         XCTAssertEqual(try h.vault.ecyktSession()?.token, T.session().token, "the signed-in session is untouched")
@@ -181,7 +181,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
         let same = try signedInHarness(card: "TESTid00000000000000000000000001", account: nil,
                                        login: FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken)))
         try serveExchange(same, token: "SAME-TOKEN")
-        try await same.session().savePassword("synthetic-pw-991", account: "99100991")
+        try await same.session().savePassword("synthetic-pw-991", account: "99100991", owning: .unchecked)
         XCTAssertEqual(try same.vault.account(), SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
         XCTAssertEqual(try same.vault.ecyktSession()?.token, "SAME-TOKEN")
     }

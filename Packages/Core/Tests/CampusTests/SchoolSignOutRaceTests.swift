@@ -82,7 +82,7 @@ final class SchoolSignOutRaceTests: XCTestCase {
         let data = try state.encoded()
         let hold = Hold(h, self, suffix: "/getSysBindCustInfo")
         let session = h.session()
-        async let result = session.adoptWebState(data, portalToken: PortalToken("PORTAL"))
+        async let result = session.adoptWebState(data, portalToken: PortalToken("PORTAL"), owning: .unchecked)
         await fulfillment(of: [hold.reached], timeout: 5)
         try await session.signOut()
         hold.release.signal()
