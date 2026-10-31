@@ -251,11 +251,12 @@ public struct LeaseOwnership: Sendable {
     }
 
     /// `write` for a password login's accepted portal token only: the lease may have run out
-    /// while this owner is still the stored one (`RefreshLease.withOwnershipRetaking`), and a
-    /// cancelled task still writes (one short synchronous step; dropping the token would leave
-    /// the password held back for hours with nothing newer stored). The owner check stays.
+    /// while this owner is still the stored one (`RefreshLease.withOwnershipRetaking`). The owner
+    /// check stays, and so does the cancellation check: a cancelled task (the widget past its
+    /// deadline, about to be suspended) must not take the file lock, so nothing is written.
     func writeRetaking<T>(_ body: () throws -> T) throws -> T? {
         guard let lease else { return try body() }
+        guard !Task.isCancelled else { return nil }
         return try lease.withOwnershipRetaking(body)
     }
 }

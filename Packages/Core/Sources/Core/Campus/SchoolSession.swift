@@ -735,9 +735,9 @@ public actor SchoolSession {
         // still the lease's owner and the stored account and portal token are still the ones
         // this login started from: a token the other process stored after taking the lease is
         // never overwritten. A lease that only ran out meanwhile (suspended, nobody took it) is
-        // taken again in that step, and a cancelled task (the widget's deadline) still writes:
-        // dropping the token there would hold the password back for hours with nothing newer
-        // stored. A sign-out in between (this process, or the account gone from the Keychain)
+        // taken again in that step. A cancelled task (the widget at its deadline, about to be
+        // suspended) writes nothing: it must not take the shared file lock then, and the hold
+        // stays. A sign-out in between (this process, or the account gone from the Keychain)
         // drops it. The hold is lifted in the same step, only with the token stored.
         guard started == signOutGeneration else { return .unavailable }
         enum TokenSave { case written, gone, changed }

@@ -177,10 +177,10 @@ final class PasswordLoginLostLeaseTests: XCTestCase {
         XCTAssertEqual(login.calls, 1)
     }
 
-    /// The answer came back as the task was cancelled (the widget at its deadline): the
-    /// accepted token is still written, in one synchronous locked step, so the next refresh
-    /// exchanges it instead of waiting out the hold.
-    func testAnAcceptedPasswordIsKeptWhenTheTaskIsCancelledMeanwhile() async throws {
+    /// The answer came back as the task was cancelled (the widget at its deadline, about to be
+    /// suspended): nothing is written, not even the accepted token, so the process never takes
+    /// the shared file lock then. The hold written before the password went out stays.
+    func testAnAcceptedPasswordIsNotWrittenWhenTheTaskIsCancelledMeanwhile() async throws {
         var h = Harness()
         let login = CancellingPasswordLogin()
         h.passwordLogin = login
@@ -189,14 +189,15 @@ final class PasswordLoginLostLeaseTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
         let lease = RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function)
         let refresher = SnapshotRefresher(school: h.session(), store: h.snapshots, lease: lease, leaseWait: 0, sleep: { _ in })
+        let sentAt = h.clock.now
         _ = await refresher.refresh(inBackground: true)
-        XCTAssertEqual(try h.vault.portalToken()?.value, SchoolPasswordSignInTests.freshToken.value, "kept")
-        XCTAssertNil(try h.vault.account()?.unansweredAt, "the hold is lifted with it")
+        XCTAssertNil(try h.vault.portalToken(), "not written while cancelled")
+        XCTAssertEqual(try h.vault.account()?.unansweredAt, sentAt, "the hold stays")
+        XCTAssertEqual(try h.vault.ecyktSession()?.token, T.session().token)
         XCTAssertEqual(login.calls, 1)
     }
 }
 
-/// Counts password logins.
 final class CountingPasswordLogin: SchoolPasswordLogin, @unchecked Sendable {
     // @unchecked: `calls` is only touched by the logins of one refresh at a time, read after it returned.
     private(set) var calls = 0
