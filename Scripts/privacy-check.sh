@@ -4,8 +4,8 @@
 # file:line locations only, never the values themselves.
 #
 #   1. Pattern scan: identifier-shaped values (phone numbers, student ids,
-#      meter addresses, long ids, MACs, machine ids, custid ciphertexts) in
-#      every tracked text file except images and Vendor/.
+#      meter addresses, long ids, MACs, machine ids, custid ciphertexts, card
+#      record vouchers) in every tracked text file except images and Vendor/.
 #   2. Value scan: every line of your private value list (your own real
 #      student id, phone, room, device ids, tokens, platform secret...) must
 #      not appear in any tracked file, ignoring case.
@@ -135,6 +135,13 @@ scan "$tmp/custraw" 'custid[A-Za-z0-9_]*(\\?["'"'"']|%22|%3[AaDd]|[[:space:]:=,]
 sed -E "s/${tab}[^${tab}]*[Cc][Uu][Ss][Tt][Ii][Dd][A-Za-z0-9_]*(\\\\?[\"']|%22|%3[AaDd]|[[:space:]:=,]|[Vv][Aa][Ll][Uu][Ee])+/${tab}/" "$tmp/custraw" \
   | notallowed 'TESTid0+[0-9]{1,3}|TESTsyscus%(25)?3Ntid0+%(25)?1H00%(25)?7J|TESTcustid0+%(25)?1A00000%(25)?3G|mintedTokenAsInput|afterLoginBySysId' > "$tmp/custid"
 report "custid ciphertext" "$tmp/custid"
+# Card record vouchers (voucherno) next to a voucher key in any shape, as for
+# custid. Only the synthetic shape is allowed: 99 and a zero-padded counter.
+# A 99-prefixed long id passes the rule above; a voucher must be this exact shape.
+scan "$tmp/vouchraw" 'voucher[A-Za-z0-9_]*(\\?["'"'"']|%22|%3[AaDd]|[[:space:]:=,]|value)+[0-9][0-9A-Za-z]{5,}' -i
+sed -E "s/${tab}[^${tab}]*[Vv][Oo][Uu][Cc][Hh][Ee][Rr][A-Za-z0-9_]*(\\\\?[\"']|%22|%3[AaDd]|[[:space:]:=,]|[Vv][Aa][Ll][Uu][Ee])+/${tab}/" "$tmp/vouchraw" \
+  | notallowed "990+[0-9]{1,3}" > "$tmp/voucher"
+report "card record voucher" "$tmp/voucher"
 echo "pattern scan: $files files, $hits suspicious"
 
 # 2. Value scan
