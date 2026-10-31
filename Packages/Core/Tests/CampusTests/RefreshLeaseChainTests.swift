@@ -268,7 +268,7 @@ final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
 /// first) or only took the lease over. A fake reader does that in `hasCardSession`, the step
 /// after the save.
 final class AfterTheSnapshotSaveTests: XCTestCase {
-    final class Reader: SchoolReader, @unchecked Sendable {
+    final class Reader: PlainSchoolReader, @unchecked Sendable {
         let reading: SchoolReading
         let afterSave: @Sendable () -> Bool
         init(_ reading: SchoolReading, afterSave: @escaping @Sendable () -> Bool) { self.reading = reading; self.afterSave = afterSave }

@@ -5,33 +5,20 @@ import os
 
 /// The school read the refresher drives (`SchoolSession` in the app and the widget, fakes in
 /// tests). `mayMint` is asked before every step that mints a card session, sends the saved
-/// password or writes a credential back; false = stop there.
+/// password or writes a credential back; false = stop there. Credential write-backs go
+/// through `owning`, so every reader takes the lease check: there is no variant without it.
 public protocol SchoolReader: Sendable {
-    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading
     /// `numbers` may be called once, before the end, with a reading that is already worth
     /// storing (the balance and the meter while the card records are still on their way).
-    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool,
+    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
                  numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading
     /// False only when the stored card session is known to be gone (signed out); a read that
     /// fails says nothing.
     func hasCardSession() async -> Bool
-    /// As `refresh(inBackground:mayMint:numbers:)`; credential write-backs go through `owning`.
-    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
-                 numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading
 }
 
 public extension SchoolReader {
     func hasCardSession() async -> Bool { true }
-
-    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
-                 numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
-        await refresh(inBackground: inBackground, mayMint: mayMint, numbers: numbers)
-    }
-
-    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool,
-                 numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
-        await refresh(inBackground: inBackground, mayMint: mayMint)
-    }
 }
 
 extension SchoolSession: SchoolReader {}

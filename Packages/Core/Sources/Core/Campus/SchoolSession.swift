@@ -372,23 +372,14 @@ public actor SchoolSession {
     /// stored meanwhile is used instead of minting. The session is written back only while the
     /// stored one is still the one this read started from: a sign-out or a newer session from
     /// the other process is never overwritten.
-    public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true }) async -> SchoolReading {
-        await refresh(inBackground: inBackground, mayMint: mayMint, numbers: { _ in })
-    }
-
-    /// As above; `numbers` gets the reading with the balance and the meter (no records) as
-    /// soon as they are in, so they can be stored before the slower card records arrive. The
-    /// returned reading has all three; the records are given up `recordsTimeout` after they
-    /// were asked for, which is at the same time as the balance and the meter.
-    public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true },
-                        numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
-        await refresh(inBackground: inBackground, mayMint: mayMint, owning: .unchecked, numbers: numbers)
-    }
-
-    /// As above; the card session is written back in one locked step with the lease check
-    /// (`owning`).
-    public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
-                        numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
+    /// `numbers` gets the reading with the balance and the meter (no records) as soon as they
+    /// are in, so they can be stored before the slower card records arrive. The returned
+    /// reading has all three; the records are given up `recordsTimeout` after they were asked
+    /// for, which is at the same time as the balance and the meter. The card session is written
+    /// back in one locked step with the lease check (`owning`, always given: `.unchecked` only
+    /// where no lease exists).
+    public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true }, owning: LeaseOwnership,
+                        numbers: @Sendable (SchoolReading) async -> Void = { _ in }) async -> SchoolReading {
         guard let stored = (try? vault.ecyktSession()) ?? nil else {
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
@@ -800,7 +791,7 @@ public actor SchoolSession {
     /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only). The app
     /// runs it under the refresh lease; the live session is kept only over the one it started from,
     /// and only while `owning` finds the lease still held, in the same locked step.
-    public func showerHandoff(owning: LeaseOwnership = .unchecked) async throws -> ShowerHandoff {
+    public func showerHandoff(owning: LeaseOwnership) async throws -> ShowerHandoff {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = personGeneration
         let (card, live) = try await liveCard(stored)
@@ -888,7 +879,7 @@ public actor SchoolSession {
     /// Liveness check, then one `loginBySysId`; the fresh token goes into `logintoken`. The app
     /// runs it under the refresh lease; the live session is kept only over the one it started from,
     /// and only while `owning` finds the lease still held, in the same locked step.
-    public func rechargeSession(_ kind: RechargeKind, owning: LeaseOwnership = .unchecked) async throws -> RechargeWebSession {
+    public func rechargeSession(_ kind: RechargeKind, owning: LeaseOwnership) async throws -> RechargeWebSession {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = personGeneration
         let (card, live) = try await liveCard(stored)

@@ -1,5 +1,6 @@
 import XCTest
 @testable import Core
+import CoreTestSupport
 
 /// Snapshot store that records every write.
 final class RecordingSnapshotStore: SnapshotStoring, @unchecked Sendable {
@@ -20,7 +21,7 @@ final class EventLog: @unchecked Sendable {
 }
 
 /// School reader that answers a scripted reading and counts calls.
-final class ScriptedSchoolReader: SchoolReader, @unchecked Sendable {
+final class ScriptedSchoolReader: PlainSchoolReader, @unchecked Sendable {
     private let lock = NSLock()
     private var reading: SchoolReading
     private(set) var calls = 0
@@ -141,7 +142,7 @@ final class SnapshotRefresherTests: XCTestCase {
 }
 
 /// School reader that holds every call until the test releases it.
-final class GatedSchoolReader: SchoolReader, @unchecked Sendable {
+final class GatedSchoolReader: PlainSchoolReader, @unchecked Sendable {
     private let lock = NSLock()
     private var waiting: [CheckedContinuation<SchoolReading, Never>] = []
     private var calls = 0
@@ -333,7 +334,7 @@ final class SnapshotRefresherSingleFlightTests: XCTestCase {
 }
 
 /// School reader that waits until cancelled (or released) and records the cancellation.
-final class CancellableSchoolReader: SchoolReader, @unchecked Sendable {
+final class CancellableSchoolReader: PlainSchoolReader, @unchecked Sendable {
     private let lock = NSLock()
     private var waiting: CheckedContinuation<SchoolReading, Never>?
     private var started = 0, cancelled = 0, cancelledEarly = false

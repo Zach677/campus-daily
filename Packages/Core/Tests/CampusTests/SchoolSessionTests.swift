@@ -172,7 +172,7 @@ final class SchoolRefreshTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-ok")
         try h.server.serve("ecykt/electric-getMeterStatus-room", matchBody: ["server", "buildingID"])
-        let reading = await h.session().refresh(inBackground: true)
+        let reading = await h.session().refresh(inBackground: true, owning: .unchecked)
         XCTAssertEqual(reading.outcome, .ok)
         XCTAssertEqual(reading.balance, .success(Money(fen: 790)))
         XCTAssertEqual(reading.roomLabel, "99栋 991")
@@ -205,7 +205,7 @@ final class SchoolRefreshTests: XCTestCase {
             release.wait()
         }
         let session = h.session()
-        async let reading = session.refresh(inBackground: true)
+        async let reading = session.refresh(inBackground: true, owning: .unchecked)
         await fulfillment(of: [reached], timeout: 5)
         try await session.signOut()
         release.signal()
@@ -223,7 +223,7 @@ final class SchoolRechargeTests: XCTestCase {
         try h.signedIn()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/loginBySysId-mintSeries1")
-        let web = try await h.session().rechargeSession(.card)
+        let web = try await h.session().rechargeSession(.card, owning: .unchecked)
         XCTAssertEqual(h.loginBySysIdCalls(), 1)
         XCTAssertEqual(h.livenessCalls(), 1)
         XCTAssertEqual(web.startURL, SchoolEndpoints.rechargePage)
@@ -249,7 +249,7 @@ final class SchoolRechargeTests: XCTestCase {
         try h.signedIn()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/loginBySysId-mintSeries2")
-        let web = try await h.session().rechargeSession(.electricity)
+        let web = try await h.session().rechargeSession(.electricity, owning: .unchecked)
         let comps = try XCTUnwrap(URLComponents(url: web.startURL, resolvingAgainstBaseURL: false))
         XCTAssertEqual(comps.path, "/ykt-mini/api/electricnew/getPowerUrl")
         XCTAssertEqual(comps.queryItems?.first { $0.name == "syscustid" }?.value, "TESTid00000000000000000000000004")
@@ -261,7 +261,7 @@ final class SchoolRechargeTests: XCTestCase {
         try h.signedIn()
         try h.server.serve("ecykt/getSysBindCustInfo-badToken")
         try h.server.serve("ecykt/loginBySysId-mintSeries1")
-        await T.expectError(.sessionExpired(.ecykt)) { _ = try await h.session().rechargeSession(.card) }
+        await T.expectError(.sessionExpired(.ecykt)) { _ = try await h.session().rechargeSession(.card, owning: .unchecked) }
         XCTAssertEqual(h.loginBySysIdCalls(), 0)
     }
 
