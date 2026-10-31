@@ -94,11 +94,12 @@ final class CardHistoryTests: XCTestCase {
     // MARK: The same record on two pages
 
     /// Page 1 is full: 49 meals, then `last`. Page 2 brings `again` (the school moved `last` down
-    /// when a new record came, or a second purchase) and a record of the day before; the range ends.
+    /// when a new record came, so the total grew, or a second purchase) and a record of the day
+    /// before; the range ends.
     func pagedTwice(last: CardRecord, again: CardRecord) -> CardHistory {
         var history = CardHistory(now: noon)
         history.receive(CardRecordPage(total: 51, rows: meals("20261030", 49) + [last]), for: history.nextQuery!)
-        history.receive(CardRecordPage(total: 51, rows: [again, record("20261029", "090000", balance: "60.00")]),
+        history.receive(CardRecordPage(total: 52, rows: [again, record("20261029", "090000", balance: "60.00")]),
                         for: history.nextQuery!)
         return history
     }
@@ -269,6 +270,30 @@ final class CardHistoryTests: XCTestCase {
         XCTAssertEqual(history.nextQuery?.page, 3)
         XCTAssertFalse(history.isComplete(day: "20261029"))
         XCTAssertFalse(history.isComplete(day: "20261025"), "between the short page and the next: never read")
+    }
+
+    /// A total smaller than the rows already read is wrong: it doesn't close the range. The page
+    /// count decides instead, and the range's days from the cut back have no total.
+    func testATotalBelowTheRowsReadDoesNotEndTheRange() {
+        var history = CardHistory(now: noon)
+        let first = history.nextQuery!
+        history.receive(CardRecordPage(total: 0, rows: meals("20261030", 30) + meals("20261029", 20)), for: first)
+        XCTAssertEqual(history.nextQuery, CardHistoryQuery(begin: first.begin, end: first.end, page: 2, pageSize: CardHistory.pageSize),
+                       "a full page: older records may follow")
+        history.receive(CardRecordPage(total: 0, rows: meals("20261020", 3)), for: history.nextQuery!)
+        XCTAssertEqual(history.nextQuery?.end, "20261016")
+        XCTAssertTrue(history.isComplete(day: "20261030"), "newer than the cut")
+        XCTAssertTrue(history.isComplete(day: "20261029"), "read in full by the page count")
+        XCTAssertFalse(history.isComplete(day: "20261020"), "the cut day")
+        XCTAssertFalse(history.isComplete(day: "20261017"))
+    }
+
+    /// The same with a total above 0 but below the rows read (a full page of 50, total 30).
+    func testATotalBelowAFullPageDoesNotEndTheRange() {
+        var history = CardHistory(now: noon)
+        history.receive(CardRecordPage(total: 30, rows: meals("20261030", 30) + meals("20261029", 20)), for: history.nextQuery!)
+        XCTAssertEqual(history.nextQuery?.page, 2, "50 rows read of a total of 30: the total is wrong")
+        XCTAssertFalse(history.isComplete(day: "20261029"))
     }
 
     /// A record without a readable date says nothing about where the page was cut.

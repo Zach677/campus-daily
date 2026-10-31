@@ -53,6 +53,9 @@ public struct CardHistory: Sendable, Equatable {
     /// The oldest day read when the first short page came: the records the school left out
     /// sit on that day or older, whatever the pages after it bring.
     private var shortCut: String?
+    /// The school gave the current range a total below the rows it sent: its totals are not
+    /// trusted for this range.
+    private var wrongTotal = false
     /// No older records to ask for.
     public private(set) var reachedEnd = false
 
@@ -109,9 +112,13 @@ public struct CardHistory: Sendable, Equatable {
         let fresh = answer.rows.filter { row in !current.contains { $0.isSameRecord(as: row) } }
         current += fresh
         for row in fresh where row.cannotBeToldApart { mayRepeat.insert(Self.trimmed(row.date)) }
-        // The total, when given, decides; a page with room left over is the last one only without it.
+        // The total, when given, decides, unless it is below the rows sent (then it is wrong and
+        // closes nothing); otherwise only a page with room left over is the last one.
         let last: Bool
-        if let total = answer.total {
+        if let total = answer.total, (query.page - 1) * query.pageSize + answer.rows.count > total {
+            wrongTotal = true
+        }
+        if let total = answer.total, !wrongTotal {
             last = answer.rows.isEmpty || query.page * query.pageSize >= total
             if answer.rows.count < query.pageSize && query.page * query.pageSize < total && !shortOfTotal {
                 shortOfTotal = true
@@ -125,7 +132,7 @@ public struct CardHistory: Sendable, Equatable {
             page += 1
             return
         }
-        if stuck || shortOfTotal {
+        if stuck || shortOfTotal || wrongTotal {
             // From the cut day back (the first short page's, when one came), this range's days
             // may miss records.
             let cut = shortOfTotal ? shortCut : cutDay
@@ -142,6 +149,7 @@ public struct CardHistory: Sendable, Equatable {
         page = 1
         shortOfTotal = false
         shortCut = nil
+        wrongTotal = false
         if emptyRanges >= Self.emptyRangesBeforeEnd || rangeEnd >= Self.maxDaysBack { reachedEnd = true }
     }
 
