@@ -26,6 +26,26 @@ final class RefreshLeaseTests: XCTestCase {
         XCTAssertFalse(app.acquire())
     }
 
+    /// The write-back step runs only for the live holder, renews it, and keeps the lock while it runs.
+    func testAWriteUnderOwnershipRunsOnlyForTheLiveHolder() throws {
+        let app = lease("app-1"), widget = lease("widget-1")
+        XCTAssertNil(try app.withOwnership { XCTFail("not taken yet") }, "nobody holds it")
+        XCTAssertTrue(app.acquire())
+        let value = try app.withOwnership { () -> Int in
+            XCTAssertFalse(widget.tryAcquire(), "locked while the write runs")
+            return 7
+        }
+        XCTAssertEqual(value, 7)
+        clock.advance(RefreshLease.defaultDuration - 1)
+        XCTAssertFalse(widget.acquire(), "the step renewed the lease")
+        clock.advance(RefreshLease.defaultDuration)
+        XCTAssertNil(try app.withOwnership { XCTFail("ran out") })
+        XCTAssertTrue(widget.acquire())
+        XCTAssertNil(try app.withOwnership { XCTFail("taken") })
+        XCTAssertThrowsError(try widget.withOwnership { throw CocoaError(.fileWriteUnknown) }, "what the write throws is rethrown")
+        XCTAssertTrue(widget.holds())
+    }
+
     /// A holder that died leaves its lease to run out; then the next process takes it.
     func testStaleLeaseExpires() {
         let app = lease("app-1"), widget = lease("widget-1")

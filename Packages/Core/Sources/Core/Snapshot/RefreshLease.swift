@@ -79,6 +79,37 @@ public struct RefreshLease: Sendable {
         } ?? false
     }
 
+    /// One locked step for a write-back: while this owner still holds a live lease, its expiry
+    /// is pushed forward and `body` runs inside the same lock, so the other process can neither
+    /// take the lease nor clear it between the check and what `body` compares and writes. nil =
+    /// not ours any more (ran out, taken, removed by a sign-out) or no usable file: `body` did not
+    /// run. `body` is synchronous and short (a Keychain or snapshot write); no `await` can run
+    /// inside the lock. What `body` throws is rethrown.
+    public func withOwnership<T>(_ body: () throws -> T) throws -> T? {
+        let outcome: Result<T, Error>?? = update { current in
+            guard let holder = current, holder.owner == owner, holder.expiresAt > now() else { return (current, nil) }
+            return (Record(owner: owner, expiresAt: now().addingTimeInterval(duration)), Result { try body() })
+        }
+        guard let ran = outcome ?? nil else { return nil }
+        return try ran.get()
+    }
+
+    /// `acquire()` without waiting for the lock: false while another step holds it. Tests use it
+    /// as the other process trying at one exact moment.
+    func tryAcquire() -> Bool {
+        update(waiting: false) { current in
+            if let holder = current, holder.owner != owner, !isStale(holder) { return (current, false) }
+            return (Record(owner: owner, expiresAt: now().addingTimeInterval(duration)), true)
+        } ?? false
+    }
+
+    /// `clear()` without waiting for the lock: false while another step holds it (tests: the
+    /// other process's sign-out trying at one exact moment).
+    func tryClear() -> Bool {
+        guard let file else { return false }
+        return (try? file.update(waiting: false) { _ in (nil, true) }) ?? false
+    }
+
     /// Still ours (not taken over, not removed by a sign-out in the other process).
     public func holds() -> Bool {
         update { current in (current, current?.owner == owner) } ?? false
@@ -109,9 +140,9 @@ public struct RefreshLease: Sendable {
     }
 
     /// One locked read-compare-write; nil when the file can't be used.
-    private func update<T>(_ body: (Record?) -> (Record?, T)) -> T? {
+    private func update<T>(waiting: Bool = true, _ body: (Record?) -> (Record?, T)) -> T? {
         guard let file else { return nil }
-        return try? file.update(body)
+        return try? file.update(waiting: waiting, body)
     }
 }
 
@@ -133,11 +164,11 @@ public struct LeaseFile: Sendable {
     /// The stored owner, run out or not (nil = no lease). For diagnostics and tests.
     public func storedOwner() -> String? { ((try? update { ($0, $0?.owner) }) ?? nil) }
 
-    func update<T>(_ body: (RefreshLease.Record?) -> (RefreshLease.Record?, T)) throws -> T {
+    func update<T>(waiting: Bool = true, _ body: (RefreshLease.Record?) -> (RefreshLease.Record?, T)) throws -> T {
         let fd = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw Failure(step: "open", code: errno) }
         defer { close(fd) }
-        while flock(fd, LOCK_EX) != 0 {
+        while flock(fd, waiting ? LOCK_EX : LOCK_EX | LOCK_NB) != 0 {
             guard errno == EINTR else { throw Failure(step: "lock", code: errno) }
         }
         defer { flock(fd, LOCK_UN) }
@@ -172,5 +203,23 @@ public struct LeaseFile: Sendable {
             if n < 0 { if errno == EINTR { continue }; throw Failure(step: "write", code: errno) }
             offset += n
         }
+    }
+}
+
+/// Handed to a credential or snapshot write-back that runs under the refresh lease: the write
+/// happens in one locked step with the check that the lease is still ours
+/// (`RefreshLease.withOwnership`). Without a lease (tests, previews, a build without the App
+/// Group, where the app refreshes alone) it just runs.
+public struct LeaseOwnership: Sendable {
+    let lease: RefreshLease?
+
+    public init(_ lease: RefreshLease?) { self.lease = lease }
+
+    public static let unchecked = LeaseOwnership(nil)
+
+    /// nil = the lease is not ours any more; `body` did not run.
+    public func write<T>(_ body: () throws -> T) throws -> T? {
+        guard let lease else { return try body() }
+        return try lease.withOwnership(body)
     }
 }

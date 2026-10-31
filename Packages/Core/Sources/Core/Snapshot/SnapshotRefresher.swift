@@ -15,10 +15,18 @@ public protocol SchoolReader: Sendable {
     /// False only when the stored card session is known to be gone (signed out); a read that
     /// fails says nothing.
     func hasCardSession() async -> Bool
+    /// As `refresh(inBackground:mayMint:numbers:)`; credential write-backs go through `owning`.
+    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
+                 numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading
 }
 
 public extension SchoolReader {
     func hasCardSession() async -> Bool { true }
+
+    func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
+                 numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
+        await refresh(inBackground: inBackground, mayMint: mayMint, numbers: numbers)
+    }
 
     func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool,
                  numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
@@ -194,11 +202,11 @@ public actor SnapshotRefresher {
     }
 
     /// The same, for a body that writes a credential back after waiting on the network:
-    /// `mayWrite` renews the lease and says whether it is still ours. The heartbeat stops
+    /// `owning` runs the write in one locked step with the check that the lease is still ours. The heartbeat stops
     /// quietly when a renewal fails (the app was suspended past the lease, and the other
     /// process may have taken it), while the body keeps running; false = write nothing.
-    public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable (_ mayWrite: @Sendable () -> Bool) async throws -> T) async throws -> T {
-        guard let shared = lease else { return try await body({ true }) }
+    public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable (_ owning: LeaseOwnership) async throws -> T) async throws -> T {
+        guard let shared = lease else { return try await body(.unchecked) }
         // Its own owner: the lease this process's refresh holds is not "ours" to reuse here.
         let lease = shared.with(owner: shared.owner + "-login")
         var waited: TimeInterval = 0
@@ -211,7 +219,7 @@ public actor SnapshotRefresher {
         }
         let heartbeat = Self.keepAlive(lease, every: renewInterval)
         do {
-            let value = try await body({ lease.renew() })
+            let value = try await body(LeaseOwnership(lease))
             heartbeat.cancel(); await heartbeat.value
             lease.release()
             return value
@@ -250,6 +258,7 @@ public actor SnapshotRefresher {
         // The balance and the meter are stored as soon as they are in (a widget that runs out of
         // time while the card records load keeps them); the full reading is stored at the end.
         let reading = await school.refresh(inBackground: inBackground, mayMint: { lease?.renew() ?? true },
+                                           owning: LeaseOwnership(lease),
                                            numbers: { [weak self] partial in
                                                _ = await self?.write(partial, started: started, lease: lease)
                                            })
@@ -268,23 +277,35 @@ public actor SnapshotRefresher {
     /// or the other process already wrote a newer reading: nothing is written either; a lease
     /// that ran out is not this read's failure to record.
     ///
-    /// The renewal and the save are two steps: a sign-out in the other process can land between
-    /// them and clear the snapshot just before this one is saved. So the lease is checked once
-    /// more after saving; lost, and nobody signed in any more, the snapshot is cleared again.
+    /// The lease check, the compare with the stored snapshot and the save are one locked step
+    /// (`LeaseOwnership`): the other process can't take the lease, store a newer reading or
+    /// revoke the lease for a sign-out in between. The lease is still checked once more after
+    /// saving; lost, and nobody signed in any more, the snapshot is cleared again.
     private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) async -> RefreshReport {
         guard started == generation, !Task.isCancelled else {
             let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
             return RefreshReport(outcome: outcome, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
         }
-        let stored = latest()
-        guard lease?.renew() ?? true, !Self.isOlder(reading, than: stored) else {
+        enum Step { case older(HomeSnapshot), stored(HomeSnapshot, saved: Bool) }
+        let store = store, diagnostic = diagnostic
+        let step = (try? LeaseOwnership(lease).write { () -> Step in
+            let stored = latest()
+            guard !Self.isOlder(reading, than: stored) else { return .older(stored) }
+            let snapshot = Self.apply(reading, to: stored)
+            do { try store.saveSnapshot(snapshot) } catch {
+                diagnostic(Self.saveFailedEvent(error))
+                return .stored(snapshot, saved: false)
+            }
+            return .stored(snapshot, saved: true)
+        }) ?? nil
+        let snapshot: HomeSnapshot, saved: Bool
+        switch step {
+        case nil, .older?:
+            let stored: HomeSnapshot
+            if case .older(let s)? = step { stored = s } else { stored = latest() }
             return RefreshReport(outcome: reading.outcome, snapshot: stored, reexchanged: reading.reexchanged, snapshotSaved: false)
-        }
-        let snapshot = Self.apply(reading, to: stored)
-        var saved = true
-        do { try store.saveSnapshot(snapshot) } catch {
-            saved = false
-            diagnostic(Self.saveFailedEvent(error))
+        case .stored(let s, let ok)?:
+            snapshot = s; saved = ok
         }
         if saved, let lease, !lease.holds(), !(await school.hasCardSession()) {
             try? store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))

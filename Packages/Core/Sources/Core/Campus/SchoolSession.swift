@@ -353,6 +353,13 @@ public actor SchoolSession {
     /// were asked for, which is at the same time as the balance and the meter.
     public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true },
                         numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
+        await refresh(inBackground: inBackground, mayMint: mayMint, owning: .unchecked, numbers: numbers)
+    }
+
+    /// As above; the card session is written back in one locked step with the lease check
+    /// (`owning`).
+    public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
+                        numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
         guard let stored = (try? vault.ecyktSession()) ?? nil else {
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
@@ -390,7 +397,7 @@ public actor SchoolSession {
         let checkedAt = now()
         var alive = live.1
         alive.lastAliveAt = checkedAt
-        switch await writeBack(alive, over: base, mayMint: mayMint) {
+        switch writeBack(alive, over: base, owning: owning) {
         case .signedOut: return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         case .lostLease: return SchoolReading(outcome: .leaseLost, checkedAt: now(), reexchanged: reexchanged)
         case .written, .kept: break
@@ -468,17 +475,26 @@ public actor SchoolSession {
     /// session is still `base` (same token and syscustid). Signed out in another process: nothing is written. A newer
     /// session stored by the other process stays; this read used a live one all the same.
     /// Written only while the lease is still held.
-    private func writeBack(_ session: EcyktSession, over base: EcyktSession,
-                           mayMint: @Sendable () async -> Bool) async -> WriteBack {
-        let current: EcyktSession?
-        do { current = try vault.ecyktSession() } catch { return .kept }
-        guard let current else { return .signedOut }
-        // Sign-in, saving a password, recharge and the hot-water handoff store sessions without the
-        // lease; any change to the stored one (token or the rotating syscustid) means it is newer.
-        guard current.token == base.token, current.syscustid == base.syscustid else { return .kept }
-        guard await mayMint() else { return .lostLease }
-        try? vault.saveEcyktSession(session)
-        return .written
+    private func writeBack(_ session: EcyktSession, over base: EcyktSession, owning: LeaseOwnership) -> WriteBack {
+        let vault = vault
+        func compare() -> WriteBack? {
+            let current: EcyktSession?
+            do { current = try vault.ecyktSession() } catch { return .kept }
+            guard let current else { return .signedOut }
+            // Any change to the stored one (token or the rotating syscustid) means it is newer:
+            // another process or a sign-in stored it.
+            guard current.token == base.token, current.syscustid == base.syscustid else { return .kept }
+            return nil
+        }
+        if let early = compare() { return early }
+        // Compared again and saved in one step with the lease check: the other process can't
+        // take the lease (and store its own session) between the check and the save.
+        let outcome = (try? owning.write { () -> WriteBack in
+            if let changed = compare() { return changed }
+            try? vault.saveEcyktSession(session)
+            return .written
+        }) ?? nil
+        return outcome ?? .lostLease
     }
 
     // MARK: Credential lifetime
@@ -752,13 +768,13 @@ public actor SchoolSession {
 
     /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only). The app
     /// runs it under the refresh lease; the live session is kept only over the one it started from,
-    /// and only while `mayWrite` says the lease is still held.
-    public func showerHandoff(mayWrite: @Sendable () -> Bool = { true }) async throws -> ShowerHandoff {
+    /// and only while `owning` finds the lease still held, in the same locked step.
+    public func showerHandoff(owning: LeaseOwnership = .unchecked) async throws -> ShowerHandoff {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = personGeneration
         let (card, live) = try await liveCard(stored)
         try ensureSignedIn(since: started)
-        saveIfUnchanged(live, over: stored, mayWrite: mayWrite)
+        saveIfUnchanged(live, over: stored, owning: owning)
         return try await ecykt.signData(live, custid: card.custid)
     }
 
@@ -840,8 +856,8 @@ public actor SchoolSession {
 
     /// Liveness check, then one `loginBySysId`; the fresh token goes into `logintoken`. The app
     /// runs it under the refresh lease; the live session is kept only over the one it started from,
-    /// and only while `mayWrite` says the lease is still held.
-    public func rechargeSession(_ kind: RechargeKind, mayWrite: @Sendable () -> Bool = { true }) async throws -> RechargeWebSession {
+    /// and only while `owning` finds the lease still held, in the same locked step.
+    public func rechargeSession(_ kind: RechargeKind, owning: LeaseOwnership = .unchecked) async throws -> RechargeWebSession {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = personGeneration
         let (card, live) = try await liveCard(stored)
@@ -849,7 +865,7 @@ public actor SchoolSession {
         var updated = live
         updated.syscustid = fresh.syscustid   // latest ciphertext, valid as input next time
         try ensureSignedIn(since: started)
-        saveIfUnchanged(updated, over: stored, mayWrite: mayWrite)
+        saveIfUnchanged(updated, over: stored, owning: owning)
         return try RechargeWebSessionBuilder.build(kind: kind, session: updated, fresh: fresh, card: card)
     }
 
@@ -869,12 +885,15 @@ public actor SchoolSession {
 
     /// Keeps `live` (latest ciphertexts) only while the stored session is still `base` (same
     /// token and syscustid). The other process may have stored a newer one meanwhile, which
-    /// stays; this call used its own live session all the same. `mayWrite` (the refresh lease
-    /// renewed, from `holdingLease`) is asked right before: lost, nothing is written.
-    private func saveIfUnchanged(_ live: EcyktSession, over base: EcyktSession, mayWrite: () -> Bool) {
-        guard mayWrite(), let current = (try? vault.ecyktSession()) ?? nil,
-              current.token == base.token, current.syscustid == base.syscustid else { return }
-        try? vault.saveEcyktSession(live)
+    /// stays; this call used its own live session all the same. The compare and the save run
+    /// in one step with the lease check (`owning`, from `holdingLease`): lost, nothing is written.
+    private func saveIfUnchanged(_ live: EcyktSession, over base: EcyktSession, owning: LeaseOwnership) {
+        let vault = vault
+        _ = try? owning.write {
+            guard let current = (try? vault.ecyktSession()) ?? nil,
+                  current.token == base.token, current.syscustid == base.syscustid else { return }
+            try? vault.saveEcyktSession(live)
+        }
     }
 
     /// Work that awaited the network checks this before writing: a sign-out or another person

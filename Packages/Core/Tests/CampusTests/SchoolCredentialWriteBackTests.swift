@@ -64,9 +64,9 @@ final class SchoolCredentialWriteBackTests: XCTestCase {
                                         lease: RefreshLease(file: h.store.leaseFile, owner: "app-1", now: h.clock.function),
                                         leaseWait: 3, sleep: { _ in try? await Task.sleep(nanoseconds: 1_000_000) },
                                         renewInterval: 3600)
-            async let result: Void = app.holdingLease { mayWrite in
-                if handoff { _ = try await session.showerHandoff(mayWrite: mayWrite) }
-                else { _ = try await session.rechargeSession(.card, mayWrite: mayWrite) }
+            async let result: Void = app.holdingLease { owning in
+                if handoff { _ = try await session.showerHandoff(owning: owning) }
+                else { _ = try await session.rechargeSession(.card, owning: owning) }
             }
             await fulfillment(of: [hold.reached], timeout: 5)
             h.clock.advance(RefreshLease.defaultDuration + 1)
@@ -76,6 +76,39 @@ final class SchoolCredentialWriteBackTests: XCTestCase {
             try await result
             XCTAssertEqual(try h.vault.ecyktSession(), before, "nothing written without the lease")
             XCTAssertEqual(h.store.leaseFile.storedOwner(), "widget-1")
+        }
+    }
+
+    /// The app's lease runs out right after it was found still held, and the widget tries to
+    /// take it right then, just before the write-back lands. The check and the write are one
+    /// locked step: the widget can't take the lease until the app's write is done, so an app
+    /// copy is never written over a lease the widget holds. Recharge, the hot-water hand-off
+    /// and a refresh (its card session and its snapshot).
+    func testNoTakeoverBetweenTheLeaseCheckAndTheWriteBack() async throws {
+        for path in ["recharge", "handoff", "refresh-session", "refresh-snapshot"] {
+            let h = Harness()
+            try h.signedIn()
+            try h.server.serve("ecykt/getSysBindCustInfo-ok")
+            try h.server.serve(path == "handoff" ? "ecykt/getSignData-ok" : "ecykt/loginBySysId-mintSeries1")
+            try h.server.serve("ecykt/getUserBalance-ok")
+            let session = h.session()
+            let app = SnapshotRefresher(school: session, store: h.snapshots,
+                                        lease: RefreshLease(file: h.store.leaseFile, owner: "app-1", now: h.clock.function),
+                                        leaseWait: 3, sleep: { _ in try? await Task.sleep(nanoseconds: 1_000_000) },
+                                        renewInterval: 3600)
+            let widget = RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function)
+            let took = Lines(), clock = h.clock
+            h.store.beforeNextWrite(to: path == "refresh-snapshot" ? .sharedSnapshot : .schoolEcykt) {
+                clock.advance(RefreshLease.defaultDuration + 1)
+                if widget.tryAcquire() { took.append("widget") }
+            }
+            switch path {
+            case "recharge": _ = try await app.holdingLease { owning in try await session.rechargeSession(.card, owning: owning) }
+            case "handoff": _ = try await app.holdingLease { owning in try await session.showerHandoff(owning: owning) }
+            default: _ = await app.refresh(inBackground: false)
+            }
+            XCTAssertEqual(took.all, [], "\(path): the widget took the lease while the app's write-back was landing")
+            XCTAssertTrue(widget.acquire(), "\(path): free for the widget once the write is done and the lease ran out")
         }
     }
 

@@ -220,8 +220,9 @@ final class SignInWhileStoringTheTokenTests: XCTestCase {
     }
 }
 
-/// The other process signs out (lease, school items, empty snapshot) after this read renewed
-/// the lease but before it saved: the snapshot it saves is cleared again.
+/// The other process signs out (lease first, then the school items and the snapshot) right as
+/// this read saves its snapshot. The lease check and the save are one locked step: the sign-out
+/// can't remove the lease in between, it goes after the save, and its empty snapshot wins.
 final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
     func testNumbersSavedAfterASignOutAreCleared() async throws {
         let h = Harness()
@@ -230,17 +231,22 @@ final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
         try h.server.serve("ecykt/getUserBalance-ok")
         try h.server.serve("ecykt/card-getRecordList-ok")
         let store = h.store, snapshots = h.snapshots
+        let between = Lines()
         store.beforeNextWrite(to: .sharedSnapshot) {
-            try? RefreshLease(file: store.leaseFile, owner: "signed-out").clear()
-            for key: StoreKey in [.schoolPassword, .schoolPortal, .schoolEcykt, .schoolProfile, .schoolDevice] { try? store.delete(key) }
-            try? snapshots.saveSnapshot(SchoolSnapshotReducer.reduce(.empty, .signedOut))
+            if RefreshLease(file: store.leaseFile, owner: "signed-out").tryClear() { between.append("lease removed") }
         }
         let report = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
-        XCTAssertFalse(report.snapshotSaved)
+        XCTAssertEqual(between.all, [], "the sign-out can't land between the lease check and the save")
+        // The sign-out, after the save: lease, items, empty snapshot.
+        try RefreshLease(file: store.leaseFile, owner: "signed-out").clear()
+        for key: StoreKey in [.schoolPassword, .schoolPortal, .schoolEcykt, .schoolProfile, .schoolDevice] { try? store.delete(key) }
+        try snapshots.saveSnapshot(SchoolSnapshotReducer.reduce(.empty, .signedOut))
+        XCTAssertTrue(report.snapshotSaved)
         XCTAssertEqual(try h.snapshots.loadSnapshot(), SchoolSnapshotReducer.reduce(.empty, .signedOut))
     }
 
-    /// Lost to the other process's read, still signed in: what was saved stays.
+    /// The other process tries to take the lease over right as the save lands: it waits for
+    /// the save, and what was saved stays.
     func testALeaseTakenOverWhileSignedInKeepsTheSave() async throws {
         let h = Harness()
         try h.signedIn()
@@ -248,8 +254,12 @@ final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
         try h.server.serve("ecykt/getUserBalance-ok")
         try h.server.serve("ecykt/card-getRecordList-ok")
         let store = h.store
-        store.beforeNextWrite(to: .sharedSnapshot) { try? RefreshLease(file: store.leaseFile, owner: "signed-out").clear() }
+        let between = Lines()
+        store.beforeNextWrite(to: .sharedSnapshot) {
+            if RefreshLease(file: store.leaseFile, owner: "signed-out").tryClear() { between.append("lease removed") }
+        }
         _ = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
+        XCTAssertEqual(between.all, [])
         XCTAssertNotNil(try h.snapshots.loadSnapshot()?.card.value)
     }
 }

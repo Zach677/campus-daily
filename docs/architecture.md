@@ -267,6 +267,11 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   process takes it over in one locked step;
 - a read that lost the lease (it ran out and was taken, or a sign-out removed it) stops at the next
   of those steps and writes nothing;
+- the card session write-back (refresh, recharge, the hot-water hand-off) and the snapshot save run
+  inside that lock (`RefreshLease.withOwnership`, through `LeaseOwnership`): the lease is checked
+  and renewed, the stored value compared and the new one written in one locked step, so the other
+  process can't take the lease or store its own value in between; the step is synchronous (a
+  Keychain write), with no `await` inside the lock;
 - snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
   dropped (unless more than 30 minutes older: the clock moved back, and the reading is written), and a "nobody signed in" reading leaves an emptied snapshot empty.
 - signed without the App Group (no container), the app refreshes on its own and the widget never
