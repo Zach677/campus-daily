@@ -15,10 +15,10 @@ let package = Package(
         .testTarget(name: "CampusTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "ShowerTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "LaundryTests", dependencies: ["Core", "CoreTestSupport"]),
-        .testTarget(name: "SnapshotTests", dependencies: ["Core"]),
+        .testTarget(name: "SnapshotTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "NetworkingTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "StorageTests", dependencies: ["Core"]),
-        .testTarget(name: "CommonTests", dependencies: ["Core"]),
+        .testTarget(name: "CommonTests", dependencies: ["Core", "CoreTestSupport"]),
     ],
     swiftLanguageModes: [.v6]
 )

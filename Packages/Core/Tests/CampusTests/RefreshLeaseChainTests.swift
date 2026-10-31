@@ -8,7 +8,7 @@ final class RefreshLeaseChainTests: XCTestCase {
     func refresher(_ h: Harness, owner: String, leaseWait: TimeInterval = 500,
                    renewEvery: TimeInterval = RefreshLease.renewInterval) -> SnapshotRefresher {
         SnapshotRefresher(school: h.session(), store: h.snapshots,
-                          lease: RefreshLease(store: h.store, owner: owner, now: h.clock.function),
+                          lease: RefreshLease(file: h.store.leaseFile, owner: owner, now: h.clock.function),
                           leaseWait: leaseWait, sleep: { _ in try? await Task.sleep(nanoseconds: 5_000_000) },
                           renewInterval: renewEvery)
     }
@@ -78,7 +78,7 @@ final class RefreshLeaseChainTests: XCTestCase {
         h.server.gate { r in
             guard r.url.path.hasSuffix("/getMyECard") else { return }
             clock.advance(RefreshLease.defaultDuration + 1)
-            XCTAssertTrue(RefreshLease(store: store, owner: "app-2", now: clock.function).acquire())
+            XCTAssertTrue(RefreshLease(file: store.leaseFile, owner: "app-2", now: clock.function).acquire())
         }
         let report = await refresher(h, owner: "widget-1").refresh(inBackground: true)
         XCTAssertTrue(login.calls.isEmpty, "no password login without the lease")
@@ -100,7 +100,7 @@ final class RefreshLeaseChainTests: XCTestCase {
         h.server.gate { r in
             guard r.url.path.hasSuffix("/csalogintoken/450010") else { return }
             clock.advance(RefreshLease.defaultDuration + 1)
-            XCTAssertTrue(RefreshLease(store: store, owner: "app-2", now: clock.function).acquire())
+            XCTAssertTrue(RefreshLease(file: store.leaseFile, owner: "app-2", now: clock.function).acquire())
         }
         let report = await refresher(h, owner: "widget-1").refresh(inBackground: true)
         XCTAssertFalse(report.snapshotSaved)
@@ -118,7 +118,7 @@ final class RefreshLeaseChainTests: XCTestCase {
         h.server.gate { r in
             guard r.url.path.hasSuffix("/getSysBindCustInfo") else { return }
             clock.advance(RefreshLease.defaultDuration + 1)
-            XCTAssertTrue(RefreshLease(store: store, owner: "app-2", now: clock.function).acquire())
+            XCTAssertTrue(RefreshLease(file: store.leaseFile, owner: "app-2", now: clock.function).acquire())
         }
         let report = await refresher(h, owner: "widget-1").refresh(inBackground: true)
         XCTAssertFalse(report.snapshotSaved)
@@ -155,7 +155,7 @@ final class SignOutDuringOtherProcessLoginTests: XCTestCase {
         try await app.clear()
         if !revokingLease {
             // An older app build left the lease in place.
-            XCTAssertTrue(RefreshLease(store: h.store, owner: "widget-1", now: h.clock.function).acquire())
+            XCTAssertTrue(RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function).acquire())
         }
         release.yield()
         let report = await read
@@ -231,7 +231,7 @@ final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
         try h.server.serve("ecykt/card-getRecordList-ok")
         let store = h.store, snapshots = h.snapshots
         store.beforeNextWrite(to: .sharedSnapshot) {
-            try? store.delete(.sharedRefreshLease)
+            try? RefreshLease(file: store.leaseFile, owner: "signed-out").clear()
             for key: StoreKey in [.schoolPassword, .schoolPortal, .schoolEcykt, .schoolProfile, .schoolDevice] { try? store.delete(key) }
             try? snapshots.saveSnapshot(SchoolSnapshotReducer.reduce(.empty, .signedOut))
         }
@@ -248,7 +248,7 @@ final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
         try h.server.serve("ecykt/getUserBalance-ok")
         try h.server.serve("ecykt/card-getRecordList-ok")
         let store = h.store
-        store.beforeNextWrite(to: .sharedSnapshot) { try? store.delete(.sharedRefreshLease) }
+        store.beforeNextWrite(to: .sharedSnapshot) { try? RefreshLease(file: store.leaseFile, owner: "signed-out").clear() }
         _ = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
         XCTAssertNotNil(try h.snapshots.loadSnapshot()?.card.value)
     }

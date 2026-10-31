@@ -16,8 +16,8 @@ public enum StoreKey: String, Sendable, CaseIterable {
     case laundryCheckout = "laundry.checkout"
     case sharedSnapshot = "shared.snapshot"
     case sharedReminderLines = "shared.reminderLines"
-    /// Which process (app or widget) is refreshing the school data right now, until when.
-    /// Holds a random owner id and an expiry only.
+    /// Where builds before the lease file kept the refresh lease (a random owner id and an
+    /// expiry). Only deleted now: `SchoolRefreshStack` removes a leftover at launch.
     case sharedRefreshLease = "shared.refreshLease"
     /// The credential-lifetime lines (kind and minutes only) for the exported diagnostics.
     case sharedCredentialLog = "shared.credentialLog"

@@ -88,15 +88,15 @@ final class PasswordLoginInterruptionTests: XCTestCase {
 /// process took it).
 final class LeaseLosingPasswordLogin: SchoolPasswordLogin, @unchecked Sendable {
     // @unchecked: `calls` is only touched by the one login of each refresh, read after it returned.
-    let store: SecureStore
+    let leaseFile: LeaseFile
     let clock: FakeClock
     private(set) var calls = 0
-    init(store: SecureStore, clock: FakeClock) { self.store = store; self.clock = clock }
+    init(leaseFile: LeaseFile, clock: FakeClock) { self.leaseFile = leaseFile; self.clock = clock }
     func login(account: String, password: String, visitorID: String) async throws -> PortalToken {
         calls += 1
         if calls == 1 {
             clock.advance(RefreshLease.defaultDuration + 1)
-            _ = RefreshLease(store: store, owner: "widget-2", now: clock.function).acquire()
+            _ = RefreshLease(file: leaseFile, owner: "widget-2", now: clock.function).acquire()
         }
         return SchoolPasswordSignInTests.freshToken
     }
@@ -107,14 +107,14 @@ final class PasswordLoginLostLeaseTests: XCTestCase {
     /// hold lifted, and the next refresh exchanges that token instead of sending the password again.
     func testAnAcceptedPasswordIsKeptWhenTheLeaseIsLostMeanwhile() async throws {
         var h = Harness()
-        let login = LeaseLosingPasswordLogin(store: h.store, clock: h.clock)
+        let login = LeaseLosingPasswordLogin(leaseFile: h.store.leaseFile, clock: h.clock)
         h.passwordLogin = login
         try h.signedIn()
         try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
         try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 2)
         func refresher(_ owner: String) -> SnapshotRefresher {
             SnapshotRefresher(school: h.session(), store: h.snapshots,
-                              lease: RefreshLease(store: h.store, owner: owner, now: h.clock.function),
+                              lease: RefreshLease(file: h.store.leaseFile, owner: owner, now: h.clock.function),
                               leaseWait: 0, sleep: { _ in })
         }
         let first = await refresher("app-1").refresh(inBackground: false)

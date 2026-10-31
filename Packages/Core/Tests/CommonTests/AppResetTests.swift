@@ -1,5 +1,6 @@
 import XCTest
 @testable import Core
+import CoreTestSupport
 
 final class AppResetTests: XCTestCase {
     /// Every stored item, the saved school password included, is gone after a reset; files the
@@ -70,7 +71,7 @@ final class AppResetTests: XCTestCase {
             session.lastAliveAt = Date(timeIntervalSince1970: 1_800_003_600)
             try school.saveEcyktSession(session)
             try school.savePortalToken(PortalToken("PORTAL", obtainedAt: Date(timeIntervalSince1970: 1_800_000_000)))
-            XCTAssertTrue(RefreshLease(store: store, owner: "widget-1").acquire())
+            XCTAssertTrue(RefreshLease(file: store.leaseFile, owner: "widget-1").acquire())
             try SharedSnapshotStore(store: store).saveSnapshot(HomeSnapshot(needsLogin: true, checkedAt: Date()))
         }
         let resetStore = InMemorySecureStore()
@@ -84,12 +85,12 @@ final class AppResetTests: XCTestCase {
         let signOutStore = InMemorySecureStore()
         try seed(signOutStore)
         let http = URLSessionHTTPClient(allowedHosts: [])
-        let stack = SchoolRefreshStack(store: signOutStore, http: http, role: "app", leaseWait: 0, diagnostic: { _ in })
+        let stack = SchoolRefreshStack(store: signOutStore, http: http, role: "app", leaseWait: 0, leaseFile: signOutStore.leaseFile, diagnostic: { _ in })
         try await stack.session.signOut()
         try await stack.refresher.clear()
         XCTAssertNil(try signOutStore.read(.schoolEcykt), "card session and its times")
         XCTAssertNil(try signOutStore.read(.schoolPortal), "portal token and its time")
-        XCTAssertNil(try signOutStore.read(.sharedRefreshLease), "the other process's lease too")
+        XCTAssertNil(signOutStore.leaseFile.storedOwner(), "the other process's lease too")
         XCTAssertEqual(try SharedSnapshotStore(store: signOutStore).loadSnapshot(), .empty)
     }
 

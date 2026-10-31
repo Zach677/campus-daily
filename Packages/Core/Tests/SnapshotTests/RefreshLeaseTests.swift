@@ -1,5 +1,6 @@
 import XCTest
 @testable import Core
+import CoreTestSupport
 
 final class TestClock: @unchecked Sendable {
     private let lock = NSLock()
@@ -12,7 +13,7 @@ final class TestClock: @unchecked Sendable {
 final class RefreshLeaseTests: XCTestCase {
     let store = InMemorySecureStore()
     let clock = TestClock()
-    func lease(_ owner: String) -> RefreshLease { RefreshLease(store: store, owner: owner, now: clock.function) }
+    func lease(_ owner: String) -> RefreshLease { RefreshLease(file: store.leaseFile, owner: owner, now: clock.function) }
 
     func testOneHolderAtATime() {
         let app = lease("app-1"), widget = lease("widget-1")
@@ -56,17 +57,25 @@ final class RefreshLeaseTests: XCTestCase {
 
     /// An unreadable record or one set far ahead (clock moved back) can't block refreshes.
     func testGarbageOrFarFutureLeaseIsStale() throws {
-        try store.write(Data("garbage".utf8), for: .sharedRefreshLease)
+        try Data("garbage".utf8).write(to: store.leaseFile.url)
         XCTAssertTrue(lease("app-1").acquire())
         let far = try JSONEncoder().encode(RefreshLease.Record(owner: "widget-9", expiresAt: clock.now.addingTimeInterval(3600)))
-        try store.write(far, for: .sharedRefreshLease)
+        try far.write(to: store.leaseFile.url)
         XCTAssertTrue(lease("app-1").acquire())
     }
 
-    /// The Keychain can't be written (locked before the first unlock): no lease, no refresh.
-    func testUnwritableStoreGivesNoLease() {
-        store.failWrites(to: .sharedRefreshLease)
-        XCTAssertFalse(lease("app-1").acquire())
+    /// The file can't be opened (protected before the first unlock): no lease, no refresh.
+    func testUnusableFileGivesNoLease() {
+        let missing = FileManager.default.temporaryDirectory.appendingPathComponent("no-such-dir-\(UUID().uuidString)/lease")
+        XCTAssertFalse(RefreshLease(file: LeaseFile(url: missing), owner: "app-1", now: clock.function).acquire())
+    }
+
+    /// Built without the App Group: nobody can take the lease, and the refresher does not wait for it.
+    func testNoSharedFileGivesNoLease() {
+        let lease = RefreshLease(file: nil, owner: "widget-1")
+        XCTAssertFalse(lease.isAvailable)
+        XCTAssertFalse(lease.acquire())
+        XCTAssertFalse(lease.renew())
     }
 
     func testOwnerIdsAreRandomPerProcess() {
@@ -84,7 +93,7 @@ final class TwoRefresherTests: XCTestCase {
 
     func refresher(_ reader: SchoolReader, _ mem: InMemorySecureStore, owner: String, wait: TimeInterval = 400) -> SnapshotRefresher {
         SnapshotRefresher(school: reader, store: SharedSnapshotStore(store: mem),
-                          lease: RefreshLease(store: mem, owner: owner, now: { Date(timeIntervalSince1970: 0) }),
+                          lease: RefreshLease(file: mem.leaseFile, owner: owner, now: { Date(timeIntervalSince1970: 0) }),
                           leaseWait: wait, sleep: { _ in try? await Task.sleep(nanoseconds: 5_000_000) })
     }
 
@@ -105,13 +114,13 @@ final class TwoRefresherTests: XCTestCase {
         XCTAssertTrue(rw.snapshotSaved)
         XCTAssertEqual(second.callCount, 1)
         XCTAssertEqual(widget.latest().card.value, Money(fen: 2))
-        XCTAssertNil(try mem.read(.sharedRefreshLease))
+        XCTAssertNil(mem.leaseFile.storedOwner())
     }
 
     /// Still held after the wait: no read, nothing written, the stored snapshot is returned.
     func testBusyLeaseReturnsTheStoredSnapshot() async throws {
         let mem = InMemorySecureStore()
-        XCTAssertTrue(RefreshLease(store: mem, owner: "app-1", now: { Date(timeIntervalSince1970: 0) }).acquire())
+        XCTAssertTrue(RefreshLease(file: mem.leaseFile, owner: "app-1", now: { Date(timeIntervalSince1970: 0) }).acquire())
         let reader = ScriptedSchoolReader(SchoolReading(outcome: .ok, checkedAt: t1))
         let report = await refresher(reader, mem, owner: "widget-1", wait: 2).refresh(inBackground: true)
         XCTAssertEqual(report.outcome, .failed(.timedOut))
@@ -126,7 +135,7 @@ final class TwoRefresherTests: XCTestCase {
         let mem = InMemorySecureStore()
         let stored = SchoolSnapshotReducer.reduce(.empty, .balance(.success(Money(fen: 700)), at: t1))
         try SharedSnapshotStore(store: mem).saveSnapshot(stored)
-        let widget = RefreshLease(store: mem, owner: "widget-1", now: { Date(timeIntervalSince1970: 0) })
+        let widget = RefreshLease(file: mem.leaseFile, owner: "widget-1", now: { Date(timeIntervalSince1970: 0) })
         XCTAssertTrue(widget.acquire())
         let reader = ScriptedSchoolReader(SchoolReading(outcome: .ok, checkedAt: t2))
         let busy = await refresher(reader, mem, owner: "app-1", wait: 2).refresh(inBackground: false)
@@ -182,50 +191,112 @@ final class TwoRefresherTests: XCTestCase {
     }
 }
 
-/// Runs a step right after the next read of the lease, as another process would between a
-/// renewal's read and its write.
-final class LeaseRaceStore: SecureStore, @unchecked Sendable {
-    let inner = InMemorySecureStore()
-    private let lock = NSLock()
-    private var afterRead: (() -> Void)?
-    func onNextLeaseRead(_ step: @escaping () -> Void) { lock.withLock { afterRead = step } }
-    func read(_ key: StoreKey) throws -> Data? {
-        let data = try inner.read(key)
-        if key == .sharedRefreshLease, let step = lock.withLock({ () -> (() -> Void)? in defer { afterRead = nil }; return afterRead }) { step() }
-        return data
+/// Another process trying at the moment the lease file is locked: it runs on its own thread
+/// with its own file descriptor, so it has to wait for the lock as the other process would.
+final class Rival: @unchecked Sendable {
+    // @unchecked: `result` is written before `done` is signalled and read after waiting on it.
+    private let done = DispatchSemaphore(value: 0)
+    private var result = false
+    init(_ body: @escaping @Sendable () -> Bool) {
+        Thread { [self] in result = body(); done.signal() }.start()
     }
-    func write(_ data: Data, for key: StoreKey) throws { try inner.write(data, for: key) }
-    func delete(_ key: StoreKey) throws { try inner.delete(key) }
-    func create(_ data: Data, for key: StoreKey) throws -> Bool { try inner.create(data, for: key) }
-    func replace(_ data: Data, for key: StoreKey) throws -> Bool { try inner.replace(data, for: key) }
+    func join() -> Bool { done.wait(); return result }
 }
 
-final class LeaseRenewRaceTests: XCTestCase {
-    let store = LeaseRaceStore()
-    let clock = TestClock()
-    func lease(_ owner: String) -> RefreshLease { RefreshLease(store: store, owner: owner, now: clock.function) }
+/// Runs a step once, the first time the hooked lease file is locked and read.
+final class OnceInsideLock: @unchecked Sendable {
+    // @unchecked: `step` guarded by `lock`.
+    private let lock = NSLock()
+    private var step: (() -> Void)?
+    func set(_ body: @escaping () -> Void) { lock.withLock { step = body } }
+    func fire() { lock.withLock { () -> (() -> Void)? in defer { step = nil }; return step }?() }
+}
 
-    /// A sign-out in the other process removes the lease after the renewal read it: the
-    /// renewal reports it lost and does not put it back.
+/// The other process steps in exactly between a lease step's read and its write.
+final class LeaseRenewRaceTests: XCTestCase {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("lease-\(UUID().uuidString)")
+    let clock = TestClock()
+    let hook = OnceInsideLock()
+    /// The process under test: its file runs `hook` inside the lock.
+    func hooked(_ owner: String) -> RefreshLease {
+        let hook = hook
+        return RefreshLease(file: LeaseFile(url: url, insideLock: { hook.fire() }), owner: owner, now: clock.function)
+    }
+    /// The other process: the same file, no hook.
+    func other(_ owner: String) -> RefreshLease { RefreshLease(file: LeaseFile(url: url), owner: owner, now: clock.function) }
+
+    /// Whether another descriptor is kept out of the file right now.
+    func lockIsHeld() -> Bool {
+        let fd = open(url.path, O_RDWR)
+        defer { close(fd) }
+        guard flock(fd, LOCK_EX | LOCK_NB) != 0 else { flock(fd, LOCK_UN); return false }
+        return errno == EWOULDBLOCK
+    }
+
+    /// Two processes find the same run-out lease at the same moment: only one comes away holding it.
+    func testTwoTakersOfAnExpiredLeaseOnlyOneWins() throws {
+        XCTAssertTrue(other("app-0").acquire())
+        clock.advance(RefreshLease.defaultDuration + 1)
+        let app = hooked("app-1"), widget = other("widget-1")
+        var rival: Rival?
+        var held = false
+        hook.set { held = self.lockIsHeld(); rival = Rival { widget.acquire() } }
+        let appTook = app.acquire()
+        let widgetTook = try XCTUnwrap(rival).join()
+        XCTAssertTrue(held, "the read, the check and the write happen under the lock")
+        XCTAssertTrue(appTook != widgetTook, "exactly one holder (app \(appTook), widget \(widgetTook))")
+        XCTAssertEqual(app.holds(), appTook)
+        XCTAssertEqual(widget.holds(), widgetTook)
+    }
+
+    /// The holder's lease runs out between its renewal's read and its write, and the other
+    /// process tries to take it then: the late renewal must not overwrite the new holder.
+    func testStaleOwnerRenewingDoesNotOverwriteTheNewOwner() throws {
+        let app = hooked("app-1"), widget = other("widget-1")
+        XCTAssertTrue(app.acquire())
+        clock.advance(RefreshLease.defaultDuration - 1)
+        var rival: Rival?
+        hook.set {
+            self.clock.advance(2)
+            rival = Rival { widget.acquire() }
+        }
+        let renewed = app.renew()
+        let widgetTook = try XCTUnwrap(rival).join()
+        XCTAssertTrue(widgetTook)
+        XCTAssertFalse(renewed, "the old holder finds out it lost the lease")
+        XCTAssertTrue(widget.holds(), "the new holder keeps it")
+        XCTAssertFalse(app.holds())
+    }
+
+    /// A sign-out in the other process clears the lease while a renewal runs: the renewal goes
+    /// first or second, never in between, and the lease is gone at the end.
     func testRenewDoesNotBringBackALeaseRevokedMeanwhile() throws {
-        let widget = lease("widget-1"), app = lease("app-1")
+        let widget = hooked("widget-1"), app = other("app-1")
         XCTAssertTrue(widget.acquire())
-        store.onNextLeaseRead { try? app.clear() }
-        XCTAssertFalse(widget.renew())
-        XCTAssertNil(try store.inner.read(.sharedRefreshLease))
+        var rival: Rival?
+        hook.set { rival = Rival { (try? app.clear()) != nil } }
+        _ = widget.renew()
+        XCTAssertTrue(try XCTUnwrap(rival).join())
+        XCTAssertNil(LeaseFile(url: url).storedOwner())
+        XCTAssertFalse(widget.renew(), "the holder finds out before it mints")
         XCTAssertTrue(app.acquire(), "the other process is not held off")
     }
 
     /// The holder gives the lease back while its own heartbeat is renewing it.
     func testRenewDoesNotBringBackALeaseReleasedMeanwhile() throws {
-        let app = lease("app-1"), widget = lease("widget-1")
+        let app = hooked("app-1"), widget = other("widget-1")
         XCTAssertTrue(app.acquire())
-        store.onNextLeaseRead { app.release() }
-        XCTAssertFalse(app.renew())
-        XCTAssertNil(try store.inner.read(.sharedRefreshLease))
+        let giver = other("app-1")
+        var rival: Rival?
+        hook.set { rival = Rival { giver.release(); return true } }
+        _ = app.renew()
+        _ = try XCTUnwrap(rival).join()
+        XCTAssertNil(LeaseFile(url: url).storedOwner())
         XCTAssertTrue(widget.acquire())
     }
+}
 
+final class InMemoryReplaceTests: XCTestCase {
     func testInMemoryReplaceNeverAdds() throws {
         let memory = InMemorySecureStore()
         XCTAssertFalse(try memory.replace(Data("a".utf8), for: .sharedRefreshLease))

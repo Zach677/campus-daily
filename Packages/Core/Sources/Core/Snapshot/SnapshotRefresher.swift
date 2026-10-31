@@ -192,10 +192,10 @@ public actor SnapshotRefresher {
     public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable () async throws -> T) async throws -> T {
         guard let shared = lease else { return try await body() }
         // Its own owner: the lease this process's refresh holds is not "ours" to reuse here.
-        let lease = RefreshLease(store: shared.store, owner: shared.owner + "-login", duration: shared.duration,
-                                 now: shared.now)
+        let lease = shared.with(owner: shared.owner + "-login")
         var waited: TimeInterval = 0
         while !lease.acquire() {
+            guard lease.isAvailable else { throw SchoolLoginFailure.busy }
             guard waited < leaseWait else { throw SchoolLoginFailure.busy }
             try Task.checkCancellation()
             await sleep(1)
@@ -218,7 +218,7 @@ public actor SnapshotRefresher {
     private func acquireLease(_ lease: RefreshLease) async -> Bool {
         var waited: TimeInterval = 0
         while !lease.acquire() {
-            guard waited < leaseWait, !Task.isCancelled else { return false }
+            guard lease.isAvailable, waited < leaseWait, !Task.isCancelled else { return false }
             await sleep(1)
             waited += 1
         }

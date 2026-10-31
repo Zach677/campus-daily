@@ -387,7 +387,7 @@ final class PasswordHoldNotWrittenTests: XCTestCase {
             return clock.now
         }
         let refresher = SnapshotRefresher(school: h.session(), store: h.snapshots,
-                                          lease: RefreshLease(store: h.store, owner: "app-1", now: now))
+                                          lease: RefreshLease(file: h.store.leaseFile, owner: "app-1", now: now))
         let report = await refresher.refresh(inBackground: true)
         return (report, login, h)
     }

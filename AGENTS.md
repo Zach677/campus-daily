@@ -18,6 +18,8 @@ The rules for working in this repo, for people and AI agents alike. The full des
 
 ## Code
 
+- State shared across processes (app and widget) changes only through an atomic compare-and-modify (one locked read-compare-write, like the refresh lease file's `flock`) or while holding that lease; never by a read and a separate write alone.
+
 - iOS 17. Core, App and Widget build in Swift 6 language mode. Today's screen models are `ObservableObject` (some with `.shared` singletons, see docs/architecture.md); new code passes dependencies through initializers instead of adding singletons. Time, network and Bluetooth are injectable.
 - One main type per file, named after the type. Split files over 400 lines by responsibility (`HomeView+Rows.swift`).
 - Feature names are Campus, Shower, Laundry and Snapshot everywhere. Do not use Water, HotWater or DailyXxx in new names.

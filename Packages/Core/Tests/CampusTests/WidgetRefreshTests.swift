@@ -6,7 +6,7 @@ import CoreTestSupport
 /// the shared store, run before each timeline.
 final class WidgetRefreshTests: XCTestCase {
     func stack(_ h: Harness, role: String = "widget", leaseWait: TimeInterval = SchoolRefreshStack.widgetLeaseWait) -> SchoolRefreshStack {
-        SchoolRefreshStack(store: h.store, http: h.server.makeClient(), role: role, leaseWait: leaseWait, diagnostic: { _ in })
+        SchoolRefreshStack(store: h.store, http: h.server.makeClient(), role: role, leaseWait: leaseWait, leaseFile: h.store.leaseFile, diagnostic: { _ in })
     }
 
     func signedInWithOldSnapshot(_ h: Harness) throws {
@@ -24,7 +24,7 @@ final class WidgetRefreshTests: XCTestCase {
         let drawn = await WidgetRefresh.run(stack(h).refresher, now: Date(), deadline: 10)
         XCTAssertEqual(drawn.card.value, Money(fen: 790))
         XCTAssertEqual(try h.snapshots.loadSnapshot(), drawn, "written through the refresher")
-        XCTAssertNil(try h.store.read(.sharedRefreshLease), "the lease is given back")
+        XCTAssertNil(h.store.leaseFile.storedOwner(), "the lease is given back")
     }
 
     func testNoReadWhenNobodyIsSignedIn() async throws {
@@ -49,7 +49,7 @@ final class WidgetRefreshTests: XCTestCase {
         let h = Harness()
         try signedInWithOldSnapshot(h)
         let stored = try h.snapshots.loadSnapshot()
-        XCTAssertTrue(RefreshLease(store: h.store, owner: RefreshLease.owner("app")).acquire())
+        XCTAssertTrue(RefreshLease(file: h.store.leaseFile, owner: RefreshLease.owner("app")).acquire())
         let drawn = await WidgetRefresh.run(stack(h, leaseWait: 0).refresher, now: Date(), deadline: 10)
         XCTAssertEqual(drawn, stored)
         XCTAssertTrue(h.server.requests.isEmpty)
@@ -70,8 +70,8 @@ final class WidgetRefreshTests: XCTestCase {
         XCTAssertEqual(drawn, stored)
         release.signal()
         // The cancelled read ends (and gives the lease back) without writing.
-        for _ in 0..<200 where try h.store.read(.sharedRefreshLease) != nil { try await Task.sleep(nanoseconds: 10_000_000) }
-        XCTAssertNil(try h.store.read(.sharedRefreshLease))
+        for _ in 0..<200 where h.store.leaseFile.storedOwner() != nil { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertNil(h.store.leaseFile.storedOwner())
         XCTAssertEqual(try h.snapshots.loadSnapshot(), stored)
     }
 

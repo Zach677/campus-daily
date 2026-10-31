@@ -1,5 +1,6 @@
 import XCTest
 @testable import Core
+import CoreTestSupport
 
 /// Someone else signed in: the previous person's numbers and hot-water binding go, unless a
 /// shower may still need the binding.
@@ -26,7 +27,7 @@ final class AccountSwitchTests: XCTestCase {
         try snapshots.saveSnapshot(old)
         try store.write(Data("{}".utf8), for: .showerBinding)
         let stack = SchoolRefreshStack(store: store, http: URLSessionHTTPClient(allowedHosts: []), role: "app",
-                                       leaseWait: 0, diagnostic: { _ in })
+                                       leaseWait: 0, leaseFile: store.leaseFile, diagnostic: { _ in })
         var order: [String] = []
         let result = await AccountSwitch.clearPreviousPerson(
             snapshot: { order.append("snapshot"); try await stack.refresher.clear() },

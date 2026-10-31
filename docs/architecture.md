@@ -251,22 +251,28 @@ records the failure and its time per tile.
 
 **One writer across two processes.** The app and the widget extension each have one
 `SnapshotRefresher` over one Keychain. They take turns
-through `RefreshLease`, the shared item `shared.refreshLease` = `{owner, expiresAt}`:
-- taken with an atomic create (`SecItemAdd` fails with `errSecDuplicateItem` while one exists), so
-  only one process reads the school (and may mint) at a time; the other waits up to 15 s and then
-  reads, by which time the session is fresh, or gives up and shows the stored snapshot;
+through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the App Group container
+(`group.com.beamjason.xiaorichang`):
+- every step (take, renew, check, give back, clear) is one read-compare-write done while holding
+  an exclusive `flock` on that file, so two processes never both find the same lease free and a
+  holder whose lease ran out never writes over the next one's; the lock is held only for that
+  step, never across an `await` (iOS ends a suspended process that holds a file lock in a shared
+  container). Only one process reads the school (and may mint) at a time; the other waits up to
+  15 s and then reads, by which time the session is fresh, or gives up and shows the stored
+  snapshot;
 - 180 s long (longer than the slowest chain: liveness, portal exchange, one password login and the
   exchange after it, each up to 20 s, plus the reads), renewed every 20 s while the read runs and
   checked again (renewed) before each step that mints, sends the saved password, saves the new
   portal token or writes the session back; a holder that died leaves it to run out, and the next
-  process deletes the stale one (only if it is still the one it saw) and creates its own;
+  process takes it over in one locked step;
 - a read that lost the lease (it ran out and was taken, or a sign-out removed it) stops at the next
   of those steps and writes nothing;
 - snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
   dropped (unless more than 30 minutes older: the clock moved back, and the reading is written), and a "nobody signed in" reading leaves an emptied snapshot empty.
-Residual: the Keychain has no compare-and-delete, so two processes that both find the same lease
-stale within microseconds could both delete and create. The read-back before minting and the
-write-back rule above (step 6) keep that from losing a session; it only costs one extra read.
+- signed without the App Group (no container), the app refreshes on its own and the widget never
+  takes the lease: it draws the stored snapshot, so the two still never read at the same time.
+Builds before the lease file kept the lease in the Keychain item `shared.refreshLease`;
+`SchoolRefreshStack` deletes that leftover at launch.
 
 **The widget's own refresh.** `SchoolRefreshStack` builds the school session (with the CAS
 password login) and the refresher with its lease, the same in both processes (`role` "app" /
@@ -560,7 +566,7 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
 | credential-lifetime lines (kind, minutes, time; last 50) | Keychain `shared.credentialLog` | same | **yes** (the widget's refresh appends) |
-| refresh lease (`{owner, expiresAt}`, one school read at a time across processes) | Keychain `shared.refreshLease` | same | **yes** (the widget takes it for its own read) |
+| refresh lease (`{owner, expiresAt}`, one school read at a time across processes) | file `refresh.lease` in the App Group container | until first unlock | **yes** (the widget takes it for its own read) |
 | reset-in-progress marker (start time) | Keychain `shared.resetMarker` | same | **yes** (any process that can start a shower or a laundry order checks it) |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard), keys prefixed `xrc.` | – | no |
 
@@ -589,13 +595,15 @@ iOS puts an item written without a group into the first listed group. Items mark
 written to the shared group; all others are written to the private group, which the widget is
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
 registration. The widget reads the school items above for its own refresh, and `shared.snapshot`,
-`shared.reminderLines` and `shared.refreshLease`, and appends to `shared.credentialLog`. An item can still sit in its old group: builds before the private group existed kept
+and `shared.reminderLines`, appends to `shared.credentialLog`, and shares the lease file in the App
+Group container. An item can still sit in its old group: builds before the private group existed kept
 every item in the shared group, and builds before the widget refreshed by itself kept the portal
 token (then WhenUnlocked) and the login device id in the private group. At launch
 (`migrateItemGroups()`) and on any read that finds one there, the item is written to its group
 with today's accessibility, read back, and only then deleted from the old group; a failed step
-keeps the original and retries next launch, so nobody is signed out or loses a binding. No App Group is introduced: the current build has none and
-re-signers of the public IPA may not get one. Live Activities get data via ActivityKit content
+keeps the original and retries next launch, so nobody is signed out or loses a binding. The App
+Group (`group.com.beamjason.xiaorichang`, both targets) holds only the lease file; a re-signed
+build without it keeps working, with the widget leaving every refresh to the app. Live Activities get data via ActivityKit content
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.
 

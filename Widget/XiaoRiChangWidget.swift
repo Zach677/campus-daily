@@ -8,7 +8,7 @@ struct CampusTimeline: TimelineProvider {
     /// saved password once → needs login), writing the same shared snapshot, one process at a
     /// time through the lease. Built once per widget process.
     static let school = SchoolRefreshStack(store:SharedKeychain.store, http:SchoolRefreshStack.schoolHTTP(), role:"widget",
-                                           leaseWait:SchoolRefreshStack.widgetLeaseWait)
+                                           leaseWait:SchoolRefreshStack.widgetLeaseWait, leaseFile:RefreshLease.sharedFile())
     /// The read gives up after this; the stored numbers are drawn and the next timeline tries again.
     static let readDeadline: TimeInterval = 20
     static let interval: TimeInterval = 30 * 60
