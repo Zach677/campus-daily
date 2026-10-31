@@ -49,6 +49,8 @@ struct PowerChoice: Identifiable, Equatable {
     private var signOutGeneration = 0
     private let session = AppEnvironment.school
     private let refresher = AppEnvironment.refresher
+    /// Sign-outs in order; sign-ins wait for them (`finished()`).
+    private let signOuts = SchoolSignOut(session:AppEnvironment.school, refresher:AppEnvironment.refresher)
 
     init() { reload() }
 
@@ -130,6 +132,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// The official ecykt page finished signing in: adopt its `elecampus_state`, and keep the
     /// dorm address the portal page showed (read by the same sign-in).
     func adoptWebState(_ login: CampusWebLogin) async throws {
+        // A sign-out asked for just before must not delete what this stores.
+        await signOuts.finished()
         let started = signOutGeneration
         let session = session, state = login.state
         // Under the lease like the password sign-in: never beside the widget's own login.
@@ -158,6 +162,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// The app's own login form. Throws `SchoolLoginFailure` for the login itself (shown on the
     /// form), or a service / storage error for the steps after it.
     func signIn(account: String, password: String, savePassword: Bool) async throws {
+        // A sign-out asked for just before must not delete what this stores.
+        await signOuts.finished()
         let session = session
         let summary = try await refresher.holdingLease {
             try await session.signIn(account:account, password:password, savePassword:savePassword)
@@ -188,6 +194,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// Without a known account (signed in on the web page) the typed one is checked against
     /// the signed-in card.
     func savePassword(_ password: String, account typed: String?) async throws {
+        // A sign-out asked for just before must not delete what this stores.
+        await signOuts.finished()
         let known = account?.account
         guard let name = known ?? typed, !name.isEmpty else { throw SchoolLoginFailure.wrongCredentials }
         let session = session
@@ -212,24 +220,18 @@ struct PowerChoice: Identifiable, Equatable {
     /// values back afterwards, and the widget snapshot is cleared first so nothing rewrites it.
     func signOutForReset() async {
         signOutGeneration += 1
-        await refresher.revokeLease()
-        try? await session.signOut()
-        try? await refresher.clear()
+        _ = await signOuts.start().value
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         powerChoices = []; powerMatchIssue = nil; lastRefresh = nil
     }
 
     func signOut() {
         signOutGeneration += 1
-        let session = session, refresher = refresher
+        // The lease goes first: a widget read in the middle of a login loses it and writes
+        // nothing. Waiting for its file lock happens off the main thread.
+        let signedOut = signOuts.start()
         Task {
-            // The lease goes first: a widget read in the middle of a login loses it and writes
-            // nothing. Waiting for its file lock happens off the main thread.
-            await refresher.revokeLease()
-            var failed = false
-            do { try await session.signOut() } catch { failed = true }
-            do { try await refresher.clear() } catch { failed = true }
-            guard failed else { return }
+            guard !(await signedOut.value) else { return }
             // Show what is still stored, so 退出登录 can be tried again.
             reload()
             signOutFailed = true
