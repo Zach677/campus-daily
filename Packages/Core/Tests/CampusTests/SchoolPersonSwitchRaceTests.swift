@@ -126,6 +126,53 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         }
     }
 
+    /// The next person's sign-in wipes the previous person's account and tokens, then a later
+    /// write of the same step fails (a full Keychain): the sign-in fails, but the previous
+    /// person's match still in flight is stale all the same and writes no dorm or meter next to
+    /// what is left.
+    func testASwitchWhoseWritesFailHalfwayStillDropsThePreviousPersonsMatch() async throws {
+        for byForm in [false, true] {
+            var h = try previousPerson()
+            h.passwordLogin = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+            if byForm {
+                h.server.serve(try T.eCardWithTicket())
+                h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "NEXT-TOKEN"))
+            }
+            try h.server.serve("ecykt/getSysBindCustInfo-ok")
+            h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+            try SchoolElectricityTests.serveTree(h)
+            let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
+            let session = session(h, hold)
+            let stamp = await session.personStamp()
+            async let result = session.resolveElectricity()
+            await fulfillment(of: [hold.reached], timeout: 5)
+            // The previous person's items go first; the profile write after them fails.
+            h.store.failWrites(to: .schoolProfile)
+            do {
+                if byForm {
+                    _ = try await session.signIn(account: "99100992", password: "synthetic-pw-992", savePassword: false, owning: .unchecked)
+                } else {
+                    try await signInSomeoneElse(session)
+                }
+                XCTFail("byForm \(byForm): the sign-in's profile write was meant to fail")
+            } catch {
+                XCTAssertTrue(error is StorageError, "byForm \(byForm): \(error)")
+            }
+            XCTAssertNil(try h.vault.account(), "byForm \(byForm): the wipe ran")
+            let stale = await session.isSamePerson(since: stamp)
+            XCTAssertFalse(stale, "byForm \(byForm): the previous person's work is stale once the wipe began")
+            h.store.failWrites(to: .schoolProfile, false)
+            hold.release()
+            do {
+                let late = try await result
+                XCTFail("byForm \(byForm): the previous person's match was written: \(late)")
+            } catch {
+                XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt), "byForm \(byForm)")
+            }
+            XCTAssertNil(try h.vault.profile()?.meter, "byForm \(byForm): no meter of the previous person")
+        }
+    }
+
     /// The previous person's match was dropped by the switch: the next person's own match
     /// runs instead, so their first setup is not left without a meter or a word.
     func testAMatchDroppedBySomeoneElsesSignInRunsForThem() async throws {

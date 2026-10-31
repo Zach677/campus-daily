@@ -324,8 +324,9 @@ public actor SchoolSession {
 
     /// A different person clears the previous one's data first. When the dorm address can't be
     /// read, the old dorm and meter are kept only if the card shows it is the same person.
-    /// Anyone but the same person makes work still running for the previous one stale; `started`
-    /// then moves on to the new person. `saving`: the account the form signed in with. Every
+    /// Anyone but the same person makes work still running for the previous one stale, from the
+    /// moment the locked step starts writing (also when one of its writes then fails, the
+    /// previous person's items maybe gone already); `started` then moves on to the new person. `saving`: the account the form signed in with. Every
     /// write is one locked step (`commitLogin`) over the credentials read at `start`.
     private func signIn(portalToken: PortalToken, account: String?, saving: SchoolAccount?, before: SignedInPerson?,
                         start: StoredCredentials, started: inout Int, owning: LeaseOwnership,
@@ -336,21 +337,31 @@ public actor SchoolSession {
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: account)
         let vault = vault, token = stamped(portalToken)
-        let (old, profile) = try Self.commitLogin(owning, vault, from: start) { () -> (SchoolProfile?, SchoolProfile) in
-            let old = (try? vault.profile()) ?? nil
-            if match == .different { try Self.clearPreviousPerson(vault) }
-            try vault.savePortalToken(token)
-            try vault.saveEcyktSession(updated)
-            var profile = (try? vault.profile()) ?? SchoolProfile()
-            if let residence {
-                if profile.residence?.address != residence.address { profile.meter = nil }
-                profile.residence = residence
-            } else if match != .same {
-                profile = SchoolProfile()
+        var writing = false
+        let old: SchoolProfile?, profile: SchoolProfile
+        do {
+            (old, profile) = try Self.commitLogin(owning, vault, from: start) { () -> (SchoolProfile?, SchoolProfile) in
+                writing = true
+                let old = (try? vault.profile()) ?? nil
+                if match == .different { try Self.clearPreviousPerson(vault) }
+                try vault.savePortalToken(token)
+                try vault.saveEcyktSession(updated)
+                var profile = (try? vault.profile()) ?? SchoolProfile()
+                if let residence {
+                    if profile.residence?.address != residence.address { profile.meter = nil }
+                    profile.residence = residence
+                } else if match != .same {
+                    profile = SchoolProfile()
+                }
+                try vault.saveProfile(profile)
+                if let saving { try vault.saveAccount(saving) }
+                return (old, profile)
             }
-            try vault.saveProfile(profile)
-            if let saving { try vault.saveAccount(saving) }
-            return (old, profile)
+        } catch {
+            // A write failed after the step began (the previous person's items may be gone
+            // already): their work still in flight is stale all the same.
+            if writing, match != .same { started = newPerson() }
+            throw error
         }
         if match != .same { started = newPerson() }
         if saving != nil { passwordGeneration += 1 }
@@ -385,16 +396,25 @@ public actor SchoolSession {
         // else's are not kept. No portal token: no dorm is read, so that happens right here.
         let dropDorm = match == .unknown && before != nil
         let vault = vault, webToken = portalToken.map(stamped)
-        let old = try Self.commitLogin(owning, vault, from: start) { () -> SchoolProfile? in
-            let old = (try? vault.profile()) ?? nil
-            if switched { try Self.clearPreviousPerson(vault) }
-            // The web page never tells us the account: a saved password stays only when the card
-            // shows it is the same person (the widget keeps signing in with it).
-            if match != .same { try vault.saveAccount(nil) }
-            if let webToken { try vault.savePortalToken(webToken) }
-            try vault.saveEcyktSession(updated)
-            if webToken == nil, dropDorm { try vault.saveProfile(SchoolProfile()) }
-            return old
+        var writing = false
+        let old: SchoolProfile?
+        do {
+            old = try Self.commitLogin(owning, vault, from: start) { () -> SchoolProfile? in
+                writing = true
+                let old = (try? vault.profile()) ?? nil
+                if switched { try Self.clearPreviousPerson(vault) }
+                // The web page never tells us the account: a saved password stays only when the
+                // card shows it is the same person (the widget keeps signing in with it).
+                if match != .same { try vault.saveAccount(nil) }
+                if let webToken { try vault.savePortalToken(webToken) }
+                try vault.saveEcyktSession(updated)
+                if webToken == nil, dropDorm { try vault.saveProfile(SchoolProfile()) }
+                return old
+            }
+        } catch {
+            // As for the form sign-in: begun writes make the previous person's work stale.
+            if writing, match != .same { started = newPerson() }
+            throw error
         }
         if match != .same { started = newPerson() }
         var residence: PortalResidence?
