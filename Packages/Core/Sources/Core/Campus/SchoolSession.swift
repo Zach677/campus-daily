@@ -1012,40 +1012,37 @@ public actor SchoolSession {
         }
     }
 
+    /// Launch: a meter bound to the campus node (older builds) is dropped. True when one was.
+    /// The dorm stays, so the launch lookup walks to the room's own meter.
+    public static func dropCampusWideMeter(_ vault: SchoolVault) throws -> Bool {
+        guard var profile = try vault.profile(), let meter = profile.meter, !meter.nodeIsRoom else { return false }
+        profile.meter = nil
+        try vault.saveProfile(profile)
+        return true
+    }
+
     /// Manual choice from the picker (`buildings(parent:)` walk in the UI, then a meter row).
     /// `path` = the directory names walked down to `nodeID`, kept as the full location.
     /// `stamp` = `personStamp()` when the picker opened: a pick made after someone else signed
     /// in is refused.
-    public func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool, path: [String] = [], since stamp: Int) throws {
+    public func chooseMeter(nodeID: String, meter: Meter, path: [String] = [], since stamp: Int) throws {
         try ensureSignedIn(since: stamp)
         var profile = try vault.profile() ?? SchoolProfile()
-        profile.meter = MeterBinding(nodeID: nodeID, comAddress: meter.comAddress, label: meter.name, nodeIsRoom: nodeIsRoom,
+        profile.meter = MeterBinding(nodeID: nodeID, comAddress: meter.comAddress, label: meter.name, nodeIsRoom: true,
                                      location: path.isEmpty ? nil : PowerLocation.label(path))
         try vault.saveProfile(profile)
     }
 
-    /// Choice among several same-name meters (`.chooseAmong`): saved against its room node
-    /// (1 row) when the walk found it, else against the campus node (wide read, picked by `comAddress`).
+    /// Choice among several same-name rooms (`.chooseAmong`): saved against its room node
+    /// (1 row). A choice without its room is refused: no meter is bound to the campus.
     /// `stamp` = `personStamp()` taken before the match that offered the list.
     public func chooseMatchedMeter(_ candidate: MeterCandidate, since stamp: Int) async throws {
-        let started = stamp
-        try ensureSignedIn(since: started)
-        guard let session = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
+        try ensureSignedIn(since: stamp)
+        guard let room = candidate.room else { throw ServiceError.malformed(.ecykt, "room") }
         var profile = try vault.profile() ?? SchoolProfile()
         guard let address = profile.residence?.address else { throw ServiceError.malformed(.portal, "data.gydz") }
-        let meter = candidate.meter
-        if let room = candidate.room {
-            profile.meter = MeterBinding(nodeID: room.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: true,
-                                         location: candidate.location)
-            try ensureSignedIn(since: started)
-            try vault.saveProfile(profile)
-            return
-        }
-        let campuses = try await ecykt.buildings(session, parent: nil).filter { address.matchesCampus($0.name) }
-        guard campuses.count == 1, let campus = campuses.first else { throw ServiceError.malformed(.ecykt, "campus") }
-        profile.meter = MeterBinding(nodeID: campus.id, comAddress: meter.comAddress, label: address.roomLabel, nodeIsRoom: false,
-                                     location: MeterCandidate(meter: meter, path: [campus]).location)
-        try ensureSignedIn(since: started)
+        profile.meter = MeterBinding(nodeID: room.id, comAddress: candidate.meter.comAddress, label: address.roomLabel, nodeIsRoom: true,
+                                     location: candidate.location)
         try vault.saveProfile(profile)
     }
 
@@ -1099,7 +1096,8 @@ public actor SchoolSession {
         case .card: return try await ecykt.balance(s, custid: custid)
         case .electricity:
             guard let binding = try vault.profile()?.meter else { return nil }
-            let rows = try await ecykt.meters(s, nodeID: binding.nodeID, wide: !binding.nodeIsRoom)
+            guard binding.nodeIsRoom else { return nil }
+            let rows = try await ecykt.meters(s, nodeID: binding.nodeID)
             return MeterMatcher.pick(rows, binding: binding)?.leftMoney
         }
     }
@@ -1193,10 +1191,10 @@ public actor SchoolSession {
 
     nonisolated func readMeter(_ session: EcyktSession, binding: MeterBinding?) async -> Result<Meter?, ServiceError>? {
         guard let binding else { return nil }
-        // Bound to the campus node: every meter on the campus, as slow as the lookup's own read.
-        let timeout = binding.nodeIsRoom ? nil : URLSessionHTTPClient.longestTimeout
+        // Bound to the campus node by an older build: no meter until the app drops it and finds the room.
+        guard binding.nodeIsRoom else { return nil }
         return await capture {
-            let rows = try await self.ecykt.meters(session, nodeID: binding.nodeID, wide: !binding.nodeIsRoom, timeout: timeout)
+            let rows = try await self.ecykt.meters(session, nodeID: binding.nodeID)
             return MeterMatcher.pick(rows, binding: binding)
         }
     }

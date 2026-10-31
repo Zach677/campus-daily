@@ -60,18 +60,21 @@ final class SchoolSignOutRaceTests: XCTestCase {
         XCTAssertNil(try h.vault.profile())
     }
 
-    func testSignOutDuringChosenMeterSaveKeepsTheProfileEmpty() async throws {
+    /// A same-name list offered before a sign-out: a pick from it afterwards saves nothing.
+    func testSignOutBeforeAChosenMeterIsSavedKeepsTheProfileEmpty() async throws {
         let h = Harness()
         try h.signedIn()
-        try h.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
-        let hold = Hold(h, self, suffix: "/electricnew/service")
         let session = h.session()
-        async let result: Void = session.chooseMatchedMeter(MeterCandidate(meter: Meter(comAddress: "000000000991", name: "99栋991"), path: []), since: 0)
-        await fulfillment(of: [hold.reached], timeout: 5)
+        let stamp = await session.personStamp()
         try await session.signOut()
-        hold.release.signal()
-        do { try await result; XCTFail("expected a sign-out error") } catch {}
+        do {
+            try await session.chooseMatchedMeter(MeterCandidate(meter: Meter(comAddress: "000000000991", name: "99栋991"), path: [MeterWalkTests.campus, MeterWalkTests.apartment, MeterWalkTests.building, MeterWalkTests.floor, MeterWalkTests.room]), since: stamp)
+            XCTFail("expected a sign-out error")
+        } catch {
+            XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
+        }
         XCTAssertNil(try h.vault.profile())
+        XCTAssertTrue(h.server.requests.isEmpty)
     }
 
     func testSignOutDuringWebStateAdoptionSavesNothing() async throws {

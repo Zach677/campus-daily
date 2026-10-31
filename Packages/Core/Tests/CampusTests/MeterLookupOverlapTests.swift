@@ -14,7 +14,7 @@ final class MeterLookupOverlapTests: XCTestCase {
 
     static func pickByHand(_ session: SchoolSession) async throws {
         try await session.chooseMeter(nodeID: Self.picked.nodeID, meter: Meter(comAddress: Self.picked.comAddress, name: "99栋999"),
-                                      nodeIsRoom: true, path: ["星湖校区", "半山公寓", "99栋", "999"],
+                                      path: ["星湖校区", "半山公寓", "99栋", "999"],
                                       since: await session.personStamp())
     }
 

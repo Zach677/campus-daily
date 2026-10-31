@@ -278,14 +278,14 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
             XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
         }
         do {
-            try await session.chooseMeter(nodeID: room.id, meter: meter, nodeIsRoom: true, since: stamp)
+            try await session.chooseMeter(nodeID: room.id, meter: meter, since: stamp)
             XCTFail("a pick from the previous person's picker must not be saved")
         } catch {
             XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
         }
         XCTAssertNil(try h.vault.profile()?.meter)
         let now = await session.personStamp()
-        try await session.chooseMeter(nodeID: room.id, meter: meter, nodeIsRoom: true, since: now)
+        try await session.chooseMeter(nodeID: room.id, meter: meter, since: now)
         XCTAssertEqual(try h.vault.profile()?.meter?.comAddress, "000000000991", "their own pick is kept")
     }
 
@@ -304,18 +304,17 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         XCTAssertNil(try h.vault.profile())
     }
 
-    func testSwitchDuringChosenMeterSaveWritesNothing() async throws {
+    /// A same-name choice offered to the previous person, saved after someone else signed in:
+    /// dropped (the save reads nothing from the school, so there is no read to race).
+    func testAChosenMeterSavedAfterASwitchWritesNothing() async throws {
         let h = try previousPerson()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        try h.server.serve("ecykt/electric-getBuildingInfo-root", matchBody: ["server", "buildingID"])
-        let hold = Hold(h, self, suffix: "/electricnew/service")
-        let session = session(h, hold)
-        async let result: Void = session.chooseMatchedMeter(MeterCandidate(meter: Meter(comAddress: "000000000991", name: "99栋991"), path: []), since: 0)
-        await fulfillment(of: [hold.reached], timeout: 5)
+        let session = h.session()
+        let stamp = await session.personStamp()
         try await signInSomeoneElse(session)
-        hold.release()
-        do { try await result; XCTFail("expected the late choice to be dropped") } catch {}
-        XCTAssertNil(try h.vault.profile())
+        do { try await session.chooseMatchedMeter(MeterCandidate(meter: Meter(comAddress: "000000000991", name: "99栋991"), path: [MeterWalkTests.campus, MeterWalkTests.apartment, MeterWalkTests.building, MeterWalkTests.floor, MeterWalkTests.room]), since: stamp); XCTFail("expected the late choice to be dropped") } catch {}
+        XCTAssertNil(try h.vault.profile()?.meter)
+        XCTAssertFalse(h.server.requests.contains { $0.url.path.hasSuffix("/electricnew/service") })
     }
 
     /// The hot-water binding is saved by the app after the user picks a controller, long after

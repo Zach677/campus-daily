@@ -20,17 +20,12 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, Sendable {
 public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
     // @unchecked: all stored properties are immutable; URLSession is thread-safe.
     private let session: URLSession
-    /// For the requests given more time than `requestTimeout` (`HTTPRequest.timeout`): the same
-    /// configuration with `longestTimeout` as both limits.
-    private let patientSession: URLSession
     private let allowedHosts: Set<String>
     private let log: HTTPLogSink
     private let now: @Sendable () -> Date
 
     public static let requestTimeout: TimeInterval = 15
     public static let resourceTimeout: TimeInterval = 20
-    /// The most any one request may be given (the campus-wide meter read, ≈2.3k rows).
-    public static let longestTimeout: TimeInterval = 45
 
     /// The configuration every client uses. Tests add a stub `URLProtocol` via `protocolClasses`.
     public static func makeConfiguration(protocolClasses: [AnyClass]? = nil) -> URLSessionConfiguration {
@@ -53,25 +48,13 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
         self.log = log
         self.now = now
         self.session = URLSession(configuration: configuration, delegate: NoRedirectDelegate(), delegateQueue: nil)
-        let patient = (configuration.copy() as? URLSessionConfiguration) ?? configuration
-        patient.timeoutIntervalForRequest = max(patient.timeoutIntervalForRequest, Self.longestTimeout)
-        patient.timeoutIntervalForResource = max(patient.timeoutIntervalForResource, Self.longestTimeout)
-        self.patientSession = URLSession(configuration: patient, delegate: NoRedirectDelegate(), delegateQueue: nil)
     }
 
-    deinit { session.finishTasksAndInvalidate(); patientSession.finishTasksAndInvalidate() }
+    deinit { session.finishTasksAndInvalidate() }
 
-    /// The session for a request asking `timeout`: the patient one only past `requestTimeout`
-    /// (the other's whole-transfer limit would end it at `resourceTimeout` regardless).
-    func session(waiting timeout: TimeInterval?) -> URLSession {
-        (timeout ?? 0) > Self.requestTimeout ? patientSession : session
-    }
-
-    /// The wait set on the request itself: the client's own, a shorter one asked for, or a
-    /// longer one up to `longestTimeout`.
+    /// The wait set on the request itself: the client's own, or a shorter one asked for.
     static func wait(_ timeout: TimeInterval?) -> TimeInterval {
-        guard let timeout else { return requestTimeout }
-        return min(timeout, longestTimeout)
+        min(timeout ?? requestTimeout, requestTimeout)
     }
 
     public func send(_ request: HTTPRequest) async throws -> HTTPResponse {
@@ -102,7 +85,7 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session(waiting: request.timeout).data(for: urlRequest)
+            (data, response) = try await session.data(for: urlRequest)
         } catch let error as URLError {
             if error.code == .cancelled, Task.isCancelled { throw CancellationError() }
             let mapped = Self.map(error)

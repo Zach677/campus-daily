@@ -200,9 +200,9 @@ public struct Meter: Sendable, Equatable, Codable {
     }
 }
 
-/// The saved meter: the directory node to query plus the meter's `comAddress`.
-/// `nodeIsRoom` = the node is the room itself (1 row); otherwise it is a wider node
-/// (campus) and the row is picked by `comAddress`.
+/// The saved meter: the room's directory node plus the meter's `comAddress`.
+/// `nodeIsRoom` is always true for what the app binds now; false = bound to the campus node by
+/// an older build, which counts as no meter (dropped at launch, never read).
 public struct MeterBinding: Sendable, Equatable, Codable {
     public var nodeID: String
     public var comAddress: String
@@ -223,22 +223,20 @@ public struct MeterCandidate: Sendable, Equatable, Identifiable {
     /// The node the choice binds (the room, else the campus) plus the meter: two same-name
     /// rooms can report the same `comAddress`.
     public var id: String { ((room ?? path.first)?.id ?? "") + "|" + meter.comAddress }
-    /// The room-level row when the room was found, else the campus-wide row.
+    /// The room's row.
     public var meter: Meter
-    /// campus → (apartment) → building → floor → room. Only the campus when the room
-    /// node could not be found; the choice is then saved against the campus (wide read).
+    /// campus → (apartment) → building → (floor) → room, as the lookup walked it.
     public var path: [PowerNode]
     public init(meter: Meter, path: [PowerNode]) { self.meter = meter; self.path = path }
 
-    /// The room node, when the walk reached it.
-    public var room: PowerNode? { path.count >= 4 ? path.last : nil }
+    /// The room node (nil for a path that stops above the rooms: never bound).
+    public var room: PowerNode? { path.count >= 3 ? path.last : nil }
 
-    /// 校区 · 公寓 · 楼栋 · 房间 (the floor level is left out); just the meter's name after
-    /// the campus when the room was not found.
+    /// 校区 · 公寓 · 楼栋 · 房间 (the floor level is left out); the meter's name after what is
+    /// known when the room is not.
     public var location: String {
-        var names = path.map(\.name)
-        if room != nil { names.remove(at: names.count - 2) } else { names.append(meter.name) }
-        return PowerLocation.joined(names)
+        let names = path.map(\.name)
+        return PowerLocation.label(room != nil ? names : names + [meter.name])
     }
 }
 

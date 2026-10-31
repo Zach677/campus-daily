@@ -149,30 +149,20 @@ final class URLSessionHTTPClientTests: XCTestCase {
         XCTAssertEqual(ok.body.count, HTTPRequest.defaultBodyLimit + 1)
     }
 
-    /// A request given more time than the client's own (the campus-wide meter read) gets it:
-    /// its own wait, and a session whose whole-transfer limit is not the shorter one.
-    func testALongerWaitIsGivenInFull() async throws {
+    /// No request waits longer than the client's own: a shorter wait asked for is kept, a
+    /// longer one is cut to it.
+    func testNoRequestWaitsLongerThanTheClient() async throws {
         let server = StubServer()
         let url = URL(string: "https://ecykt.gdbtu.edu.cn/ykt-mini/slow")!
         server.respond("POST", url.absoluteString, body: Data("{}".utf8))
         let client = server.makeClient()
-        var long = HTTPRequest.postJSON(service: .ecykt, url: url, json: [:])
-        long.timeout = URLSessionHTTPClient.longestTimeout
-        _ = try await client.send(long)
-        var short = HTTPRequest.postJSON(service: .ecykt, url: url, json: [:])
-        short.timeout = 5
-        _ = try await client.send(short)
-        XCTAssertEqual(URLSessionHTTPClient.longestTimeout, 45)
-        XCTAssertEqual(server.requests.map(\.timeout), [45, 5])
-        XCTAssertGreaterThanOrEqual(client.session(waiting: 45).configuration.timeoutIntervalForResource, 45)
-        XCTAssertGreaterThanOrEqual(client.session(waiting: 45).configuration.timeoutIntervalForRequest, 45)
-        XCTAssertEqual(client.session(waiting: 5).configuration.timeoutIntervalForResource, URLSessionHTTPClient.resourceTimeout)
-        XCTAssertEqual(client.session(waiting: nil).configuration.timeoutIntervalForResource, URLSessionHTTPClient.resourceTimeout)
-        // Never more than the longest wait, whatever is asked.
-        var longer = HTTPRequest.postJSON(service: .ecykt, url: url, json: [:])
-        longer.timeout = 300
-        _ = try await client.send(longer)
-        XCTAssertEqual(server.requests.last?.timeout, 45)
+        for asked in [45, 300, 5, nil] as [TimeInterval?] {
+            var request = HTTPRequest.postJSON(service: .ecykt, url: url, json: [:])
+            request.timeout = asked
+            _ = try await client.send(request)
+        }
+        let own = URLSessionHTTPClient.requestTimeout
+        XCTAssertEqual(server.requests.map(\.timeout), [own, own, 5, own])
     }
 
     func testResponseDecodingStatusesAndJSONInString() throws {

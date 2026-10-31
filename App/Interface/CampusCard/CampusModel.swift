@@ -64,7 +64,12 @@ struct PowerChoice: Identifiable, Equatable {
     /// Sign-outs in order; sign-ins wait for them (`finished()`).
     private let signOuts = SchoolSignOut(session:AppEnvironment.school, refresher:AppEnvironment.refresher)
 
-    init() { reload() }
+    init() {
+        // A meter an older build bound to the campus node counts as none: the launch lookup
+        // walks to the room's own.
+        _ = try? SchoolSession.dropCampusWideMeter(AppEnvironment.schoolVault)
+        reload()
+    }
 
     /// Re-read the Keychain (launch, after sign-in/out).
     func reload() {
@@ -363,8 +368,8 @@ struct PowerChoice: Identifiable, Equatable {
     func directory(parent: String?) async throws -> [PowerNode] { try await session.directory(parent:parent) }
     func meterRows(nodeID: String) async throws -> [Meter] { try await session.meterRows(nodeID:nodeID) }
     /// `stamp`: `personStamp()` when the picker opened.
-    func chooseMeter(nodeID: String, meter: Meter, nodeIsRoom: Bool, path: [String] = [], since stamp: Int) async throws {
-        try await session.chooseMeter(nodeID:nodeID, meter:meter, nodeIsRoom:nodeIsRoom, path:path, since:stamp)
+    func chooseMeter(nodeID: String, meter: Meter, path: [String] = [], since stamp: Int) async throws {
+        try await session.chooseMeter(nodeID:nodeID, meter:meter, path:path, since:stamp)
         await refresher.noteChange()
         profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
         powerChoices = []; powerMatchIssue = nil; powerStop = nil

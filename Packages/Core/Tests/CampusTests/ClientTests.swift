@@ -359,7 +359,7 @@ final class EcyktElectricityTests: XCTestCase {
         let s = try server(["ecykt/electric-getMeterStatus-ok", "ecykt/electric-getMeterStatus-room", "ecykt/electric-getMeterStatus-leaf",
                             "ecykt/electric-getMeterStatus-unknownBuilding"])
         let c = EcyktClient(http: s.makeClient())
-        let campus = try await c.meters(T.session(), nodeID: "991001", wide: true)
+        let campus = try await c.meters(T.session(), nodeID: "991001")
         XCTAssertEqual(campus.count, 12)
         XCTAssertEqual(campus[0].name, "8栋101")
         XCTAssertEqual(campus[0].leftMoney, Money(fen: 5000))
