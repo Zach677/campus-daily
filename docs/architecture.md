@@ -328,16 +328,27 @@ newest update.
 The small stale line keeps one line at full size: 「8:10 · 打开 App 更新」 today, else the day alone
 (「昨天 · 打开 App 更新」).
 
-**Electricity resolution.** The power tree contains apartment levels that the dorm address lacks,
-so do not walk it level by level. Onboarding: call `meters(nodeID: <campus node>)` once (≈2.3k
-rows, needs the 1 MiB cap), match `piplineName == "<building>栋<room>"` from the parsed dorm
-address; exactly one match → save `comAddress` + the room-level node id; zero → manual
-picker over `buildings(parent:)`. Several matches (same-named buildings in different apartments)
-→ walk campus → apartment → building → floor → room by name, keeping the whole path, and read the
-matching rooms' meters (1 row each, at most 8) to pair them by `comAddress`. With more than four
-same-named rooms not all of them are read, so none is trusted and the campus node is bound; each
-`MeterCandidate` carries its location 「校区 · 公寓 · 楼栋 · 房间」 and binds its room node. A
-candidate whose room isn't found binds the campus node (wide read, picked by `comAddress`).
+**Electricity resolution.** The automatic lookup (`SchoolSession.matchElectricity`,
+`MeterWalk`) walks the directory the manual picker reads, one small `buildings(parent:)` read
+per level: campus → apartment → building → floor (when the building has floors) → room, matching
+each level by name against the dorm address from sign-in (`DormAddress`). The portal names no
+apartment, so the apartment is the one whose buildings include the dorm's. Every level matched
+exactly once → read that room's meters (1 row) and bind the room node with its `comAddress`, no
+question asked. Several rooms with the dorm's number → `MeterCandidate`s to choose from, each
+with its location 「校区 · 公寓 · 楼栋 · 房间」. A level matching nothing or more than one row →
+`.stopped(MeterWalkStop)`: the level, the nodes above, its rows and the rows that matched; the
+meter page opens there with the matched levels on one line, 「重选」, and the level's list headed
+「选校区」/「选公寓」/「选楼栋」/「选楼层」/「选房间」, suggested rows first with 「可能是这个」
+(`MeterPageText`). Each read is retried twice with growing waits on a timeout or a lost
+connection; there is no campus-wide meter read and no longer wait or second network session.
+Only room nodes are bound. A campus-node binding saved by an older build counts as no meter: at
+launch it is removed from the profile (the dorm stays) and the launch lookup walks to the room;
+neither refresh nor the recharge check reads it meanwhile.
+The lookup starts at launch, after every sign-in and on 「再找一次电表」, only signed in with no
+meter (`MeterLookupGate`), never on return to the foreground or after a refresh. A sign-in
+during a running lookup is looked up once it ends; a same-name list or stopped level stays until
+the next answer replaces it. A meter picked by hand wins over a late answer, a dorm changed
+meanwhile drops the answer and looks again, and a sign-out or another person drops it.
 In a same-name list each row is titled by the first location level that differs among the
 candidates (`LocationNaming.titles`), with the full location under it. Every binding keeps that
 location (`MeterBinding.location`; floors are left out of picker paths); Settings shows it, and the dorm row uses it when it is the same room

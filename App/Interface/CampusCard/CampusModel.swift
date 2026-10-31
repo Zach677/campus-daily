@@ -377,4 +377,23 @@ struct PowerChoice: Identifiable, Equatable {
     /// belongs to whoever is signed in.
     func personStamp() async -> Int { await session.personStamp() }
     func isSamePerson(since stamp: Int) async -> Bool { await session.isSamePerson(since:stamp) }
+
+    #if DEBUG
+    /// Demo: the lookup stopped at the dorm's buildings (two named 99栋); `running` looks again,
+    /// `slow` failed on a slow school. Synthetic, nothing is read.
+    func demoMeterStop(running: Bool = false, slow: Bool = false) {
+        let stop = MeterWalkStop(level:.building,
+                                 path:[PowerNode(id:"991001", name:"星湖校区"), PowerNode(id:"991001001", name:"半山公寓")],
+                                 options:[PowerNode(id:"991001001000108", name:"98栋"), PowerNode(id:"991001001000109", name:"99栋"),
+                                          PowerNode(id:"991001001000110", name:"99 栋"), PowerNode(id:"991001001000111", name:"100栋")],
+                                 suggested:["991001001000109", "991001001000110"])
+        var gate = MeterLookupGate()
+        _ = gate.start(.manual, signedIn:true, meterBound:false)
+        gate.answered(.stopped(stop), stamp:0)
+        _ = gate.ended()
+        if running { _ = gate.start(.manual, signedIn:true, meterBound:false) }
+        lookup = gate
+        powerMatchIssue = slow ? ServiceError.timedOut.userMessage : running ? nil : Self.stoppedIssue
+    }
+    #endif
 }

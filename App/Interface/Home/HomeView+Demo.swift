@@ -60,6 +60,15 @@ extension HomeView {
                                                           hotWaterCleared:url.lastPathComponent.hasSuffix("-water"))
                 return
             }
+            if url.host == "demo", ["meter-stopped", "meter-stopped-finding", "meter-stopped-slow"].contains(url.lastPathComponent) {
+                // The meter page where the lookup stopped (synthetic): as is / looking again / slow school.
+                onboarding = nil; settings = false; panel = nil; laundryDemo = nil
+                demo = HomeDemo.noMeter.content().0
+                campus.demoMeterStop(running:url.lastPathComponent.hasSuffix("finding"), slow:url.lastPathComponent.hasSuffix("slow"))
+                path = []
+                Task { try? await Task.sleep(for:.milliseconds(350)); path = [.powerSetup] }
+                return
+            }
             if url.host == "demo", url.lastPathComponent == "permission" {
                 // Pre-permission sheet over the home demo, whatever the real authorization is.
                 onboarding = nil; settings = false; path = []

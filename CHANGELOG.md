@@ -12,6 +12,13 @@
 - Check the dorm's hot-water controller in the first-run guide (登录 → 学校洗衣机 → 宿舍 → 核对宿舍的水控 → 好了); the check is read-only and can be left for Settings.
 - Show a check face on the shower page when the controller reads stopped under a running shower, with 去核对, 「我在学校记录里核对过了」 and 「再查一次水控」; the home card's button reads 去核对 then.
 
+### Changed
+
+- Look for the dorm's electricity meter one level at a time (campus, apartment, building, floor, room) with small reads instead of one read of every meter on the campus; each read is retried twice on a timeout or a lost connection.
+- When a level does not match the dorm exactly once, open the meter page at that level: the matched levels with 「重选」, the level's list headed 「选校区」「选公寓」「选楼栋」「选楼层」「选房间」, and the dorm's likely rows first with 「可能是这个」.
+- Bind meters to their room only; a meter bound to the whole campus by an earlier build is removed at launch, keeping the dorm, and looked up again.
+- Look for the meter at launch, after a sign-in and on 「再找一次电表」 only, no longer on return to the app or after a refresh.
+
 ### Fixed
 
 - Offer same-named electricity meters (one building name in two apartments) with their full location instead of identical names, and bind the chosen one at room level.

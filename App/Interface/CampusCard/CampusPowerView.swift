@@ -53,6 +53,7 @@ struct CampusPowerSetupView: View {
                 } header: {
                     HStack(spacing:6) {
                         Text(level.map(MeterPageText.header) ?? "选择位置")
+                        Spacer(minLength:0)
                         // The lookup is running again: this list stays until it answers.
                         if campus.matchingPower && atStop { ProgressView().controlSize(.mini).frame(width:12, height:12) }
                     }
@@ -89,7 +90,7 @@ struct CampusPowerSetupView: View {
     }
     /// Where the lookup stopped, else the campuses.
     private func open() async {
-        guard let stop = campus.powerStop, !stop.options.isEmpty, campus.configured else { await loadRoot(); return }
+        guard let stop = campus.powerStop, !stop.options.isEmpty else { await loadRoot(); return }
         stamp = await campus.personStamp()
         show(stop)
     }
