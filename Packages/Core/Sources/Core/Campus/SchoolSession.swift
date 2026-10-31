@@ -937,11 +937,13 @@ public actor SchoolSession {
         var found: [MeterCandidate] = []
         for room in roomHits {
             let rows = try await patiently(since: started) { try await self.ecykt.meters(s, nodeID: room.id) }
-            // The row of the dorm's name; a room's only row whatever its name.
+            // The row of the dorm's name. A node's only row of another name is its meter only
+            // when nothing is under it (a room): a bare-number floor of the room's number is not.
             let meter: Meter?
             switch MeterMatcher.match(rows, address: address) {
             case .one(let m): meter = m
-            case .none: meter = rows.count == 1 ? rows.first : nil
+            case .none:
+                if rows.count == 1 { meter = try await children(room.id).isEmpty ? rows.first : nil } else { meter = nil }
             case .many: meter = nil
             }
             if let meter { found.append(MeterCandidate(meter: meter, path: path + [room])) }

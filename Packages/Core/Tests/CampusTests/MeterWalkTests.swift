@@ -170,6 +170,49 @@ final class MeterWalkTests: XCTestCase {
         XCTAssertEqual(stop.suggested, [Self.room.id])
     }
 
+    // MARK: Rooms without a floor level
+
+    /// The building lists its rooms itself: the room is matched there and its meter bound.
+    func testRoomsRightUnderTheBuildingAreMatched() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, Self.building.id, [("990", "991001001000109990"), ("991", "991001001000109991")])
+        Self.meters(h, "991001001000109991", [("000000000991", "99栋991")])
+        try SchoolElectricityTests.serveTree(h)
+        let result = try await h.session().resolveElectricity()
+        guard case .matched(let binding, _) = result else { return XCTFail("\(result)") }
+        XCTAssertEqual(binding.nodeID, "991001001000109991")
+        XCTAssertEqual(binding.location, "星湖校区 · 半山公寓 · 99栋 · 991")
+    }
+
+    /// Floors named by bare numbers, one of them the dorm's room number: that floor is not
+    /// taken for the room, even when it reports one meter row of another name. Stopped at the
+    /// rooms with it suggested.
+    func testABareNumberFloorIsNotTakenForTheRoom() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, Self.building.id, [("990", "991001001000109990"), ("991", "991001001000109991")])
+        Self.meters(h, "991001001000109991", [("000000000101", "99栋101")])
+        Self.level(h, "991001001000109991", [("101", "991001001000109991101")])
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .room)
+        XCTAssertEqual(stop.path, [Self.campus, Self.apartment, Self.building])
+        XCTAssertEqual(stop.suggested, ["991001001000109991"])
+    }
+
+    /// A room (no rows under it) reporting one meter row of another name: that row is its meter.
+    func testALeafRoomsOnlyRowIsTakenWhateverItsName() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.meters(h, Self.room.id, [("000000000991", "示例表")])
+        try SchoolElectricityTests.serveTree(h)
+        let result = try await h.session().resolveElectricity()
+        guard case .matched(let binding, _) = result else { return XCTFail("\(result)") }
+        XCTAssertEqual(binding.nodeID, Self.room.id)
+        XCTAssertEqual(binding.comAddress, "000000000991")
+    }
+
     // MARK: Same-name rooms
 
     /// Two rooms on the floor carry the dorm's number: the list to choose from, each with its own
