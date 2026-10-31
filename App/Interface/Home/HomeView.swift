@@ -63,8 +63,9 @@ struct HomeView: View {
 
     /// Shows these pages over home. With the settings sheet up, it is closed first and the pages
     /// are pushed once it has gone: pushed while it slides away, a page comes without its title.
+    /// Opened directly, pages still waiting for the sheet to go are dropped: the later request wins.
     func open(_ routes: [HomeRoute]) {
-        guard settings else { path = routes; return }
+        guard settings else { pathAfterSettings = nil; path = routes; return }
         path = []; pathAfterSettings = routes; settings = false
     }
 
