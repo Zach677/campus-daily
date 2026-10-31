@@ -19,3 +19,81 @@ public enum MeterPageText {
         (error as? ServiceError).map { issue($0.userMessage) } ?? otherwise
     }
 }
+
+/// One row of a level's list on the meter page.
+public struct MeterPickerRow: Sendable, Equatable, Identifiable {
+    public var node: PowerNode
+    /// 「可能是这个」 under it: the row that matches the dorm.
+    public var suggested: Bool
+    public var id: String { node.id }
+    public init(node: PowerNode, suggested: Bool) { self.node = node; self.suggested = suggested }
+}
+
+extension MeterPageText {
+    /// While the lookup runs, on the meter page.
+    public static let finding = "正在找电表…"
+    /// Under the row that matches the dorm.
+    public static let suggestion = "可能是这个"
+    /// Right of the matched levels: back to the first level.
+    public static let rechoose = "重选"
+
+    /// The header over a level's list. 「选楼层」 has no wording of its own yet: it follows the others.
+    public static func header(_ level: MeterLevel) -> String {
+        switch level {
+        case .campus: return "选校区"
+        case .apartment: return "选公寓"
+        case .building: return "选楼栋"
+        case .floor: return "选楼层"
+        case .room: return "选房间"
+        }
+    }
+
+    /// The levels already chosen, e.g. 「星湖校区 · 半山公寓 · 99栋」 (floors left out).
+    public static func matchedLine(_ path: [PowerNode]) -> String {
+        PowerLocation.label(path.map(\.name))
+    }
+
+    /// The list with the suggested rows first, each order kept.
+    public static func rows(_ options: [PowerNode], suggested: [String]) -> [MeterPickerRow] {
+        let wanted = Set(suggested)
+        let first = options.filter { wanted.contains($0.id) }.map { MeterPickerRow(node: $0, suggested: true) }
+        return first + options.filter { !wanted.contains($0.id) }.map { MeterPickerRow(node: $0, suggested: false) }
+    }
+
+    /// The rows of `level` that match the dorm (none for apartments: the portal names none).
+    public static func suggested(_ options: [PowerNode], at level: MeterLevel, for address: DormAddress?) -> [String] {
+        guard let address else { return [] }
+        let matches: (String) -> Bool
+        switch level {
+        case .campus: matches = address.matchesCampus
+        case .apartment: return []
+        case .building: matches = address.matchesBuilding
+        case .floor: matches = address.matchesFloor
+        case .room: matches = address.matchesRoom
+        }
+        return options.filter { matches($0.name) }.map(\.id)
+    }
+}
+
+extension MeterLevel {
+    /// The level of a list read below `current` (nil = the campuses), told from its rows where
+    /// the directory may skip one (no apartments, no floors).
+    public static func next(after current: MeterLevel?, options: [PowerNode]) -> MeterLevel {
+        let names = options.map(\.name)
+        let allFloors = !names.isEmpty && names.allSatisfy(PowerLocation.isFloor)
+        let anyBuilding = names.contains(where: isBuilding)
+        switch current {
+        case nil: return .campus
+        case .campus?: return anyBuilding ? .building : .apartment
+        case .apartment?: return .building
+        case .building?: return allFloors ? .floor : .room
+        case .floor?, .room?: return .room
+        }
+    }
+
+    /// 「99栋」「99幢」「3号楼」.
+    static func isBuilding(_ name: String) -> Bool {
+        let text = name.filter { !$0.isWhitespace }
+        return text.hasSuffix("栋") || text.hasSuffix("幢") || text.hasSuffix("号楼")
+    }
+}

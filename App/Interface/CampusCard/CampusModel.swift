@@ -91,6 +91,8 @@ struct PowerChoice: Identifiable, Equatable {
         return Theme.dorm(snapshot.roomLabel ?? profile?.meter?.label ?? "") ?? "未配置"
     }
     var powerConfigured: Bool { profile?.meter != nil }
+    /// The lookup stopped at a level to choose from.
+    static let stoppedIssue = "没自动找到电表，去「电表」里选一下。"
     /// The lookup is running, or a same-name choice is being saved.
     var matchingPower: Bool { lookup.running || savingChoice }
     var powerChoices: [PowerChoice] { lookup.choices.map { PowerChoice(candidate:$0, stamp:lookup.choicesStamp ?? -1) } }
@@ -304,7 +306,7 @@ struct PowerChoice: Identifiable, Equatable {
                     found = answer
                     switch answer {
                     case .matched, .alreadyBound, .chooseAmong: break
-                    case .stopped: powerMatchIssue = "没自动找到电表，去「电表」里选一下。"
+                    case .stopped: powerMatchIssue = Self.stoppedIssue
                     case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「电表」里选一下。"
                     }
                 } else {

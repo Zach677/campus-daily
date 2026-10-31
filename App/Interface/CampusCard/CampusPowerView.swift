@@ -7,6 +7,12 @@ struct CampusPowerSetupView: View {
     @State private var options: [PowerNode] = []
     @State private var meters: [Meter] = []
     @State private var path: [PowerNode] = []
+    /// The level `options` belong to (nil before the first list is read).
+    @State private var level: MeterLevel?
+    /// Rows offered first with 「可能是这个」.
+    @State private var suggested: [String] = []
+    /// Showing where the automatic lookup stopped (not walked away from yet).
+    @State private var atStop = false
     @State private var busy = false
     @State private var issue: String?
     @State private var search = ""
@@ -16,43 +22,91 @@ struct CampusPowerSetupView: View {
         List {
             AutomaticPowerSection(onMeterPage:true)
             Section {
-                LocationPathHeader(path:path.map(\.name), placeholder:MeterPageText.pickerPrompt)
+                if path.isEmpty {
+                    LocationPathHeader(path:[], placeholder:MeterPageText.pickerPrompt)
+                } else {
+                    HStack(spacing:12) {
+                        LocationPathHeader(path:[MeterPageText.matchedLine(path)])
+                        Spacer(minLength:8)
+                        Button(MeterPageText.rechoose) { Task { await loadRoot() } }
+                            .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+                            .buttonStyle(.borderless).disabled(busy)
+                            .accessibilityIdentifier("meterRechoose")
+                    }
+                }
             }
             if busy { Text("正在读取电表信息…").foregroundStyle(.secondary) }
             if let issue { Text(issue).foregroundStyle(.orange).font(.footnote) }
-            Section(meters.isEmpty ? "选择位置" : "核对电表") {
-                ForEach(options.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }, id:\.id) { option in
-                    Button(option.name) { Task { await choose(option) } }.disabled(busy)
+            if meters.isEmpty {
+                Section {
+                    ForEach(MeterPageText.rows(options.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) },
+                                               suggested:suggested)) { row in
+                        Button { Task { await choose(row.node) } } label: {
+                            VStack(alignment:.leading, spacing:2) {
+                                Text(row.node.name)
+                                if row.suggested {
+                                    Text(MeterPageText.suggestion).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                                }
+                            }
+                        }.disabled(busy)
+                    }
+                } header: {
+                    HStack(spacing:6) {
+                        Text(level.map(MeterPageText.header) ?? "选择位置")
+                        // The lookup is running again: this list stays until it answers.
+                        if campus.matchingPower && atStop { ProgressView().controlSize(.mini).frame(width:12, height:12) }
+                    }
                 }
-                ForEach(meters, id:\.comAddress) { meter in
-                    Button {
-                        guard let building = path.last, let stamp else { return }
-                        Task {
-                            do { try await campus.chooseMeter(nodeID:building.id, meter:meter, path:path.map(\.name), since:stamp); dismiss() }
-                            catch { issue = "没保存上，再试一次。" }
-                        }
-                    } label: {
-                        VStack(alignment:.leading,spacing:8) {
-                            Text(meter.name).font(.headline)
-                            Text("剩余 \(NSDecimalNumber(decimal:meter.remainingKWh ?? 0).stringValue) 度 · 电费 \(NSDecimalNumber(decimal:meter.leftMoney?.yuan ?? 0).stringValue) 元")
-                                .font(.subheadline).foregroundStyle(.secondary)
-                            Text("确认是我的宿舍并保存").font(.footnote)
-                        }.padding(.vertical,8)
-                    }.disabled(busy)
+            } else {
+                Section("核对电表") {
+                    ForEach(meters, id:\.comAddress) { meter in
+                        Button {
+                            guard let room = path.last, let stamp else { return }
+                            Task {
+                                do { try await campus.chooseMeter(nodeID:room.id, meter:meter, path:path.map(\.name), since:stamp); dismiss() }
+                                catch { issue = "没保存上，再试一次。" }
+                            }
+                        } label: {
+                            VStack(alignment:.leading,spacing:8) {
+                                Text(meter.name).font(.headline)
+                                Text("剩余 \(NSDecimalNumber(decimal:meter.remainingKWh ?? 0).stringValue) 度 · 电费 \(NSDecimalNumber(decimal:meter.leftMoney?.yuan ?? 0).stringValue) 元")
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                                Text("确认是我的宿舍并保存").font(.footnote)
+                            }.padding(.vertical,8)
+                        }.disabled(busy)
+                    }
                 }
             }
-            if !path.isEmpty { Button("重新选择位置") { Task { await loadRoot() } }.disabled(busy) }
         }.scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
             .navigationTitle(MeterPageText.title).navigationBarTitleDisplayMode(.inline)
             .searchable(text:$search,prompt:"搜索楼栋或宿舍")
-            .task { await loadRoot() }
+            .task { await open() }
+            // The lookup stopped again (it ran once more meanwhile): shown if the user is still there.
+            .onChange(of:campus.powerStop) { _, stop in
+                guard atStop, !busy, let stop, !stop.options.isEmpty else { return }
+                show(stop)
+            }
+    }
+    /// Where the lookup stopped, else the campuses.
+    private func open() async {
+        guard let stop = campus.powerStop, !stop.options.isEmpty, campus.configured else { await loadRoot(); return }
+        stamp = await campus.personStamp()
+        show(stop)
+    }
+    private func show(_ stop: MeterWalkStop) {
+        path = stop.path; options = stop.options; level = stop.level; suggested = stop.suggested
+        meters = []; issue = nil; search = ""; atStop = true
     }
     private func loadRoot() async {
         guard !busy, campus.configured else { issue = "先登录学校账号。"; return }
-        busy = true; issue = nil; path = []; meters = []; search = ""
+        busy = true; issue = nil; path = []; meters = []; search = ""; atStop = false; level = nil; suggested = []
         defer { busy = false }
         stamp = await campus.personStamp()
-        do { options = try await campus.directory(parent:nil) }
+        do {
+            options = try await campus.directory(parent:nil)
+            level = .campus
+            suggested = MeterPageText.suggested(options, at:.campus, for:campus.address)
+        }
         catch { issue = MeterPageText.issue(error, otherwise:"位置列表读取失败") }
     }
     private func choose(_ option: PowerNode) async {
@@ -61,7 +115,10 @@ struct CampusPowerSetupView: View {
         defer { busy = false }
         do {
             let children = try await campus.directory(parent:option.id)
-            path.append(option); options = children
+            path.append(option); options = children; atStop = false
+            let next = MeterLevel.next(after:level, options:children)
+            level = next
+            suggested = MeterPageText.suggested(children, at:next, for:campus.address)
             if children.isEmpty {
                 meters = try await campus.meterRows(nodeID:option.id)
                 if meters.isEmpty { issue = "这里没有电表，重新选一下位置。" }
@@ -77,9 +134,26 @@ struct AutomaticPowerSection: View {
     @EnvironmentObject private var campus: CampusModel
     @State private var selection: String?
     var body: some View {
-        if campus.matchingPower || !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil || campus.powerConfigured {
+        // On the meter page at a stopped level the level's own list is the answer: only a lookup
+        // running again, or one that failed, is said here.
+        let atStop = onMeterPage && campus.powerStop != nil && campus.powerChoices.isEmpty && !campus.powerConfigured
+        let issue = atStop && campus.powerMatchIssue == CampusModel.stoppedIssue ? nil : campus.powerMatchIssue
+        if atStop {
+            if campus.matchingPower || issue != nil {
+                Section("电表") {
+                    if campus.matchingPower { Text(MeterPageText.finding).foregroundStyle(Theme.ink2) }
+                    if let issue {
+                        Text(MeterPageText.issue(issue)).font(.footnote).foregroundStyle(.secondary)
+                        Button("再找一次电表") {campus.matchPowerAutomatically()}
+                    }
+                }
+            }
+        } else if campus.matchingPower || !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil || campus.powerConfigured {
             Section(campus.powerChoices.isEmpty ? "电表" : SameNameText.titleLead + SameNameText.titleAccent + SameNameText.titleTail) {
-                if campus.matchingPower {Label("正在找电表，可以先保存宿舍。",systemImage:"bolt")}
+                if campus.matchingPower {
+                    if onMeterPage { Text(MeterPageText.finding).foregroundStyle(Theme.ink2) }
+                    else { Label("正在找电表，可以先保存宿舍。",systemImage:"bolt") }
+                }
                 else if !campus.powerChoices.isEmpty {
                     Text(SameNameText.hint(campus.powerChoices.map(\.choice)))
                         .font(.subheadline).foregroundStyle(Theme.ink2)
