@@ -46,6 +46,38 @@ final class RefreshLeaseTests: XCTestCase {
         XCTAssertTrue(widget.holds())
     }
 
+    /// Sign-out from the app while the widget is inside a lease step: the wait for the file
+    /// lock happens off the main thread, so the screen keeps responding until it is free.
+    @MainActor func testRevokingTheLeaseWaitsForTheLockOffTheMainThread() async throws {
+        final class Flag: @unchecked Sendable {
+            private let lock = NSLock(); private var value = false
+            func set() { lock.withLock { value = true } }
+            var isSet: Bool { lock.withLock { value } }
+        }
+        let entered = expectation(description: "the widget holds the lock"), release = DispatchSemaphore(value: 0), released = Flag()
+        let free = { released.set(); release.signal() }
+        let busy = LeaseFile(url: store.leaseFile.url, insideLock: { entered.fulfill(); release.wait() })
+        let widget = RefreshLease(file: busy, owner: "widget-1", now: clock.function)
+        let stepDone = expectation(description: "the widget's step ended")
+        DispatchQueue.global().async { _ = widget.acquire(); stepDone.fulfill() }
+        await fulfillment(of: [entered], timeout: 30)
+        // Only frees a main thread that the old blocking wait would hold: never reached when
+        // the wait is off the main thread, which is checked first.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 10) { free() }
+
+        let refresher = SnapshotRefresher(school: ScriptedSchoolReader(SchoolReading(outcome: .ok, checkedAt: clock.now)),
+                                          store: RecordingSnapshotStore(),
+                                          lease: RefreshLease(file: store.leaseFile, owner: "app-1", now: clock.function))
+        let started = expectation(description: "revoking started")
+        let revoked = Task { @MainActor in started.fulfill(); await refresher.revokeLease() }
+        await fulfillment(of: [started], timeout: 30)
+        XCTAssertFalse(released.isSet, "the main thread ran on while the lock was held")
+        free()
+        await revoked.value
+        await fulfillment(of: [stepDone], timeout: 30)
+        XCTAssertNil(store.leaseFile.storedOwner(), "the lease is gone once the lock was free")
+    }
+
     /// A holder that died leaves its lease to run out; then the next process takes it.
     func testStaleLeaseExpires() {
         let app = lease("app-1"), widget = lease("widget-1")

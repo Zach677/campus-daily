@@ -150,7 +150,7 @@ final class SignOutDuringOtherProcessLoginTests: XCTestCase {
         await fulfillment(of: [reached], timeout: 5)
         // The app signs out: lease first (unless an older build), then every school item.
         let app = RefreshLeaseChainTests().refresher(h, owner: "app-1")
-        if revokingLease { app.revokeLease() }
+        if revokingLease { await app.revokeLease() }
         try await h.session().signOut()
         try await app.clear()
         if !revokingLease {

@@ -165,8 +165,13 @@ public actor SnapshotRefresher {
 
     /// Sign-out and reset, before anything is deleted: the other process's read in progress
     /// loses the lease, so its next step (minting, the password login, saving the portal
-    /// token, writing the session back) stops instead of writing a credential back.
-    public nonisolated func revokeLease() { try? lease?.clear() }
+    /// token, writing the session back) stops instead of writing a credential back. The file
+    /// lock may be held by the other process's step for a moment: the wait happens on a
+    /// background thread, never on the caller's (the app's main thread).
+    public nonisolated func revokeLease() async {
+        let lease = lease
+        await Task.detached(priority: .userInitiated) { try? lease?.clear() }.value
+    }
 
     private func wait(for id: Int, _ task: Task<RefreshReport, Never>) async -> RefreshReport {
         if current?.id == id { current?.waiters += 1 }
