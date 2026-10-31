@@ -70,10 +70,10 @@ struct WidgetPreview: View {
             default:
                 HStack(spacing:24) {
                     tile(firstRead, caption:"登录了 · 还没数据")
-                    tile(model(.expired, power:"4.8", card:"12.30"), caption:"登录过期 · 电量低")
+                    tile(model(.expired, power:"4.8", card:"12.30"), caption:"登录过期 · 电量低 · 只留校园卡")
                 }
                 tile(firstRead, medium:true, caption:"中号 · 登录了 · 还没数据")
-                tile(model(), medium:true, caption:"中号 · 只有余额")
+                tile(model(), medium:true, caption:"中号 · 没有昨天用电和电费余额")
             }
         }
         .padding(.top,64)
