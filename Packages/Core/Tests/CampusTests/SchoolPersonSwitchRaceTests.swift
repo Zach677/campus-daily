@@ -126,6 +126,42 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         }
     }
 
+    /// The previous person's match was dropped by the switch: the next person's own match
+    /// runs instead, so their first setup is not left without a meter or a word.
+    func testAMatchDroppedBySomeoneElsesSignInRunsForThem() async throws {
+        let h = try previousPerson()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+        try SchoolElectricityTests.serveTree(h)
+        let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
+        let session = session(h, hold)
+        async let result = session.matchElectricity()
+        await fulfillment(of: [hold.reached], timeout: 5)
+        try await signInSomeoneElse(session)
+        let next = await session.personStamp()
+        hold.release()
+        let (stamp, found) = try await result
+        XCTAssertEqual(stamp, next, "the answer is the next person's")
+        XCTAssertEqual(found, .noAddress, "their own match: no dorm known for them yet")
+        XCTAssertNil(try h.vault.profile()?.meter)
+    }
+
+    func testAMatchDroppedBySignOutIsNotRunAgain() async throws {
+        let h = try previousPerson()
+        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+        try SchoolElectricityTests.serveTree(h)
+        let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
+        let session = session(h, hold)
+        async let result = session.matchElectricity()
+        await fulfillment(of: [hold.reached], timeout: 5)
+        try await session.signOut()
+        hold.release()
+        do { _ = try await result; XCTFail("signed out") } catch {
+            XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
+        }
+        XCTAssertNil(try h.vault.profile())
+    }
+
     /// A same-name list or the manual picker opened for the previous person: the next person's
     /// pick from it is refused, though their own sign-in is current.
     func testAPickFromThePreviousPersonsListSavesNothing() async throws {

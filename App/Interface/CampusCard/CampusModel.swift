@@ -238,26 +238,33 @@ struct PowerChoice: Identifiable, Equatable {
         guard configured, !matchingPower, !powerConfigured else { return }
         matchingPower = true; powerMatchIssue = nil; powerChoices = []
         Task {
-            defer { matchingPower = false }
-            let stamp = await session.personStamp()
+            let before = await session.personStamp()
+            var again = false
             do {
-                let found = try await session.resolveElectricity()
-                // Someone else signed in while the answer was on its way: none of it is theirs.
-                guard await session.isSamePerson(since:stamp) else { return }
-                switch found {
-                case .matched:
-                    profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
-                    await refresher.noteChange()
-                    await refresh(force:true)
-                case .chooseAmong(let candidates): powerChoices = candidates.map { PowerChoice(candidate:$0, stamp:stamp) }
-                case .manualPicker: powerMatchIssue = "没自动找到电表，去「绑定电表」里选一下。"
-                case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「绑定电表」里选一下。"
+                // Core runs it again for the next person if someone else signed in meanwhile.
+                let (stamp, found) = try await session.matchElectricity()
+                // Someone else signed in after it answered: none of it is theirs, their own runs.
+                if await session.isSamePerson(since:stamp) {
+                    switch found {
+                    case .matched:
+                        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
+                        await refresher.noteChange()
+                        await refresh(force:true)
+                    case .chooseAmong(let candidates): powerChoices = candidates.map { PowerChoice(candidate:$0, stamp:stamp) }
+                    case .manualPicker: powerMatchIssue = "没自动找到电表，去「绑定电表」里选一下。"
+                    case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「绑定电表」里选一下。"
+                    }
+                } else {
+                    again = true
                 }
             } catch {
-                // Signed out or someone else signed in meanwhile: this match was theirs, say nothing.
-                guard await session.isSamePerson(since:stamp) else { return }
-                powerMatchIssue = AppErrorText.text(error)
+                // Signed out or someone else signed in meanwhile: this match was theirs, say
+                // nothing; whoever is signed in now gets their own (signed out: `configured` is
+                // false and nothing runs).
+                if await session.isSamePerson(since:before) { powerMatchIssue = AppErrorText.text(error) } else { again = true }
             }
+            matchingPower = false
+            if again { matchPowerAutomatically() }
         }
     }
 

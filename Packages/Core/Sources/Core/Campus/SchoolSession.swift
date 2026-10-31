@@ -669,6 +669,23 @@ public actor SchoolSession {
         return .matched(binding, found)
     }
 
+    /// `resolveElectricity()` for whoever is signed in when it answers, with the person stamp
+    /// the answer belongs to (a same-name choice carries it into `chooseMatchedMeter`). Dropped
+    /// because someone else signed in meanwhile, it runs again for them, a few times at most;
+    /// signed out meanwhile, the drop is thrown.
+    public func matchElectricity() async throws -> (stamp: Int, ElectricityResolution) {
+        var attempts = 0
+        while true {
+            let stamp = personGeneration
+            do {
+                return (stamp, try await resolveElectricity())
+            } catch {
+                attempts += 1
+                guard stamp != personGeneration, attempts < 3, (try? vault.ecyktSession()) ?? nil != nil else { throw error }
+            }
+        }
+    }
+
     /// Manual choice from the picker (`buildings(parent:)` walk in the UI, then a meter row).
     /// `path` = the directory names walked down to `nodeID`, kept as the full location.
     /// `stamp` = `personStamp()` when the picker opened: a pick made after someone else signed
