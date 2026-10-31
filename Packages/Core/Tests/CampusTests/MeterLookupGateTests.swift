@@ -173,4 +173,25 @@ final class MeterLookupGateTests: XCTestCase {
         gate.answered(.chooseAmong([Self.candidate, Self.other]), stamp: 8)
         XCTAssertNil(gate.stopStamp)
     }
+
+    /// Unfinished at the apartments: nothing to open the page at, and the page shows no list
+    /// until a lookup answers otherwise.
+    func testAnUnfinishedLookupHidesTheList() {
+        var gate = MeterLookupGate()
+        _ = gate.start(.launch, signedIn: true, meterBound: false)
+        gate.answered(.stopped(Self.stop), stamp: 1)
+        _ = gate.ended()
+        _ = gate.start(.manual, signedIn: true, meterBound: false)
+        gate.answered(.unfinished(.apartment), stamp: 1)
+        XCTAssertEqual(gate.unfinished, .apartment)
+        XCTAssertNil(gate.stop)
+        XCTAssertNil(gate.pageStop(meterBound: false))
+        _ = gate.start(.manual, signedIn: true, meterBound: false)
+        XCTAssertEqual(gate.unfinished, .apartment, "stays while it runs again")
+        gate.answered(.stopped(Self.stop), stamp: 1)
+        XCTAssertNil(gate.unfinished)
+        gate.answered(.unfinished(.campus), stamp: 1)
+        gate.clear()
+        XCTAssertNil(gate.unfinished)
+    }
 }

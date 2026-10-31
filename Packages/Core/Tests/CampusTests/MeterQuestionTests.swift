@@ -44,6 +44,7 @@ final class MeterQuestionTests: XCTestCase {
         XCTAssertEqual(state(stop: Self.plain, issue: MeterPageText.stoppedIssue), .hidden, "no such room: nothing here")
         XCTAssertEqual(state(issue: ServiceError.timedOut.userMessage), .failed("学校那边太慢了，等一下再找。"))
         XCTAssertEqual(state(issue: ServiceError.offline.userMessage), .failed(ServiceError.offline.userMessage))
+        XCTAssertEqual(state(issue: MeterPageText.unfinished(.apartment)), .failed("有个公寓没读完，还分不出是哪间。"))
         XCTAssertEqual(state(bound: true), .hidden, "matched: the row goes, nothing said")
         XCTAssertEqual(state(bound: true, issue: ServiceError.timedOut.userMessage), .hidden)
         XCTAssertEqual(state(), .hidden)

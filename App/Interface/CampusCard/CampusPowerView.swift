@@ -21,83 +21,86 @@ struct CampusPowerSetupView: View {
     var body: some View {
         List {
             AutomaticPowerSection(onMeterPage:true)
-            Section {
-                if path.isEmpty {
-                    LocationPathHeader(path:[], placeholder:MeterPageText.pickerPrompt)
-                } else {
-                    HStack(spacing:12) {
-                        LocationPathHeader(path:[MeterPageText.matchedLine(path)])
-                        Spacer(minLength:8)
-                        Button(MeterPageText.rechoose) { Task { await loadRoot() } }
-                            .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
-                            .buttonStyle(.borderless).disabled(busy)
-                            .accessibilityIdentifier("meterRechoose")
-                    }
-                }
-            }.listRowBackground(Theme.group)
-            if busy { Text("正在读取电表信息…").foregroundStyle(.secondary).listRowBackground(Theme.group) }
-            if let issue { Text(issue).foregroundStyle(.orange).font(.footnote).listRowBackground(Theme.group) }
-            if meters.isEmpty, atStop, let question = campus.powerQuestion {
-                // Rooms of the dorm's name in several apartments: which one. A tap binds it.
+            // One of several apartments not read: only the message and 「再找一次电表」 above.
+            if !campus.powerUnfinished {
                 Section {
-                    ForEach(question.rows) { row in
-                        Button { Task { if await campus.choosePower(PowerChoice(candidate:row.candidate, stamp:campus.powerQuestionStamp)) { dismiss() } } } label: {
-                            VStack(alignment:.leading, spacing:2) {
-                                Text(row.title)
-                                Text(row.location).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                                    .fixedSize(horizontal:false, vertical:true)
-                            }
+                    if path.isEmpty {
+                        LocationPathHeader(path:[], placeholder:MeterPageText.pickerPrompt)
+                    } else {
+                        HStack(spacing:12) {
+                            LocationPathHeader(path:[MeterPageText.matchedLine(path)])
+                            Spacer(minLength:8)
+                            Button(MeterPageText.rechoose) { Task { await loadRoot() } }
+                                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+                                .buttonStyle(.borderless).disabled(busy)
+                                .accessibilityIdentifier("meterRechoose")
                         }
-                        .disabled(busy || campus.matchingPower)
-                        .accessibilityLabel(row.spoken)
-                    }.listRowBackground(Theme.group)
-                } header: {
-                    HStack(spacing:6) {
-                        Text(question.text).textCase(nil).fixedSize(horizontal:false, vertical:true)
-                            .accessibilityAddTraits(.isHeader)
-                        Spacer(minLength:0)
-                        if campus.matchingPower { ProgressView().controlSize(.mini).frame(width:12, height:12) }
                     }
-                }
-            } else if meters.isEmpty {
-                Section {
-                    ForEach(MeterPageText.rows(options.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) },
-                                               suggested:suggested)) { row in
-                        Button { Task { await choose(row.node) } } label: {
-                            VStack(alignment:.leading, spacing:2) {
-                                Text(row.node.name)
-                                if row.suggested {
-                                    Text(MeterPageText.suggestion).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                }.listRowBackground(Theme.group)
+                if busy { Text("正在读取电表信息…").foregroundStyle(.secondary).listRowBackground(Theme.group) }
+                if let issue { Text(issue).foregroundStyle(.orange).font(.footnote).listRowBackground(Theme.group) }
+                if meters.isEmpty, atStop, let question = campus.powerQuestion {
+                    // Rooms of the dorm's name in several apartments: which one. A tap binds it.
+                    Section {
+                        ForEach(question.rows) { row in
+                            Button { Task { if await campus.choosePower(PowerChoice(candidate:row.candidate, stamp:campus.powerQuestionStamp)) { dismiss() } } } label: {
+                                VStack(alignment:.leading, spacing:2) {
+                                    Text(row.title)
+                                    Text(row.location).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                                        .fixedSize(horizontal:false, vertical:true)
                                 }
                             }
-                        }.disabled(busy)
-                    }.listRowBackground(Theme.group)
-                } header: {
-                    HStack(spacing:6) {
-                        Text(level.map(MeterPageText.header) ?? "选择位置")
-                        Spacer(minLength:0)
-                        // The lookup is running again: this list stays until it answers.
-                        if campus.matchingPower && atStop { ProgressView().controlSize(.mini).frame(width:12, height:12) }
+                            .disabled(busy || campus.matchingPower)
+                            .accessibilityLabel(row.spoken)
+                        }.listRowBackground(Theme.group)
+                    } header: {
+                        HStack(spacing:6) {
+                            Text(question.text).textCase(nil).fixedSize(horizontal:false, vertical:true)
+                                .accessibilityAddTraits(.isHeader)
+                            Spacer(minLength:0)
+                            if campus.matchingPower { ProgressView().controlSize(.mini).frame(width:12, height:12) }
+                        }
                     }
-                }
-            } else {
-                Section("核对电表") {
-                    ForEach(meters, id:\.comAddress) { meter in
-                        Button {
-                            guard let room = path.last, let stamp else { return }
-                            Task {
-                                do { try await campus.chooseMeter(nodeID:room.id, meter:meter, path:path.map(\.name), since:stamp); dismiss() }
-                                catch { issue = "没保存上，再试一次。" }
-                            }
-                        } label: {
-                            VStack(alignment:.leading,spacing:8) {
-                                Text(meter.name).font(.headline)
-                                Text("剩余 \(NSDecimalNumber(decimal:meter.remainingKWh ?? 0).stringValue) 度 · 电费 \(NSDecimalNumber(decimal:meter.leftMoney?.yuan ?? 0).stringValue) 元")
-                                    .font(.subheadline).foregroundStyle(.secondary)
-                                Text("确认是我的宿舍并保存").font(.footnote)
-                            }.padding(.vertical,8)
-                        }.disabled(busy)
-                    }.listRowBackground(Theme.group)
+                } else if meters.isEmpty {
+                    Section {
+                        ForEach(MeterPageText.rows(options.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) },
+                                                   suggested:suggested)) { row in
+                            Button { Task { await choose(row.node) } } label: {
+                                VStack(alignment:.leading, spacing:2) {
+                                    Text(row.node.name)
+                                    if row.suggested {
+                                        Text(MeterPageText.suggestion).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                                    }
+                                }
+                            }.disabled(busy)
+                        }.listRowBackground(Theme.group)
+                    } header: {
+                        HStack(spacing:6) {
+                            Text(level.map(MeterPageText.header) ?? "选择位置")
+                            Spacer(minLength:0)
+                            // The lookup is running again: this list stays until it answers.
+                            if campus.matchingPower && atStop { ProgressView().controlSize(.mini).frame(width:12, height:12) }
+                        }
+                    }
+                } else {
+                    Section("核对电表") {
+                        ForEach(meters, id:\.comAddress) { meter in
+                            Button {
+                                guard let room = path.last, let stamp else { return }
+                                Task {
+                                    do { try await campus.chooseMeter(nodeID:room.id, meter:meter, path:path.map(\.name), since:stamp); dismiss() }
+                                    catch { issue = "没保存上，再试一次。" }
+                                }
+                            } label: {
+                                VStack(alignment:.leading,spacing:8) {
+                                    Text(meter.name).font(.headline)
+                                    Text("剩余 \(NSDecimalNumber(decimal:meter.remainingKWh ?? 0).stringValue) 度 · 电费 \(NSDecimalNumber(decimal:meter.leftMoney?.yuan ?? 0).stringValue) 元")
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                    Text("确认是我的宿舍并保存").font(.footnote)
+                                }.padding(.vertical,8)
+                            }.disabled(busy)
+                        }.listRowBackground(Theme.group)
+                    }
                 }
             }
         }.scrollContentBackground(.hidden).background(Theme.bg.ignoresSafeArea()).tint(NativeTheme.tint)
@@ -106,7 +109,8 @@ struct CampusPowerSetupView: View {
             .task { await open() }
             // The lookup stopped again (it ran once more meanwhile): shown if the user is still there.
             .onChange(of:campus.powerStop) { _, stop in
-                guard atStop, !busy, let stop, !stop.options.isEmpty else { return }
+                // At the stop, or on the untouched first list (opened while nothing was stopped).
+                guard atStop || path.isEmpty && level == .campus, !busy, let stop, !stop.options.isEmpty else { return }
                 show(stop)
             }
     }

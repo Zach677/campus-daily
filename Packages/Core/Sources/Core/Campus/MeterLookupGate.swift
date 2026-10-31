@@ -25,6 +25,9 @@ public struct MeterLookupGate: Sendable, Equatable {
     public private(set) var stop: MeterWalkStop?
     /// The person stamp of the lookup that stopped (a pick of its candidates after a switch is refused).
     public private(set) var stopStamp: Int?
+    /// Several apartments (or campuses) to tell apart, one not read (`.unfinished`): the meter
+    /// page shows no list, only the message and 「再找一次电表」.
+    public private(set) var unfinished: MeterLevel?
     private var signedInMeanwhile = false
 
     public init() {}
@@ -51,6 +54,7 @@ public struct MeterLookupGate: Sendable, Equatable {
         switch found {
         case .chooseAmong(let list): choices = list; choicesStamp = stamp
         case .stopped(let at): stop = at; stopStamp = stamp
+        case .unfinished(let level): unfinished = level
         case .matched, .alreadyBound, .noAddress: break
         }
         return true
@@ -73,6 +77,6 @@ public struct MeterLookupGate: Sendable, Equatable {
     /// A sign-in, a sign-out or a meter chosen: nothing of the last lookup is shown. A lookup
     /// still running goes on (it checks the person itself).
     public mutating func clear() {
-        choices = []; choicesStamp = nil; stop = nil; stopStamp = nil
+        choices = []; choicesStamp = nil; stop = nil; stopStamp = nil; unfinished = nil
     }
 }

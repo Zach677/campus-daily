@@ -95,4 +95,10 @@ final class MeterPickerTextTests: XCTestCase {
         XCTAssertNil(MeterPageText.question(MeterWalkStop(level: .apartment, path: [campus], options: [banshan]), address: Self.address))
         XCTAssertNil(MeterPageText.question(stop, address: nil))
     }
+
+    /// Several apartments (or campuses) to tell apart and one could not be read.
+    func testAnUnfinishedSplitSaysWhichLevel() {
+        XCTAssertEqual(MeterPageText.unfinished(.apartment), "有个公寓没读完，还分不出是哪间。")
+        XCTAssertEqual(MeterPageText.unfinished(.campus), "有个校区没读完，还分不出是哪间。")
+    }
 }

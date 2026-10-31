@@ -51,6 +51,11 @@ extension MeterPageText {
         return "\(seen.count) 个\(unit)都有 \(address.building) 栋 \(address.room)，你住哪个？"
     }
 
+    /// Several apartments (or campuses) to tell apart and one could not be read.
+    public static func unfinished(_ level: MeterLevel) -> String {
+        "有个\(level == .campus ? "校区" : "公寓")没读完，还分不出是哪间。"
+    }
+
     /// The meter page's search field.
     public static let searchPrompt = "搜索楼栋或房间"
     /// While the lookup runs, on the meter page.

@@ -7,6 +7,9 @@ public enum ElectricityResolution: Sendable, Equatable {
     case chooseAmong([MeterCandidate])
     /// A level of the directory did not match the dorm exactly once: the picker opens there.
     case stopped(MeterWalkStop)
+    /// Several apartments (or campuses) hold the dorm's building and one of them could not be
+    /// read (slow school, no connection): which one has the room is not known. Nothing bound.
+    case unfinished(MeterLevel)
     /// No parsed portal dorm address.
     case noAddress
     /// A meter was bound meanwhile (picked by hand while the lookup ran): it stays, and is
@@ -868,6 +871,7 @@ public actor SchoolSession {
         case .open(var current):
             switch walked {
             case .stopped(let stop): return .stopped(stop)
+            case .unfinished(let level): return .unfinished(level)
             case .rooms(let list): return .chooseAmong(list)
             case .room(let found):
                 guard let room = found.room else { return .chooseAmong([found]) }
@@ -883,9 +887,12 @@ public actor SchoolSession {
 
     enum Walked {
         case room(MeterCandidate), rooms([MeterCandidate]), stopped(MeterWalkStop)
+        /// A split at this level with one branch not read.
+        case unfinished(MeterLevel)
         /// The rooms of the dorm's name this branch found with a meter.
         var found: [MeterCandidate] {
             switch self {
+            case .unfinished: return []
             case .room(let c): return [c]
             case .rooms(let list): return list
             case .stopped(let stop): return stop.candidates
@@ -907,6 +914,9 @@ public actor SchoolSession {
         /// Each branch walked down: the one with rooms of the dorm's name answers, else `stop`
         /// (with the rooms of all of them when several have).
         func split(_ walked: [(PowerNode, Walked)], _ stop: MeterWalkStop) -> Walked {
+            if walked.contains(where: { if case .unfinished = $0.1 { return true } else { return false } }) {
+                return .unfinished(stop.level)
+            }
             let having = walked.filter { !$0.1.found.isEmpty }
             if having.count == 1 { return having[0].1 }
             var stop = stop
@@ -915,6 +925,15 @@ public actor SchoolSession {
                 stop.candidates = having.flatMap(\.1.found)
             }
             return .stopped(stop)
+        }
+
+        /// One branch of a split walked down; nil when one of its reads failed for good (slow
+        /// school, no connection): it cannot be counted as having no room. Signed out: thrown.
+        func unlessUnread(_ down: () async throws -> Walked) async throws -> Walked? {
+            do { return try await down() } catch let error as ServiceError where error == .timedOut || error == .offline {
+                try ensureSignedIn(since: started)
+                return nil
+            }
         }
 
         /// From a building list (`buildings`, under `path`) down to the room's meter.
@@ -984,7 +1003,12 @@ public actor SchoolSession {
             let stop = MeterWalkStop(level: .apartment, path: path, options: level1, suggested: holding.map(\.0.id))
             guard holding.count > 1 else { return .stopped(stop) }
             var walked: [(PowerNode, Walked)] = []
-            for (apartment, kids) in holding { walked.append((apartment, try await fromBuildings(kids, path: path + [apartment]))) }
+            for (apartment, kids) in holding {
+                guard let down = try await unlessUnread({ try await fromBuildings(kids, path: path + [apartment]) }) else {
+                    return .unfinished(.apartment)
+                }
+                walked.append((apartment, down))
+            }
             return split(walked, stop)
         }
 
@@ -996,7 +1020,10 @@ public actor SchoolSession {
         case 1: return try await fromCampus(campusHits[0])
         default:
             var walked: [(PowerNode, Walked)] = []
-            for campus in campusHits { walked.append((campus, try await fromCampus(campus))) }
+            for campus in campusHits {
+                guard let down = try await unlessUnread({ try await fromCampus(campus) }) else { return .unfinished(.campus) }
+                walked.append((campus, down))
+            }
             return split(walked, stop)
         }
     }

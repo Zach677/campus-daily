@@ -104,6 +104,8 @@ struct PowerChoice: Identifiable, Equatable {
     var powerQuestion: MeterQuestion? { powerStop.flatMap { MeterQuestion($0, address:address ?? demoDorm) } }
     /// The dorm of a DEBUG demo stop (nil otherwise): the question names its building and room.
     private var demoDorm: DormAddress?
+    /// Several apartments to tell apart and one not read: the meter page shows no list.
+    var powerUnfinished: Bool { lookup.unfinished != nil && !powerConfigured }
     /// The stamp a pick of `powerQuestion`'s rows is saved under.
     var powerQuestionStamp: Int { lookup.stopStamp ?? -1 }
     /// What onboarding's 「你住哪间」 step says about the meter.
@@ -320,6 +322,7 @@ struct PowerChoice: Identifiable, Equatable {
                         switch answer {
                         case .matched, .alreadyBound, .chooseAmong: break
                         case .stopped: powerMatchIssue = Self.stoppedIssue
+                        case .unfinished(let level): powerMatchIssue = MeterPageText.unfinished(level)
                         case .noAddress: powerMatchIssue = "学校没给出宿舍地址，去「电表」里选一下。"
                         }
                     }
@@ -411,7 +414,7 @@ struct PowerChoice: Identifiable, Equatable {
 
     /// Demo: the lookup stopped at the dorm's buildings (two named 99栋); `running` looks again,
     /// `slow` failed on a slow school. Synthetic, nothing is read.
-    func demoMeterStop(running: Bool = false, slow: Bool = false, ask: Bool = false) {
+    func demoMeterStop(running: Bool = false, slow: Bool = false, ask: Bool = false, unfinished: Bool = false) {
         let stop = ask ? Self.demoApartmentStop : MeterWalkStop(level:.building,
                                  path:[PowerNode(id:"991001", name:"星湖校区"), PowerNode(id:"991001001", name:"半山公寓")],
                                  options:[PowerNode(id:"991001001000108", name:"98栋"), PowerNode(id:"991001001000109", name:"99栋"),
@@ -419,12 +422,13 @@ struct PowerChoice: Identifiable, Equatable {
                                  suggested:["991001001000109", "991001001000110"])
         var gate = MeterLookupGate()
         _ = gate.start(.manual, signedIn:true, meterBound:false)
-        gate.answered(.stopped(stop), stamp:0)
+        gate.answered(unfinished ? .unfinished(.apartment) : .stopped(stop), stamp:0)
         _ = gate.ended()
         if running { _ = gate.start(.manual, signedIn:true, meterBound:false) }
         lookup = gate
         demoDorm = ask ? Self.demoAddress : nil
-        powerMatchIssue = slow ? ServiceError.timedOut.userMessage : running ? nil : Self.stoppedIssue
+        powerMatchIssue = unfinished ? MeterPageText.unfinished(.apartment)
+            : slow ? ServiceError.timedOut.userMessage : running ? nil : Self.stoppedIssue
     }
     #endif
 }

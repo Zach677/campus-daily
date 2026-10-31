@@ -193,6 +193,40 @@ final class MeterWalkTests: XCTestCase {
         XCTAssertEqual(waits.asked, [5])
     }
 
+    /// One apartment's reads fail for good (slow school, no connection) while the other has the
+    /// room: that apartment is not taken for one without it. The lookup ends unfinished at the
+    /// apartments, nothing bound, whichever apartment failed.
+    func testAnApartmentWhoseReadsFailedIsNotTakenForOneWithoutTheRoom() async throws {
+        for (failing, error) in [("991001001000109", URLError.Code.timedOut), ("991001007000109", .timedOut),
+                                 ("991001001000109", .notConnectedToInternet), ("991001007000109000001", .notConnectedToInternet)] {
+            let waits = MeterLookupRetryTests.Waits()
+            var h = Harness()
+            h.meterRetryWait = { waits.record($0) }
+            try h.signedIn()
+            h.server.fail("POST", Self.service, bodyMatch: ["server": "/api/getBuildingInfo", "buildingID": failing], with: error, times: 3)
+            Self.secondNinetyNine(h, rooms: [("991", Self.lanxiangRoom.id)], meter: ("990000007991", "99栋991"))
+            try SchoolElectricityTests.serveTree(h)
+            let (_, found) = try await h.session().matchElectricity()
+            XCTAssertEqual(found, .unfinished(.apartment), "\(failing) \(error)")
+            XCTAssertNil(try h.vault.profile()?.meter, failing)
+            XCTAssertEqual(waits.asked, [5, 20], failing)
+        }
+    }
+
+    /// A fully read apartment without the room still counts as none: the other one is bound.
+    /// Without several apartments to tell apart, a failed read ends the lookup as the failure.
+    func testOnlyASplitEndsUnfinished() async throws {
+        var h = Harness()
+        h.meterRetryWait = { _ in }
+        try h.signedIn()
+        h.server.fail("POST", Self.service, bodyMatch: ["server": "/api/getBuildingInfo", "buildingID": Self.floor.id],
+                      with: .timedOut, times: 3)
+        try SchoolElectricityTests.serveTree(h)
+        do { _ = try await h.session().matchElectricity(); XCTFail("expected timedOut") } catch {
+            XCTAssertEqual(error as? ServiceError, .timedOut)
+        }
+    }
+
     /// Signed out while the second apartment's rooms are read: no further read goes out and
     /// nothing is bound or offered.
     func testSignOutWhileWalkingAnotherApartmentEndsIt() async throws {
