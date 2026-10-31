@@ -23,4 +23,8 @@ public struct StoredSchoolVault: SchoolVault {
     private struct DeviceBox: Codable { var id: String }
     public func loginDeviceID() throws -> String? { try store.readJSON(DeviceBox.self, .schoolDevice)?.id }
     public func saveLoginDeviceID(_ id: String?) throws { try store.writeJSON(id.map(DeviceBox.init), .schoolDevice) }
+
+    public func credentialBytes() throws -> [Data?] {
+        [try store.read(.schoolEcykt), try store.read(.schoolPortal), try store.read(.schoolPassword)]
+    }
 }

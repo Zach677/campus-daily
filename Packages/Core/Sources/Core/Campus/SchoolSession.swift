@@ -284,15 +284,21 @@ public actor SchoolSession {
     }
 
     /// What a login compares again just before its writes: the stored card session, portal
-    /// token and account.
+    /// token and account, byte for byte. An item that no longer decodes (damaged, or an older
+    /// shape) compares equal to itself, so the login writes over it and repairs it, as before;
+    /// one the other process rewrote meanwhile compares unequal, decodable or not.
     struct StoredCredentials: Equatable {
+        var bytes: [Data?]
+        /// Decoded for the login's own use; nil when absent or no longer decodable.
         var session: EcyktSession?
-        var portalToken: PortalToken?
         var account: SchoolAccount?
+        static func == (a: StoredCredentials, b: StoredCredentials) -> Bool { a.bytes == b.bytes }
     }
 
+    /// Throws only when the store can't be read (before the first unlock, say).
     static func storedCredentials(_ vault: SchoolVault) throws -> StoredCredentials {
-        StoredCredentials(session: try vault.ecyktSession(), portalToken: try vault.portalToken(), account: try vault.account())
+        StoredCredentials(bytes: try vault.credentialBytes(), session: (try? vault.ecyktSession()) ?? nil,
+                          account: (try? vault.account()) ?? nil)
     }
 
     /// A login's writes (sign-in from the form or the web page, 保存密码) in one locked step:

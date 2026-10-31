@@ -13,4 +13,8 @@ public protocol SchoolVault: Sendable {
     func saveAccount(_ account: SchoolAccount?) throws
     func loginDeviceID() throws -> String?
     func saveLoginDeviceID(_ id: String?) throws
+    /// The card session, portal token and account exactly as stored (bytes, not decoded; nil =
+    /// absent): what a login compares before it writes over them. Throws only when the store
+    /// can't be read, never because an item no longer decodes.
+    func credentialBytes() throws -> [Data?]
 }
