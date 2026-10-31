@@ -78,6 +78,28 @@ final class RefreshLeaseTests: XCTestCase {
         XCTAssertNil(store.leaseFile.storedOwner(), "the lease is gone once the lock was free")
     }
 
+    /// The widget past its deadline (its task cancelled) writes nothing back under the lease
+    /// and does not even take the file lock: a process about to be suspended must not hold it.
+    func testAWriteUnderOwnershipIsSkippedOnceCancelled() async throws {
+        final class Count: @unchecked Sendable {
+            private let lock = NSLock(); private var value = 0
+            func add() { lock.withLock { value += 1 } }
+            var now: Int { lock.withLock { value } }
+        }
+        let locks = Count()
+        let file = LeaseFile(url: store.leaseFile.url, insideLock: { locks.add() })
+        let widget = RefreshLease(file: file, owner: "widget-1", now: clock.function)
+        XCTAssertTrue(widget.acquire())
+        let before = locks.now
+        let wrote = try await Task { () throws -> Int? in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try LeaseOwnership(widget).write { 1 }
+        }.value
+        XCTAssertNil(wrote, "nothing written once cancelled")
+        XCTAssertEqual(locks.now, before, "the lock was not taken")
+        XCTAssertEqual(try LeaseOwnership(widget).write { 2 }, 2, "not cancelled, it writes")
+    }
+
     /// A holder that died leaves its lease to run out; then the next process takes it.
     func testStaleLeaseExpires() {
         let app = lease("app-1"), widget = lease("widget-1")

@@ -217,9 +217,11 @@ public struct LeaseOwnership: Sendable {
 
     public static let unchecked = LeaseOwnership(nil)
 
-    /// nil = the lease is not ours any more; `body` did not run.
+    /// nil = the lease is not ours any more, or the task was cancelled (the widget past its
+    /// deadline, about to be suspended: it must not take the file lock now); `body` did not run.
     public func write<T>(_ body: () throws -> T) throws -> T? {
         guard let lease else { return try body() }
+        guard !Task.isCancelled else { return nil }
         return try lease.withOwnership(body)
     }
 }
