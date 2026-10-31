@@ -30,6 +30,17 @@ public struct MeterPickerRow: Sendable, Equatable, Identifiable {
 }
 
 extension MeterPageText {
+    /// The lookup stopped at a level to choose from (home, onboarding, Settings).
+    public static let stoppedIssue = "没自动找到电表，去「电表」里选一下。"
+
+    /// What the meter page says above a stopped level's list: only a failure, with
+    /// 「再找一次电表」. Nothing while a lookup runs again (its spinner sits by the list header),
+    /// nor for the stop itself (the list is the answer).
+    public static func noteAtStop(finding: Bool, issue: String?) -> String? {
+        guard !finding, let issue, issue != stoppedIssue else { return nil }
+        return self.issue(issue)
+    }
+
     /// The meter page's search field.
     public static let searchPrompt = "搜索楼栋或房间"
     /// While the lookup runs, on the meter page.

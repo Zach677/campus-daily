@@ -34,9 +34,9 @@ struct CampusPowerSetupView: View {
                             .accessibilityIdentifier("meterRechoose")
                     }
                 }
-            }
-            if busy { Text("正在读取电表信息…").foregroundStyle(.secondary) }
-            if let issue { Text(issue).foregroundStyle(.orange).font(.footnote) }
+            }.listRowBackground(Theme.group)
+            if busy { Text("正在读取电表信息…").foregroundStyle(.secondary).listRowBackground(Theme.group) }
+            if let issue { Text(issue).foregroundStyle(.orange).font(.footnote).listRowBackground(Theme.group) }
             if meters.isEmpty {
                 Section {
                     ForEach(MeterPageText.rows(options.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) },
@@ -49,7 +49,7 @@ struct CampusPowerSetupView: View {
                                 }
                             }
                         }.disabled(busy)
-                    }
+                    }.listRowBackground(Theme.group)
                 } header: {
                     HStack(spacing:6) {
                         Text(level.map(MeterPageText.header) ?? "选择位置")
@@ -75,10 +75,10 @@ struct CampusPowerSetupView: View {
                                 Text("确认是我的宿舍并保存").font(.footnote)
                             }.padding(.vertical,8)
                         }.disabled(busy)
-                    }
+                    }.listRowBackground(Theme.group)
                 }
             }
-        }.scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
+        }.scrollContentBackground(.hidden).background(Theme.bg.ignoresSafeArea()).tint(NativeTheme.tint)
             .navigationTitle(MeterPageText.title).navigationBarTitleDisplayMode(.inline)
             .searchable(text:$search,prompt:MeterPageText.searchPrompt)
             .task { await open() }
@@ -136,19 +136,15 @@ struct AutomaticPowerSection: View {
     @EnvironmentObject private var campus: CampusModel
     @State private var selection: String?
     var body: some View {
-        // On the meter page at a stopped level the level's own list is the answer: only a lookup
-        // running again, or one that failed, is said here.
+        // On the meter page at a stopped level the level's own list is the answer: a lookup
+        // running again shows only its spinner by the list header; a failure is said here.
         let atStop = onMeterPage && campus.powerStop != nil && campus.powerChoices.isEmpty && !campus.powerConfigured
-        let issue = atStop && campus.powerMatchIssue == CampusModel.stoppedIssue ? nil : campus.powerMatchIssue
         if atStop {
-            if campus.matchingPower || issue != nil {
+            if let note = MeterPageText.noteAtStop(finding:campus.matchingPower, issue:campus.powerMatchIssue) {
                 Section("电表") {
-                    if campus.matchingPower { Text(MeterPageText.finding).foregroundStyle(Theme.ink2) }
-                    if let issue {
-                        Text(MeterPageText.issue(issue)).font(.footnote).foregroundStyle(.secondary)
-                        Button("再找一次电表") {campus.matchPowerAutomatically()}
-                    }
-                }
+                    Text(note).font(.footnote).foregroundStyle(.secondary)
+                    Button("再找一次电表") {campus.matchPowerAutomatically()}
+                }.listRowBackground(Theme.group)
             }
         } else if campus.matchingPower || !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil || campus.powerConfigured {
             Section(campus.powerChoices.isEmpty ? "电表" : SameNameText.titleLead + SameNameText.titleAccent + SameNameText.titleTail) {
@@ -173,6 +169,7 @@ struct AutomaticPowerSection: View {
                     Button("再找一次电表") {campus.matchPowerAutomatically()}
                 }
             }
+            .listRowBackground(onMeterPage ? Theme.group : nil)
             // A new list: an earlier pick may no longer be in it.
             .onChange(of:campus.powerChoices) { _, _ in selection = nil }
         }

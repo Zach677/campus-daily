@@ -58,4 +58,16 @@ final class MeterPickerTextTests: XCTestCase {
     func testTheSearchFieldAsksForABuildingOrRoom() {
         XCTAssertEqual(MeterPageText.searchPrompt, "搜索楼栋或房间")
     }
+
+    /// Above a stopped level's list: only a failure is said; a lookup running again shows its
+    /// spinner by the list header and nothing else.
+    func testAboveAStoppedLevelOnlyAFailureIsSaid() {
+        XCTAssertNil(MeterPageText.noteAtStop(finding: true, issue: nil), "no 「正在找电表…」 group")
+        XCTAssertNil(MeterPageText.noteAtStop(finding: true, issue: ServiceError.timedOut.userMessage))
+        XCTAssertNil(MeterPageText.noteAtStop(finding: false, issue: nil))
+        XCTAssertNil(MeterPageText.noteAtStop(finding: false, issue: MeterPageText.stoppedIssue), "the list is the answer")
+        XCTAssertEqual(MeterPageText.noteAtStop(finding: false, issue: ServiceError.timedOut.userMessage), "学校那边太慢了，等一下再找。")
+        XCTAssertEqual(MeterPageText.noteAtStop(finding: false, issue: ServiceError.offline.userMessage), ServiceError.offline.userMessage)
+        XCTAssertEqual(MeterPageText.stoppedIssue, "没自动找到电表，去「电表」里选一下。")
+    }
 }
