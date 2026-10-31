@@ -162,6 +162,26 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         XCTAssertNil(try h.vault.profile())
     }
 
+    /// A sign-out that could not delete the card session is still a sign-out: the dropped
+    /// match is not run again on what was left behind.
+    func testAMatchDroppedByAFailedSignOutIsNotRunAgain() async throws {
+        let h = try previousPerson()
+        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
+        try SchoolElectricityTests.serveTree(h)
+        let hold = Hold(h, self, suffix: "/electricnew/service", body: ["server": "/api/getMeterStatus"])
+        let session = session(h, hold)
+        async let result = session.matchElectricity()
+        await fulfillment(of: [hold.reached], timeout: 5)
+        h.store.failWrites(to: .schoolEcykt)
+        do { try await session.signOut(); XCTFail("expected a sign-out failure") } catch is SchoolSession.SignOutFailure {}
+        XCTAssertNotNil(try h.vault.ecyktSession(), "the card session could not be deleted")
+        hold.release()
+        do { _ = try await result; XCTFail("signed out") } catch {
+            XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
+        }
+        XCTAssertNil(try h.vault.profile()?.meter, "nothing matched on what the sign-out left")
+    }
+
     /// A same-name list or the manual picker opened for the previous person: the next person's
     /// pick from it is refused, though their own sign-in is current.
     func testAPickFromThePreviousPersonsListSavesNothing() async throws {

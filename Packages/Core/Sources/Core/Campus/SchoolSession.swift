@@ -717,16 +717,18 @@ public actor SchoolSession {
     /// `resolveElectricity()` for whoever is signed in when it answers, with the person stamp
     /// the answer belongs to (a same-name choice carries it into `chooseMatchedMeter`). Dropped
     /// because someone else signed in meanwhile, it runs again for them, a few times at most;
-    /// signed out meanwhile, the drop is thrown.
+    /// signed out meanwhile (even where the sign-out failed), the drop is thrown.
     public func matchElectricity() async throws -> (stamp: Int, ElectricityResolution) {
         var attempts = 0
         while true {
-            let stamp = personGeneration
+            let stamp = personGeneration, signedOut = signOutGeneration
             do {
                 return (stamp, try await resolveElectricity())
             } catch {
                 attempts += 1
-                guard stamp != personGeneration, attempts < 3, (try? vault.ecyktSession()) ?? nil != nil else { throw error }
+                // A sign-out in between ends it, even one that could not delete the card session.
+                guard stamp != personGeneration, signedOut == signOutGeneration, attempts < 3,
+                      (try? vault.ecyktSession()) ?? nil != nil else { throw error }
             }
         }
     }
