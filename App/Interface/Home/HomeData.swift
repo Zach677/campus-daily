@@ -103,8 +103,11 @@ struct HomeData {
     }
     /// Newest first, at most four; card records only while signed in (the snapshot is empty otherwise).
     var recents: [RecentItem] {
-        let app = laundryEnabled ? appActivities : appActivities.filter { if case .laundry = $0.kind { return false }; return true }
-        return RecentFeed.items(card:snapshot.activity.value?.records, app:app)
+        RecentFeed.items(card:snapshot.activity.value?.records, app:recentActivities)
+    }
+    /// The app's own records 最近 and 校园卡记录 show: laundry only while 学校洗衣机 is on.
+    var recentActivities: [AppActivity] {
+        laundryEnabled ? appActivities : appActivities.filter { if case .laundry = $0.kind { return false }; return true }
     }
 }
 

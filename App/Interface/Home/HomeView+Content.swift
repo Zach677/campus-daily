@@ -24,7 +24,7 @@ extension HomeView {
             }
             let recents = data.recents
             if !recents.isEmpty {
-                HomeSectionHeader(text:"最近").padding(.top,30)
+                recentsHeader(all:data.signedIn).padding(.top,30)
                 recentRows(recents)
             }
         }
@@ -124,6 +124,34 @@ extension HomeView {
         return ["洗衣", laundryTitle(data), data.laundry.spokenValue(), subtitle].compactMap { $0 }.joined(separator:"，")
     }
 
+    /// 「最近」 and, while signed in, 「全部 ›」 to 校园卡记录.
+    func recentsHeader(all: Bool) -> some View {
+        HStack(alignment:.firstTextBaseline) {
+            Text("最近").scaledFont(13, .semibold, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength:8)
+            if all {
+                NavigationLink(value:HomeRoute.records) {
+                    HStack(alignment:.firstTextBaseline, spacing:3) {
+                        Text("全部").scaledFont(13, .medium, relativeTo:.footnote)
+                        Image(systemName:"chevron.right").scaledFont(11, .semibold, relativeTo:.footnote)
+                    }
+                    .foregroundStyle(Theme.accentText)
+                    // 44 pt to tap without moving 「最近」.
+                    .padding(.vertical,12).padding(.leading,8)
+                    .contentShape(Rectangle())
+                    .padding(.vertical,-12)
+                }
+                .buttonStyle(RowPressStyle())
+                .accessibilityElement(children:.ignore)
+                .accessibilityLabel("全部校园卡记录")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("allRecords")
+            }
+        }
+        .padding(.horizontal,24).padding(.bottom,4)
+    }
+
     /// The app's own showers and orders open their page; card records are plain rows.
     @ViewBuilder func recentRows(_ items: [RecentItem]) -> some View {
         VStack(spacing:0) {
@@ -169,6 +197,7 @@ extension HomeView {
             LaundryDetail()
             #endif
         case .washerSetup: WasherSetupView()
+        case .records: CardRecordsView(app:data.recentActivities, source:.live)
         }
     }
 

@@ -101,6 +101,8 @@ struct RecentRow: View {
     let item: RecentItem
     /// Replaces the amount with an accentText word (laundry 「待核对」).
     var accentWord: String? = nil
+    /// Under a day header (校园卡记录): the time alone, 「12:05 · 示例面馆」.
+    var clockOnly = false
     @Environment(\.dynamicTypeSize) private var typeSize
     /// Emoji scales with Dynamic Type relative to .title2 (18pt at the default size).
     @ScaledMetric(relativeTo:.title2) private var emojiSize: CGFloat = 18
@@ -137,7 +139,9 @@ struct RecentRow: View {
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
     }
-    private var subtitle: String { [Theme.when(item.date), item.detail].compactMap { $0 }.joined(separator:" · ") }
+    private var subtitle: String {
+        [clockOnly ? CardDays.clock(item.date) : Theme.when(item.date), item.detail].compactMap { $0 }.joined(separator:" · ")
+    }
 }
 
 /// Section header 「最近」/「登录后会出现」.

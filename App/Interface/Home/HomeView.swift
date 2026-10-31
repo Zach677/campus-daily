@@ -2,7 +2,7 @@ import SwiftUI
 import UserNotifications
 import Core
 
-enum HomeRoute: Hashable { case power, powerSetup, card, shower, laundry, washerSetup }
+enum HomeRoute: Hashable { case power, powerSetup, card, shower, laundry, washerSetup, records }
 
 /// Single home screen: date · the two numbers · update line · shower button · 洗衣 · 最近.
 struct HomeView: View {
