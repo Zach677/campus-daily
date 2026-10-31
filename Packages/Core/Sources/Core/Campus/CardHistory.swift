@@ -50,6 +50,9 @@ public struct CardHistory: Sendable, Equatable {
     private var emptyRanges = 0
     /// The current range came up short of the total the school gave for it.
     private var shortOfTotal = false
+    /// The oldest day read when the first short page came: the records the school left out
+    /// sit on that day or older, whatever the pages after it bring.
+    private var shortCut: String?
     /// No older records to ask for.
     public private(set) var reachedEnd = false
 
@@ -95,6 +98,7 @@ public struct CardHistory: Sendable, Equatable {
         if let readFrom, day >= readFrom { return !unsure.contains(day) }
         guard !reachedEnd, day >= self.day(back: rangeBegin), day <= self.day(back: rangeEnd),
               let cut = cutDay else { return false }
+        if shortOfTotal { return shortCut.map { day > $0 } ?? false }
         return day > cut
     }
 
@@ -109,7 +113,10 @@ public struct CardHistory: Sendable, Equatable {
         let last: Bool
         if let total = answer.total {
             last = answer.rows.isEmpty || query.page * query.pageSize >= total
-            if answer.rows.count < query.pageSize && query.page * query.pageSize < total { shortOfTotal = true }
+            if answer.rows.count < query.pageSize && query.page * query.pageSize < total && !shortOfTotal {
+                shortOfTotal = true
+                shortCut = cutDay
+            }
         } else {
             last = answer.rows.count < query.pageSize
         }
@@ -119,8 +126,9 @@ public struct CardHistory: Sendable, Equatable {
             return
         }
         if stuck || shortOfTotal {
-            // From the cut day back, this range's days may miss records.
-            let cut = cutDay
+            // From the cut day back (the first short page's, when one came), this range's days
+            // may miss records.
+            let cut = shortOfTotal ? shortCut : cutDay
             for back in rangeEnd...rangeBegin {
                 let d = day(back: back)
                 if cut.map({ d <= $0 }) ?? true { unsure.insert(d) }
@@ -133,6 +141,7 @@ public struct CardHistory: Sendable, Equatable {
         rangeEnd += Self.rangeDays
         page = 1
         shortOfTotal = false
+        shortCut = nil
         if emptyRanges >= Self.emptyRangesBeforeEnd || rangeEnd >= Self.maxDaysBack { reachedEnd = true }
     }
 

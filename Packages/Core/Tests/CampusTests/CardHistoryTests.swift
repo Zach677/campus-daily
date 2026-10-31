@@ -242,6 +242,35 @@ final class CardHistoryTests: XCTestCase {
         XCTAssertNil(groups[1].total)
     }
 
+    /// Page 1 came short (20 of 55), page 2 brought rows 51–55 only: rows 21–50 were never read,
+    /// so every day from page 1's oldest back has no total, while loading and after.
+    func testTheDaysInAShortPagesGapAreNotComplete() {
+        var history = CardHistory(now: noon)
+        history.receive(CardRecordPage(total: 55, rows: meals("20261030", 12) + meals("20261029", 8)), for: history.nextQuery!)
+        history.receive(CardRecordPage(total: 55, rows: meals("20261024", 5)), for: history.nextQuery!)
+        XCTAssertEqual(history.nextQuery?.end, "20261016", "the range is done")
+        XCTAssertTrue(history.isComplete(day: "20261030"), "newer than the short page's oldest day")
+        for day in ["20261029", "20261028", "20261025", "20261024", "20261017"] {
+            XCTAssertFalse(history.isComplete(day: day), day)
+        }
+        let groups = CardDays.groups(history: history, app: [], now: noon)
+        XCTAssertEqual(groups.map(\.id), ["20261030", "20261029", "20261024"])
+        XCTAssertNotNil(groups[0].total)
+        XCTAssertNil(groups[1].total)
+        XCTAssertNil(groups[2].total)
+    }
+
+    /// While page 2 of such a range is still to come, the days of its gap are not complete either.
+    func testWhileLoadingTheShortPagesGapIsNotComplete() {
+        var history = CardHistory(now: noon)
+        history.receive(CardRecordPage(total: 55, rows: meals("20261030", 12) + meals("20261029", 8)), for: history.nextQuery!)
+        // Page 3 is asked for after a page 2 that the school filled (rows 51–100 of a grown total).
+        history.receive(CardRecordPage(total: 120, rows: meals("20261024", 50)), for: history.nextQuery!)
+        XCTAssertEqual(history.nextQuery?.page, 3)
+        XCTAssertFalse(history.isComplete(day: "20261029"))
+        XCTAssertFalse(history.isComplete(day: "20261025"), "between the short page and the next: never read")
+    }
+
     /// A record without a readable date says nothing about where the page was cut.
     func testARecordWithoutADateDoesNotCompleteTheCutDay() {
         var history = CardHistory(now: noon)
