@@ -900,6 +900,10 @@ public actor SchoolSession {
         let level1 = try await children(campus.id)
         var buildings = level1, buildingHits = level1.filter { address.matchesBuilding($0.name) }
         if buildingHits.isEmpty {
+            // The campus lists buildings itself and none is the dorm's: they are not apartments.
+            if level1.contains(where: { MeterLevel.isBuilding($0.name) }) {
+                return .stopped(MeterWalkStop(level: .building, path: path, options: level1))
+            }
             // Apartments: those holding a building of the dorm's name.
             guard level1.count <= Self.maxApartments else {
                 return .stopped(MeterWalkStop(level: .apartment, path: path, options: level1))

@@ -136,6 +136,23 @@ final class MeterWalkTests: XCTestCase {
         XCTAssertEqual(stop.suggested, ["991001001000109", "991001001000199"])
     }
 
+    /// The campus lists buildings itself and none is the dorm's: stopped at 选楼栋 at once,
+    /// none of them read as an apartment.
+    func testUnmatchedBuildingsRightUnderTheCampusStopAtTheBuildings() async throws {
+        let h = Harness()
+        try h.signedIn()
+        Self.level(h, nil, [("星湖校区", "991001")])
+        Self.level(h, "991001", [("98栋", "991001098"), ("100栋", "991001100"), ("101 栋", "991001101")])
+        try SchoolElectricityTests.serveTree(h)
+        let stop = try await stopped(h)
+        XCTAssertEqual(stop.level, .building)
+        XCTAssertEqual(stop.path, [Self.campus])
+        XCTAssertEqual(stop.options.map(\.name), ["98栋", "100栋", "101 栋"])
+        XCTAssertEqual(stop.suggested, [])
+        XCTAssertEqual(h.server.requests(path: "/electricnew/service").map { $0.bodyField("buildingID") }, [nil, "991001"],
+                       "two reads: the campuses and the campus")
+    }
+
     func testNoMatchingFloorStopsAtTheFloors() async throws {
         let h = Harness()
         try h.signedIn(residence: "星湖校区99栋9号7层991房")
