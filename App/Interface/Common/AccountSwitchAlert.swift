@@ -5,14 +5,16 @@ import Core
 /// school data, and maybe the hot-water binding, were cleared. Shown once, by the top-most screen.
 struct AccountSwitchNotice: Equatable, Identifiable {
     let id = UUID()
-    /// The login couldn't tell whether it was the previous person (not a confirmed switch).
-    var previousPersonUnconfirmed = false
-    /// The hot-water binding was the previous person's and was removed.
-    var hotWaterCleared: Bool
+    /// The wording (Core decides it, and whether there is anything to say).
+    let text: AccountSwitch.Notice
 
-    /// The wording (Core decides it).
-    var text: AccountSwitch.Notice {
-        AccountSwitch.Notice(previousPersonUnconfirmed:previousPersonUnconfirmed, hotWaterCleared:hotWaterCleared)
+    /// nil = nothing to tell (the login couldn't tell the person, but kept the same room and
+    /// had no hot-water binding to remove).
+    init?(previousPersonUnconfirmed: Bool = false, dormAndMeterCleared: Bool = true, hotWaterCleared: Bool) {
+        guard let text = AccountSwitch.Notice(previousPersonUnconfirmed:previousPersonUnconfirmed,
+                                              dormAndMeterCleared:dormAndMeterCleared, hotWaterCleared:hotWaterCleared)
+        else { return nil }
+        self.text = text
     }
 }
 

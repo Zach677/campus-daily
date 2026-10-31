@@ -102,8 +102,27 @@ final class SchoolAccountSwitchTests: XCTestCase {
         let summary = try await h.session().adoptWebState(try state.encoded(), portalToken: nil)
         XCTAssertFalse(summary.switchedAccount)
         XCTAssertTrue(summary.previousPersonUnconfirmed)
+        XCTAssertTrue(summary.dormAndMeterCleared)
         XCTAssertNil(try h.vault.profile()?.meter, "maybe someone else's meter")
         XCTAssertNil(try h.vault.profile()?.residence, "maybe someone else's dorm")
+    }
+
+    /// A form sign-in that can't tell the previous person but reads the same room keeps the dorm
+    /// and meter, and says nothing was cleared; one in another room says it was.
+    func testAnUnconfirmedFormSignInSaysWhetherTheDormAndMeterWereCleared() async throws {
+        for (raw, cleared) in [("星湖校区99栋9号1层991房", false), ("星湖校区98栋8号1层881房", true)] {
+            let h = try signedInHarness(card: "TESTid00000000000000000000000001", account: nil,
+                                        login: FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken)))
+            var unread = try XCTUnwrap(try h.vault.ecyktSession()); unread.cardUnionID = nil
+            try h.vault.saveEcyktSession(unread)
+            try h.vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: raw), meter: Harness.roomBinding))
+            try h.server.serve("portal/getMyInfo-ok")   // 星湖校区99栋9号1层991房
+            try serveExchange(h)
+            let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false)
+            XCTAssertTrue(summary.previousPersonUnconfirmed)
+            XCTAssertEqual(summary.dormAndMeterCleared, cleared, raw)
+            XCTAssertEqual(try h.vault.profile()?.meter == nil, cleared, raw)
+        }
     }
 
     func testOnlyALoginThatCannotTellThePreviousPersonIsUnconfirmed() async throws {
