@@ -190,7 +190,15 @@ public actor SnapshotRefresher {
     /// `SchoolLoginFailure.busy` is thrown. The lease is kept alive while `body` runs and given
     /// back after it. Without a lease (tests, previews) `body` just runs.
     public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable () async throws -> T) async throws -> T {
-        guard let shared = lease else { return try await body() }
+        try await holdingLease { _ in try await body() }
+    }
+
+    /// The same, for a body that writes a credential back after waiting on the network:
+    /// `mayWrite` renews the lease and says whether it is still ours. The heartbeat stops
+    /// quietly when a renewal fails (the app was suspended past the lease, and the other
+    /// process may have taken it), while the body keeps running; false = write nothing.
+    public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable (_ mayWrite: @Sendable () -> Bool) async throws -> T) async throws -> T {
+        guard let shared = lease else { return try await body({ true }) }
         // Its own owner: the lease this process's refresh holds is not "ours" to reuse here.
         let lease = shared.with(owner: shared.owner + "-login")
         var waited: TimeInterval = 0
@@ -203,7 +211,7 @@ public actor SnapshotRefresher {
         }
         let heartbeat = Self.keepAlive(lease, every: renewInterval)
         do {
-            let value = try await body()
+            let value = try await body({ lease.renew() })
             heartbeat.cancel(); await heartbeat.value
             lease.release()
             return value

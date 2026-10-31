@@ -721,13 +721,14 @@ public actor SchoolSession {
     // MARK: Hot-water hand-off
 
     /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only). The app
-    /// runs it under the refresh lease; the live session is kept only over the one it started from.
-    public func showerHandoff() async throws -> ShowerHandoff {
+    /// runs it under the refresh lease; the live session is kept only over the one it started from,
+    /// and only while `mayWrite` says the lease is still held.
+    public func showerHandoff(mayWrite: @Sendable () -> Bool = { true }) async throws -> ShowerHandoff {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = personGeneration
         let (card, live) = try await liveCard(stored)
         try ensureSignedIn(since: started)
-        saveIfUnchanged(live, over: stored)
+        saveIfUnchanged(live, over: stored, mayWrite: mayWrite)
         return try await ecykt.signData(live, custid: card.custid)
     }
 
@@ -808,8 +809,9 @@ public actor SchoolSession {
     // MARK: Recharge
 
     /// Liveness check, then one `loginBySysId`; the fresh token goes into `logintoken`. The app
-    /// runs it under the refresh lease; the live session is kept only over the one it started from.
-    public func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession {
+    /// runs it under the refresh lease; the live session is kept only over the one it started from,
+    /// and only while `mayWrite` says the lease is still held.
+    public func rechargeSession(_ kind: RechargeKind, mayWrite: @Sendable () -> Bool = { true }) async throws -> RechargeWebSession {
         guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
         let started = personGeneration
         let (card, live) = try await liveCard(stored)
@@ -817,7 +819,7 @@ public actor SchoolSession {
         var updated = live
         updated.syscustid = fresh.syscustid   // latest ciphertext, valid as input next time
         try ensureSignedIn(since: started)
-        saveIfUnchanged(updated, over: stored)
+        saveIfUnchanged(updated, over: stored, mayWrite: mayWrite)
         return try RechargeWebSessionBuilder.build(kind: kind, session: updated, fresh: fresh, card: card)
     }
 
@@ -837,9 +839,10 @@ public actor SchoolSession {
 
     /// Keeps `live` (latest ciphertexts) only while the stored session is still `base` (same
     /// token and syscustid). The other process may have stored a newer one meanwhile, which
-    /// stays; this call used its own live session all the same.
-    private func saveIfUnchanged(_ live: EcyktSession, over base: EcyktSession) {
-        guard let current = (try? vault.ecyktSession()) ?? nil,
+    /// stays; this call used its own live session all the same. `mayWrite` (the refresh lease
+    /// renewed, from `holdingLease`) is asked right before: lost, nothing is written.
+    private func saveIfUnchanged(_ live: EcyktSession, over base: EcyktSession, mayWrite: () -> Bool) {
+        guard mayWrite(), let current = (try? vault.ecyktSession()) ?? nil,
               current.token == base.token, current.syscustid == base.syscustid else { return }
         try? vault.saveEcyktSession(live)
     }

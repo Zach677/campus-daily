@@ -297,11 +297,11 @@ struct PowerChoice: Identifiable, Equatable {
     /// Both write the live card session back: under the lease, so never beside the widget's refresh.
     func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession {
         let session = session
-        return try await refresher.holdingLease { try await session.rechargeSession(kind) }
+        return try await refresher.holdingLease { mayWrite in try await session.rechargeSession(kind, mayWrite:mayWrite) }
     }
     func showerHandoff() async throws -> ShowerHandoff {
         let session = session
-        return try await refresher.holdingLease { try await session.showerHandoff() }
+        return try await refresher.holdingLease { mayWrite in try await session.showerHandoff(mayWrite:mayWrite) }
     }
     /// Taken before `showerHandoff()`; `isSamePerson(since:)` says whether its identity still
     /// belongs to whoever is signed in.
