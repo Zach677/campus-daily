@@ -37,7 +37,29 @@ struct CampusPowerSetupView: View {
             }.listRowBackground(Theme.group)
             if busy { Text("正在读取电表信息…").foregroundStyle(.secondary).listRowBackground(Theme.group) }
             if let issue { Text(issue).foregroundStyle(.orange).font(.footnote).listRowBackground(Theme.group) }
-            if meters.isEmpty {
+            if meters.isEmpty, atStop, let question = campus.powerQuestion {
+                // Rooms of the dorm's name in several apartments: which one. A tap binds it.
+                Section {
+                    ForEach(question.rows) { row in
+                        Button { Task { if await campus.choosePower(PowerChoice(candidate:row.candidate, stamp:campus.powerQuestionStamp)) { dismiss() } } } label: {
+                            VStack(alignment:.leading, spacing:2) {
+                                Text(row.title)
+                                Text(row.location).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                                    .fixedSize(horizontal:false, vertical:true)
+                            }
+                        }
+                        .disabled(busy || campus.matchingPower)
+                        .accessibilityLabel(row.spoken)
+                    }.listRowBackground(Theme.group)
+                } header: {
+                    HStack(spacing:6) {
+                        Text(question.text).textCase(nil).fixedSize(horizontal:false, vertical:true)
+                            .accessibilityAddTraits(.isHeader)
+                        Spacer(minLength:0)
+                        if campus.matchingPower { ProgressView().controlSize(.mini).frame(width:12, height:12) }
+                    }
+                }
+            } else if meters.isEmpty {
                 Section {
                     ForEach(MeterPageText.rows(options.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) },
                                                suggested:suggested)) { row in

@@ -57,11 +57,13 @@ extension HomeView {
                                                           hotWaterCleared:url.lastPathComponent.hasSuffix("-water"))
                 return
             }
-            if url.host == "demo", ["meter-stopped", "meter-stopped-finding", "meter-stopped-slow"].contains(url.lastPathComponent) {
-                // The meter page where the lookup stopped (synthetic): as is / looking again / slow school.
+            if url.host == "demo", ["meter-stopped", "meter-stopped-finding", "meter-stopped-slow", "meter-ask"].contains(url.lastPathComponent) {
+                // The meter page where the lookup stopped (synthetic): as is / looking again / slow school /
+                // two apartments with the dorm's room.
                 onboarding = nil; panel = nil; laundryDemo = nil
                 demo = HomeDemo.noMeter.content().0
-                campus.demoMeterStop(running:url.lastPathComponent.hasSuffix("finding"), slow:url.lastPathComponent.hasSuffix("slow"))
+                campus.demoMeterStop(running:url.lastPathComponent.hasSuffix("finding"), slow:url.lastPathComponent.hasSuffix("slow"),
+                                     ask:url.lastPathComponent == "meter-ask")
                 freshPush(.powerSetup)
                 return
             }

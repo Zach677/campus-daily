@@ -23,6 +23,8 @@ public struct MeterLookupGate: Sendable, Equatable {
     public private(set) var choicesStamp: Int?
     /// Where the walk stopped (`.stopped`): the meter page opens there.
     public private(set) var stop: MeterWalkStop?
+    /// The person stamp of the lookup that stopped (a pick of its candidates after a switch is refused).
+    public private(set) var stopStamp: Int?
     private var signedInMeanwhile = false
 
     public init() {}
@@ -48,7 +50,7 @@ public struct MeterLookupGate: Sendable, Equatable {
         guard !meterBound else { return false }
         switch found {
         case .chooseAmong(let list): choices = list; choicesStamp = stamp
-        case .stopped(let at): stop = at
+        case .stopped(let at): stop = at; stopStamp = stamp
         case .matched, .alreadyBound, .noAddress: break
         }
         return true
@@ -71,6 +73,6 @@ public struct MeterLookupGate: Sendable, Equatable {
     /// A sign-in, a sign-out or a meter chosen: nothing of the last lookup is shown. A lookup
     /// still running goes on (it checks the person itself).
     public mutating func clear() {
-        choices = []; choicesStamp = nil; stop = nil
+        choices = []; choicesStamp = nil; stop = nil; stopStamp = nil
     }
 }

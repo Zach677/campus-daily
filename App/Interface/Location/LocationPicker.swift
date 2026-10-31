@@ -8,9 +8,11 @@ struct LocationChoice: Identifiable, Equatable {
     let id: String
     let title: String
     let location: String
+    /// What VoiceOver reads instead, when given.
+    var voice: String?
 
     /// VoiceOver reads the location as words, not as 「点」 separators.
-    var spoken: String { title + "，" + location.replacingOccurrences(of:" · ", with:"，") }
+    var spoken: String { voice ?? title + "，" + location.replacingOccurrences(of:" · ", with:"，") }
 }
 
 /// The screen text for a same-name choice (meter step and dorm step alike): title
@@ -31,14 +33,17 @@ enum SameNameText {
 struct LocationChoiceList: View {
     let choices: [LocationChoice]
     @Binding var selection: String?
+    /// The meter question's rows (onboarding 「在哪个公寓」): 22 pt check, 16 pt titles taken
+    /// from the choices as given, 56 pt rows.
+    var compact = false
 
     var body: some View {
-        let titles = LocationNaming.titles(locations:choices.map(\.location))
+        let titles = compact ? choices.map(\.title) : LocationNaming.titles(locations:choices.map(\.location))
         VStack(alignment:.leading, spacing:0) {
             Hairline()
             ForEach(Array(choices.enumerated()), id:\.element.id) { index, choice in
-                if index > 0 { Hairline().padding(.leading,38) }
-                LocationChoiceRow(choice:choice, title:titles[index], selected:selection == choice.id) { selection = choice.id }
+                if index > 0 { Hairline().padding(.leading,compact ? 36 : 38) }
+                LocationChoiceRow(choice:choice, title:titles[index], selected:selection == choice.id, compact:compact) { selection = choice.id }
                     .accessibilityIdentifier("locationChoice-" + choice.id)
             }
         }
@@ -51,21 +56,22 @@ struct LocationChoiceRow: View {
     /// The level that tells this row apart from the others.
     let title: String
     let selected: Bool
+    var compact = false
     let action: () -> Void
 
     var body: some View {
         Button(action:action) {
             HStack(alignment:.center, spacing:14) {
-                LocationCheck(selected:selected)
+                LocationCheck(selected:selected, size:compact ? 22 : 24)
                 VStack(alignment:.leading, spacing:3) {
-                    Text(title).scaledFont(17, .medium).foregroundStyle(Theme.ink)
+                    Text(title).scaledFont(compact ? 16 : 17, compact ? .regular : .medium).foregroundStyle(Theme.ink)
                     Text(choice.location).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                         .fixedSize(horizontal:false, vertical:true)
                 }
                 Spacer(minLength:0)
             }
-            .padding(.vertical,12)
-            .frame(minHeight:72).contentShape(Rectangle())
+            .padding(.vertical,compact ? 9 : 12)
+            .frame(minHeight:compact ? 56 : 72).contentShape(Rectangle())
         }
         .buttonStyle(RowPressStyle())
         .accessibilityElement(children:.ignore)
@@ -78,6 +84,11 @@ struct LocationChoiceRow: View {
 struct LocationCheck: View {
     let selected: Bool
     @ScaledMetric(relativeTo:.body) private var size: CGFloat = 24
+
+    init(selected: Bool, size: CGFloat = 24) {
+        self.selected = selected
+        _size = ScaledMetric(wrappedValue:size, relativeTo:.body)
+    }
 
     var body: some View {
         ZStack {

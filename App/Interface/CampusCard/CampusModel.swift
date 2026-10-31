@@ -100,6 +100,16 @@ struct PowerChoice: Identifiable, Equatable {
     /// Where the automatic lookup stopped (a level that did not match the dorm exactly once):
     /// the meter page opens there.
     var powerStop: MeterWalkStop? { lookup.pageStop(meterBound:powerConfigured) }
+    /// The lookup stopped with rooms in several apartments: which one (nil once a meter is bound).
+    var powerQuestion: MeterQuestion? { powerStop.flatMap { MeterQuestion($0, address:address ?? demoDorm) } }
+    /// The dorm of a DEBUG demo stop (nil otherwise): the question names its building and room.
+    private var demoDorm: DormAddress?
+    /// The stamp a pick of `powerQuestion`'s rows is saved under.
+    var powerQuestionStamp: Int { lookup.stopStamp ?? -1 }
+    /// What onboarding's 「你住哪间」 step says about the meter.
+    var dormStepMeter: DormStepMeter {
+        DormStepMeter(running:lookup.running, bound:powerConfigured, stop:lookup.stop, issue:powerMatchIssue, address:address)
+    }
     var balance: Decimal? { snapshot.card.value?.yuan }
     var meter: Meter? { snapshot.power.value }
 
@@ -383,10 +393,26 @@ struct PowerChoice: Identifiable, Equatable {
     func isSamePerson(since stamp: Int) async -> Bool { await session.isSamePerson(since:stamp) }
 
     #if DEBUG
+    /// Demo dorm, 99 栋 991 (synthetic).
+    nonisolated static let demoAddress = DormAddress.parse("星湖校区99栋9号1层991房")
+    /// Demo: the lookup stopped at the apartments, 半山公寓 and 兰香公寓 both with a 99栋 991.
+    nonisolated static var demoApartmentStop: MeterWalkStop {
+        let campus = PowerNode(id:"991001", name:"星湖校区")
+        let apartments = [PowerNode(id:"991001001", name:"半山公寓"), PowerNode(id:"991001007", name:"兰香公寓")]
+        let candidates = apartments.enumerated().map { index, apartment in
+            MeterCandidate(meter:Meter(comAddress:"99000000\(index)991", name:"99栋991"),
+                           path:[campus, apartment, PowerNode(id:apartment.id + "000109", name:"99栋"),
+                                 PowerNode(id:apartment.id + "000109001", name:"1楼"), PowerNode(id:apartment.id + "109001003", name:"991")])
+        }
+        return MeterWalkStop(level:.apartment, path:[campus],
+                             options:apartments + [PowerNode(id:"991001002", name:"樱花公寓")],
+                             suggested:apartments.map(\.id), candidates:candidates)
+    }
+
     /// Demo: the lookup stopped at the dorm's buildings (two named 99栋); `running` looks again,
     /// `slow` failed on a slow school. Synthetic, nothing is read.
-    func demoMeterStop(running: Bool = false, slow: Bool = false) {
-        let stop = MeterWalkStop(level:.building,
+    func demoMeterStop(running: Bool = false, slow: Bool = false, ask: Bool = false) {
+        let stop = ask ? Self.demoApartmentStop : MeterWalkStop(level:.building,
                                  path:[PowerNode(id:"991001", name:"星湖校区"), PowerNode(id:"991001001", name:"半山公寓")],
                                  options:[PowerNode(id:"991001001000108", name:"98栋"), PowerNode(id:"991001001000109", name:"99栋"),
                                           PowerNode(id:"991001001000110", name:"99 栋"), PowerNode(id:"991001001000111", name:"100栋")],
@@ -397,6 +423,7 @@ struct PowerChoice: Identifiable, Equatable {
         _ = gate.ended()
         if running { _ = gate.start(.manual, signedIn:true, meterBound:false) }
         lookup = gate
+        demoDorm = ask ? Self.demoAddress : nil
         powerMatchIssue = slow ? ServiceError.timedOut.userMessage : running ? nil : Self.stoppedIssue
     }
     #endif

@@ -9,6 +9,7 @@
 - Show 最近 on the home screen: the card's records from the last three school days merged with the app's own showers and laundry orders, newest first, as many whole rows as fit the screen, so home does not scroll.
 - Show the full location 「校区 · 公寓 · 楼栋 · 房间」 of the dorm and the electricity meter in Settings.
 - Add a 扫洗衣机 button to the laundry page's navigation bar.
+- Ask 「2 个公寓都有 3 栋 108，你住哪个？」 under the dorm in the first-run guide's 「你住哪间」 step when the meter lookup found the dorm's room in several apartments; tapping an apartment binds its meter at once, another tap rebinds. The 电表 page at that stop heads its list with the same question and binds the tapped room. The step also shows 「正在找电表…」 while the lookup runs and, when the school is too slow, 「再找一次电表」 with 「电表先跳过，之后在设置 › 电表里选。」; 「就是这间」 is never held up.
 - Check the dorm's hot-water controller in the first-run guide (登录 → 学校洗衣机 → 宿舍 → 核对宿舍的水控 → 好了); the check is read-only and can be left for Settings.
 - Show a check face on the shower page when the controller reads stopped under a running shower, with 去核对, 「我在学校记录里核对过了」 and 「再查一次水控」; the home card's button reads 去核对 then.
 
@@ -18,6 +19,7 @@
 - Look for the dorm's electricity meter one level at a time (campus, apartment, building, floor, room) with small reads instead of one read of every meter on the campus; each read is retried twice on a timeout or a lost connection.
 - When a level does not match the dorm exactly once, open the meter page at that level: the matched levels with 「重选」, the level's list headed 「选校区」「选公寓」「选楼栋」「选楼层」「选房间」, and the dorm's likely rows first with 「可能是这个」.
 - Bind meters to their room only; a meter bound to the whole campus by an earlier build is removed at launch, keeping the dorm, and looked up again.
+- The first-run guide no longer says 「没自动找到电表，去「电表」里选一下。」 under the dorm when the lookup stops; home still says the meter is not found.
 - Look for the meter at launch, after a sign-in and on 「再找一次电表」 only, no longer on return to the app or after a refresh.
 - When several apartments (or campuses) hold a building of the dorm's name, walk each down to the rooms: the one with the dorm's room is bound without asking; when several have it, the lookup stops with those rooms to choose from, each with its full location.
 

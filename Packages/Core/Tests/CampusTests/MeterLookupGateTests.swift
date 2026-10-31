@@ -160,4 +160,17 @@ final class MeterLookupGateTests: XCTestCase {
         gate.answered(.stopped(empty), stamp: 1)
         XCTAssertNil(gate.pageStop(meterBound: false), "nothing to choose from: the page starts at the campuses")
     }
+
+    /// A stop with rooms to bind keeps the stamp of the lookup that found them: a pick after
+    /// someone else signed in is refused.
+    func testAStopKeepsTheStampOfItsLookup() {
+        var gate = MeterLookupGate()
+        _ = gate.start(.launch, signedIn: true, meterBound: false)
+        gate.answered(.stopped(Self.stop), stamp: 7)
+        XCTAssertEqual(gate.stopStamp, 7)
+        gate.clear()
+        XCTAssertNil(gate.stopStamp)
+        gate.answered(.chooseAmong([Self.candidate, Self.other]), stamp: 8)
+        XCTAssertNil(gate.stopStamp)
+    }
 }

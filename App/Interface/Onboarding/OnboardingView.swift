@@ -29,6 +29,10 @@ struct OnboardingView: View {
         var waterOutcome: ShowerModel.InspectionOutcome?
         /// Controller step: why the check can't run now.
         var waterBlocked: String?
+        /// Dorm step: what the meter lookup shows under the dorm (nil: nothing).
+        var meter: DormStepMeter?
+        /// Dorm step: the question's row already picked.
+        var meterPicked: String?
     }
 
     var preview: Preview?
@@ -44,6 +48,7 @@ struct OnboardingView: View {
                               ?? preview?.savePassword ?? false)
         _loginState = State(initialValue:preview?.loginState ?? .idle)
         _apartment = State(initialValue:preview?.picked)
+        _meterPick = State(initialValue:preview?.meterPicked)
         _waterChecked = State(initialValue:preview?.waterOutcome != nil)
     }
 
@@ -66,6 +71,12 @@ struct OnboardingView: View {
     @State private var issue: String?
     /// Same-name apartment picked on the dorm step (candidate id); confirmed by 「就是这间」.
     @State private var apartment: String?
+    /// The meter question last asked on the dorm step, kept once a row is bound so another
+    /// pick binds that one instead; its lookup's person stamp.
+    @State private var meterAsked: MeterQuestion?
+    @State private var meterAskedStamp = -1
+    /// The row of `meterAsked` picked (bound at once).
+    @State private var meterPick: String?
     @State private var account: String
     @State private var password: String
     /// 「保存密码，让小组件自动刷新」: on by default only while the account is the saved one.
@@ -180,6 +191,8 @@ struct OnboardingView: View {
                 }
                 Text(Self.dormSource).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                     .padding(.top,6)
+                    .onChange(of:campus.dormStepMeter, initial:true) { _, now in keepQuestion(now) }
+                meterStatus
             }
             if step == .water { waterStatus.padding(.top,28) }
             if step == .login {
@@ -187,7 +200,7 @@ struct OnboardingView: View {
                                 state:loginState, focus:$loginFocus, submit:submitLogin)
                     .padding(.top,keyboardUp ? 20 : 28)
             }
-            if step == .dorm, preview == nil, !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil && !campus.powerConfigured {
+            if step == .dorm, preview == nil, !campus.powerChoices.isEmpty {
                 powerApartment.padding(.top,30)
             } else if step == .dorm, let choices = preview?.powerChoices, !choices.isEmpty {
                 previewApartment(choices).padding(.top,30)
@@ -308,6 +321,77 @@ struct OnboardingView: View {
                     .scaledFont(17, .medium).foregroundStyle(Theme.accentText)
                     .frame(minHeight:44).disabled(campus.matchingPower)
             }
+        }
+    }
+
+    // MARK: Meter under the dorm
+
+    /// What the meter lookup shows under the dorm: still looking, the apartment question (kept
+    /// after a pick), or the school too slow. Nothing for a match or a plain stop.
+    private var meterLine: DormStepMeter {
+        if let preview { return preview.meter ?? .hidden }
+        let now = campus.dormStepMeter
+        if now == .hidden, campus.powerConfigured, meterPick != nil, let meterAsked { return .ask(meterAsked) }
+        return now
+    }
+
+    private func keepQuestion(_ now: DormStepMeter) {
+        guard preview == nil, case .ask(let question) = now else { return }
+        if question != meterAsked { meterPick = nil }
+        meterAsked = question
+        meterAskedStamp = campus.powerQuestionStamp
+    }
+
+    @ViewBuilder private var meterStatus: some View {
+        switch meterLine {
+        case .hidden: EmptyView()
+        case .finding:
+            HStack(spacing:8) {
+                ProgressView().controlSize(.mini).tint(Theme.ink2).frame(width:12, height:12)
+                Text(MeterPageText.finding).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+            }
+            .padding(.top,18)
+        case .ask(let question):
+            VStack(alignment:.leading, spacing:0) {
+                Text(question.text).scaledFont(17, .semibold).foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal:false, vertical:true)
+                    .accessibilityAddTraits(.isHeader)
+                LocationChoiceList(choices:question.rows.map { LocationChoice(id:$0.id, title:$0.title, location:$0.location, voice:$0.spoken) },
+                                   selection:Binding(get:{ meterPick }, set:{ id in pickMeter(id, in:question) }), compact:true)
+                    .padding(.top,10)
+                    .sensoryFeedback(.selection, trigger:meterPick)
+                if preview == nil, let issue = campus.powerMatchIssue, issue != MeterPageText.stoppedIssue {
+                    Text(MeterPageText.issue(issue)).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                        .fixedSize(horizontal:false, vertical:true).padding(.top,8)
+                }
+            }
+            .padding(.top,28)
+        case .failed(let text):
+            VStack(alignment:.leading, spacing:0) {
+                Text(text).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
+                    .fixedSize(horizontal:false, vertical:true)
+                Button(DormStepMeter.retry) { if preview == nil { campus.matchPowerAutomatically() } }
+                    .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+                    // 44 pt to tap; the text sits 8 pt under the line above and the note 6 pt under it.
+                    .frame(minHeight:44)
+                    .padding(.vertical,-12).padding(.top,8)
+                Text(DormStepMeter.skipNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink3)
+                    .fixedSize(horizontal:false, vertical:true)
+                    .padding(.top,6)
+            }
+            .padding(.top,18)
+        }
+    }
+
+    /// A row of the question picked: bound at once (another pick binds that one instead).
+    private func pickMeter(_ id: String?, in question: MeterQuestion) {
+        guard let id, let row = question.rows.first(where:{ $0.id == id }) else { return }
+        let before = meterPick
+        meterPick = id
+        guard preview == nil else { return }
+        let stamp = meterAskedStamp
+        Task {
+            if !(await campus.choosePower(PowerChoice(candidate:row.candidate, stamp:stamp))), meterPick == id { meterPick = before }
         }
     }
 
