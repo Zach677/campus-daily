@@ -129,7 +129,9 @@ struct HomeView: View {
                     .navigationTitle(scrolledPastDate ? dateTitle : "")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement:.topBarTrailing) { gear } }
-                    .refreshable { await pull() }
+                    // SwiftUI may cancel the pull's own task when the page changes under it (the read
+                    // starting does): the read runs on its own and the pull waits for it.
+                    .refreshable { await Task { await pull() }.value }
                     .onChange(of:data.shower.showering) { old, new in
                         if old == nil, new != nil { withAnimation(reduceMotion ? nil : Theme.spring) { proxy.scrollTo("top", anchor:.top) } }
                     }

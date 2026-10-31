@@ -63,7 +63,9 @@ struct LaundryDetail: View {
             }
         }
         .safeAreaInset(edge:.bottom, spacing:0) { dock(facts, phase:phase, busy:busy) }
-        .refreshable { await reload() }
+        // SwiftUI may cancel the pull's own task when the page changes under it (the read
+        // starting does): the read runs on its own and the pull waits for it.
+        .refreshable { await Task { await reload() }.value }
         .task {
             #if DEBUG
             if let initial = demo?.sheet {
