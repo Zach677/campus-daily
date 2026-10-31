@@ -177,6 +177,19 @@ final class CardHistoryTests: XCTestCase {
         XCTAssertFalse(CardDays.groups(history: history, app: [app], now: noon).contains { $0.id == "20261020" })
     }
 
+    func testNothingOlderThanTheLastDayBackIsAskedFor() {
+        var history = CardHistory(now: noon)
+        var oldest = "99999999"
+        while let query = history.nextQuery {
+            oldest = min(oldest, query.begin)
+            // One record a range, so the list never ends by being empty.
+            history.receive(CardRecordPage(total: 1, rows: [record(query.end, "120000")]), for: query)
+        }
+        let last = cal.date(byAdding: .day, value: -(CardHistory.maxDaysBack - 1), to: cal.startOfDay(for: noon))!
+        XCTAssertEqual(oldest, SchoolCalendar.dayString(last, calendar: cal))
+        XCTAssertTrue(history.reachedEnd)
+    }
+
     // MARK: Day totals
 
     func testADayTotalCountsMoneyOutOnly() {

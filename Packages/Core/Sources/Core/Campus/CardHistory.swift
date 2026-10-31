@@ -59,6 +59,9 @@ public struct CardHistory: Sendable, Equatable {
     /// Every record read so far, newest range first.
     public var records: [CardRecord] { finished + current }
 
+    /// Days back from today of the current range's first day: no further than `maxDaysBack`.
+    private var rangeBegin: Int { min(rangeEnd + Self.rangeDays, Self.maxDaysBack) - 1 }
+
     func day(back: Int) -> String {
         SchoolCalendar.dayString(calendar.date(byAdding: .day, value: -back, to: today) ?? today, calendar: calendar)
     }
@@ -66,7 +69,7 @@ public struct CardHistory: Sendable, Equatable {
     /// The next page to ask for; nil at the end.
     public var nextQuery: CardHistoryQuery? {
         guard !reachedEnd else { return nil }
-        return CardHistoryQuery(begin: day(back: rangeEnd + Self.rangeDays - 1), end: day(back: rangeEnd),
+        return CardHistoryQuery(begin: day(back: rangeBegin), end: day(back: rangeEnd),
                                 page: page, pageSize: Self.pageSize)
     }
 
@@ -87,7 +90,7 @@ public struct CardHistory: Sendable, Equatable {
     /// Every record of `day` (`yyyyMMdd`) has been read.
     public func isComplete(day: String) -> Bool {
         if let readFrom, day >= readFrom { return !unsure.contains(day) }
-        guard !reachedEnd, day >= self.day(back: rangeEnd + Self.rangeDays - 1), day <= self.day(back: rangeEnd),
+        guard !reachedEnd, day >= self.day(back: rangeBegin), day <= self.day(back: rangeEnd),
               let cut = cutDay else { return false }
         return day > cut
     }
@@ -114,7 +117,7 @@ public struct CardHistory: Sendable, Equatable {
         if stuck || shortOfTotal {
             // From the cut day back, this range's days may miss records.
             let cut = cutDay
-            for back in rangeEnd..<(rangeEnd + Self.rangeDays) {
+            for back in rangeEnd...rangeBegin {
                 let d = day(back: back)
                 if cut.map({ d <= $0 }) ?? true { unsure.insert(d) }
             }
@@ -122,7 +125,7 @@ public struct CardHistory: Sendable, Equatable {
         emptyRanges = current.isEmpty ? emptyRanges + 1 : 0
         finished += current
         current = []
-        readFrom = day(back: rangeEnd + Self.rangeDays - 1)
+        readFrom = day(back: rangeBegin)
         rangeEnd += Self.rangeDays
         page = 1
         shortOfTotal = false
