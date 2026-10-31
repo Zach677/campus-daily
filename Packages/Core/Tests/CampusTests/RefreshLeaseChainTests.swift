@@ -264,6 +264,53 @@ final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
     }
 }
 
+/// After the locked save, outside the lock: the other process signed out (its lease removal
+/// first) or only took the lease over. A fake reader does that in `hasCardSession`, the step
+/// after the save.
+final class AfterTheSnapshotSaveTests: XCTestCase {
+    final class Reader: SchoolReader, @unchecked Sendable {
+        let reading: SchoolReading
+        let afterSave: @Sendable () -> Bool
+        init(_ reading: SchoolReading, afterSave: @escaping @Sendable () -> Bool) { self.reading = reading; self.afterSave = afterSave }
+        func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading { reading }
+        func hasCardSession() async -> Bool { afterSave() }
+    }
+
+    func run(_ h: Harness, afterSave: @escaping @Sendable () -> Bool) async -> RefreshReport {
+        let reading = SchoolReading(outcome: .ok, checkedAt: h.clock.now, balance: .success(Money(fen: 500)), readAt: h.clock.now)
+        let refresher = SnapshotRefresher(school: Reader(reading, afterSave: afterSave), store: h.snapshots,
+                                          lease: RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function),
+                                          leaseWait: 3, sleep: { _ in try? await Task.sleep(nanoseconds: 1_000_000) })
+        return await refresher.refresh(inBackground: true)
+    }
+
+    func testSignedOutRightAfterTheSaveClearsTheSnapshotAgain() async throws {
+        let h = Harness()
+        let store = h.store
+        let report = await run(h) {
+            // The other process signs out: lease first, then its items. Its own empty snapshot
+            // is not written yet (or it was written before this read's save landed).
+            try? RefreshLease(file: store.leaseFile, owner: "signed-out").clear()
+            return false
+        }
+        XCTAssertEqual(report.outcome, .notSignedIn)
+        XCTAssertFalse(report.snapshotSaved)
+        XCTAssertNil(try h.snapshots.loadSnapshot()?.card.value, "the signed-out snapshot stays empty")
+    }
+
+    func testStillSignedInWithTheLeaseLostKeepsTheSave() async throws {
+        let h = Harness()
+        let store = h.store, clock = h.clock
+        let report = await run(h) {
+            clock.advance(RefreshLease.defaultDuration + 1)
+            XCTAssertTrue(RefreshLease(file: store.leaseFile, owner: "app-2", now: clock.function).acquire())
+            return true
+        }
+        XCTAssertTrue(report.snapshotSaved)
+        XCTAssertEqual(try h.snapshots.loadSnapshot()?.card.value, Money(fen: 500))
+    }
+}
+
 /// The lease ran out by itself (nobody took it) while the read was stopped: the "timed out"
 /// that read reports is not written into the snapshot.
 final class ExpiredLeaseWriteTests: XCTestCase {

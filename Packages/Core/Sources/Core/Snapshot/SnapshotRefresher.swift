@@ -279,8 +279,9 @@ public actor SnapshotRefresher {
     ///
     /// The lease check, the compare with the stored snapshot and the save are one locked step
     /// (`LeaseOwnership`): the other process can't take the lease, store a newer reading or
-    /// revoke the lease for a sign-out in between. The lease is still checked once more after
-    /// saving; lost, and nobody signed in any more, the snapshot is cleared again.
+    /// revoke the lease for a sign-out in between. A sign-out right after the save is caught
+    /// once more: nobody signed in any more and the lease gone, the snapshot is cleared again;
+    /// still signed in with the lease only taken over, the save stays.
     private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) async -> RefreshReport {
         guard started == generation, !Task.isCancelled else {
             let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
@@ -307,7 +308,10 @@ public actor SnapshotRefresher {
         case .stored(let s, let ok)?:
             snapshot = s; saved = ok
         }
-        if saved, let lease, !lease.holds(), !(await school.hasCardSession()) {
+        // Outside the lock, after the save: the other process may sign out now (its lease removal
+        // first, then its items). The card session is read first and the lease checked after
+        // that read, so a sign-out that lands while the session is read is still seen.
+        if saved, let lease, !(await school.hasCardSession()), !lease.holds() {
             try? store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
             return RefreshReport(outcome: .notSignedIn, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
         }
