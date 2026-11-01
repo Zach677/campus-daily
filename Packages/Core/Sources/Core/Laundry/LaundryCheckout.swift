@@ -123,15 +123,21 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     public var notice: LaundryNotice?
     /// The U净 account (`UjingAccount.id`) the order was placed with. Nil in records written before it was kept.
     public var accountID: String?
+    /// First read that showed the order paid.
+    public var paidAt: Date?
+    /// Paid but not washing with a known end since this read (`LaundryFollowUp`); nil once a washing read gives the end.
+    public var waitingSince: Date?
 
     public init(phase: LaundryPhase = .none, draft: LaundryDraft? = nil, createdAt: Date? = nil, orderID: String? = nil,
                 order: LaundryOrder? = nil, orderReadAt: Date? = nil, candidateOrderID: String? = nil,
                 paymentRequestedAt: Date? = nil, repayArmed: Bool = false, cancelSent: Bool = false, pollAttempt: Int = 0,
-                lastOutcome: LaundryOutcome? = nil, notice: LaundryNotice? = nil, accountID: String? = nil) {
+                lastOutcome: LaundryOutcome? = nil, notice: LaundryNotice? = nil, accountID: String? = nil,
+                paidAt: Date? = nil, waitingSince: Date? = nil) {
         self.phase = phase; self.draft = draft; self.createdAt = createdAt; self.orderID = orderID; self.order = order
         self.orderReadAt = orderReadAt; self.candidateOrderID = candidateOrderID; self.paymentRequestedAt = paymentRequestedAt
         self.repayArmed = repayArmed; self.cancelSent = cancelSent; self.pollAttempt = pollAttempt
         self.lastOutcome = lastOutcome; self.notice = notice; self.accountID = accountID
+        self.paidAt = paidAt; self.waitingSince = waitingSince
     }
 
     public static let empty = LaundryCheckout()
@@ -563,6 +569,9 @@ public enum LaundryReducer {
             s.phase = .active
             s.cancelSent = false
             if wasCancelling { s.notice = .cancelNotAllowed }
+            if s.paidAt == nil { s.paidAt = at }
+            if order.status.isWashing, let left = order.remainSeconds, left > 0 { s.waitingSince = nil }
+            else if s.waitingSince == nil { s.waitingSince = at }
             guard order.status.isWashing, let d = s.draft else { return (s, []) }
             let ends = order.remainSeconds.flatMap { $0 > 0 ? at.addingTimeInterval(TimeInterval($0)) : nil }
             return (s, [.updateActivity(LaundryActivityPlan(orderID: id, machineName: d.machineName,

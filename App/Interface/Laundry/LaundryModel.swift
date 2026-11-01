@@ -50,6 +50,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     private var lastAttempt: Date?
     private var activitySync: AnyCancellable?
     private var endCheck: (end: Date, task: Task<Void, Never>)?
+    private var startWatch: (since: Date, task: Task<Void, Never>)?
     private static let machinesKey = PreferenceKey.prefix + "laundry.machines"
     private static let selectedKey = PreferenceKey.prefix + "laundry.selected"
     nonisolated static let lastOrderKey = PreferenceKey.prefix + "laundry.lastOrder"
@@ -196,6 +197,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// After a reset cleared the stores: no U净 login, machines or order; the switch back on.
     func reloadAfterReset() {
         endCheck?.task.cancel(); endCheck = nil
+        startWatch?.task.cancel(); startWatch = nil
         schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
         lastOrder = nil; snapshot = nil; candidate = nil; checkout = nil
         issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil
@@ -354,6 +356,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         if !schoolEnabled { LaundryActivityController.shared.endAll() }
         LaundryActivityController.shared.sync(facts:facts)
         Reminders.shared.syncLaundry(facts:facts)
+        syncStartWatch()
         var end: Date?
         if case .running(let value) = facts.phase() { end = value }
         guard end != endCheck?.end else { return }
@@ -362,6 +365,26 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         endCheck = (end, Task { [weak self] in
             do { try await Task.sleep(for:.seconds(max(0, end.timeIntervalSinceNow) + 60)) } catch { return }
             await self?.refreshOrder()
+        })
+    }
+
+    /// Paid but not washing with a known end: re-read every `LaundryFollowUp.interval` for a few
+    /// minutes, only while the app is in front (read only). Coming back to the app reads it anyway.
+    private func syncStartWatch() {
+        let since = schoolEnabled ? checkout?.waitingSince : nil
+        guard since != startWatch?.since else { return }
+        startWatch?.task.cancel(); startWatch = nil
+        guard let since else { return }
+        startWatch = (since, Task { [weak self] in
+            var attempt: Date?
+            while true {
+                guard let record = self?.checkout,
+                      let delay = LaundryFollowUp.nextRead(record, lastAttempt:attempt, now:Date()) else { return }
+                do { try await Task.sleep(for:.seconds(delay)) } catch { return }
+                attempt = Date()
+                guard let self else { return }
+                if UIApplication.shared.applicationState == .active { await self.refreshOrder() }
+            }
         })
     }
 

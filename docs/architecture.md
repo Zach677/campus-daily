@@ -598,6 +598,10 @@ Rules:
 - Cancel only from an unpaid `10/17`: fresh read first, then at most one POST (persisted
   `cancelSent` first), then the same polling until `53` or another terminal status. Paid in
   between → no POST.
+- Paid but not washing with a known end (`20`, `21`, or `40` with no remaining time): while the
+  app is in front it reads the order every 45 s for up to 5 min from that first read
+  (`LaundryFollowUp`), and the laundry-done notification is set for the first paid read + the
+  program's minutes until a washing read gives the end.
 - `40` → Live Activity (machine, program, endsAt) + laundry-done notification at `endsAt`;
   `50`/`53`/`51`/`52` end the activity and clear the record (`52` keeps a warning card until
   acknowledged).

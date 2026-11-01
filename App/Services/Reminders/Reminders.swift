@@ -193,7 +193,15 @@ enum ReminderKey {
             laundryPlan = plan
             applyLaundry(plan)
         case .starting:
-            requestAppPrompt()   // paid, end time not known yet: keep any existing request
+            requestAppPrompt()
+            // Paid, end not known yet. A request already set for this order stays (an exact one
+            // from a washing read, or this fallback); otherwise remind at payment time + program
+            // length until a washing read gives the end (`.running` replaces it).
+            guard let record = facts.record, let id = record.orderId, let end = LaundryFollowUp.expectedEnd(record),
+                  defaults.string(forKey:ReminderKey.laundryOrder) != id else { return }
+            let plan = LaundryPlan(orderId:id, end:end, machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机")
+            laundryPlan = plan
+            applyLaundry(plan)
         case .check:
             break                     // unconfirmed: keep what is scheduled
         default:
