@@ -69,4 +69,12 @@ public enum ShowerRetiringLink: Sendable, Equatable {
         if isRetiring { return .retired }
         return isCurrent ? .lost : .unrelated
     }
+
+
+    /// The wait for the retiring link's disconnect failed with `error`. A timeout on a link that
+    /// is already down (`disconnected`: its state now) means only the callback went missing: the
+    /// link counts as retired and the reconnect goes on. Anything else ends the connect.
+    public static func retiredAfterWait(failedWith error: Error, disconnected: Bool) -> Bool {
+        disconnected && (error as? ShowerDeviceError) == .timedOut
+    }
 }

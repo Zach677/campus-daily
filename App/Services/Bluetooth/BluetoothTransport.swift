@@ -87,10 +87,13 @@ struct VerifiedShowerDevice {
         targetName = bleName
     }
     /// A link let go stays `retiring` until its disconnect arrives (`ShowerRetiringLink`), so a
-    /// late callback for it can't fail the next connect, even to the same controller.
+    /// late callback for it can't fail the next connect, even to the same controller. A callback
+    /// that never comes for a link already down doesn't fail it either.
     private func awaitRetired() async throws {
         if let old = retiring, old.state != .disconnected {
-            try await wait("disconnect") { manager.cancelPeripheralConnection(old) }
+            do {
+                try await wait("disconnect") { manager.cancelPeripheralConnection(old) }
+            } catch where ShowerRetiringLink.retiredAfterWait(failedWith:error, disconnected:old.state == .disconnected) {}
         }
         retiring = nil
     }
