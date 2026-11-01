@@ -646,7 +646,7 @@ Payment stays inside the school's own web pages (WKWebView); the app does not ca
 submit APIs itself (not captured).
 
 ```
-idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded─► inPage ─back / app foreground─► confirming ─► idle
+idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded─► inPage ─back─► idle
                       │expired                                      │ alipays:// | weixin:// link
                       ▼                                             ▼ open external app
                   renewing (one forced refresh)                 inPage (still)
@@ -672,9 +672,8 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
   (and logged by host), a frame never opens a pay app, and only `about:blank`/`about:srcdoc`
   (which load nothing) are added for frames. The school login sheet does the same through
   `SchoolLoginNavigation` (three school hosts, https, default port).
-- `confirming`: on return, refresh balance (card) or the room meter (electricity) up to 3 times
-  over 30 s and show the delta; no claim of success without a changed value
-  ("充值结果以学校记录为准").
+- Back from the page, the app claims no result: the next refresh reads the balance and the room
+  meter as usual.
 
 ---
 
@@ -807,7 +806,7 @@ Every endpoint gets at least: success, expired/unauthorized, refused with messag
 | water hand-off | `getSignData-ok`, `-badToken` |
 | recharge web session state | `localStorage-elecampus_state-csaLogin` |
 | card records (最近, 昨天花了) | `card-getRecordList-ok` |
-| portal | `getMyInfo-ok`, `-badtoken` (-1001), `-notoken` (-1), `getMyECard-ok`, `me-user-ok` |
+| portal | `getMyInfo-ok`, `-badtoken` (-1001), `-notoken` (-1), `getMyECard-ok` |
 | lxt6 reads | `getUserMsg-ok`, `-badSign` (-301, JSON-in-string); `areaInfo-level0..3`, `-badSign` (4002), `-unknownParent` (4034); `getMachineMacAddress-ok`, `-unknownRoom` (5000) |
 | U净 auth errors | `ujing/programInfo-noAuth`, `orderDetail-badAuth` (401 shapes, captured); `scanWasherCode-badAuth`, `orderCreate-badAuth` |
 | U净 (synthetic, shapes from the existing app) | `captcha-ok`/`-refused`; `login-ok`/`-tempToken`/`-challenge`/`-refused`; `scanWasherCode-ok`/`-activeOrder`/`-refused`; `programInfo-ok`/`-refused`; `orderCreate-ok`/`-refused`; `orderDetail-unpaid`/`-paid`/`-washing`/`-done`/`-failedStart`/`-cancelled`/`-refused`; `paymentMethods-ok`/`-refused`; `paymentArguments-f2f`/`-sdk`/`-skipPay`/`-refused`; `orderCancel-ok`/`-refused` |
@@ -816,7 +815,7 @@ Fixture consistency: `portal/getMyInfo-ok`, `lxt6/areaInfo-level3` and
 `lxt6/getMachineMacAddress-ok` share one faked dorm, so dorm → room → machine matching runs end to
 end; the `piplineName` match test appends one synthetic meter row in-test.
 
-State machines (ShowerEngine, LaundryEngine, recharge) are tested with scripted fakes for every
+State machines (ShowerEngine, LaundryEngine) are tested with scripted fakes for every
 transition in §3, including: crash/relaunch in each persisted state, store write failure,
 cancellation between persist and side effect, refusal vs uncertain on authorize/settle/create/
 pay/cancel.

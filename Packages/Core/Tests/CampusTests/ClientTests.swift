@@ -378,14 +378,11 @@ final class EcyktElectricityTests: XCTestCase {
         }
     }
 
-    func testPowerPageURLReturnsLocationWithoutFollowing() async throws {
-        let s = StubServer()
-        try s.serve("ecykt/getPowerUrl-ok")
-        let url = try await EcyktClient(http: s.makeClient()).powerPageURL(T.session(), custid: T.custid)
-        XCTAssertEqual(url.absoluteString, "https://ecykt.gdbtu.edu.cn/ykt-view/powersel?interfaceName=powernew_450010&isbind=1")
-        XCTAssertEqual(s.requests.count, 1)
-        // Query matches the capture: ciphertext `%` encoded as `%25`.
+    /// The recharge WebView's electricity entry: the query as captured, ciphertext `%` encoded as `%25`.
+    func testPowerEntryURLMatchesTheCapture() throws {
         let fixtureURL = try FixtureLoader.load("ecykt/getPowerUrl-ok").url
-        XCTAssertEqual(s.requests[0].url.query, fixtureURL.query)
+        let url = EcyktClient.powerEntryURL(T.session(), custid: T.custid)
+        XCTAssertEqual(url.path, fixtureURL.path)
+        XCTAssertEqual(url.query, fixtureURL.query)
     }
 }

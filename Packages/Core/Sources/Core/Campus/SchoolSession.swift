@@ -50,22 +50,19 @@ public struct SchoolReading: Sendable, Equatable {
     public var roomLabel: String?
     /// When balance and meter answered.
     public var readAt: Date?
-    public var reexchanged: Bool
     /// No meter is bound (none saved, or one bound to the campus node by an older build): the
     /// stored electricity reading belongs to no meter and is cleared.
     public var noMeter: Bool
 
     public init(outcome: Outcome, checkedAt: Date, balance: Result<Money, ServiceError>? = nil,
                 meter: Result<Meter?, ServiceError>? = nil, roomLabel: String? = nil, readAt: Date? = nil,
-                reexchanged: Bool = false, noMeter: Bool = false) {
+                noMeter: Bool = false) {
         self.outcome = outcome; self.checkedAt = checkedAt; self.balance = balance; self.meter = meter
-        self.roomLabel = roomLabel; self.readAt = readAt; self.reexchanged = reexchanged; self.noMeter = noMeter
+        self.roomLabel = roomLabel; self.readAt = readAt; self.noMeter = noMeter
     }
 }
 
 public struct SignInSummary: Sendable, Equatable {
-    public var cardholder: String
-    public var residence: PortalResidence?
     /// A different person than the one signed in before: the old dorm, meter and saved
     /// account were cleared first (the app clears its own per-person data too).
     public var switchedAccount: Bool
@@ -76,9 +73,8 @@ public struct SignInSummary: Sendable, Equatable {
     /// The previous dorm or meter is gone (removed, or replaced by another dorm). False when
     /// the same room was read again and both were kept, or there was none.
     public var dormAndMeterCleared: Bool
-    public init(cardholder: String, residence: PortalResidence?, switchedAccount: Bool = false,
-                previousPersonUnconfirmed: Bool = false, dormAndMeterCleared: Bool = false) {
-        self.cardholder = cardholder; self.residence = residence; self.switchedAccount = switchedAccount
+    public init(switchedAccount: Bool = false, previousPersonUnconfirmed: Bool = false, dormAndMeterCleared: Bool = false) {
+        self.switchedAccount = switchedAccount
         self.previousPersonUnconfirmed = previousPersonUnconfirmed; self.dormAndMeterCleared = dormAndMeterCleared
     }
 }
@@ -240,10 +236,6 @@ public actor SchoolSession {
         guard ran == true else { throw SchoolLoginFailure.busy }
     }
 
-    /// The signed-in account (nil after a web sign-in that did not show the same person: the
-    /// page never tells us the account).
-    public func account() -> SchoolAccount? { (try? vault.account()) ?? nil }
-
     /// False only when the card session was read and is not there. Async like the
     /// `SchoolReader` requirement, so this is what the refresher calls (not the protocol's default).
     public func hasCardSession() async -> Bool { vault.cardSessionStored() ?? true }
@@ -344,16 +336,6 @@ public actor SchoolSession {
 
     // MARK: Sign-in
 
-    /// Native path after the CAS WebView produced the portal token: dorm address, ticket,
-    /// ecykt exchange, bound card. Saves everything on success.
-    public func signIn(portalToken: PortalToken, userAgent: String = EcyktSession.defaultUserAgent,
-                       owning: LeaseOwnership) async throws -> SignInSummary {
-        var started = personGeneration
-        let start = try Self.storedCredentials(vault)
-        return try await signIn(portalToken: portalToken, account: nil, saving: nil, before: Self.signedInPerson(start), start: start,
-                                started: &started, owning: owning, userAgent: userAgent)
-    }
-
     /// A different person clears the previous one's data first. When the dorm address can't be
     /// read, the old dorm and meter are kept only if the card shows it is the same person.
     /// Anyone but the same person makes work still running for the previous one stale, from the
@@ -361,10 +343,9 @@ public actor SchoolSession {
     /// previous person's items maybe gone already); `started` then moves on to the new person. `saving`: the account the form signed in with. Every
     /// write is one locked step (`commitLogin`) over the credentials read at `start`.
     private func signIn(portalToken: PortalToken, account: String?, saving: SchoolAccount?, before: SignedInPerson?,
-                        start: StoredCredentials, started: inout Int, owning: LeaseOwnership,
-                        userAgent: String = EcyktSession.defaultUserAgent) async throws -> SignInSummary {
+                        start: StoredCredentials, started: inout Int, owning: LeaseOwnership) async throws -> SignInSummary {
         let residence = try? await portal.myInfo(portalToken)
-        let session = try await exchangeSession(portalToken: portalToken, userAgent: userAgent, previous: nil)
+        let session = try await exchangeSession(portalToken: portalToken, userAgent: EcyktSession.defaultUserAgent, previous: nil)
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: account)
@@ -397,7 +378,7 @@ public actor SchoolSession {
         }
         if match != .same { started = newPerson() }
         if saving != nil { passwordGeneration += 1 }
-        return SignInSummary(cardholder: card.displayName, residence: residence, switchedAccount: match == .different,
+        return SignInSummary(switchedAccount: match == .different,
                              previousPersonUnconfirmed: before != nil && match == .unknown,
                              dormAndMeterCleared: Self.cleared(old, now: profile))
     }
@@ -408,7 +389,7 @@ public actor SchoolSession {
     /// (`commitLogin`): the lease lost meanwhile, nothing is written and `busy` is thrown.
     /// No portal token comes with it, so no dorm is read here (the app keeps the dorm address
     /// the portal page showed).
-    public func adoptWebState(_ elecampusState: Data, userAgent: String = EcyktSession.defaultUserAgent, owning: LeaseOwnership) async throws -> SignInSummary {
+    public func adoptWebState(_ elecampusState: Data, owning: LeaseOwnership) async throws -> SignInSummary {
         guard let root = try? JSONValue.parse(elecampusState),
               let token = (root["logintoken"] ?? root["loginInfo"]?["token"])?.text, !token.isEmpty,
               let sys = root["loginInfo"]?["syscustid"]?.text, !sys.isEmpty else {
@@ -416,7 +397,7 @@ public actor SchoolSession {
         }
         let areacode = root["schoolid"]?.text ?? EcyktSession.defaultAreacode
         let session = EcyktSession(token: token, syscustid: sys, custid: root["custInfo"]?["custid"]?.text,
-                                   cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: userAgent,
+                                   cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: EcyktSession.defaultUserAgent,
                                    obtainedAt: now())
         let started = personGeneration
         let start = try Self.storedCredentials(vault)
@@ -453,7 +434,7 @@ public actor SchoolSession {
             throw error
         }
         if match != .same { _ = newPerson() }
-        return SignInSummary(cardholder: card.displayName, residence: nil, switchedAccount: switched,
+        return SignInSummary(switchedAccount: switched,
                              previousPersonUnconfirmed: before != nil && match == .unknown,
                              dormAndMeterCleared: Self.cleared(old, now: (try? vault.profile()) ?? nil))
     }
@@ -518,7 +499,6 @@ public actor SchoolSession {
         guard let stored = found else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         let started = signOutGeneration
 
-        var reexchanged = false
         var base = stored
         var live: (BoundCard, EcyktSession)
         do {
@@ -553,7 +533,7 @@ public actor SchoolSession {
                 live = found
             } else {
                 switch await renew(current, firstError: firstError, since: started, mayMint: mayMint, owning: owning) {
-                case .renewed(let renewed): reexchanged = true; live = renewed
+                case .renewed(let renewed): live = renewed
                 case .stopped(let reading): return reading
                 }
             }
@@ -573,7 +553,7 @@ public actor SchoolSession {
         alive.lastAliveAt = checkedAt
         switch writeBack(alive, over: base, owning: owning) {
         case .signedOut: return SchoolReading(outcome: .notSignedIn, checkedAt: now())
-        case .lostLease: return SchoolReading(outcome: .leaseLost, checkedAt: now(), reexchanged: reexchanged)
+        case .lostLease: return SchoolReading(outcome: .leaseLost, checkedAt: now())
         case .written, .kept: break
         }
         let session = alive
@@ -603,7 +583,7 @@ public actor SchoolSession {
             followReplacedMeter(binding, to: meter.comAddress, owning: owning)
         }
         var reading = SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
-                                    roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged,
+                                    roomLabel: m == nil ? nil : binding?.label, readAt: now(),
                                     noMeter: binding?.nodeIsRoom != true)
         await numbers(reading)
         let a = await withTaskCancellationHandler { await records.value } onCancel: { records.cancel() }
@@ -650,12 +630,12 @@ public actor SchoolSession {
                 lastError = e2
             } catch let e2 as ServiceError where Self.isDefiniteRefusal(e2) {
                 // The school turned the re-exchange down: the ecykt login is still known dead.
-                return .stopped(SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true))
+                return .stopped(SchoolReading(outcome: .needsLogin(e), checkedAt: now()))
             } catch let e2 as ServiceError where e2 == .offline || exchanged {
                 // No network: the password would not get through either, a failed read. Or the
                 // exchange worked and only the check of the new session got no answer: the next
                 // refresh exchanges the same portal token again.
-                return .stopped(SchoolReading(outcome: .failed(e2), checkedAt: now(), reexchanged: true))
+                return .stopped(SchoolReading(outcome: .failed(e2), checkedAt: now()))
             } catch let e2 as ServiceError {
                 // A timeout, a school server error or a bare 401/403: the portal (or the exchange
                 // behind it) may be down while CAS works, and its token would keep failing until
@@ -664,22 +644,22 @@ public actor SchoolSession {
                 portalNoAnswer = e2
             } catch {
                 // Cancelled (the widget at its deadline): nothing is known.
-                return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: true))
+                return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now()))
             }
         }
         switch await signInWithSavedPassword(previous: stored, seenPortalToken: seenPortalToken?.value,
                                              since: started, mayMint: mayMint, owning: owning) {
         case .signedIn(let found): return .renewed(found)
-        case .offline: return .stopped(SchoolReading(outcome: .failed(portalNoAnswer ?? .offline), checkedAt: now(), reexchanged: triedPortal))
-        case .failed(let e2): return .stopped(SchoolReading(outcome: .failed(e2), checkedAt: now(), reexchanged: triedPortal))
-        case .retryLater: return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: triedPortal))
+        case .offline: return .stopped(SchoolReading(outcome: .failed(portalNoAnswer ?? .offline), checkedAt: now()))
+        case .failed(let e2): return .stopped(SchoolReading(outcome: .failed(e2), checkedAt: now()))
+        case .retryLater: return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now()))
         case .notTried:
             // No password to send (none saved, paused, or held): after a portal exchange that got
             // no answer, its token is still the way in, so that is a failed read.
             let outcome: SchoolReading.Outcome = portalNoAnswer.map { .failed($0) } ?? .needsLogin(lastError)
-            return .stopped(SchoolReading(outcome: outcome, checkedAt: now(), reexchanged: triedPortal))
-        case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: triedPortal))
-        case .lostLease: return .stopped(SchoolReading(outcome: .leaseLost, checkedAt: now(), reexchanged: triedPortal))
+            return .stopped(SchoolReading(outcome: outcome, checkedAt: now()))
+        case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now()))
+        case .lostLease: return .stopped(SchoolReading(outcome: .leaseLost, checkedAt: now()))
         case .signedOut: return .stopped(SchoolReading(outcome: .notSignedIn, checkedAt: now()))
         }
     }
@@ -1316,19 +1296,6 @@ public actor SchoolSession {
         try ensureSignedIn(since: started)
         saveIfUnchanged(updated, over: stored, owning: owning)
         return try RechargeWebSessionBuilder.build(kind: kind, session: updated, fresh: fresh, card: card)
-    }
-
-    /// Re-reads the value the recharge confirmation compares (balance or room meter left money).
-    public func readRechargeValue(_ kind: RechargeKind) async throws -> Money? {
-        guard let s = try vault.ecyktSession(), let custid = s.custid else { throw ServiceError.sessionExpired(.ecykt) }
-        switch kind {
-        case .card: return try await ecykt.balance(s, custid: custid)
-        case .electricity:
-            guard let binding = try vault.profile()?.meter else { return nil }
-            guard binding.nodeIsRoom else { return nil }
-            let rows = try await ecykt.meters(s, nodeID: binding.nodeID)
-            return MeterMatcher.pick(rows, binding: binding)?.leftMoney
-        }
     }
 
     // MARK: Card records page

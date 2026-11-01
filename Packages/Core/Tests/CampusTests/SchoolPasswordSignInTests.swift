@@ -49,7 +49,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
             try h.server.serve("portal/getMyInfo-ok")
             try serveExchange(h)
             let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: save, owning: .unchecked)
-            XCTAssertEqual(summary.cardholder, "测试员")
+            XCTAssertFalse(summary.switchedAccount)
             XCTAssertEqual(try h.vault.portalToken(), stamped(Self.freshToken, h), "the expiry is kept with the token")
             XCTAssertEqual(try h.vault.ecyktSession()?.token, "PW-TOKEN")
             XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991", password: save ? "synthetic-pw-991" : nil))
@@ -219,7 +219,6 @@ final class SchoolPasswordSignInTests: XCTestCase {
 
             let report = await h.refresher().refresh(inBackground: background)
             XCTAssertEqual(report.outcome, .ok, "background: \(background)")
-            XCTAssertTrue(report.reexchanged)
             XCTAssertEqual(login.calls.count, 1)
             XCTAssertEqual(try h.vault.ecyktSession()?.token, "AFTER-PASSWORD")
             XCTAssertEqual(try h.vault.portalToken(), stamped(Self.freshToken, h))

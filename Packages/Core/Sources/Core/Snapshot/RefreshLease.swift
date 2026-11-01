@@ -196,8 +196,8 @@ public struct LeaseFile: Sendable {
 
     struct Failure: Error { let step: String; let code: Int32 }
 
-    /// The stored owner, run out or not (nil = no lease). For diagnostics and tests.
-    public func storedOwner() -> String? { ((try? update { ($0, $0?.owner) }) ?? nil) }
+    /// The stored owner, run out or not (nil = no lease). Read by the tests only.
+    func storedOwner() -> String? { ((try? update { ($0, $0?.owner) }) ?? nil) }
 
     func update<T>(waiting: Bool = true, _ body: (RefreshLease.Record?) -> (RefreshLease.Record?, T)) throws -> T {
         let fd = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)

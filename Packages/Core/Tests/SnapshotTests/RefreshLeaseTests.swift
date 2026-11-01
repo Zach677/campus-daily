@@ -389,14 +389,3 @@ final class LeaseRenewRaceTests: XCTestCase {
         XCTAssertTrue(widget.acquire())
     }
 }
-
-final class InMemoryReplaceTests: XCTestCase {
-    func testInMemoryReplaceNeverAdds() throws {
-        let memory = InMemorySecureStore()
-        XCTAssertFalse(try memory.replace(Data("a".utf8), for: .sharedRefreshLease))
-        XCTAssertNil(try memory.read(.sharedRefreshLease))
-        try memory.write(Data("a".utf8), for: .sharedRefreshLease)
-        XCTAssertTrue(try memory.replace(Data("b".utf8), for: .sharedRefreshLease))
-        XCTAssertEqual(try memory.read(.sharedRefreshLease), Data("b".utf8))
-    }
-}

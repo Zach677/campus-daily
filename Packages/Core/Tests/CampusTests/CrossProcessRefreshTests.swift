@@ -45,8 +45,6 @@ final class CrossProcessRefreshTests: XCTestCase {
         let (a, w) = await (first, second)
         XCTAssertEqual(a.outcome, .ok)
         XCTAssertEqual(w.outcome, .ok)
-        XCTAssertTrue(a.reexchanged)
-        XCTAssertFalse(w.reexchanged)
         XCTAssertEqual(h.server.requests(path: "/csalogintoken/450010").count, 1)
         XCTAssertEqual(h.server.requests(path: "/getMyECard").count, 1)
         XCTAssertEqual(h.server.requests(path: "/getSysBindCustInfo").last?.header("acc_token"), "MINTED-ONCE")
@@ -122,7 +120,7 @@ final class CrossProcessRefreshTests: XCTestCase {
         try h.server.serve("ecykt/getUserBalance-ok")
         let report = await h.refresher().refresh(inBackground: true)
         XCTAssertEqual(report.outcome, .ok)
-        XCTAssertTrue(report.reexchanged)
+        XCTAssertEqual(h.server.requests(path: "/csalogintoken/450010").count, 1)
         XCTAssertFalse(report.snapshot.needsLogin)
         XCTAssertEqual(try h.vault.ecyktSession()?.token, "BACKGROUND-RENEWED")
     }
@@ -213,11 +211,12 @@ final class ExpiredCredentialLogLineTests: XCTestCase {
 
     /// A portal token gets its stamp when first saved, from the sign-in path.
     func testSignInStampsBothCredentials() async throws {
-        let h = Harness()
+        var h = Harness()
+        h.passwordLogin = FakePasswordLogin(.success(PortalToken("PORTAL")))
         h.server.serve(try T.eCardWithTicket())
         h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "NEW"))
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        _ = try await h.session().signIn(portalToken: PortalToken("PORTAL"), owning: .unchecked)
+        _ = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false, owning: .unchecked)
         XCTAssertEqual(try h.vault.portalToken()?.obtainedAt, h.clock.now)
         XCTAssertEqual(try h.vault.ecyktSession()?.obtainedAt, h.clock.now)
     }

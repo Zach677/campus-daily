@@ -187,7 +187,7 @@ struct PowerChoice: Identifiable, Equatable {
         var counted = false
         let summary = try await SchoolSession.watchingPerson(on:session, {
             try await refresher.holdingLease { owning in
-                try await session.adoptWebState(state, userAgent:EcyktSession.defaultUserAgent, owning:owning)
+                try await session.adoptWebState(state, owning:owning)
             }
         }, changed:{ personChanges += 1; counted = true })
         if summary.switchedAccount || summary.previousPersonUnconfirmed {
