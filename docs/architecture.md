@@ -7,7 +7,8 @@ school-login script and, later, the fixtures.
 Ground rules: the BLE frame format and the `wxcode`/MD5 signing are kept byte for byte; any
 change to signing, BLE commands or school/U净 response parsing goes in its own commit with its
 reason. Money paths stop rather than guess. The repo never contains real names, ids, rooms,
-tokens or the hot-water platform `secret`/`sid`; every public build does contain them (see 2.2).
+tokens or the hot-water platform `secret`/`sid`. The hot-water `secret` and `sid` are, however,
+built into every public build in plain text (see 2.2).
 
 ---
 
@@ -388,8 +389,12 @@ not secret: every public build carries them in plain text (`CampusWaterPlatform.
 bundle), and `Scripts/stage-water-profile.py fetch` itself takes them from a public IPA. They are
 the same for every user, and they alone sign every lxt6 call: authorize and settle sign only
 `studentId`, `schoolId`, `machineid`, `machinedata`… (`LxtSigning.operationFields`) with no user
-credential, so anyone holding them can authorize or settle for any student number and machine.
-This is a platform risk the client cannot fix, accepted as such. The redacted `description`, the
+credential. Anyone who extracts them from a build can sign platform calls for any student number;
+what such a call charges lands on that student's own hot-water balance. An authorize still needs
+`machinedata`, a frame the controller produced in a real BLE session, so the values alone don't
+open the water. The read endpoints (areas, rooms, machines) are signable the same way;
+`getUserMsg` also needs the `appdata` of the school's ecykt hand-off (`LxtClient.userInfo`), so
+it is harder to misuse. This is a platform risk the client cannot fix, accepted as such. The redacted `description`, the
 exact-key check on `.waterconfig` files and iOS file protection on the imported copy keep the
 values out of logs and stray files; they do not protect them.
 
