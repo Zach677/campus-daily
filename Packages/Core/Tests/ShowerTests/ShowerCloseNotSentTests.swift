@@ -110,12 +110,12 @@ final class ShowerCloseNotSentTests: XCTestCase {
 
     func testAProbeThatFindsTheControllerStoppedKeepsTheCheck() async throws {
         let e = try await closeUnconfirmed()
+        let before = transport.writes.count
         transport.script(.frame(identity))
         let stopped = try await e.review(binding)
         XCTAssertEqual(stopped.failure?.reason, .closeUnconfirmed)
         XCTAssertEqual(ShowerRecheckResult(after: stopped), .stopped)
         XCTAssertTrue(stopped.canResolveManually)
-        XCTAssertFalse(transport.writes.dropFirst(4).contains(close), "read-only")
 
         transport.scriptConnect(.failure(.notFound))
         let unreachable = try await e.review(binding)
@@ -125,6 +125,13 @@ final class ShowerCloseNotSentTests: XCTestCase {
         transport.script(.frame(FakeFrames.identity("99999999")))
         let other = try await e.review(binding)
         XCTAssertEqual(ShowerRecheckResult(after: other), .otherController)
+
+        // Read-only: every write after the unconfirmed close is the identity probe.
+        let later = transport.writes.dropFirst(before)
+        XCTAssertEqual(later.count, 2, "one probe per reachable controller")
+        XCTAssertTrue(later.allSatisfy { $0 == ShowerFrames.probeCommand })
+        XCTAssertEqual(transport.connects.suffix(3).map(\.required), Array(repeating: "PERIPHERAL-A", count: 3),
+                       "only the session's controller")
         XCTAssertTrue(gateway.settleFrames.isEmpty)
     }
 
