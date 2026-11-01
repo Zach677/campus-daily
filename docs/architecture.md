@@ -364,7 +364,10 @@ In a same-name list each row is titled by the first location level that differs 
 candidates (`LocationNaming.titles`), with the full location under it. Every binding keeps that
 location (`MeterBinding.location`; floors are left out of picker paths); Settings shows it, and the dorm row uses it when it is the same room
 (`SchoolProfile.dormLocation`), else the portal address. Daily refresh queries the room-level
-node only (1 row).
+node only (1 row). A meter the school replaced keeps the room node but gets a new `comAddress`:
+when the bound node answers with one row under the room's name, the refresh reads that row and
+moves the binding to its `comAddress` (`MeterMatcher.pick`, one locked compare-and-write under
+the lease); several rows, another room's name or none read as no meter and leave the binding.
 `data` is a JSON **string**; all numeric fields are strings → parse with `Decimal` in POSIX locale.
 
 **Error mapping (school):**

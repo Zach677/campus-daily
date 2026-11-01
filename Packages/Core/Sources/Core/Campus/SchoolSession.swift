@@ -601,6 +601,9 @@ public actor SchoolSession {
             records.cancel()
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
+        if case .success(let meter?)? = m, let binding, meter.comAddress != binding.comAddress {
+            followReplacedMeter(binding, to: meter.comAddress, owning: owning)
+        }
         var reading = SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
                                     roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged,
                                     noMeter: binding?.nodeIsRoom != true)
@@ -1211,6 +1214,26 @@ public actor SchoolSession {
         guard !seen.nodeIsRoom, var profile, profile.meter == seen else { return nil }
         profile.meter = nil
         return profile
+    }
+
+    /// The profile with `seen` moved to the meter that replaced it in the same room
+    /// (`comAddress`), if `seen` is still the one stored; nil when there is nothing to move
+    /// (another meter, or none, is stored now).
+    public static func withMeterMoved(_ profile: SchoolProfile?, seen: MeterBinding, to comAddress: String) -> SchoolProfile? {
+        guard var profile, profile.meter == seen, seen.comAddress != comAddress else { return nil }
+        profile.meter?.comAddress = comAddress
+        return profile
+    }
+
+    /// The bound room's meter was replaced (`MeterMatcher.pick` read the new one): the binding
+    /// follows it, in one locked step with the lease check, only while the stored binding is
+    /// still the one this read used. Not written: the next refresh reads and tries again.
+    private func followReplacedMeter(_ seen: MeterBinding, to comAddress: String, owning: LeaseOwnership) {
+        let vault = vault
+        _ = try? owning.write {
+            guard let next = Self.withMeterMoved(try vault.profile(), seen: seen, to: comAddress) else { return }
+            try vault.saveProfile(next)
+        }
     }
 
     /// Launch: a meter bound to the campus node (older builds) is dropped. True when one was.

@@ -64,6 +64,7 @@
 - Read a paid laundry order that hasn't started washing again every 45 s for up to 5 minutes while the app is open, and set the 「衣服洗好了」 reminder from the payment time plus the program until the wash's real end is known. The reminder is cancelled when the machine fails to start, and kept through a cold launch and the settings toggle.
 - A notification tap no longer closes a top-up page or a laundry order being paid, and a tap that launches the app opens its page.
 - The reminder prompt no longer shows (and gets used up) while the school sign-in sheet is open.
+- Keep reading the dorm's electricity after the school replaced its meter: when the room lists one meter under the room's name, it is read and the binding follows it, instead of showing no reading until the meter was picked again by hand.
 
 ### Removed
 
