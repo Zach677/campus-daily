@@ -227,8 +227,10 @@ foreground, the BG task and the widget):**
    refused login pauses the saved password (`SchoolAccount.paused`) and the UI asks the user to
    sign in again; it is tried again only after the user signs in or saves a password. Once CAS
    accepted it, only a definite refusal of the card login (`sessionExpired`, `rejected` with the
-   service's own code, `badRequest`) pauses it; no network, a timeout or a school server error
-   is a failed read, and the next refresh exchanges the portal token that login stored.
+   service's own code, `badRequest`) pauses it; no network, a timeout, a school server error or a
+   bare 401/403 is a failed read, and the next refresh exchanges the portal token that login
+   stored. That failure also puts the no-answer hold back (`unansweredAt`, in the shared account
+   item), so while the portal keeps failing neither process falls through to the password again.
    No loops, no retries beyond one.
 6. The live session (latest ciphertexts, `lastAliveAt`) is written back only while the stored one
    is still the session this read started from: a sign-out or a newer session from the other
