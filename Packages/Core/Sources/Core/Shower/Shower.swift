@@ -146,6 +146,9 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// running after an unconfirmed close). The 「还在计时」 reminder counts from here, also after
     /// a relaunch: the water start may be long past.
     public var timerResumedAt: Date?
+    /// The consumption frame that was held (`holdSettle`), upper hex. A retry of it that is
+    /// refused or gets no answer is still held: the water it read may still not be ours.
+    public var heldConsumption: String?
 
     public init(phase: ShowerPhase = .idle, machineID: String? = nil, peripheralID: String? = nil, startedAt: Date? = nil,
                 authorizeSent: Bool = false, authorizationID: String? = nil, closingFrom: ShowerPhase? = nil,
@@ -153,14 +156,14 @@ public struct ShowerState: Sendable, Codable, Equatable {
                 lastReceipt: ShowerReceipt? = nil, failure: ShowerFailure? = nil, stateReviewRequired: Bool = false,
                 reviewing: Bool = false, settleRetryArmed: Bool = false, manualSettleAttempts: Int = 0,
                 endedAt: Date? = nil, notice: ShowerNotice? = nil, authorizationNotWritten: Bool = false,
-                holdSettle: Bool = false, timerResumedAt: Date? = nil) {
+                holdSettle: Bool = false, timerResumedAt: Date? = nil, heldConsumption: String? = nil) {
         self.phase = phase; self.machineID = machineID; self.peripheralID = peripheralID; self.startedAt = startedAt
         self.authorizeSent = authorizeSent; self.authorizationID = authorizationID; self.closingFrom = closingFrom
         self.closeSent = closeSent; self.consumption = consumption; self.receipt = receipt; self.lastReceipt = lastReceipt
         self.failure = failure; self.stateReviewRequired = stateReviewRequired; self.reviewing = reviewing
         self.settleRetryArmed = settleRetryArmed; self.manualSettleAttempts = manualSettleAttempts
         self.endedAt = endedAt; self.notice = notice; self.authorizationNotWritten = authorizationNotWritten
-        self.holdSettle = holdSettle; self.timerResumedAt = timerResumedAt
+        self.holdSettle = holdSettle; self.timerResumedAt = timerResumedAt; self.heldConsumption = heldConsumption
     }
 
     public static let idle = ShowerState()
@@ -186,6 +189,9 @@ public struct ShowerState: Sendable, Codable, Equatable {
         (phase == .failed && failure?.needsReview == true)
             || ((phase == .writePending || phase == .running) && stateReviewRequired && !reviewing)
     }
+
+    /// The frame to settle is the one that was held.
+    public var consumptionHeld: Bool { consumption != nil && consumption == heldConsumption }
 
     public var canRetrySettle: Bool {
         phase == .failed && failure?.needsReview == true && consumption != nil
@@ -256,6 +262,7 @@ extension ShowerState {
         authorizationNotWritten = try c.decodeIfPresent(Bool.self, forKey: .authorizationNotWritten) ?? false
         holdSettle = try c.decodeIfPresent(Bool.self, forKey: .holdSettle) ?? false
         timerResumedAt = try? c.decodeIfPresent(Date.self, forKey: .timerResumedAt)
+        heldConsumption = try? c.decodeIfPresent(String.self, forKey: .heldConsumption)
     }
 }
 
@@ -543,6 +550,7 @@ public enum ShowerReducer {
             s.consumption = HexCoding.upper(frame)
             if state.holdSettle {
                 s.holdSettle = false
+                s.heldConsumption = s.consumption
                 return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true, settleHeld: true),
                         [.cancelReminder, .releaseDevice, .diagnostic("settle.heldAfterUnconfirmedClose")])
             }
@@ -563,10 +571,10 @@ public enum ShowerReducer {
 
         case (.settling, .settleFailed(let e)):
             let reason: ShowerFailureReason = isDefiniteRefusal(e) ? .settleRefused : .settleUncertain
-            return (failed(s, reason, review: true, error: e), [])
+            return (failed(s, reason, review: true, error: e, settleHeld: state.consumptionHeld), [])
 
         case (.settling, .cancelledBeforeSend):
-            return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true), [])
+            return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true, settleHeld: state.consumptionHeld), [])
 
         case (.failed, .requestSettleRetry) where state.canRetrySettle:
             s.settleRetryArmed = true
@@ -624,7 +632,7 @@ public enum ShowerReducer {
             if s.closeSent { return failed(s, .closeUnconfirmed, review: true, device: .interrupted) }
             return back(s, to: s.closingFrom ?? .running, notice: nil)
         case .settling:
-            return failed(s, .settleUnconfirmed, review: true)
+            return failed(s, .settleUnconfirmed, review: true, settleHeld: s.consumptionHeld)
         }
     }
 
