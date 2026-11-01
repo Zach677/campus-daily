@@ -215,7 +215,7 @@ struct VerifiedShowerDevice {
         do {
             try await wait("exchange", seconds: 8) { written = true; peripheral.writeValue(data, for: write, type: .withResponse) }
         } catch {
-            if ShowerWriteDelivery.after(written:written, writeErrorDomain:writeErrorDomain) == .notSent {
+            if ShowerWriteDelivery.after(written:written, writeErrorDomain:writeErrorDomain, attErrorDomain:CBATTErrorDomain) == .notSent {
                 throw ShowerCommandNotSent(ShowerEngine.deviceError(error))
             }
             throw error

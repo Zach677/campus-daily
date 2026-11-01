@@ -6,25 +6,27 @@ import CoreTestSupport
 /// controller answered it with an ATT error. A link lost after the write (disconnect, timeout)
 /// may have come after the controller applied it.
 final class ShowerWriteDeliveryTests: XCTestCase {
+    /// CoreBluetooth's `CBATTErrorDomain`, which the app passes in.
+    static let att = "CBATTErrorDomain"
+
     func testAWriteThatNeverLeftWasNotSent() {
-        XCTAssertEqual(ShowerWriteDelivery.after(written: false, writeErrorDomain: nil), .notSent)
-        XCTAssertEqual(ShowerWriteDelivery.after(written: false, writeErrorDomain: "CBErrorDomain"), .notSent)
+        XCTAssertEqual(ShowerWriteDelivery.after(written: false, writeErrorDomain: nil, attErrorDomain: Self.att), .notSent)
+        XCTAssertEqual(ShowerWriteDelivery.after(written: false, writeErrorDomain: "CBErrorDomain", attErrorDomain: Self.att), .notSent)
     }
 
     func testAnATTErrorResponseIsARefusal() {
-        XCTAssertEqual(ShowerWriteDelivery.attErrorDomain, "CBATTErrorDomain")
-        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: "CBATTErrorDomain"), .notSent)
+        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: "CBATTErrorDomain", attErrorDomain: Self.att), .notSent)
     }
 
     func testALinkErrorAfterTheWriteMayHaveBeenSent() {
         // CBError.peripheralDisconnected, .connectionTimeout and the like.
-        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: "CBErrorDomain"), .maybeSent)
-        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: NSPOSIXErrorDomain), .maybeSent)
-        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: ""), .maybeSent)
+        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: "CBErrorDomain", attErrorDomain: Self.att), .maybeSent)
+        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: NSPOSIXErrorDomain, attErrorDomain: Self.att), .maybeSent)
+        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: "", attErrorDomain: Self.att), .maybeSent)
     }
 
     func testNoAnswerAfterTheWriteMayHaveBeenSent() {
-        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: nil), .maybeSent)
+        XCTAssertEqual(ShowerWriteDelivery.after(written: true, writeErrorDomain: nil, attErrorDomain: Self.att), .maybeSent)
     }
 
     /// What the engine makes of each: a refused authorization write is proven unwritten, a
@@ -34,7 +36,7 @@ final class ShowerWriteDeliveryTests: XCTestCase {
         let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "99栋 991")
         let auth = ShowerAuthorization(machineID: "11223344", payload: Data((0..<15).map { UInt8(0x30 + $0) }), authorizationID: "001122FF")
         func reply(_ domain: String) -> FakeShowerTransport.Reply {
-            ShowerWriteDelivery.after(written: true, writeErrorDomain: domain) == .notSent ? .notSent(.disconnected) : .fail(.disconnected)
+            ShowerWriteDelivery.after(written: true, writeErrorDomain: domain, attErrorDomain: Self.att) == .notSent ? .notSent(.disconnected) : .fail(.disconnected)
         }
         func engine() throws -> (ShowerEngine, FakeShowerTransport) {
             let t = FakeShowerTransport(), g = FakeGateway()
