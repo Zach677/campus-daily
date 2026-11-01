@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Core
 
 /// Resolves the money calls at call time, so the engine survives a profile import.
@@ -61,6 +62,10 @@ enum ShowerProfileFiles {
     @Published private(set) var profileLoaded = false
     @Published private(set) var busy = false {
         didSet { if oldValue, !busy, rebuildPending { rebuildPending = false; rebuildEngine() } }
+    }
+    /// Returns once nothing is in flight (at once when nothing is).
+    func untilIdle() async {
+        for await value in $busy.values where !value { return }
     }
     /// A rebuild (after a profile import, say) came while something was in flight: it runs once
     /// that is done, so 结束 isn't left without the new profile's gateway.
@@ -311,7 +316,8 @@ enum ShowerProfileFiles {
             throw failure
         } catch {
             storageBlocked = await engine.storageBlocked
-            throw Self.actionFailure(error)
+            // A start the engine turned down says what waits, from the record it holds now.
+            throw ShowerActionFailure.thrown(error, failure:await engine.state.failure, other:AppErrorText.text)
         }
     }
 
@@ -332,13 +338,6 @@ enum ShowerProfileFiles {
         if inspecting { return "正在核对水控，等一下再开始。" }
         if !state.canStart { return ShowerActionFailure.blockedText(state.failure) }
         return "现在开始不了，打开校日常看看。"
-    }
-
-    nonisolated static func actionFailure(_ error: Error) -> ShowerActionFailure {
-        if let e = error as? ShowerActionFailure { return e }
-        if let e = error as? ShowerEngineError { return ShowerActionFailure(e) }
-        if let e = error as? ShowerDeviceError { return ShowerActionFailure(e.userText) }
-        return ShowerActionFailure(AppErrorText.text(error))
     }
 
     /// Read-only state probe of the session's controller (Settings › 高级 › 检查水控状态).

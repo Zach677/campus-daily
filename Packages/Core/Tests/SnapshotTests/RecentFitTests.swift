@@ -49,6 +49,15 @@ final class RecentFitTests: XCTestCase {
         XCTAssertTrue(RecentFit.showsSection(viewport: 0, above: 0, rowHeights: rows), "not measured yet")
     }
 
+    /// The screen is measured but a row is not yet: no section until every row is, rather
+    /// than three rows that may not fit and then jump.
+    func testNoSectionUntilEveryRowIsMeasured() {
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [0, 0, 0, 0]), 0)
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [56, 56, 0, 56]), 0)
+        XCTAssertFalse(RecentFit.showsSection(viewport: 800, above: 400, rowHeights: [56, 0]))
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [56, 56]), 2, "all measured")
+    }
+
     /// The header counts against the screen too: it fits, but no row fits under it, so the
     /// section goes. `above` is where the section starts, over its header.
     func testHeaderThatFitsOverNoRowHidesTheSection() {
@@ -65,7 +74,6 @@ final class RecentFitTests: XCTestCase {
     func testThreeRowsBeforeAnythingIsMeasured() {
         XCTAssertEqual(RecentFit.minimumRows, 3)
         XCTAssertEqual(RecentFit.count(viewport: 0, above: 0, rowHeights: rows), 3)
-        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [0, 0, 0, 0]), 3, "rows not measured yet")
         XCTAssertEqual(RecentFit.count(viewport: 0, above: 0, rowHeights: [56, 56]), 2)
     }
 
