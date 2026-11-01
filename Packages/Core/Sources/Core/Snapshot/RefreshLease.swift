@@ -250,7 +250,8 @@ public struct LeaseOwnership: Sendable {
         return try lease.withOwnership(body)
     }
 
-    /// `write` for a password login's accepted portal token only: the lease may have run out
+    /// `write` for a password login's accepted portal token and the saved account's hold and
+    /// pause only: the lease may have run out
     /// while this owner is still the stored one (`RefreshLease.withOwnershipRetaking`). The owner
     /// check stays, and so does the cancellation check: a cancelled task (the widget past its
     /// deadline, about to be suspended) must not take the file lock, so nothing is written.

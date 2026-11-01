@@ -229,8 +229,11 @@ foreground, the BG task and the widget):**
    accepted it, only a definite refusal of the card login (`sessionExpired`, `rejected` with the
    service's own code, `badRequest`) pauses it; no network, a timeout, a school server error or a
    bare 401/403 is a failed read, and the next refresh exchanges the portal token that login
-   stored. That failure also puts the no-answer hold back (`unansweredAt`, in the shared account
-   item), so while the portal keeps failing neither process falls through to the password again.
+   stored. The no-answer hold written before the password went out (`unansweredAt`, in the
+   shared account item) is lifted only when the login ends with a card session; a failure, a
+   lost lease, a sign-out or a cancelled read after the accepted password all leave it, so while
+   the portal keeps failing neither process falls through to the password again. A card session
+   renewed through the portal token lifts any hold left from an outage.
    No loops, no retries beyond one.
 6. The live session (latest ciphertexts, `lastAliveAt`) is written back only while the stored one
    is still the session this read started from: a sign-out or a newer session from the other
@@ -293,8 +296,8 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   stays). A refresh's password accepted after the other process took its lease keeps the hold
   written before it went out, so it is not sent again for a while. Its portal token is still
   written when the lease only ran out (this process is still the stored owner: nobody else took
-  it, so nobody else wrote): that step takes the lease again, lifts the hold and keeps the owner
-  and compare checks. A cancelled task (the widget at its deadline) writes nothing, as for every
+  it, so nobody else wrote): that step takes the lease again and keeps the owner and compare
+  checks; the hold, the pause and lifting the hold are written the same way. A cancelled task (the widget at its deadline) writes nothing, as for every
   other write, and the hold stays. Only deletions skip the lease check: sign-out and
   reset remove the lease first (below), and the first 保存密码 off-write removes the password at
   once, its second write under the lease taking out one a refresh wrote back;
