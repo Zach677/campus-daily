@@ -122,19 +122,25 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// the write was refused): no water could run, so an idle controller at 结束 ends the
     /// record without a check. An unconfirmed write may have been applied and never sets it.
     public var authorizationNotWritten: Bool
+    /// Back on the timer from a close that most likely took (a probe found water running
+    /// afterwards, most likely someone else's): the next consumption frame is kept for the user
+    /// to settle with the two-tap retry, never settled by itself.
+    public var holdSettle: Bool
 
     public init(phase: ShowerPhase = .idle, machineID: String? = nil, peripheralID: String? = nil, startedAt: Date? = nil,
                 authorizeSent: Bool = false, authorizationID: String? = nil, closingFrom: ShowerPhase? = nil,
                 closeSent: Bool = false, consumption: String? = nil, receipt: ShowerReceipt? = nil,
                 lastReceipt: ShowerReceipt? = nil, failure: ShowerFailure? = nil, stateReviewRequired: Bool = false,
                 reviewing: Bool = false, settleRetryArmed: Bool = false, manualSettleAttempts: Int = 0,
-                endedAt: Date? = nil, notice: ShowerNotice? = nil, authorizationNotWritten: Bool = false) {
+                endedAt: Date? = nil, notice: ShowerNotice? = nil, authorizationNotWritten: Bool = false,
+                holdSettle: Bool = false) {
         self.phase = phase; self.machineID = machineID; self.peripheralID = peripheralID; self.startedAt = startedAt
         self.authorizeSent = authorizeSent; self.authorizationID = authorizationID; self.closingFrom = closingFrom
         self.closeSent = closeSent; self.consumption = consumption; self.receipt = receipt; self.lastReceipt = lastReceipt
         self.failure = failure; self.stateReviewRequired = stateReviewRequired; self.reviewing = reviewing
         self.settleRetryArmed = settleRetryArmed; self.manualSettleAttempts = manualSettleAttempts
         self.endedAt = endedAt; self.notice = notice; self.authorizationNotWritten = authorizationNotWritten
+        self.holdSettle = holdSettle
     }
 
     public static let idle = ShowerState()
@@ -220,6 +226,7 @@ extension ShowerState {
         endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
         notice = try? c.decodeIfPresent(ShowerNotice.self, forKey: .notice)
         authorizationNotWritten = try c.decodeIfPresent(Bool.self, forKey: .authorizationNotWritten) ?? false
+        holdSettle = try c.decodeIfPresent(Bool.self, forKey: .holdSettle) ?? false
     }
 }
 
@@ -405,12 +412,15 @@ public enum ShowerReducer {
             s.reviewing = false
             switch ShowerFrames.classify(frame) {
             case .active:
-                // The close didn't take: back to the timer, so 结束 sends it again.
+                // Back to the timer, so 结束 can send the close again. Our close most likely took
+                // (it was acknowledged, or answered with another identity), so this water is most
+                // likely someone else's: what the next close returns waits for the user.
                 s.phase = .running
                 s.failure = nil
                 s.closingFrom = nil
                 s.closeSent = false
                 s.stateReviewRequired = false
+                s.holdSettle = true
                 return (s, [.scheduleReminder, .releaseDevice])
             case .idle(let id) where id == state.machineID:
                 // Stopped: the close may have taken, or water stopped by itself. The check stands.
@@ -463,8 +473,13 @@ public enum ShowerReducer {
             guard ShowerFrames.identity(frame) == state.machineID else {
                 return (failed(s, .closeUnconfirmed, review: true, device: .malformedFrame), [.cancelReminder, .releaseDevice])
             }
-            s.phase = .settling
             s.consumption = HexCoding.upper(frame)
+            if state.holdSettle {
+                s.holdSettle = false
+                return (failed(s, .settleUnconfirmed, review: true),
+                        [.cancelReminder, .releaseDevice, .diagnostic("settle.heldAfterUnconfirmedClose")])
+            }
+            s.phase = .settling
             return (s, [.cancelReminder, .releaseDevice, .settle(frame: frame)])
 
         case (.closing, .closeFailed(let e)) where state.closeSent:

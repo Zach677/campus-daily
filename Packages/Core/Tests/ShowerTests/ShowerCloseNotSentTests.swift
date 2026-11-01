@@ -98,11 +98,14 @@ final class ShowerCloseNotSentTests: XCTestCase {
         XCTAssertEqual(try vault.showerState()?.phase, .running)
         XCTAssertNil(ShowerRecheckResult(after: s), "back on the timer")
 
+        // The close goes out again; what it returns waits for the user's settle.
         transport.script(.frame(FakeFrames.active), .frame(consumption))
         gateway.scriptSettle(.ok(receipt))
-        let done = try await e.finish(binding)
-        XCTAssertEqual(done.phase, .done)
-        XCTAssertEqual(gateway.settleFrames, [consumption])
+        let held = try await e.finish(binding)
+        XCTAssertEqual(transport.writes.filter { $0 == close }.count, 2)
+        XCTAssertEqual(held.phase, .failed)
+        XCTAssertTrue(held.canRetrySettle)
+        XCTAssertTrue(gateway.settleFrames.isEmpty)
     }
 
     func testAProbeThatFindsTheControllerStoppedKeepsTheCheck() async throws {
