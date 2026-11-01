@@ -27,6 +27,7 @@
 
 ### Fixed
 
+- Show a canteen meal paid with WeChat once, as a canteen expense tagged 「微信支付」, in 校园卡记录 and 最近, and count it once in the day's 花了 and in 昨天花了. The school sends it as two records with one voucher (WeChat's money in and the canteen's payment); they showed as 「−¥」 and an unsigned 「¥」 and hid the day's total. The money-in half is not shown or counted while its partner may still be on a page not read yet; once its day is read through, a lone one shows as money in with 「+¥」. Two alike meals with their own vouchers stay two.
 - Do not let pages waiting for the settings sheet to close replace a page opened after them directly.
 - Do not let a page asked for while the settings sheet was up (a tapped 「衣服洗好了」) come up after a later widget link (home, 学校账号, login), an account-switch alert or a reset.
 - Offer same-named electricity meters (one building name in two apartments) with their full location instead of identical names, and bind the chosen one at room level.

@@ -95,8 +95,10 @@ public enum RecentFeed {
         for (index, record) in (card ?? []).enumerated() {
             guard let moment = record.moment(calendar: calendar) else { continue }
             let kind = record.kind
+            let merchant = MerchantName.clean(record.title)
+            let detail = record.paidWithWeChat ? [merchant, "微信支付"].compactMap { $0 }.joined(separator: " · ") : merchant
             let item = RecentItem(id: "card-\(record.date)\(record.time)-\(record.amount.fen)-\(index)", kind: kind,
-                                  title: kind.title, date: moment, detail: MerchantName.clean(record.title),
+                                  title: kind.title, date: moment, detail: detail,
                                   amount: record.amount, source: .card, flow: record.flow)
             cardItems.append((item, false))
         }

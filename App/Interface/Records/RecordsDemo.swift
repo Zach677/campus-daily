@@ -5,7 +5,7 @@ import Core
 /// campusdaily://demo/records/<state> — 校园卡记录 over the home demo, on synthetic pages (nothing
 /// is read from the school):
 /// - `list`: four weeks of meals, showers, laundry and top-ups (the last three days the home
-///   demo's), then the end;
+///   demo's, with its lunch paid with WeChat), then the end;
 /// - `loading`: the first read never answers;
 /// - `more`: two days, then the older read never answers (the footer spinner);
 /// - `end`: today, then nothing older;
@@ -91,9 +91,20 @@ enum RecordsDemo: String {
             if back == 15 { rows.append(record(at(13, 5, back), "校园卡充值", "50.00", flag:nil)) }
         }
         // Each with a voucher, as the school gives them (synthetic: 99 and a zero-padded counter).
+        // A meal paid with WeChat comes as the school sends it: WeChat's money in, then the
+        // canteen's payment, under one voucher.
         return rows.filter { ($0.moment(calendar:school) ?? now) <= now.addingTimeInterval(-15 * 60) }
             .sorted { ($0.moment(calendar:school) ?? now) > ($1.moment(calendar:school) ?? now) }
-            .enumerated().map { i, row in var row = row; row.voucher = String(format:"99%018d", i + 1); return row }
+            .enumerated().flatMap { i, row -> [CardRecord] in
+                var row = row
+                row.voucher = String(format:"99%018d", i + 1)
+                guard row.paidWithWeChat else { return [row] }
+                row.paidWithWeChat = false
+                var wechat = row
+                wechat.title = "微信支付(手机)"
+                wechat.direction = "2"
+                return [wechat, row]
+            }
     }
 }
 #endif

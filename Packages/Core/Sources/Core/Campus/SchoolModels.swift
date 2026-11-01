@@ -254,30 +254,50 @@ public struct CardRecord: Sendable, Equatable, Codable, CustomReflectable {
     /// identifier kept in memory only: never encoded (so never stored, nor in the widget's
     /// snapshot), never printed or logged.
     public var voucher: String?
+    /// A canteen payment the school sent together with its WeChat money in (`WeChatPairs`): paid
+    /// with WeChat, so the card's balance did not change, but the meal was spent once.
+    public var paidWithWeChat = false
     public init(date: String, time: String, title: String, amount: Money, balanceAfter: Money?, direction: String?,
                 voucher: String? = nil) {
         self.date = date; self.time = time; self.title = title; self.amount = amount
         self.balanceAfter = balanceAfter; self.direction = direction; self.voucher = voucher
     }
 
-    private enum CodingKeys: String, CodingKey { case date, time, title, amount, balanceAfter, direction }
+    private enum CodingKeys: String, CodingKey { case date, time, title, amount, balanceAfter, direction, paidWithWeChat }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decode(String.self, forKey: .date)
+        time = try c.decode(String.self, forKey: .time)
+        title = try c.decode(String.self, forKey: .title)
+        amount = try c.decode(Money.self, forKey: .amount)
+        balanceAfter = try c.decodeIfPresent(Money.self, forKey: .balanceAfter)
+        direction = try c.decodeIfPresent(String.self, forKey: .direction)
+        // Records stored before the WeChat pairing have no tag.
+        paidWithWeChat = try c.decodeIfPresent(Bool.self, forKey: .paidWithWeChat) ?? false
+    }
 
     /// Printing a record (or a list of them) leaves the voucher out.
     public var customMirror: Mirror {
         Mirror(self, children: ["date": date, "time": time, "title": title, "amount": amount,
-                                "balanceAfter": balanceAfter as Any, "direction": direction as Any])
+                                "balanceAfter": balanceAfter as Any, "direction": direction as Any, "paidWithWeChat": paidWithWeChat])
     }
 
     /// The same school record read twice (a page moved under the list): with both vouchers, the
-    /// voucher with the day, time and amount (never the voucher alone); without, the day, time,
-    /// amount, place and balance after it. Without voucher and balance nothing tells two alike
+    /// voucher with the day, time, amount and direction flag (never the voucher alone; the two
+    /// halves of a WeChat-paid meal share all but the flag); without, the day, time, amount,
+    /// flag, place and balance after it. Without voucher and balance nothing tells two alike
     /// records from one read twice, so none is the same as another.
     public func isSameRecord(as other: CardRecord) -> Bool {
-        guard date == other.date, time == other.time, amount == other.amount else { return false }
+        guard date == other.date, time == other.time, amount == other.amount,
+              CardRecord.flag(direction) == CardRecord.flag(other.direction) else { return false }
         if let v = voucher, !v.isEmpty, let w = other.voucher, !w.isEmpty { return v == w }
         guard let balance = balanceAfter, let otherBalance = other.balanceAfter else { return false }
         return title == other.title && balance == otherBalance
     }
+
+    /// The direction flag without surrounding spaces; nil and "" are alike.
+    static func flag(_ direction: String?) -> String { direction?.trimmingCharacters(in: .whitespaces) ?? "" }
 
     /// Neither voucher nor balance: a repeat of it cannot be told from a second purchase.
     var cannotBeToldApart: Bool { (voucher ?? "").isEmpty && balanceAfter == nil }

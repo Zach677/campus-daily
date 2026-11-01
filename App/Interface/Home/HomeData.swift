@@ -390,6 +390,10 @@ enum HomeDemo: String, CaseIterable {
         // The demo laundry order, as the card has it a minute after it was paid.
         records.append(record(at:now.addingTimeInterval(-laundryAgo + 60), "洗衣", "4.00"))
         records.append(record(at:at(13, 5, daysBack:1), "校园卡充值", "50.00", flag:nil))
+        // A lunch paid with WeChat, as the home read keeps it once its two records are paired.
+        var wechat = record(at:at(11, 48, daysBack:1), "POS消费(示例饭堂POS)(示例饭堂POS)02档口示例盖饭", "16.00")
+        wechat.paidWithWeChat = true
+        records.append(wechat)
         records.sort { ($0.moment(calendar:school) ?? now) > ($1.moment(calendar:school) ?? now) }
         s.activity.succeed(CardActivity(records:records, begin:range.begin, end:range.end, complete:true), at:read)
         s.roomLabel = "3栋108"

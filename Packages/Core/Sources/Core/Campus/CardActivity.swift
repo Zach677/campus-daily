@@ -89,7 +89,11 @@ public enum CardRecordKind: String, Sendable, Codable, CaseIterable {
     /// Classifies by the record name (`transname`). Order matters: a hot-water name contains
     /// 「POS」 too, and paying for electricity or hot water from the card can be called
     /// 「电费充值」 or 「转入水控」, so those come before top-ups.
-    public static func of(_ record: CardRecord) -> CardRecordKind { of(name: record.title) }
+    /// WeChat's money in for a meal, left alone, is money in whatever its name (it can carry
+    /// 「POS消费」): a top-up.
+    public static func of(_ record: CardRecord) -> CardRecordKind {
+        record.isWeChatHalf ? .topUp : of(name: record.title)
+    }
 
     public static func of(name: String) -> CardRecordKind {
         let n = name.filter { !$0.isWhitespace }
@@ -122,13 +126,14 @@ public extension CardRecord {
     var kind: CardRecordKind { CardRecordKind.of(self) }
 
     /// Money in or out. Direction flag 「1」 is a payment from the card, whatever the name says
-    /// (「电费充值」 and 「转入水控」 take money out): out for a positive amount. Without a flag, a
-    /// name that says money came back or in (充值, 退款, 冲正, 补贴 …) is in, and any other
-    /// positive amount is out. Anything else (a negative amount, another flag) can't be told
-    /// apart and is `.unknown`.
+    /// (「电费充值」 and 「转入水控」 take money out): out for a positive amount. Otherwise WeChat's
+    /// money in for a meal (`isWeChatHalf`) and a name that says money came back or in (充值,
+    /// 退款, 冲正, 补贴 …) are in, and without a flag any other positive amount is out. Anything
+    /// else (a negative amount, another flag) can't be told apart and is `.unknown`.
     var flow: CardFlow {
-        let flag = direction?.trimmingCharacters(in: .whitespaces) ?? ""
+        let flag = CardRecord.flag(direction)
         if flag == "1" { return amount.fen >= 0 ? .moneyOut : .unknown }
+        if isWeChatHalf { return .moneyIn }
         let n = title.filter { !$0.isWhitespace }
         if CardFlow.incomeWords.contains(where: n.contains) { return .moneyIn }
         guard flag.isEmpty else { return .unknown }

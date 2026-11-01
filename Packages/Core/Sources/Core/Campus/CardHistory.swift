@@ -64,8 +64,9 @@ public struct CardHistory: Sendable, Equatable {
         self.today = calendar.startOfDay(for: now)
     }
 
-    /// Every record read so far, newest range first.
-    public var records: [CardRecord] { finished + current }
+    /// Every record read so far, newest range first; a meal paid with WeChat as one expense
+    /// (`WeChatPairs`), its WeChat half left out while its day may still bring the other.
+    public var records: [CardRecord] { WeChatPairs.merged(finished + current) { isRead(day: $0) } }
 
     /// Days back from today of the current range's first day: no further than `maxDaysBack`.
     private var rangeBegin: Int { min(rangeEnd + Self.rangeDays, Self.maxDaysBack) - 1 }
@@ -97,8 +98,14 @@ public struct CardHistory: Sendable, Equatable {
 
     /// Every record of `day` (`yyyyMMdd`) has been read, each once.
     public func isComplete(day: String) -> Bool {
-        if mayRepeat.contains(day) { return false }
-        if let readFrom, day >= readFrom { return !unsure.contains(day) }
+        if mayRepeat.contains(day) || unsure.contains(day) { return false }
+        return isRead(day: day)
+    }
+
+    /// No more records of `day` will come: its range was read to its end (even when the school
+    /// stopped paging early), or a later page of the current range is past it.
+    func isRead(day: String) -> Bool {
+        if let readFrom, day >= readFrom { return true }
         guard !reachedEnd, day >= self.day(back: rangeBegin), day <= self.day(back: rangeEnd),
               let cut = cutDay else { return false }
         if shortOfTotal { return shortCut.map { day > $0 } ?? false }
