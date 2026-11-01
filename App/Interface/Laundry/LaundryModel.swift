@@ -155,11 +155,15 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     /// With an order open (its login expired), only the account that placed it may sign in again:
     /// the new login is checked before anything is saved (`LaundryCheckout.allowsLogin`).
+    /// The order record can't be read (`storageBlocked`): the account that placed an open order
+    /// is unknown, so no login is accepted (fail closed).
     func login(mobile: String, code: String) async throws {
         guard mayLogin else { throw LaundryEngineError.busy }
+        guard !storageBlocked else { throw LaundryEngineError.storage }
         let device = device
         let signedIn = try await UjingClient(http:AppEnvironment.laundryHTTP, device:device).login(mobile:mobile, code:code)
         guard !loading, !checkoutBusy else { throw LaundryEngineError.busy }
+        guard !storageBlocked else { throw LaundryEngineError.storage }
         if let record = checkout, !record.allowsLogin(as:signedIn.id, stored:account?.account?.id) {
             throw LaundryLoginRefusal.otherAccount
         }
@@ -180,6 +184,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     static func loginText(_ error: Error) -> String {
         if error is LaundryLoginRefusal { return "还有一笔洗衣订单没结束，要用下单的那个 U净 账号登录。" }
+        if error is LaundryEngineError { return engineText(error) }
         return (error as? ServiceError)?.userMessage ?? "登录没完成，核对手机号和验证码再试。"
     }
 
