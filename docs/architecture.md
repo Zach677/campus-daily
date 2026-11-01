@@ -573,7 +573,7 @@ Rules:
   same QR gives the account's unfinished `orderId`; adopt it only if `order(id)` matches machine +
   program, was created within 2 min of the local confirmation and is not above the confirmed
   price. Never create a second one; if nothing matches the user checks the U净 app and clears
-  (a confirmed 「我在 U净 看过了，没有订单 · 清除」 on the laundry page). `createAt` is read as
+  (a confirmed 「没有订单，清除」 on the laundry page). `createAt` is read as
   ISO 8601 or as `yyyy-MM-dd HH:mm:ss` Beijing time (the captures only show ISO 8601; the real
   format is still to be checked on a device).
 - The record keeps the U净 account id it was created with. While it is open the login entry

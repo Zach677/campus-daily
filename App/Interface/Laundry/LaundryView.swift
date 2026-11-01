@@ -682,7 +682,7 @@ private struct LaundryResolveSheet: View {
             Text("先去 U净 App 的订单里看看。没有这笔订单再清除；有的话，在 U净 App 里处理。")
                 .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).lineSpacing(4)
                 .fixedSize(horizontal:false, vertical:true).padding(.top,14)
-            Button { submitted = true; confirm() } label: { DockPillLabel(title:"我在 U净 看过了，没有订单 · 清除", style:.destructive) }
+            Button { submitted = true; confirm() } label: { DockPillLabel(title:"没有订单，清除", style:.destructive) }
                 .buttonStyle(PressScaleStyle()).disabled(submitted)
                 .padding(.top,24)
                 .accessibilityIdentifier("confirmResolveLaundryOrder")

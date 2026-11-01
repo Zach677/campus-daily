@@ -30,10 +30,12 @@ enum ShowerPageText {
     static let recheck = "再查一次水控"
     static let rechecking = "正在查水控…"
     /// The unsure face of a settlement that failed: settle once more, after a second tap.
+    /// 我在学校记录里核对过了 is behind that face's 去核对.
+    static let settleRetryBody = "结算发出去了，但没等到学校回话。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
     static let settleRetry = "再结算一次"
     static let settleRetryConfirm = "确认再结算一次"
-    static let settleRetryNote = "先在学校记录里看这次扣了没有，没扣再点。"
-    static let settleRetryArmedNote = "再点一次就发出去。扣过了就别点，免得扣两次。"
+    static let settleRetryNote = "没扣才点。"
+    static let settleRetryArmedNote = "再点一下就发出去。扣过了别点，会扣两次。"
     static let bluetoothOff = "蓝牙关着，打开后再核对。"
     static func recheckResult(_ result: ShowerRecheckResult) -> String {
         switch result {
@@ -228,7 +230,7 @@ struct ShowerPageView: View {
             case .unsure:
                 icon("questionmark.circle", Theme.accentText)
                 title(ShowerPageText.unsure)
-                bodyText(ShowerPageText.unsureBody)
+                bodyText(flow.mayRetrySettle ? ShowerPageText.settleRetryBody : ShowerPageText.unsureBody)
                 // A close that may not have taken: water still running goes back to the timer.
                 if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
                 if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }

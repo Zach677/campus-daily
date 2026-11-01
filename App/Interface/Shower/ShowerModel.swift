@@ -154,7 +154,7 @@ enum ShowerProfileFiles {
         return ""
     }
     nonisolated static let platformMissingText = "这个版本没带热水配置，热水暂时用不了。"
-    static let recordUnreadableText = "热水记录读不出来，去学校记录核对。"
+    static let recordUnreadableText = "读不到热水记录。去学校的热水记录里看看这次扣了没有。"
 
     // MARK: Setup
 
