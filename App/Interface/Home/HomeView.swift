@@ -18,9 +18,10 @@ struct HomeView: View {
     @State var relogin = false
     @State var onboarding: OnboardingRequest?
     @State var scrolledPastDate = false
-    /// For 「最近」 (`recentCount`): the visible height, where its rows start, and each row's height.
+    /// For 「最近」 (`recentCount`): the visible height, where it starts, its header's height and each row's height.
     @State var homeViewport: CGFloat = 0
     @State var recentsTop: CGFloat = 0
+    @State var recentsHeaderHeight: CGFloat = 0
     @State var recentHeights: [RecentItem.ID: CGFloat] = [:]
     nonisolated static let contentSpace = "homeContent"
     /// Pages to push once the settings sheet has gone (`open(_:)`).
