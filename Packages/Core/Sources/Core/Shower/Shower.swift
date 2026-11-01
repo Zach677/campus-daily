@@ -403,11 +403,21 @@ public enum ShowerReducer {
             guard state.reviewing else { return (state, []) }
             s.reviewing = false
             switch ShowerFrames.classify(frame) {
+            case .active where state.authorizationNotWritten:
+                // Our authorization provably never reached it: the water is someone else's, and
+                // the probe says so instead of showing the timer as if it were ours.
+                s.stateReviewRequired = false
+                s.notice = .inUseByOther
+                return (s, [.releaseDevice])
             case .active:
-                // Our authorization provably never reached it: the water is someone else's.
-                if !state.authorizationNotWritten { s.phase = .running }
+                s.phase = .running
                 s.stateReviewRequired = false
                 return (s, [])
+            case .idle(let id) where id == state.machineID && state.authorizationNotWritten:
+                // The authorization never reached the controller and nothing runs: no water, no
+                // charge. The record ends as 结束 ends it.
+                return (state.idleAfter(receipt: state.lastReceipt),
+                        [.cancelReminder, .releaseDevice, .diagnostic("review.writeNeverApplied")])
             case .idle(let id) where id == state.machineID:
                 s.stateReviewRequired = true
                 s.notice = .notActive

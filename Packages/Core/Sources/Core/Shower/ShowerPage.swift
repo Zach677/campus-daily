@@ -438,6 +438,8 @@ public struct ShowerPageFlow: Sendable, Equatable {
             // Water runs again: the timer comes up, also when the probe ran from the 热水洗澡
             // screen (the only way back to the page from there).
             if flow.rechecking, f.page?.phase == .running { f.presented = true }
+            // Running, but on someone else's session: the timer says so above 结束.
+            if flow.rechecking, f.page?.phase == .running, f.record.notice == .inUseByOther { f.endFailed = .inUseByOther }
             return (f, [])
 
         case .reviewTapped:
