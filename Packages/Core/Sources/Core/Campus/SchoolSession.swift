@@ -598,9 +598,16 @@ public actor SchoolSession {
                     logExpired(.portal, obtainedAt: portalToken.obtainedAt, lastAliveAt: nil)
                 }
                 lastError = e2
-            } catch {
-                // Re-exchange failed for another reason: the ecykt login is still known dead.
+            } catch let e2 as ServiceError where Self.isDefiniteRefusal(e2) {
+                // The school turned the re-exchange down: the ecykt login is still known dead.
                 return .stopped(SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true))
+            } catch let e2 as ServiceError {
+                // No answer about the login (no network, a timeout, a school server error): a
+                // failed read. The next refresh goes through the same steps, the saved password included.
+                return .stopped(SchoolReading(outcome: .failed(e2), checkedAt: now(), reexchanged: true))
+            } catch {
+                // Cancelled (the widget at its deadline): nothing is known.
+                return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: true))
             }
         }
         switch await signInWithSavedPassword(previous: stored, seenPortalToken: seenPortalToken?.value,
@@ -611,6 +618,18 @@ public actor SchoolSession {
         case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: triedPortal))
         case .lostLease: return .stopped(SchoolReading(outcome: .leaseLost, checkedAt: now(), reexchanged: triedPortal))
         case .signedOut: return .stopped(SchoolReading(outcome: .notSignedIn, checkedAt: now()))
+        }
+    }
+
+    /// A definite answer from the school about a login: the credential is dead, the request
+    /// was turned down with the service's own code, or our parameters are wrong. No network, a
+    /// timeout, TLS, an unreadable reply or a bare HTTP status (a gateway's 5xx, say) is no
+    /// answer: trying again later may work.
+    static func isDefiniteRefusal(_ e: ServiceError) -> Bool {
+        switch e {
+        case .sessionExpired, .badRequest: return true
+        case .rejected(_, let code, _): return !code.hasPrefix("HTTP ")
+        case .offline, .timedOut, .tls, .malformed, .uncertain: return false
         }
     }
 
