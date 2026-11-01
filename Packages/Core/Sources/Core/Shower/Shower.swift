@@ -135,9 +135,12 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// the write was refused): no water could run, so an idle controller at 结束 ends the
     /// record without a check. An unconfirmed write may have been applied and never sets it.
     public var authorizationNotWritten: Bool
-    /// Back on the timer from a close that most likely took (a probe found water running
-    /// afterwards, most likely someone else's): the next consumption frame is kept for the user
-    /// to settle with the two-tap retry, never settled by itself.
+    /// The next consumption frame is kept for the user to settle with the two-tap retry, never
+    /// settled by itself, because the water it ends may not be ours: back on the timer from a
+    /// close that most likely took (a probe found water running afterwards, most likely someone
+    /// else's), or an end of a session the controller never acknowledged (`writePending`, also
+    /// when a probe then found water running). The frame names only the controller, so it can't
+    /// tell whose session it ended.
     public var holdSettle: Bool
     /// When the session came back to the timer from the unsure face (a probe found water
     /// running after an unconfirmed close). The 「还在计时」 reminder counts from here, also after
@@ -401,6 +404,9 @@ public enum ShowerReducer {
             s.phase = .closing
             s.closingFrom = state.phase
             s.closeSent = false
+            // The controller never acknowledged our authorization, so an A5 now may be someone
+            // else's water: the consumption frame can't say whose (see `ShowerFrames`).
+            if state.phase == .writePending { s.holdSettle = true }
             return (s, [.probe(peripheralID: state.peripheralID)])
 
         case (.writePending, .review), (.running, .review):
@@ -419,6 +425,9 @@ public enum ShowerReducer {
                 s.notice = .inUseByOther
                 return (s, [.releaseDevice])
             case .active:
+                // Back on the timer, but an A5 proves nothing about whose water it is: without
+                // the acknowledgement, the end still waits for the user.
+                if state.phase == .writePending { s.holdSettle = true }
                 s.phase = .running
                 s.stateReviewRequired = false
                 return (s, [])

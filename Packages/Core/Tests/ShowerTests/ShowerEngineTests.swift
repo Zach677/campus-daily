@@ -322,10 +322,12 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(d.phase, .running)
         XCTAssertTrue(d.writeUnconfirmed)
 
+        // The close is sent; without the acknowledgement the frame waits for the user.
         transport.script(.frame(FakeFrames.active), .frame(consumption))
         gateway.scriptSettle(.ok(receipt))
-        let done = try await e.finish(binding)
-        XCTAssertEqual(done.phase, .done)
+        let held = try await e.finish(binding)
+        XCTAssertEqual(held.failure?.reason, .settleUnconfirmed)
+        XCTAssertTrue(gateway.settleFrames.isEmpty)
         XCTAssertEqual(transport.writes.last, close)
     }
 

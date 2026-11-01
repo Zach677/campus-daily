@@ -537,6 +537,17 @@ Rules:
   write was taken is `failed(closeUnconfirmed)`; from there a read-only review probe is
   allowed (the unsure face's 「再查一次水控」, Settings' 检查水控状态): `0xA5` returns to
   `running` (the close can be sent again), anything else keeps the check.
+- Whose session a close ended: the consumption frame is `55`, the machine id (4 bytes) and 15
+  bytes whose layout is not known; nothing in it is known to name the authorization or the
+  student, so it can't be checked against `authorizationID`. `0xA5` only says water runs, not
+  whose. The one reply tied to our authorization is the write's ack (`0xAA`, 9 bytes), so the
+  consumption frame is settled by itself only for a session that got it (`running` from the
+  ack). Without it (`writePending`, also when a probe later found `0xA5`), and after a probe
+  found water running behind an unconfirmed close, the frame is kept (`holdSettle`):
+  `failed(settleUnconfirmed)` with the settlement not sent, settled by 「再结算一次」's two taps
+  after the user looked. An acknowledged session the controller ended by itself, followed by
+  someone else's on the same controller before 结束, is not caught: nothing the controller
+  sends tells them apart.
 - `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
   needs a second confirmation and is recorded in diagnostics. It is 「再结算一次」 on the unsure
   face of a settlement that failed with its consumption frame kept: the first tap arms it, the

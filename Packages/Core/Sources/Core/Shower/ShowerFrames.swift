@@ -9,7 +9,9 @@ import Foundation
 /// - Authorization: write the 15-byte `systemData` from the authorize reply; the controller
 ///   acks with a 9-byte frame starting `AA`.
 /// - Close: write `AC <authorizationId XOR 55>` (5 bytes); the controller answers with a
-///   20-byte `55` consumption frame carrying its identity, which is what gets settled.
+///   20-byte `55` consumption frame, which is what gets settled: `55`, the machine id (4 bytes),
+///   then 15 bytes whose layout is not known. Nothing in it is known to name the authorization
+///   or the student, so it shows which controller answered, not whose session ended.
 public enum ShowerFrames {
     public static let serviceUUID = "FFE0"
     public static let notifyUUID = "FFE1"
