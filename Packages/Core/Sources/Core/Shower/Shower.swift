@@ -453,9 +453,9 @@ public enum ShowerReducer {
                 s.phase = .running
                 s.stateReviewRequired = false
                 return (s, [])
-            case .idle(let id) where id == state.machineID && state.authorizationNotWritten:
+            case .idle(let id) where id == state.machineID && state.phase == .writePending && state.authorizationNotWritten:
                 // The authorization never reached the controller and nothing runs: no water, no
-                // charge. The record ends as 结束 ends it.
+                // charge. The record ends as 结束 ends it (which checks `from == .writePending`).
                 return (state.idleAfter(receipt: state.lastReceipt),
                         [.cancelReminder, .releaseDevice, .diagnostic("review.writeNeverApplied")])
             case .idle(let id) where id == state.machineID:
