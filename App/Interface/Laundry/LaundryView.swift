@@ -84,13 +84,7 @@ struct LaundryDetail: View {
             do { try await Task.sleep(for:.seconds(seconds + 1)) } catch { return }
             await laundry.refreshOrder()
         }
-        // Running: read the order once shortly after the expected end (read only).
-        .task(id:runEnd(phase)) {
-            guard !isDemo, let end = runEnd(phase) else { return }
-            let wait = max(0, end.timeIntervalSinceNow) + 60
-            do { try await Task.sleep(for:.seconds(wait)) } catch { return }
-            await laundry.refreshOrder()
-        }
+        // Running: the model reads the order a minute after the expected end (`syncActivity`).
         .sheet(item:$sheet) { item in sheetView(item, facts:facts).typesettingLanguage(Theme.typesetting) }
         // A lookup after the sheet came up (back from the U净 app) found something other than
         // no order: the clear is no longer allowed, so its sheet goes instead of doing nothing.
@@ -115,11 +109,6 @@ struct LaundryDetail: View {
         case .empty, .inUse, .unavailable: return false
         default: return true
         }
-    }
-
-    private func runEnd(_ phase: LaundryFacts.Phase) -> Date? {
-        if case .running(let end) = phase { return end }
-        return nil
     }
 
     // MARK: Hero
