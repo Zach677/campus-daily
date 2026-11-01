@@ -88,4 +88,6 @@ public enum PreferenceKey {
     public static let showerNeedsResidenceReview = prefix + "water.needsResidenceReview"
     /// Bool, absent = on (school laundry shown).
     public static let schoolLaundry = prefix + "laundry.school"
+    /// When the next U净 SMS code may be asked for (a time only; one account at a time).
+    public static let ujingSMSCooldown = prefix + "ujing.smsCooldown"
 }
