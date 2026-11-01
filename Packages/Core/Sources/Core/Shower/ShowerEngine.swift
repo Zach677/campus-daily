@@ -218,6 +218,14 @@ public actor ShowerEngine {
         return try await run(b, .confirmSettleRetry)
     }
 
+    /// The page was left with the retry armed: its first tap no longer counts.
+    @discardableResult
+    public func disarmSettleRetry() async throws -> ShowerState {
+        try guardIdle()
+        guard state.settleRetryArmed else { return state }
+        return try await run(nil, .disarmSettleRetry)
+    }
+
     /// After the user checked the official hot-water record.
     @discardableResult
     public func resolveManually() async throws -> ShowerState {

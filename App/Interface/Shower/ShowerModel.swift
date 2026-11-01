@@ -363,6 +363,11 @@ enum ShowerProfileFiles {
         if let result = try? await engine.confirmSettleRetry(binding) { apply(result) }
     }
 
+    func disarmSettleRetry() async {
+        guard let engine else { return }
+        if let result = try? await engine.disarmSettleRetry() { apply(result) }
+    }
+
     func dismiss(only record: ShowerState? = nil) async {
         guard let engine, !busy else { return }
         if let result = try? await engine.dismiss(only:record) { apply(result) }

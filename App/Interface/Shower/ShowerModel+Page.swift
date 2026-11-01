@@ -59,6 +59,12 @@ extension ShowerModel {
             Task { await requestSettleRetry() }
         case .confirmSettleRetry:
             Task { await confirmSettleRetry() }
+        case .disarmSettleRetry:
+            Task {
+                // Taken back once whatever runs now (a retry's first tap, say) is done.
+                while busy { try? await Task.sleep(for:.milliseconds(50)) }
+                await disarmSettleRetry()
+            }
         }
     }
 

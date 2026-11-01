@@ -239,6 +239,8 @@ public enum ShowerPageEffect: Sendable, Equatable {
     case requestSettleRetry
     /// Second tap: settle once more (`ShowerEngine.confirmSettleRetry`).
     case confirmSettleRetry
+    /// The page went away with the first tap in: take it back (`ShowerEngine.disarmSettleRetry`).
+    case disarmSettleRetry
 }
 
 /// The page's own state: whether it is up, and the taps still waiting on the engine.
@@ -309,6 +311,13 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var settleRetryArmed: Bool { mayRetrySettle && record.settleRetryArmed }
 
     public static func reduce(_ flow: ShowerPageFlow, _ event: ShowerPageEvent) -> (ShowerPageFlow, [ShowerPageEffect]) {
+        var (next, effects) = step(flow, event)
+        // Leaving the page with 再结算一次 armed: coming back later must take two taps again.
+        if flow.presented, !next.presented, next.record.settleRetryArmed { effects.append(.disarmSettleRetry) }
+        return (next, effects)
+    }
+
+    private static func step(_ flow: ShowerPageFlow, _ event: ShowerPageEvent) -> (ShowerPageFlow, [ShowerPageEffect]) {
         var f = flow
         switch event {
         case .startTapped:

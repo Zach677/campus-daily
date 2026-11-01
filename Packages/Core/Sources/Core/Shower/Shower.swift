@@ -265,6 +265,8 @@ public enum ShowerEvent: Sendable, Equatable {
     case cancelledBeforeSend
     case requestSettleRetry
     case confirmSettleRetry
+    /// The page with the armed retry was left: the next tap only arms it again.
+    case disarmSettleRetry
     case resolveManually
     case dismiss
 }
@@ -530,6 +532,10 @@ public enum ShowerReducer {
             s.manualSettleAttempts += 1
             s.failure = nil
             return (s, [.diagnostic("settle.manualRetry#\(s.manualSettleAttempts)"), .settle(frame: frame)])
+
+        case (.failed, .disarmSettleRetry) where state.settleRetryArmed:
+            s.settleRetryArmed = false
+            return (s, [])
 
         // MARK: leaving
         case (_, .resolveManually) where state.canResolveManually:
