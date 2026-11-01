@@ -544,6 +544,9 @@ public actor SchoolSession {
                     firstError = e2
                 } catch let e2 as ServiceError {
                     return SchoolReading(outcome: .failed(e2), checkedAt: now())
+                } catch is CancellationError {
+                    // Cancelled (the widget at its deadline): nothing is known.
+                    return SchoolReading(outcome: .interrupted, checkedAt: now())
                 } catch {
                     return SchoolReading(outcome: .failed(.offline), checkedAt: now())
                 }
