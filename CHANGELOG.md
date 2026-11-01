@@ -66,9 +66,19 @@
 - The reminder prompt no longer shows (and gets used up) while the school sign-in sheet is open.
 - Keep reading the dorm's electricity after the school replaced its meter: when the room lists one meter under the room's name, it is read and the binding follows it, instead of showing no reading until the meter was picked again by hand.
 - Renew an expired card session once, as home does (portal token, else the saved password), before recharge or the hot-water setup asks to sign in again.
+- Keep the consumption of a shower the controller never acknowledged for the two-tap 「再结算一次」 instead of settling it by itself, since the controller's reading does not say whose water it was; a held settlement stays held when its retry is refused or gets no answer, and its face opens with 「水控没确认这次是你开的水，读到的用水可能不是你的。」.
+- Count only the platform's two known refusal codes (4002 and -301) as an authorize that issued nothing; any other code keeps the answer with the record and blocks the next start until the check.
+- Do not fail 结束 or a retry at once with 「和水控的连接断了」 because of a notification the controller sent between operations, or because the previous link's disconnect arrived late.
+- Siri, Shortcuts and the Live Activity say why a start or an end did not go through (for example 「蓝牙没开，打开后再试。」 or 「这次没能结束，打开校日常再试一次。」), and the start no longer says the water is ready when the controller did not confirm it.
+- Let sign-in, recharge and the shower hand-off run in a build signed without the App Group instead of failing as busy, and take the App Group, keychain groups and background refresh id from `APP_BUNDLE_IDENTIFIER`; the default bundle id keeps the values earlier builds used.
+- Scan a picked washer photo off the main thread, say 「照片里没找到二维码，换一张拍清楚的。」 when it has no code, and give each refusal on the common-washer page its own text instead of 「机器名称最多 40 个字。」.
+- Forget the last laundry order's result and note when the U净 account that placed it signs out or another account signs in.
+- Read the laundry order as soon as the Alipay SDK reports back, also when Alipay pays in its own web page, instead of after 10 s.
+- Hold home to the screen below the accessibility text sizes, and show no 最近 rows when not even one fits, instead of three rows that made home scroll.
 
 ### Removed
 
+- Remove 「导出热水诊断」 (Settings › 高级 › 热水排查) and every diagnostic record behind it: the hot-water event file, the school credential-lifetime lines in the shared Keychain and the Bluetooth scan note. The app deletes what older builds left at launch.
 - Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `Android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
 - Remove the process documents, promotional images and the old project generator; their history stays in Git.
 
