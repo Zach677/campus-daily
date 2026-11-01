@@ -73,3 +73,53 @@ final class ShowerSettleRetryPageTests: XCTestCase {
         XCTAssertFalse(flow.mayRetrySettle)
     }
 }
+
+/// The unsure face says what became of the settlement it offers to send again.
+final class ShowerSettleRetryCauseTests: XCTestCase {
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    let frame = FakeFrames.identity("11223344", tail: 9)
+
+    func cause(_ record: ShowerState) -> ShowerSettleRetryCause? { ShowerPageFlow(record: record, presented: true).settleRetryCause }
+
+    var settling: ShowerState {
+        ShowerState(phase: .settling, machineID: "11223344", startedAt: t0, consumption: HexCoding.upper(frame))
+    }
+
+    func testTheSchoolRefusedIt() {
+        let refused = ShowerReducer.reduce(settling, .settleFailed(.rejected(.lxt6, code: "1", message: "x"))).0
+        XCTAssertEqual(refused.failure?.reason, .settleRefused)
+        XCTAssertEqual(cause(refused), .refused)
+    }
+
+    func testItWentOutWithNoAnswer() {
+        XCTAssertEqual(cause(ShowerReducer.reduce(settling, .settleFailed(.uncertain(.lxt6))).0), .noAnswer)
+        // The app stopped while it was settling: it may have left.
+        XCTAssertEqual(cause(ShowerReducer.restore(settling)), .noAnswer)
+    }
+
+    func testItNeverLeft() {
+        let cancelled = ShowerReducer.reduce(settling, .cancelledBeforeSend).0
+        XCTAssertEqual(cancelled.failure?.reason, .settleUnconfirmed)
+        XCTAssertEqual(cause(cancelled), .notSent)
+        XCTAssertEqual(cause(ShowerReducer.restore(cancelled)), .notSent, "kept across a relaunch")
+
+        // Held after an unconfirmed close: kept for the user, never sent.
+        var closing = ShowerState(phase: .closing, machineID: "11223344", startedAt: t0, authorizationID: "001122FF",
+                                  closingFrom: .running, closeSent: true)
+        closing.holdSettle = true
+        XCTAssertEqual(cause(ShowerReducer.reduce(closing, .closeReplied(frame)).0), .notSent)
+    }
+
+    func testNoCauseWithoutTheRetry() {
+        let close = ShowerState(phase: .failed, machineID: "11223344", startedAt: t0,
+                                failure: ShowerFailure(reason: .closeUnconfirmed, needsReview: true))
+        XCTAssertNil(cause(close))
+    }
+
+    func testOlderRecordsReadAsNoAnswer() throws {
+        let s = try JSONDecoder().decode(ShowerState.self, from: Data("""
+        {"phase":"failed","machineID":"11223344","consumption":"\(HexCoding.upper(frame))","failure":{"reason":"settleUnconfirmed","needsReview":true}}
+        """.utf8))
+        XCTAssertEqual(cause(s), .noAnswer, "may have left")
+    }
+}

@@ -32,9 +32,15 @@ enum ShowerPageText {
     /// The unsure face of a settlement that failed: settle once more, after a second tap.
     /// 我在学校记录里核对过了 is behind that face's 去核对.
     static let settleRetryBody = "结算发出去了，但没等到学校回话。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
+    /// The school answered the settlement with a no.
+    static let settleRefusedBody = "学校拒绝了这次结算。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
+    /// The settlement never left.
+    static let settleNotSentBody = "结算没发出去，学校那边应该还没扣钱。再结算一次就行。"
     static func settleRetryBody(_ cause: ShowerSettleRetryCause) -> String {
         switch cause {
-        case .refused, .notSent, .noAnswer: return settleRetryBody
+        case .refused: return settleRefusedBody
+        case .notSent: return settleNotSentBody
+        case .noAnswer: return settleRetryBody
         }
     }
     static let settleRetry = "再结算一次"

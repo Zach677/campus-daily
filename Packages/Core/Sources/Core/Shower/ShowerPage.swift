@@ -301,8 +301,9 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var mayRetrySettle: Bool { page?.phase == .unsure && record.canRetrySettle }
     /// Why the unsure face offers 再结算一次; nil when it doesn't.
     public var settleRetryCause: ShowerSettleRetryCause? {
-        guard mayRetrySettle else { return nil }
-        return .noAnswer
+        guard mayRetrySettle, let failure = record.failure else { return nil }
+        if failure.reason == .settleRefused { return .refused }
+        return failure.settleNotSent ? .notSent : .noAnswer
     }
     /// The first tap of 再结算一次 is in: the next one sends it.
     public var settleRetryArmed: Bool { mayRetrySettle && record.settleRetryArmed }

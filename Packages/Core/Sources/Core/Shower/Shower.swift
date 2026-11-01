@@ -58,8 +58,13 @@ public struct ShowerFailure: Sendable, Codable, Equatable {
     public var needsReview: Bool
     public var error: ServiceError?
     public var deviceError: ShowerDeviceError?
-    public init(reason: ShowerFailureReason, needsReview: Bool, error: ServiceError? = nil, deviceError: ShowerDeviceError? = nil) {
+    /// The settlement provably never left (cancelled before it, or held for the user): the
+    /// school can't have charged it. False when it may have left.
+    public var settleNotSent: Bool
+    public init(reason: ShowerFailureReason, needsReview: Bool, error: ServiceError? = nil, deviceError: ShowerDeviceError? = nil,
+                settleNotSent: Bool = false) {
         self.reason = reason; self.needsReview = needsReview; self.error = error; self.deviceError = deviceError
+        self.settleNotSent = settleNotSent
     }
 
     /// Written by another build: without `needsReview` it is kept for a check; an error this
@@ -70,6 +75,7 @@ public struct ShowerFailure: Sendable, Codable, Equatable {
         needsReview = try c.decodeIfPresent(Bool.self, forKey: .needsReview) ?? true
         error = try? c.decodeIfPresent(ServiceError.self, forKey: .error)
         deviceError = try? c.decodeIfPresent(ShowerDeviceError.self, forKey: .deviceError)
+        settleNotSent = try c.decodeIfPresent(Bool.self, forKey: .settleNotSent) ?? false
     }
 }
 
@@ -488,7 +494,7 @@ public enum ShowerReducer {
             s.consumption = HexCoding.upper(frame)
             if state.holdSettle {
                 s.holdSettle = false
-                return (failed(s, .settleUnconfirmed, review: true),
+                return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true),
                         [.cancelReminder, .releaseDevice, .diagnostic("settle.heldAfterUnconfirmedClose")])
             }
             s.phase = .settling
@@ -511,7 +517,7 @@ public enum ShowerReducer {
             return (failed(s, reason, review: true, error: e), [])
 
         case (.settling, .cancelledBeforeSend):
-            return (failed(s, .settleUnconfirmed, review: true), [])
+            return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true), [])
 
         case (.failed, .requestSettleRetry) where state.canRetrySettle:
             s.settleRetryArmed = true
@@ -570,12 +576,14 @@ public enum ShowerReducer {
     }
 
     private static func failed(_ s: ShowerState, _ reason: ShowerFailureReason, review: Bool,
-                               error: ServiceError? = nil, device: ShowerDeviceError? = nil) -> ShowerState {
+                               error: ServiceError? = nil, device: ShowerDeviceError? = nil,
+                               settleNotSent: Bool = false) -> ShowerState {
         var f = s
         f.phase = .failed
         f.reviewing = false
         f.settleRetryArmed = false
-        f.failure = ShowerFailure(reason: reason, needsReview: review, error: error, deviceError: device)
+        f.failure = ShowerFailure(reason: reason, needsReview: review, error: error, deviceError: device,
+                                  settleNotSent: settleNotSent)
         return f
     }
 

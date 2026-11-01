@@ -127,7 +127,8 @@ final class ShowerStateDecodingTests: XCTestCase {
         let s = ShowerState(phase: .failed, machineID: "11223344", peripheralID: "P", startedAt: t0, authorizeSent: true,
                             authorizationID: "001122FF", closingFrom: .writePending, closeSent: true, consumption: "55AA",
                             receipt: ShowerReceipt(amount: Money(fen: 1)), lastReceipt: ShowerReceipt(amount: Money(fen: 2)),
-                            failure: ShowerFailure(reason: .settleRefused, needsReview: true, error: .timedOut, deviceError: .busy),
+                            failure: ShowerFailure(reason: .settleRefused, needsReview: true, error: .timedOut, deviceError: .busy,
+                                                   settleNotSent: true),
                             stateReviewRequired: true, reviewing: true, settleRetryArmed: true, manualSettleAttempts: 3,
                             endedAt: t0.addingTimeInterval(60), notice: .device(.timedOut), authorizationNotWritten: true,
                             holdSettle: true)
