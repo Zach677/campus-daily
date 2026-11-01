@@ -11,6 +11,8 @@ struct WasherSetupView: View {
     @State private var alias = ""
     @State private var issue: String?
     @State private var photoBusy = false
+    /// The picked photo being read; cancelled when the page goes, so a late result is dropped.
+    @State private var photoTask: Task<Void, Never>?
     @State private var login = false
     var body: some View {
         Form {
@@ -72,16 +74,22 @@ struct WasherSetupView: View {
             .onChange(of:photo) { _, item in
                 guard let item else { return }
                 photoBusy = true; issue = nil
-                Task {
+                photoTask?.cancel()
+                photoTask = Task {
                     defer { photoBusy = false; photo = nil }
                     do {
                         guard let data = try await item.loadTransferable(type:Data.self), data.count <= 20_000_000 else { throw CocoaError(.fileReadCorruptFile) }
-                        let codes = WasherPhotoCodes(payloads:try await Self.qrPayloads(in:data))
+                        let payloads = try await Self.qrPayloads(in:data)
+                        // Left the page while the photo was read: the machine is not looked up.
+                        try Task.checkCancellation()
+                        let codes = WasherPhotoCodes(payloads:payloads)
                         guard case .one(let text) = codes else { issue = codes.message; return }
                         resolve(text)
+                    } catch is CancellationError {
                     } catch { issue = "没认出这台洗衣机，换个角度再扫一次。" }
                 }
             }
+            .onDisappear { photoTask?.cancel(); photoTask = nil }
     }
     private static func text(_ error: Error) -> String {
         (error as? WasherSetupRefusal)?.message ?? AppErrorText.text(error)
