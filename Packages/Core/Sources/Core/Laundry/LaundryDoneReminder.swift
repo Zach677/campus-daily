@@ -13,8 +13,7 @@ public enum LaundryDoneReminder {
     public enum Step: Sendable, Equatable {
         /// Remind at the plan's end (a request already set for it stays, see `isScheduled`).
         case schedule(Plan)
-        /// Whatever is set stays: the result isn't confirmed, the end isn't known yet, or a
-        /// request for this order is set already.
+        /// Whatever is set stays: the result isn't confirmed, or the end isn't known yet.
         case keep
         /// Nothing to remind: done, cancelled, failed to start, unpaid or no order.
         case cancel
@@ -56,7 +55,9 @@ public enum LaundryDoneReminder {
 
     private static func waiting(_ c: LaundryCheckout, scheduled: Plan?) -> Step {
         guard let id = c.orderID, let end = LaundryFollowUp.expectedEnd(c) else { return .keep }
-        if scheduled?.orderID == id { return .keep }
+        // The request set for this order (maybe an exact end) stays, and the app keeps it as the
+        // plan to add again after a resync.
+        if let scheduled, scheduled.orderID == id { return .schedule(scheduled) }
         return .schedule(Plan(orderID: id, end: end))
     }
 }

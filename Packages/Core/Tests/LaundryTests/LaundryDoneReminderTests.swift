@@ -72,4 +72,18 @@ final class LaundryDoneReminderTests: XCTestCase {
         let restored = LaundryReducer.restore(failed.persistable)
         XCTAssertEqual(D.step(restored, scheduled: fallback, now: seen.addingTimeInterval(120)), .cancel)
     }
+
+    /// A request for this order is set already (after a relaunch, say): it stays as it is, and the
+    /// app still knows it, so it can add it again after notifications are allowed again.
+    func testAlreadySetRequestIsKeptAndKnown() {
+        let s = paid(at: seen)
+        XCTAssertEqual(D.step(s, scheduled: fallback, now: seen.addingTimeInterval(90)), .schedule(fallback))
+        // An exact end set by an earlier washing read isn't moved back to the fallback.
+        let exact = D.Plan(orderID: L.orderID, end: seen.addingTimeInterval(50 * 60))
+        XCTAssertEqual(D.step(s, scheduled: exact, now: seen.addingTimeInterval(90)), .schedule(exact))
+        XCTAssertTrue(D.isScheduled(exact, as: exact))
+        // A request left from another order is replaced.
+        let old = D.Plan(orderID: "OLDORDER1", end: seen)
+        XCTAssertEqual(D.step(s, scheduled: old, now: seen.addingTimeInterval(90)), .schedule(fallback))
+    }
 }
