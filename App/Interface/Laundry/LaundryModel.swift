@@ -11,13 +11,6 @@ struct SavedWasher: Codable, Identifiable, Equatable {
     var savedAt = Date()
 }
 
-private struct LaundryEngineHooks: LaundryHooks {
-    // The Live Activity and the done reminder follow `LaundryFacts` (LaundryModel.syncActivity).
-    func updateActivity(_ plan: LaundryActivityPlan) async {}
-    func endActivity() async {}
-    func diagnostic(_ event: String) async {}
-}
-
 /// UI state over `UjingClient` (login, machine reads) and `LaundryEngine` (order + payment).
 /// No ordering or payment rules here: the engine decides what may be sent.
 /// Another U净 account tried to sign in while an order placed with the stored one is open.
@@ -117,7 +110,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         observer?.cancel(); observer = nil; engine = nil
         do {
             let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(returned:{ [weak self] in Task { await self?.refreshOrder() } }),
-                                           hooks:LaundryEngineHooks(), accountID:account?.account?.id,
+                                           accountID:account?.account?.id,
                                            resetMarker:AppResetter.marker)
             self.engine = engine
             observer = Task { [weak self] in

@@ -76,7 +76,6 @@ public extension SecureStore {
 public enum PreferenceKey {
     public static let prefix = "xrc."
     public static func reminder(_ name: String) -> String { prefix + "reminder." + name }
-    public static let laundryAckFailedOrder = prefix + "laundry.ackFailedOrder"
     public static let showerNeedsResidenceReview = prefix + "water.needsResidenceReview"
     /// Bool, absent = on (school laundry shown).
     public static let schoolLaundry = prefix + "laundry.school"

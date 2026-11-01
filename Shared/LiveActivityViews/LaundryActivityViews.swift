@@ -12,7 +12,6 @@ enum LaundryActivityStyle {
 }
 
 extension LaundryActivityAttributes.ContentState {
-    var minutes: Int { max(0, minutesLeft) }
     var interval: ClosedRange<Date> { min(startedAt, endsAt)...endsAt }
     /// Done rendering: the app said so, the system marked the content stale (staleDate = end),
     /// or the end has passed without an update.

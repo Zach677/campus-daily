@@ -38,10 +38,9 @@ import Core
     }
 
     private func startOrUpdate(orderId: String, end: Date, facts: LaundryFacts, now: Date) {
-        let minutes = max(0, Int((end.timeIntervalSince(now) / 60).rounded(.up)))
         if let current = activity, current.attributes.orderId == orderId {
             var state = current.content.state
-            state.phase = .running; state.endsAt = end; state.minutesLeft = minutes
+            state.phase = .running; state.endsAt = end
             if state.startedAt > end { state.startedAt = end }
             guard state != current.content.state else { return }
             Task { await Self.updateActivity(current.id, ActivityContent(state:state, staleDate:end)) }
@@ -55,7 +54,7 @@ import Core
         let attributes = LaundryActivityAttributes(orderId:orderId,
                                                    machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机",
                                                    program:record.programName)
-        let state = State(phase:.running, startedAt:min(started, now), endsAt:end, minutesLeft:minutes)
+        let state = State(phase:.running, startedAt:min(started, now), endsAt:end)
         activity = try? Activity.request(attributes:attributes,
                                          content:ActivityContent(state:state, staleDate:end),
                                          pushType:nil)
@@ -67,7 +66,7 @@ import Core
         activity = nil
         let now = Date()
         var state = current.content.state
-        state.phase = .done; state.minutesLeft = 0; state.endsAt = min(state.endsAt, now)
+        state.phase = .done; state.endsAt = min(state.endsAt, now)
         if state.startedAt > state.endsAt { state.startedAt = state.endsAt }
         Task { await Self.endActivity(current.id, ActivityContent(state:state, staleDate:now), .after(now.addingTimeInterval(5 * 60))) }
     }
@@ -118,7 +117,7 @@ import Core
         default:
             endNow()
             let end = now.addingTimeInterval(18 * 60)
-            let state = State(phase:.running, startedAt:end.addingTimeInterval(-45 * 60), endsAt:end, minutesLeft:18)
+            let state = State(phase:.running, startedAt:end.addingTimeInterval(-45 * 60), endsAt:end)
             do {
                 activity = try Activity.request(attributes:.init(orderId:"demo", machine:"3 号机", program:"标准洗"),
                                                 content:ActivityContent(state:state, staleDate:end),

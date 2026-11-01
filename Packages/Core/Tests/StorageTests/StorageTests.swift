@@ -107,7 +107,6 @@ final class KeychainStoreTests: XCTestCase {
                         .sharedCredentialLog, .sharedResetMarker])
         XCTAssertEqual(StoreKey.schoolPassword.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(PreferenceKey.reminder("card"), "xrc.reminder.card")
-        XCTAssertEqual(PreferenceKey.laundryAckFailedOrder, "xrc.laundry.ackFailedOrder")
         XCTAssertEqual(SharedSnapshotStore.widgetKind, "XiaoRiChangBalances")
     }
 

@@ -17,7 +17,7 @@ struct LaundryActivityPreview: View {
     private var state: LaundryActivityAttributes.ContentState {
         let end = Date().addingTimeInterval(18 * 60)
         return .init(phase:kind == .done ? .done : .running, startedAt:end.addingTimeInterval(-45 * 60),
-                     endsAt:end, minutesLeft:kind == .done ? 0 : 18)
+                     endsAt:end)
     }
     var body: some View {
         VStack(spacing:14) {

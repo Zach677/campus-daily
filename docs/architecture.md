@@ -734,8 +734,8 @@ widget leaves every refresh to the app, so the two never read at once. Live Acti
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.
 
-UserDefaults keys: old `reminder.*`, `laundryAckFailedOrder`, `water.needsResidenceReview`
-become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidenceReview`.
+UserDefaults keys: old `reminder.*`, `water.needsResidenceReview`
+become `xrc.reminder.*`, `xrc.water.needsResidenceReview`.
 
 ### 4.2 Identifiers
 
