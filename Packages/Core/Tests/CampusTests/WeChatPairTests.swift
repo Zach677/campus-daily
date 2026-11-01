@@ -14,13 +14,13 @@ final class WeChatPairTests: XCTestCase {
                 flag: String? = "1", voucher: String? = "next") -> CardRecord {
         vouchers += 1
         return CardRecord(date: date, time: time, title: title, amount: Money(yuanString: yuan)!, balanceAfter: nil,
-                          direction: flag, voucher: voucher == "next" ? String(format: "99%018d", vouchers) : voucher)
+                          direction: flag, voucher: voucher == "next" ? String(format: "997-%02d", vouchers) : voucher)
     }
     var vouchers = 0
 
     /// The two halves of a 16 元 meal at `time` (synthetic voucher 991…), the canteen's first.
     func pair(_ date: String = "20261030", _ time: String = "113000", inYuan: String = "16.00",
-              voucher: String = "99100000000000000001") -> (out: CardRecord, in: CardRecord) {
+              voucher: String = "991-01") -> (out: CardRecord, in: CardRecord) {
         (record(date, time, "POS消费(示例饭堂POS)(示例饭堂POS)01档口示例面馆", "16.00", voucher: voucher),
          record(date, time, "微信支付(手机)", inYuan, flag: "2", voucher: voucher))
     }
@@ -116,7 +116,7 @@ final class WeChatPairTests: XCTestCase {
 
     /// 「备付金充值(微信支付(手机))」 is a top-up, even beside a payment with its voucher.
     func testAWeChatTopUpIsNeverPaired() {
-        let v = "99100000000000000009"
+        let v = "991-09"
         let h = history([[record("20261030", "113000", "POS消费示例面馆", "50.00", voucher: v),
                           record("20261030", "113000", "备付金充值(微信支付(手机))", "50.00", flag: "2", voucher: v)]])
         let days = CardDays.groups(history: h, app: [], now: noon)
@@ -136,10 +136,10 @@ final class WeChatPairTests: XCTestCase {
     }
 
     func testOtherVouchersAmountsOrNamesAreNotMerged() {
-        let out = record("20261030", "113000", "POS消费示例面馆", "16.00", voucher: "99100000000000000001")
-        let otherVoucher = record("20261030", "113000", "微信支付(手机)", "16.00", flag: "2", voucher: "99100000000000000002")
-        let otherAmount = record("20261030", "113000", "微信支付(手机)", "15.00", flag: "2", voucher: "99100000000000000001")
-        let otherTime = record("20261030", "113100", "微信支付(手机)", "16.00", flag: "2", voucher: "99100000000000000001")
+        let out = record("20261030", "113000", "POS消费示例面馆", "16.00", voucher: "991-01")
+        let otherVoucher = record("20261030", "113000", "微信支付(手机)", "16.00", flag: "2", voucher: "991-02")
+        let otherAmount = record("20261030", "113000", "微信支付(手机)", "15.00", flag: "2", voucher: "991-01")
+        let otherTime = record("20261030", "113100", "微信支付(手机)", "16.00", flag: "2", voucher: "991-01")
         for half in [otherVoucher, otherAmount, otherTime] {
             let days = CardDays.groups(history: history([[out, half]]), app: [], now: noon)
             XCTAssertEqual(days[0].items.count, 2)
@@ -150,7 +150,7 @@ final class WeChatPairTests: XCTestCase {
             XCTAssertEqual(days[0].total, Money(fen: 1600))
         }
         // Money in without 微信支付 in its name is not the other half; its direction is unknown.
-        let plain = record("20261030", "113000", "示例超市", "16.00", flag: "2", voucher: "99100000000000000001")
+        let plain = record("20261030", "113000", "示例超市", "16.00", flag: "2", voucher: "991-01")
         let days = CardDays.groups(history: history([[out, plain]]), app: [], now: noon)
         XCTAssertEqual(days[0].items.count, 2)
         XCTAssertNil(days[0].total)
@@ -200,7 +200,7 @@ final class WeChatPairTests: XCTestCase {
         XCTAssertEqual(merged.count, 1)
         XCTAssertTrue(merged[0].paidWithWeChat)
         let json = String(decoding: try JSONEncoder().encode(merged[0]), as: UTF8.self)
-        XCTAssertFalse(json.contains("99100000000000000001"))
-        XCTAssertFalse(String(describing: merged).contains("99100000000000000001"))
+        XCTAssertFalse(json.contains("991-01"))
+        XCTAssertFalse(String(describing: merged).contains("991-01"))
     }
 }
