@@ -704,13 +704,50 @@ public struct ShowerDisplay: Sendable, Equatable {
         case .deviceUnavailable: return "没连上水控，靠近一点再试。"
         case .wrongDevice: return "这不是你宿舍的水控。"
         case .deviceBusy: return "水控正在使用中。"
-        case .authorizeRefused:
-            if case .rejected(_, _, let m)? = f.error, !m.isEmpty { return m }
-            return "热水平台没同意开水。"
-        case .authorizeUncertain, .authorizationInvalid: return "开水结果未确认"
+        case .authorizeRefused: return "热水平台没同意开水。"
+        case .authorizeUncertain: return ShowerAuthorizeUnclearText.title(platformMessage: f.platformMessage)
+        case .authorizationInvalid: return "开水结果未确认"
         case .closeUnconfirmed: return "结束指令未确认"
         case .settleRefused, .settleUncertain: return "结算未确认"
         case .settleUnconfirmed: return "结算待核对"
         }
+    }
+}
+
+/// An authorize the platform answered in a way the app can't read (`authorizeUncertain`).
+/// Nothing reached the controller, so no water ran and nothing is to be settled: the words say
+/// the water didn't start, carry the platform's own sentence when it gave one, and keep the
+/// check before the next start.
+public enum ShowerAuthorizeUnclearText {
+    public static let title = "水没开"
+    public static let body = "学校那边的答复校日常没看懂，所以没开水。先去学校的热水记录里看看有没有多记一笔，看过了点「我在学校记录里核对过了」，再重新开始。"
+    /// Siri and Shortcuts.
+    public static let spoken = "水没开。打开校日常核对一下再开始。"
+
+    public static func note(_ message: String) -> String { "学校提示：\(message)" }
+
+    /// The status line, the lock screen and the home card.
+    public static func title(platformMessage: String?) -> String {
+        platformMessage.map { "\(title)。\(note($0))" } ?? title
+    }
+
+    public static func body(platformMessage: String?) -> String {
+        platformMessage.map { body + note($0) } ?? body
+    }
+
+    public static func spoken(platformMessage: String?) -> String {
+        guard let message = platformMessage else { return spoken }
+        // The sentence goes on after it: one full stop, not two.
+        let clause = String(message.reversed().drop(while: { $0 == "。" || $0 == "." }).reversed())
+        return "\(title)。\(note(clause.isEmpty ? message : clause))。打开校日常核对一下再开始。"
+    }
+}
+
+public extension ShowerFailure {
+    /// The platform's own sentence, when it answered with one (`rejected`).
+    var platformMessage: String? {
+        guard case .rejected(_, _, let message)? = error else { return nil }
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

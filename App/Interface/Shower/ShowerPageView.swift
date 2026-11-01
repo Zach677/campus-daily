@@ -258,8 +258,14 @@ struct ShowerPageView: View {
                 }
             case .unsure:
                 icon("questionmark.circle", Theme.accentText)
-                title(ShowerPageText.unsure)
-                bodyText(flow.settleRetryCause.map(ShowerPageText.settleRetryBody) ?? ShowerPageText.unsureBody)
+                if let copy = page?.authorizeUnclear {
+                    // Nothing reached the controller: no settlement to talk about.
+                    title(copy.title)
+                    bodyText(copy.body)
+                } else {
+                    title(ShowerPageText.unsure)
+                    bodyText(flow.settleRetryCause.map(ShowerPageText.settleRetryBody) ?? ShowerPageText.unsureBody)
+                }
                 // A close that may not have taken: water still running goes back to the timer.
                 if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
                 if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }
@@ -407,7 +413,7 @@ struct ShowerPageView: View {
         case .done: return ShowerPageText.doneLabel
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
-        case .unsure: return ShowerPageText.unsure
+        case .unsure: return flow.page?.authorizeUnclear?.title ?? ShowerPageText.unsure
         case .needsCheck: return ShowerPageText.check
         }
     }

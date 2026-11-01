@@ -26,6 +26,8 @@ final class ShowerActionOutcomeTests: XCTestCase {
         XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.deviceUnavailable), notice: nil),
                        .failure(ShowerActionFailure("没连上水控，靠近一点再试。")))
         XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.authorizeUncertain, review: true), notice: nil),
+                       .failure(ShowerActionFailure("水没开。打开校日常核对一下再开始。")))
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.authorizationInvalid, review: true), notice: nil),
                        .failure(ShowerActionFailure("开水结果未确认")))
     }
 
@@ -38,6 +40,17 @@ final class ShowerActionOutcomeTests: XCTestCase {
                        .failure(ShowerActionFailure(ShowerActionOutcome.endNotSentText)))
         XCTAssertEqual(ShowerActionOutcome.after(start: false, failed(.settleUncertain, review: true), notice: nil),
                        .failure(ShowerActionFailure("结算未确认")))
+    }
+
+    /// A start turned down for the check of an unclear authorize doesn't call it a settlement.
+    func testABlockedStartSaysWhatWaits() {
+        var unclear = ShowerFailure(reason: .authorizeUncertain, needsReview: true, error: .rejected(.lxt6, code: "1", message: "余额不足"))
+        XCTAssertEqual(ShowerActionFailure.blockedText(unclear), "水没开。学校提示：余额不足。打开校日常核对一下再开始。")
+        unclear.error = .uncertain(.lxt6)
+        XCTAssertEqual(ShowerActionFailure.blockedText(unclear), "水没开。打开校日常核对一下再开始。")
+        XCTAssertEqual(ShowerActionFailure.blockedText(ShowerFailure(reason: .settleUncertain, needsReview: true)),
+                       ShowerActionFailure(.blocked).message)
+        XCTAssertEqual(ShowerActionFailure.blockedText(nil), ShowerActionFailure(.blocked).message)
     }
 
     func testEngineRefusalsSayWhatToDo() {

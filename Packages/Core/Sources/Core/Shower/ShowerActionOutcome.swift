@@ -22,6 +22,9 @@ public enum ShowerActionOutcome: Sendable, Equatable {
             if result.failure?.reason == .deviceUnavailable, let device = result.failure?.deviceError {
                 return .failure(ShowerActionFailure(device.userText))
             }
+            if result.failure?.reason == .authorizeUncertain {
+                return .failure(ShowerActionFailure(ShowerAuthorizeUnclearText.spoken(platformMessage: result.failure?.platformMessage)))
+            }
             return .failure(ShowerActionFailure(ShowerDisplay.failureTitle(result.failure)))
         }
         if start {
@@ -56,6 +59,15 @@ public struct ShowerActionFailure: Error, LocalizedError, Sendable, Equatable {
         case .unreadableRecord: message = "读不到上次的热水记录，打开校日常看看。"
         case .platformMissing: message = Self.platformMissingText
         }
+    }
+
+    /// A start turned down while `failure` waits for its check. An authorize the platform
+    /// answered unclearly settled nothing, so it isn't called a settlement.
+    public static func blockedText(_ failure: ShowerFailure?) -> String {
+        if failure?.reason == .authorizeUncertain {
+            return ShowerAuthorizeUnclearText.spoken(platformMessage: failure?.platformMessage)
+        }
+        return ShowerActionFailure(.blocked).message
     }
 }
 

@@ -116,8 +116,8 @@ public enum ShowerStepMark: String, Sendable, Equatable {
 public struct ShowerPage: Sendable, Equatable {
     /// Why the start was turned down.
     public enum Denial: Sendable, Equatable {
-        /// The platform said no (its own words, when it gave any).
-        case refused(String?)
+        /// The platform said no before it acted (a known refusal code; it gives no words then).
+        case refused
         /// The controller is running for someone else.
         case inUse
     }
@@ -134,10 +134,13 @@ public struct ShowerPage: Sendable, Equatable {
     public var startedAt: Date?
     /// The controller didn't confirm the authorization write; shown as running on purpose.
     public var writeUnconfirmed: Bool
+    /// The unsure face of an authorize the platform answered in a way the app can't read
+    /// (`authorizeUncertain`): its own words, with the platform's when it gave any.
+    public var authorizeUnclear: ShowerPageCopy?
 
     /// Nil when nothing is going on (idle): the page has nothing to show.
     public init?(_ s: ShowerState) {
-        denial = nil; amount = nil; minutes = nil; startedAt = s.startedAt
+        denial = nil; amount = nil; minutes = nil; startedAt = s.startedAt; authorizeUnclear = nil
         writeUnconfirmed = s.phase == .writePending
         switch s.phase {
         case .idle:
@@ -162,13 +165,12 @@ public struct ShowerPage: Sendable, Equatable {
             case .deviceBusy:
                 phase = .denied; steps = [.done, .failed, .future]; denial = .inUse
             case .authorizeRefused:
-                phase = .denied; steps = [.done, .failed, .future]
-                if case .rejected(_, _, let message)? = s.failure?.error, !message.isEmpty {
-                    denial = .refused(message)
-                } else {
-                    denial = .refused(nil)
-                }
-            case .authorizeUncertain, .authorizationInvalid:
+                phase = .denied; steps = [.done, .failed, .future]; denial = .refused
+            case .authorizeUncertain:
+                phase = .unsure; steps = [.done, .failed, .future]
+                authorizeUnclear = ShowerPageCopy(title: ShowerAuthorizeUnclearText.title,
+                                                  body: ShowerAuthorizeUnclearText.body(platformMessage: s.failure?.platformMessage))
+            case .authorizationInvalid:
                 phase = .unsure; steps = [.done, .failed, .future]
             case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed:
                 phase = .unsure; steps = [.done, .done, .failed]
@@ -459,4 +461,11 @@ public struct ShowerPageFlow: Sendable, Equatable {
             return (f, [])
         }
     }
+}
+
+/// A face's headline and the text under it, when Core decides them.
+public struct ShowerPageCopy: Sendable, Equatable {
+    public let title: String
+    public let body: String
+    public init(title: String, body: String) { self.title = title; self.body = body }
 }

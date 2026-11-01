@@ -347,7 +347,7 @@ enum ShowerProfileFiles {
         if storageBlocked { return ShowerActionFailure(.storage).message }
         if residenceReviewRequired { return "换了学校账号，先在校日常里重新核对宿舍水控。" }
         if inspecting { return "正在核对水控，等一下再开始。" }
-        if !state.canStart { return ShowerActionFailure(.blocked).message }
+        if !state.canStart { return ShowerActionFailure.blockedText(state.failure) }
         return "现在开始不了，打开校日常看看。"
     }
 
