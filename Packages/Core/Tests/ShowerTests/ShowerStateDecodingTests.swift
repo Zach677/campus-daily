@@ -85,6 +85,44 @@ final class ShowerStateDecodingTests: XCTestCase {
         }
     }
 
+    /// A failed record without its failure would restore to a state with no way out (neither a
+    /// check nor a start): it reads as a settlement waiting for its check.
+    func testAFailedRecordWithoutItsFailureWaitsForACheck() throws {
+        let s = try decode(#"{"phase":"failed","machineID":"11223344","startedAt":\#(t0.timeIntervalSinceReferenceDate)}"#)
+        XCTAssertEqual(s.failure, ShowerFailure(reason: .settleUnconfirmed, needsReview: true))
+        let restored = ShowerReducer.restore(s)
+        XCTAssertEqual(restored.phase, .failed)
+        XCTAssertTrue(restored.canResolveManually)
+        XCTAssertFalse(restored.canStart)
+        XCTAssertEqual(ShowerPage(restored)?.phase, .unsure)
+    }
+
+    /// The way out of an unreadable record, after the user checked the school's record: it is
+    /// cleared only while it still can't be read, never a record that reads (or a Keychain
+    /// that can't be read at all).
+    func testAnUnreadableRecordIsClearedOnlyWhileItStaysUnreadable() throws {
+        let store = InMemorySecureStore()
+        let vault = StoredShowerVault(store: store)
+        try store.write(Data(#"{"phase":"someLaterPhase","machineID":"11223344"}"#.utf8), for: .showerSession)
+        XCTAssertTrue(try vault.clearUnreadableRecord())
+        XCTAssertNil(try vault.showerState())
+        XCTAssertNoThrow(try ShowerEngine(transport: FakeShowerTransport(), gateway: FakeGateway(), vault: vault,
+                                          configuration: .init(bleName: "fixture-ble")))
+
+        try vault.saveShowerState(ShowerState(phase: .running, machineID: "11223344", startedAt: t0))
+        XCTAssertFalse(try vault.clearUnreadableRecord())
+        XCTAssertEqual(try vault.showerState()?.phase, .running, "a readable record stays")
+
+        try vault.saveShowerState(nil)
+        XCTAssertFalse(try vault.clearUnreadableRecord(), "nothing saved")
+
+        try store.write(Data(#"{"phase":"someLaterPhase"}"#.utf8), for: .showerSession)
+        store.failReads()
+        XCTAssertThrowsError(try vault.clearUnreadableRecord())
+        store.failReads(false)
+        XCTAssertThrowsError(try vault.showerState(), "still there")
+    }
+
     func testEveryFieldRoundTrips() throws {
         let s = ShowerState(phase: .failed, machineID: "11223344", peripheralID: "P", startedAt: t0, authorizeSent: true,
                             authorizationID: "001122FF", closingFrom: .writePending, closeSent: true, consumption: "55AA",

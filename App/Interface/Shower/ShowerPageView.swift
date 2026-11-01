@@ -49,6 +49,12 @@ enum ShowerPageText {
         }
     }
     static let resolveConfirm = "这次洗澡核对过了吗？"
+    /// The way out of a saved record that can't be read, and its confirmation.
+    static let unreadableClear = "清除这条记录"
+    static let unreadableClearConfirm = "清除这条记录？"
+    static let unreadableClearNote = "先去学校的热水记录里看看这次扣了没有。清除以后，校日常不会再结算这一次。"
+    static let unreadableClearButton = "看过了，清除"
+    static let unreadableKeep = "留着"
     static let resolveConfirmButton = "核对过了"
     static let resolveConfirmNote = "标记以后，校日常不会再结算这一次。先在学校的热水记录里找到这次洗澡，再点核对过了。"
 

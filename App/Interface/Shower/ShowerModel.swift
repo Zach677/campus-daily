@@ -201,6 +201,12 @@ enum ShowerProfileFiles {
         } catch {
             storageBlocked = true
             recordUnreadable = (error as? ShowerEngineError) == .unreadableRecord
+            if recordUnreadable {
+                // No session to follow: a 洗澡中 left on the lock screen (its 结束 would only be
+                // refused) and the 「还在计时」 reminder go.
+                ShowerActivityController.shared.sync(state:.idle)
+                Reminders.shared.syncShower(started:nil)
+            }
         }
     }
 
@@ -331,6 +337,13 @@ enum ShowerProfileFiles {
         } catch {
             return ShowerRecheckResult(error:error)
         }
+    }
+
+    /// 清除这条记录 on an unreadable record, after its confirmation (the user checked the school's
+    /// record). Removed only while it still can't be read; then the engine starts over.
+    func clearUnreadableRecord() {
+        guard recordUnreadable, !busy, (try? AppEnvironment.showerVault.clearUnreadableRecord()) != nil else { return }
+        rebuildEngine()
     }
 
     func resolveManually() async {

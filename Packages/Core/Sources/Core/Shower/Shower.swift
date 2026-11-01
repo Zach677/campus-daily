@@ -222,6 +222,10 @@ extension ShowerState {
         receipt = try c.decodeIfPresent(ShowerReceipt.self, forKey: .receipt)
         lastReceipt = try? c.decodeIfPresent(ShowerReceipt.self, forKey: .lastReceipt)
         failure = try c.decodeIfPresent(ShowerFailure.self, forKey: .failure)
+        if phase == .failed, failure == nil {
+            // A failure is what offers the check; without one the record would have no way out.
+            failure = ShowerFailure(reason: .settleUnconfirmed, needsReview: true)
+        }
         stateReviewRequired = try c.decodeIfPresent(Bool.self, forKey: .stateReviewRequired) ?? false
         reviewing = try c.decodeIfPresent(Bool.self, forKey: .reviewing) ?? false
         settleRetryArmed = try c.decodeIfPresent(Bool.self, forKey: .settleRetryArmed) ?? false
