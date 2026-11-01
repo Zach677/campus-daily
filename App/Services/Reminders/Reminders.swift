@@ -387,7 +387,8 @@ struct ReminderPermissionSheet: View {
 /// Home-root hooks: the pre-permission sheet after the first paid laundry order or the first home read
 /// (the settings triggers show it inside settings), and notification taps (laundry → laundry page, the rest → home).
 struct ReminderHooks: ViewModifier {
-    /// Home's `open(_:)`: closes the settings sheet, then shows these pages over home.
+    /// Home's `follow(_:)`: unless a payment may be under way, closes the settings sheet, then
+    /// shows these pages over home.
     let open: ([HomeRoute]) -> Void
     /// Home is visible with nothing on top (no onboarding, sheet, cover, panel or pushed page).
     var homeClear: Bool
