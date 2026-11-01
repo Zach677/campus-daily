@@ -13,7 +13,7 @@ public enum ShowerActionOutcome: Sendable, Equatable {
 
     public static let startedText = "水控连上了，按出水键开水。"
     public static let startUnconfirmedText = "\(ShowerDisplay.writeUnconfirmedHint)。打开校日常能看到计时。"
-    public static let endNotSentText = "还没结束，打开校日常再试一次。"
+    public static let endNotSentText = "这次没能结束，打开校日常再试一次。"
 
     /// `result`: the record after the engine's start or finish. `notice`: the text of its notice
     /// (a device error, a busy controller…), preferred to the record's own title.
@@ -49,11 +49,11 @@ public struct ShowerActionFailure: Error, LocalizedError, Sendable, Equatable {
     public init(_ error: ShowerEngineError) {
         switch error {
         case .busy: message = "正在和水控通信，稍等一下。"
-        case .blocked: message = "上次洗澡还没处理完，打开校日常看一眼。"
+        case .blocked: message = "上次结算还没确认，打开校日常核对一下。"
         case .notAllowed: message = "现在没有可以结束的洗澡。"
-        case .wrongBinding: message = "这次洗澡用的不是现在绑定的水控，打开校日常处理。"
+        case .wrongBinding: message = "这次洗澡用的不是你现在选的水控，打开校日常看看。"
         case .storage: message = "这台手机的钥匙串暂时写不进去，重启 App 后再试。"
-        case .unreadableRecord: message = "上次洗澡的记录读不出来，打开校日常处理。"
+        case .unreadableRecord: message = "读不到上次的热水记录，打开校日常看看。"
         case .platformMissing: message = Self.platformMissingText
         }
     }

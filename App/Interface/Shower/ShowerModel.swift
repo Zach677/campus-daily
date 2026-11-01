@@ -338,17 +338,17 @@ enum ShowerProfileFiles {
         if recordUnreadable { return ShowerActionFailure(.unreadableRecord).message }
         if storageBlocked { return ShowerActionFailure(.storage).message }
         if platformMissing { return Self.platformMissingText }
-        return "热水暂时用不了，打开校日常看一眼。"
+        return "热水暂时用不了，打开校日常看看。"
     }
 
     /// Why 开始洗澡 is not allowed now (`mayStart`), for the callers that can't see the page.
     private var startRefusalText: String {
         if platformMissing { return Self.platformMissingText }
         if storageBlocked { return ShowerActionFailure(.storage).message }
-        if residenceReviewRequired { return "换了登录的同学，先在校日常里核对宿舍的水控。" }
-        if inspecting { return "正在核对水控，核对完再开始。" }
+        if residenceReviewRequired { return "换了学校账号，先在校日常里重新核对宿舍水控。" }
+        if inspecting { return "正在核对水控，等一下再开始。" }
         if !state.canStart { return ShowerActionFailure(.blocked).message }
-        return "现在开始不了，打开校日常看一眼。"
+        return "现在开始不了，打开校日常看看。"
     }
 
     nonisolated static func actionFailure(_ error: Error) -> ShowerActionFailure {
