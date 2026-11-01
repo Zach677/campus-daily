@@ -11,7 +11,7 @@ enum SchoolLoginText {
     /// The widget is refreshing (and may be logging in itself): nothing was sent.
     static let busy = "正在更新，等一下再试。"
     /// The Keychain refused to store the login's device id: nothing was sent.
-    static let cannotSave = "这台 iPhone 没能保存登录信息，重开 App 再试。"
+    static let cannotSave = "登录信息没存上，再试一次。"
 
     /// Anything other than the two login answers (network, storage, the card steps after login).
     static func text(_ error: Error) -> String {
