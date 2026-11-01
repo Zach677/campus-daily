@@ -18,6 +18,8 @@ struct HomeShowerButton: View {
         case check
         /// 「登录学校账号」
         case signIn
+
+        var isReview: Bool { if case .review = self { return true } else { return false } }
     }
 
     let kind: Kind
@@ -35,6 +37,10 @@ struct HomeShowerButton: View {
                     .scaledFont(13, relativeTo:.footnote)
                     .foregroundStyle(caption.accent ? Theme.accentText : Theme.ink2)
                     .multilineTextAlignment(.center)
+                    // The school's own words can be long: two lines on home, the whole text
+                    // on the shower page (and to VoiceOver, below).
+                    .lineLimit(kind.isReview ? 2 : nil)
+                    .truncationMode(.tail)
                     .fixedSize(horizontal:false, vertical:true)
                     .frame(maxWidth:.infinity)
                     // 「上次 11 分钟，1.32 元」: no separator dot or currency sign read aloud.
