@@ -50,6 +50,7 @@ struct ShowerSettleRetryRow: View {
     private var flow: ShowerPageFlow { shower.page }
     private var armed: Bool { flow.settleRetryArmed }
     private var enabled: Bool { shower.mayRetrySettle && flow.mayRetrySettle }
+    private var note: String { armed ? ShowerPageText.settleRetryArmedNote : ShowerPageText.settleRetryNote(flow.settleRetryCause) }
 
     var body: some View {
         VStack(alignment:.leading, spacing:4) {
@@ -69,8 +70,8 @@ struct ShowerSettleRetryRow: View {
             .buttonStyle(.plain)
             .disabled(!enabled)
             .accessibilityIdentifier("showerSettleRetry")
-            .accessibilityHint(armed ? ShowerPageText.settleRetryArmedNote : ShowerPageText.settleRetryNote)
-            Text(armed ? ShowerPageText.settleRetryArmedNote : ShowerPageText.settleRetryNote)
+            .accessibilityHint(note)
+            Text(note)
                 .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                 .fixedSize(horizontal:false, vertical:true)
         }

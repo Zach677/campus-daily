@@ -102,6 +102,9 @@ public enum ShowerSettleRetryCause: Sendable, Equatable {
     case notSent
     /// It went out (or may have) and no answer came back.
     case noAnswer
+    /// Held back, never sent: the water was found still running after a close that may not
+    /// have taken, so the consumption is most likely someone else's.
+    case held
 }
 
 /// One of the three steps 连接 · 出水 · 结算.
@@ -305,6 +308,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var settleRetryCause: ShowerSettleRetryCause? {
         guard mayRetrySettle, let failure = record.failure else { return nil }
         if failure.reason == .settleRefused { return .refused }
+        if failure.settleHeld { return .held }
         return failure.settleNotSent ? .notSent : .noAnswer
     }
     /// The first tap of 再结算一次 is in: the next one sends it.

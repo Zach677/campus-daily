@@ -61,10 +61,13 @@ public struct ShowerFailure: Sendable, Codable, Equatable {
     /// The settlement provably never left (cancelled before it, or held for the user): the
     /// school can't have charged it. False when it may have left.
     public var settleNotSent: Bool
+    /// The settlement was held back after an unconfirmed close found the water still running:
+    /// the consumption read since is most likely someone else's.
+    public var settleHeld: Bool
     public init(reason: ShowerFailureReason, needsReview: Bool, error: ServiceError? = nil, deviceError: ShowerDeviceError? = nil,
-                settleNotSent: Bool = false) {
+                settleNotSent: Bool = false, settleHeld: Bool = false) {
         self.reason = reason; self.needsReview = needsReview; self.error = error; self.deviceError = deviceError
-        self.settleNotSent = settleNotSent
+        self.settleNotSent = settleNotSent; self.settleHeld = settleHeld
     }
 
     /// Written by another build: without `needsReview` it is kept for a check; an error this
@@ -76,6 +79,7 @@ public struct ShowerFailure: Sendable, Codable, Equatable {
         error = try? c.decodeIfPresent(ServiceError.self, forKey: .error)
         deviceError = try? c.decodeIfPresent(ShowerDeviceError.self, forKey: .deviceError)
         settleNotSent = try c.decodeIfPresent(Bool.self, forKey: .settleNotSent) ?? false
+        settleHeld = try c.decodeIfPresent(Bool.self, forKey: .settleHeld) ?? false
     }
 }
 
@@ -496,7 +500,7 @@ public enum ShowerReducer {
             s.consumption = HexCoding.upper(frame)
             if state.holdSettle {
                 s.holdSettle = false
-                return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true),
+                return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true, settleHeld: true),
                         [.cancelReminder, .releaseDevice, .diagnostic("settle.heldAfterUnconfirmedClose")])
             }
             s.phase = .settling
@@ -583,13 +587,13 @@ public enum ShowerReducer {
 
     private static func failed(_ s: ShowerState, _ reason: ShowerFailureReason, review: Bool,
                                error: ServiceError? = nil, device: ShowerDeviceError? = nil,
-                               settleNotSent: Bool = false) -> ShowerState {
+                               settleNotSent: Bool = false, settleHeld: Bool = false) -> ShowerState {
         var f = s
         f.phase = .failed
         f.reviewing = false
         f.settleRetryArmed = false
         f.failure = ShowerFailure(reason: reason, needsReview: review, error: error, deviceError: device,
-                                  settleNotSent: settleNotSent)
+                                  settleNotSent: settleNotSent, settleHeld: settleHeld)
         return f
     }
 

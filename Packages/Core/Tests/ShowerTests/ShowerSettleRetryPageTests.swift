@@ -102,12 +102,19 @@ final class ShowerSettleRetryCauseTests: XCTestCase {
         XCTAssertEqual(cancelled.failure?.reason, .settleUnconfirmed)
         XCTAssertEqual(cause(cancelled), .notSent)
         XCTAssertEqual(cause(ShowerReducer.restore(cancelled)), .notSent, "kept across a relaunch")
+    }
 
-        // Held after an unconfirmed close: kept for the user, never sent.
+    /// Held after an unconfirmed close found the water still running: never sent, but most
+    /// likely someone else's water, so it is not the "just settle again" case.
+    func testItWasHeldAsMaybeSomeoneElses() throws {
         var closing = ShowerState(phase: .closing, machineID: "11223344", startedAt: t0, authorizationID: "001122FF",
                                   closingFrom: .running, closeSent: true)
         closing.holdSettle = true
-        XCTAssertEqual(cause(ShowerReducer.reduce(closing, .closeReplied(frame)).0), .notSent)
+        let held = ShowerReducer.reduce(closing, .closeReplied(frame)).0
+        XCTAssertEqual(cause(held), .held)
+        XCTAssertEqual(cause(ShowerReducer.restore(held)), .held, "kept across a relaunch")
+        let reread = try JSONDecoder().decode(ShowerState.self, from: JSONEncoder().encode(held))
+        XCTAssertEqual(cause(reread), .held, "kept in the saved record")
     }
 
     func testNoCauseWithoutTheRetry() {

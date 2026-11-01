@@ -36,16 +36,24 @@ enum ShowerPageText {
     static let settleRefusedBody = "学校拒绝了这次结算。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
     /// The settlement never left.
     static let settleNotSentBody = "结算没发出去，学校那边应该还没扣钱。再结算一次就行。"
+    /// Held back after a close that may not have taken: the water read since may be someone else's.
+    static let settleHeldBody = "中间有人用过这台水控，这次读到的用水可能不是你的。先去学校的热水记录里看你这次洗澡扣了没有：扣了，点「我在学校记录里核对过了」；没扣、又确定刚才是你在用，再结算一次。"
     static func settleRetryBody(_ cause: ShowerSettleRetryCause) -> String {
         switch cause {
         case .refused: return settleRefusedBody
         case .notSent: return settleNotSentBody
         case .noAnswer: return settleRetryBody
+        case .held: return settleHeldBody
         }
     }
     static let settleRetry = "再结算一次"
     static let settleRetryConfirm = "确认再结算一次"
     static let settleRetryNote = "没扣才点。"
+    static let settleHeldRetryNote = "确定是你用的才点。"
+    /// The line under 再结算一次 before its first tap.
+    static func settleRetryNote(_ cause: ShowerSettleRetryCause?) -> String {
+        cause == .held ? settleHeldRetryNote : settleRetryNote
+    }
     static let settleRetryArmedNote = "再点一下就发出去。扣过了别点，会扣两次。"
     static let bluetoothOff = "蓝牙关着，打开后再核对。"
     static func recheckResult(_ result: ShowerRecheckResult) -> String {
