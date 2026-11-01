@@ -10,9 +10,8 @@ public enum RecentFit {
 
     /// `viewport`: the visible height; `above`: everything over the first row; `rowHeights`: each
     /// row as drawn (separator included), in order. Not measured yet (a zero): three rows. Fewer
-    /// than three when only fewer fit: home does not scroll. None fits (everything above is
-    /// already taller than the screen, at accessibility text sizes): home scrolls anyway, and
-    /// three rows follow rather than 「最近」 alone.
+    /// than three when only fewer fit, and none when none fits (a small phone at a large text
+    /// size): home does not scroll.
     public static func count(viewport: Double, above: Double, rowHeights: [Double], bottomGap: Double = bottomGap) -> Int {
         guard viewport > 0, rowHeights.allSatisfy({ $0 > 0 }) else { return min(minimumRows, rowHeights.count) }
         // Measured heights are fractions of a point: half a point either way still fits.
@@ -23,6 +22,6 @@ public enum RecentFit {
             left -= height
             count += 1
         }
-        return count > 0 ? count : min(minimumRows, rowHeights.count)
+        return count
     }
 }

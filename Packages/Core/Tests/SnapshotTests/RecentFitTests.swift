@@ -32,12 +32,12 @@ final class RecentFitTests: XCTestCase {
         XCTAssertEqual(RecentFit.count(viewport: 600, above: 520, rowHeights: rows), 1)
     }
 
-    /// Not even one row fits (accessibility text sizes: everything above is taller than the
-    /// screen): home scrolls anyway, so 「最近」 is not left as a header alone; three rows follow.
-    func testThreeRowsBelowWhenHomeScrollsAnyway() {
-        XCTAssertEqual(RecentFit.count(viewport: 600, above: 560, rowHeights: rows), 3)
-        XCTAssertEqual(RecentFit.count(viewport: 600, above: 1400, rowHeights: rows), 3)
-        XCTAssertEqual(RecentFit.count(viewport: 600, above: 1400, rowHeights: [80]), 1)
+    /// Not even one row fits under everything else: no row, so a small phone at a large text
+    /// size does not get rows pushed off the screen.
+    func testNoRowWhenNoneFits() {
+        XCTAssertEqual(RecentFit.count(viewport: 600, above: 560, rowHeights: rows), 0)
+        XCTAssertEqual(RecentFit.count(viewport: 600, above: 1400, rowHeights: rows), 0)
+        XCTAssertEqual(RecentFit.count(viewport: 600, above: 1400, rowHeights: [80]), 0)
     }
 
     /// Before the first measurement: three rows (fewer if there are fewer).
