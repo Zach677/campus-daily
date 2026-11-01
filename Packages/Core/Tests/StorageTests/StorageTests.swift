@@ -95,7 +95,6 @@ final class FakeKeychainView: KeychainBackend, @unchecked Sendable {
 final class KeychainStoreTests: XCTestCase {
     let group = "TEAMID1234.com.beamjason.xiaorichang.shared"
     /// The shared group's name after the team prefix, as Info.plist gives it.
-    let sharedName = "com.beamjason.xiaorichang.shared"
 
     func testNames() {
         XCTAssertEqual(StoreKey.schoolEcykt.service, "com.beamjason.xiaorichang.school.ecykt.v1")
@@ -427,7 +426,7 @@ final class KeychainStoreTests: XCTestCase {
     /// again, and once it answers the store writes shared items where the widget reads them.
     func testFailedGroupProbeIsRetried() throws {
         let answers = ProbeScript([nil, app])
-        let probe = KeychainGroupProbe(sharedGroup: sharedName) { answers.next() }
+        let probe = KeychainGroupProbe(inExtension: false) { answers.next() }
         XCTAssertNil(probe.defaultGroup)
         XCTAssertEqual(probe.sharedGroup, group)
         XCTAssertEqual(probe.privateGroup, app)
@@ -437,7 +436,7 @@ final class KeychainStoreTests: XCTestCase {
 
         let kc = appKeychain()
         let late = ProbeScript([nil, app])
-        let store = KeychainSecureStore(backend: kc, groups: KeychainGroupProbe(sharedGroup: sharedName) { late.next() })
+        let store = KeychainSecureStore(backend: kc, groups: KeychainGroupProbe(inExtension: false) { late.next() })
         XCTAssertNil(try store.read(.sharedSnapshot))
         try store.write(Data("s".utf8), for: .sharedSnapshot)
         XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("s".utf8))
@@ -452,15 +451,17 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertTrue(kc.items.isEmpty)
     }
 
-    /// The shared group is the build's own name under the team prefix of whatever group this
-    /// build wrote to; the app's default group is its private one.
-    func testAccessGroupFromTheTeamPrefix() {
-        XCTAssertEqual(SharedKeychain.accessGroup(teamPrefixedFrom: app, sharedGroup: sharedName), group)
-        XCTAssertEqual(SharedKeychain.accessGroup(teamPrefixedFrom: group, sharedGroup: sharedName), group)
-        XCTAssertNil(SharedKeychain.accessGroup(teamPrefixedFrom: "nodot", sharedGroup: sharedName))
-        XCTAssertNil(SharedKeychain.accessGroup(teamPrefixedFrom: ".leadingdot", sharedGroup: sharedName))
-        XCTAssertEqual(SharedKeychain.privateGroup(defaultGroup: app, sharedGroup: sharedName), app)
-        XCTAssertNil(SharedKeychain.privateGroup(defaultGroup: group, sharedGroup: sharedName), "the widget has no private group")
+    /// The groups come from the one this process writes to by default: the app's is its private
+    /// group and the shared one is that plus `.shared`; the widget's is the shared one itself.
+    func testGroupsFromTheDefaultGroup() {
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: app, inExtension: false), group)
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: group, inExtension: true), group)
+        XCTAssertEqual(SharedKeychain.privateGroup(defaultGroup: app, inExtension: false), app)
+        XCTAssertNil(SharedKeychain.privateGroup(defaultGroup: group, inExtension: true), "the widget has no private group")
+        let shared = group
+        let widget = KeychainGroupProbe(inExtension: true) { shared }
+        XCTAssertEqual(widget.sharedGroup, group)
+        XCTAssertNil(widget.privateGroup)
     }
 
     func testReadErrorsThrow() {

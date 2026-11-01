@@ -265,7 +265,8 @@ records the failure and its time per tile.
 **One writer across two processes.** The app and the widget extension each have one
 `SnapshotRefresher` over one Keychain. They take turns
 through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the App Group container
-(`group.$(APP_BUNDLE_IDENTIFIER)`, read from Info.plist `AppGroupIdentifier`, see 4.2):
+(`group.$(APP_BUNDLE_IDENTIFIER)`, read from Info.plist `AppGroupIdentifier`, else `group.` plus
+the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
 - every step (take, renew, check, give back, clear) is one read-compare-write done while holding
   an exclusive `flock` on that file, so two processes never both find the same lease free and a
   holder whose lease ran out never writes over the next one's; the lock is held only for that
@@ -716,8 +717,10 @@ next side effect (`storage` error), same as today.
 Widget sharing: App.entitlements lists two keychain access groups, in this order: the app's
 private group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER)` (`AppIdentity.keychainGroup`),
 then the shared group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER).shared`
-(`AppIdentity.sharedKeychainGroup`). Widget.entitlements lists only the shared group. Order matters:
-iOS puts an item written without a group into the first listed group. Items marked "yes" are
+Widget.entitlements lists only the shared group. Order matters:
+iOS puts an item written without a group into the first listed group, and the code takes the
+groups from that default group (`SharedKeychain.sharedGroup(defaultGroup:inExtension:)`): the
+app's shared group is its default plus `.shared`, the widget's is its default itself. Items marked "yes" are
 written to the shared group; all others are written to the private group, which the widget is
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
 registration. The widget reads the school items above for its own refresh, and `shared.snapshot`,
@@ -761,7 +764,10 @@ entitlements files and both Info.plists are filled from `APP_BUNDLE_IDENTIFIER` 
 the app's values, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
 `$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. A build
 with another `APP_BUNDLE_IDENTIFIER` (Developer.xcconfig) gets its own groups; the Keychain service
-names stay `com.beamjason.xiaorichang.<name>.v1` in every build.
+names stay `com.beamjason.xiaorichang.<name>.v1` in every build. An IPA re-signed under another
+bundle id keeps the old Info.plist values: the keychain groups still follow its signature (above),
+and the App Group falls back to `group.` plus the bundle id it runs under (the widget's without
+`.balances`) when the Info.plist one has no container.
 
 Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
 Store/TestFlight record. Paid-team signers register `com.beamjason.xiaorichang` and

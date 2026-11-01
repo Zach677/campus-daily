@@ -28,26 +28,25 @@ public enum SharedKeychain {
 
     public static var defaultGroup: String? { groups.defaultGroup }
 
-    /// `<TeamPrefix>.<bundle id>.shared`. Nil when the prefix can't be read (re-signed without
-    /// keychain groups) or Info.plist names no keychain group: the store then keeps everything
-    /// in the default group and the widget simply has no data.
+    /// `<TeamPrefix>.<bundle id>.shared`, from the default group (`sharedGroup(defaultGroup:)`).
+    /// Nil while the default group can't be read. A build whose signature lacks the shared group
+    /// falls back to the default group, and the widget simply has no data.
     public static var accessGroup: String? { groups.sharedGroup }
 
     /// The app's private group, or nil in the widget (its default group is the shared one).
     public static var privateGroup: String? { groups.privateGroup }
 
-    /// `<TeamPrefix>.` + `sharedGroup`, taking the team prefix from any group this build wrote to.
-    /// `sharedGroup` is the shared group's name after the prefix, from this build's Info.plist.
-    public static func accessGroup(teamPrefixedFrom group: String,
-                                   sharedGroup: String? = AppIdentity.main.sharedKeychainGroup) -> String? {
-        guard let sharedGroup, let dot = group.firstIndex(of:"."), dot != group.startIndex else { return nil }
-        return String(group[..<dot]) + "." + sharedGroup
+    /// The shared group, from the group a write without one lands in: the entitlements list the
+    /// app's private group first, so the app's shared group is that plus `.shared`; the widget's
+    /// only group is the shared one. Taken from the signature, not Info.plist, so an IPA
+    /// re-signed under another bundle id still has the app and the widget meet in one group.
+    public static func sharedGroup(defaultGroup group: String, inExtension: Bool) -> String {
+        inExtension ? group : group + ".shared"
     }
 
-    /// The default group is private unless it is the shared group itself.
-    public static func privateGroup(defaultGroup group: String,
-                                    sharedGroup: String? = AppIdentity.main.sharedKeychainGroup) -> String? {
-        group == accessGroup(teamPrefixedFrom:group, sharedGroup:sharedGroup) ? nil : group
+    /// The app's default group is its private one; the widget has none.
+    public static func privateGroup(defaultGroup group: String, inExtension: Bool) -> String? {
+        inExtension ? nil : group
     }
 
     public static let keychainStore = KeychainSecureStore(backend:SecItemKeychainBackend(), groups:groups)
@@ -63,11 +62,11 @@ public enum SharedKeychain {
 public final class KeychainGroupProbe: Sendable {
     private let probe: @Sendable () -> String?
     private let cached = OSAllocatedUnfairLock<String?>(initialState: nil)
-    /// The shared group's name after the team prefix (`AppIdentity.sharedKeychainGroup`).
-    private let sharedName: String?
+    /// The widget (`AppIdentity.inExtension`): its default group is the shared one.
+    private let inExtension: Bool
 
-    public init(sharedGroup: String? = AppIdentity.main.sharedKeychainGroup, _ probe: @escaping @Sendable () -> String?) {
-        self.sharedName = sharedGroup; self.probe = probe
+    public init(inExtension: Bool = AppIdentity.inExtension, _ probe: @escaping @Sendable () -> String?) {
+        self.inExtension = inExtension; self.probe = probe
     }
 
     public var defaultGroup: String? {
@@ -77,6 +76,6 @@ public final class KeychainGroupProbe: Sendable {
         return found
     }
 
-    public var sharedGroup: String? { defaultGroup.flatMap { SharedKeychain.accessGroup(teamPrefixedFrom:$0, sharedGroup:sharedName) } }
-    public var privateGroup: String? { defaultGroup.flatMap { SharedKeychain.privateGroup(defaultGroup:$0, sharedGroup:sharedName) } }
+    public var sharedGroup: String? { defaultGroup.map { SharedKeychain.sharedGroup(defaultGroup:$0, inExtension:inExtension) } }
+    public var privateGroup: String? { defaultGroup.flatMap { SharedKeychain.privateGroup(defaultGroup:$0, inExtension:inExtension) } }
 }
