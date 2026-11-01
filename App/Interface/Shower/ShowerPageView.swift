@@ -32,6 +32,11 @@ enum ShowerPageText {
     /// The unsure face of a settlement that failed: settle once more, after a second tap.
     /// 我在学校记录里核对过了 is behind that face's 去核对.
     static let settleRetryBody = "结算发出去了，但没等到学校回话。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
+    static func settleRetryBody(_ cause: ShowerSettleRetryCause) -> String {
+        switch cause {
+        case .refused, .notSent, .noAnswer: return settleRetryBody
+        }
+    }
     static let settleRetry = "再结算一次"
     static let settleRetryConfirm = "确认再结算一次"
     static let settleRetryNote = "没扣才点。"
@@ -239,7 +244,7 @@ struct ShowerPageView: View {
             case .unsure:
                 icon("questionmark.circle", Theme.accentText)
                 title(ShowerPageText.unsure)
-                bodyText(flow.mayRetrySettle ? ShowerPageText.settleRetryBody : ShowerPageText.unsureBody)
+                bodyText(flow.settleRetryCause.map(ShowerPageText.settleRetryBody) ?? ShowerPageText.unsureBody)
                 // A close that may not have taken: water still running goes back to the timer.
                 if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
                 if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }

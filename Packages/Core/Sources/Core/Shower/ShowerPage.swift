@@ -94,6 +94,16 @@ public enum ShowerRecheckResult: Sendable, Equatable {
     }
 }
 
+/// What became of the settlement 再结算一次 would send again: the unsure face says it.
+public enum ShowerSettleRetryCause: Sendable, Equatable {
+    /// The school answered and refused it.
+    case refused
+    /// It never left.
+    case notSent
+    /// It went out (or may have) and no answer came back.
+    case noAnswer
+}
+
 /// One of the three steps 连接 · 出水 · 结算.
 public enum ShowerStepMark: String, Sendable, Equatable {
     case done, current, failed, future
@@ -289,6 +299,11 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var mayEnd: Bool { page?.phase == .running && record.canFinish && !ending }
     /// 再结算一次 on the unsure face: a settlement that failed with its consumption kept.
     public var mayRetrySettle: Bool { page?.phase == .unsure && record.canRetrySettle }
+    /// Why the unsure face offers 再结算一次; nil when it doesn't.
+    public var settleRetryCause: ShowerSettleRetryCause? {
+        guard mayRetrySettle else { return nil }
+        return .noAnswer
+    }
     /// The first tap of 再结算一次 is in: the next one sends it.
     public var settleRetryArmed: Bool { mayRetrySettle && record.settleRetryArmed }
 
