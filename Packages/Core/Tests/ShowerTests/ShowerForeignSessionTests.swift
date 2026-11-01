@@ -105,4 +105,51 @@ final class ShowerForeignSessionTests: XCTestCase {
         XCTAssertTrue(gateway.settleFrames.isEmpty)
         XCTAssertTrue(held.canRetrySettle)
     }
+
+    // MARK: Authorization never written
+
+    func writeNeverApplied() async throws -> ShowerEngine {
+        let e = try engine()
+        transport.script(.frame(identity), .notSent(.disconnected))
+        gateway.scriptAuthorize(.ok(auth))
+        let s = try await e.start(binding)
+        XCTAssertEqual(s.phase, .writePending)
+        XCTAssertTrue(s.authorizationNotWritten)
+        return e
+    }
+
+    func testWaterRunningOnAControllerOurAuthorizationNeverReachedIsNotClosed() async throws {
+        let e = try await writeNeverApplied()
+        transport.script(.frame(FakeFrames.active))
+        let back = try await e.finish(binding)
+        XCTAssertFalse(transport.writes.contains(close), "someone else's water is not closed")
+        XCTAssertEqual(back.phase, .writePending)
+        XCTAssertFalse(back.closeSent)
+        XCTAssertNil(back.failure)
+        XCTAssertTrue(back.authorizationNotWritten)
+        XCTAssertEqual(back.notice, .inUseByOther)
+        XCTAssertEqual(ShowerEndFailure(back.notice), .inUseByOther)
+        XCTAssertTrue(gateway.settleFrames.isEmpty)
+        XCTAssertEqual(try vault.showerState()?.phase, .writePending)
+
+        // Once it is free, 结束 ends the record as before: our authorization never ran water.
+        transport.script(.frame(identity))
+        let idle = try await e.finish(binding)
+        XCTAssertEqual(idle.phase, .idle)
+        XCTAssertFalse(transport.writes.contains(close))
+    }
+
+    /// A probe from Settings that finds water running does not make that water ours either.
+    func testAProbeThatFindsWaterRunningKeepsTheAuthorizationUnwritten() async throws {
+        let e = try await writeNeverApplied()
+        transport.script(.frame(FakeFrames.active))
+        let probed = try await e.review(binding)
+        XCTAssertEqual(probed.phase, .writePending)
+        XCTAssertTrue(probed.authorizationNotWritten)
+
+        transport.script(.frame(FakeFrames.active))
+        let back = try await e.finish(binding)
+        XCTAssertFalse(transport.writes.contains(close))
+        XCTAssertEqual(back.notice, .inUseByOther)
+    }
 }

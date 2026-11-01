@@ -436,6 +436,7 @@ enum ShowerProfileFiles {
         case .notActive?: return "水控没显示在用水，校日常就没发结束。去学校的热水记录里核对一下这次洗澡。"
         case .wrongDevice?: return "附近的水控不是你宿舍的那台。"
         case .writeUnconfirmed?: return ShowerDisplay.writeUnconfirmedHint
+        case .inUseByOther?: return ShowerPageText.endInUseByOther
         }
     }
 

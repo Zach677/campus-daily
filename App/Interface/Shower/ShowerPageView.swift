@@ -53,11 +53,14 @@ enum ShowerPageText {
     static let resolveConfirmNote = "标记以后，校日常不会再结算这一次。先在学校的热水记录里找到这次洗澡，再点核对过了。"
 
     /// Above 结束并结算 when the last end came back to the timer.
+    /// 结束 found the controller running someone else's session: no close was sent.
+    static let endInUseByOther = "水控有人在用，没发结束，免得关掉别人的水。"
     static func endFailed(_ failure: ShowerEndFailure) -> String {
         switch failure {
         case .noConnection: return "没连上水控，还没结束。靠近一点再点一次。"
         case .wrongController: return "连到的不是这间的水控，还没结束。再点一次。"
         case .notSent: return "还没发出去，没结束。再点一次。"
+        case .inUseByOther: return endInUseByOther
         case .other: return "没结束，水可能还在出。再点一次。"
         }
     }

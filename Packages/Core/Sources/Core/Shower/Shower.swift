@@ -83,6 +83,9 @@ public enum ShowerNotice: Sendable, Codable, Equatable {
     case wrongDevice
     /// The authorization write was answered with something other than the ack.
     case writeUnconfirmed
+    /// 结束 found water running on a controller our authorization provably never reached:
+    /// someone else's session, so no close was sent.
+    case inUseByOther
 }
 
 public struct ShowerState: Sendable, Codable, Equatable {
@@ -385,7 +388,8 @@ public enum ShowerReducer {
             s.reviewing = false
             switch ShowerFrames.classify(frame) {
             case .active:
-                s.phase = .running
+                // Our authorization provably never reached it: the water is someone else's.
+                if !state.authorizationNotWritten { s.phase = .running }
                 s.stateReviewRequired = false
                 return (s, [])
             case .idle(let id) where id == state.machineID:
@@ -440,6 +444,10 @@ public enum ShowerReducer {
         case (.closing, .probeReplied(let frame)) where !state.closeSent:
             let from = state.closingFrom ?? .running
             switch ShowerFrames.classify(frame) {
+            case .active where state.authorizationNotWritten:
+                // Our authorization provably never reached the controller, so this session is
+                // someone else's: closing it would stop their water and settle it under us.
+                return (back(s, to: from, notice: .inUseByOther), [.releaseDevice])
             case .active:
                 guard let id = state.authorizationID, let command = ShowerFrames.closeCommand(authorizationID: id) else {
                     return (back(s, to: from, notice: .writeUnconfirmed), [.releaseDevice])

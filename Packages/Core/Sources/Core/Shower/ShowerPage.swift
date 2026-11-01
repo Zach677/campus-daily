@@ -32,6 +32,8 @@ public enum ShowerEndFailure: Sendable, Equatable {
     case wrongController
     /// Stopped before the close went out.
     case notSent
+    /// The controller runs someone else's session: no close was sent.
+    case inUseByOther
     case other
 
     /// Nil when the notice is not an end that failed (`notActive` is the needs-check face).
@@ -39,6 +41,7 @@ public enum ShowerEndFailure: Sendable, Equatable {
         switch notice {
         case nil, .notActive?: return nil
         case .wrongDevice?: self = .wrongController
+        case .inUseByOther?: self = .inUseByOther
         case .device(.interrupted)?: self = .notSent
         case .device(.bluetoothOff)?, .device(.notFound)?, .device(.ambiguous)?, .device(.timedOut)?, .device(.disconnected)?:
             self = .noConnection
@@ -77,7 +80,7 @@ public enum ShowerRecheckResult: Sendable, Equatable {
         case .device(.notFound)?, .device(.timedOut)?, .device(.disconnected)?, .device(.ambiguous)?, .device(.interrupted)?:
             self = .noConnection
         case .device(.busy)?: self = .busy
-        case .device(.malformedFrame)?, .writeUnconfirmed?, nil: self = .failed
+        case .device(.malformedFrame)?, .writeUnconfirmed?, .inUseByOther?, nil: self = .failed
         }
     }
 
