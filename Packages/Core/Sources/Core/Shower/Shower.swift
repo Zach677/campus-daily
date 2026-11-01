@@ -729,7 +729,7 @@ public enum ShowerAuthorizeRefusedText {
 /// check before the next start.
 public enum ShowerAuthorizeUnclearText {
     public static let title = "水没开"
-    public static let body = "学校那边的答复校日常没看懂，所以没开水。先去学校的热水记录里看看有没有多记一笔，看过了点「我在学校记录里核对过了」，再重新开始。"
+    public static let body = "学校那边没给准话，所以没开水。先去学校的热水记录里看看有没有多记一笔，看过了点「我在学校记录里核对过了」，再重新开始。"
     /// Siri and Shortcuts.
     public static let spoken = "水没开。打开校日常核对一下再开始。"
 

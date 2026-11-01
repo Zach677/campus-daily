@@ -49,7 +49,7 @@ final class ShowerAuthorizeUnclearTests: XCTestCase {
             XCTAssertEqual(s.failure?.reason, .authorizeUncertain, "\(e)")
             let copy = try XCTUnwrap(ShowerPage(s)?.authorizeUnclear, "\(e)")
             XCTAssertEqual(copy.title, "水没开")
-            XCTAssertEqual(copy.body, "学校那边的答复校日常没看懂，所以没开水。先去学校的热水记录里看看有没有多记一笔，看过了点「我在学校记录里核对过了」，再重新开始。")
+            XCTAssertEqual(copy.body, "学校那边没给准话，所以没开水。先去学校的热水记录里看看有没有多记一笔，看过了点「我在学校记录里核对过了」，再重新开始。")
             XCTAssertEqual(ShowerDisplay(s).title, "水没开")
             XCTAssertEqual(siri(s), "水没开。打开校日常核对一下再开始。")
         }
