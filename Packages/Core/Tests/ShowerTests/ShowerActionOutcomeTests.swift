@@ -31,6 +31,13 @@ final class ShowerActionOutcomeTests: XCTestCase {
                        .failure(ShowerActionFailure("开水结果未确认")))
     }
 
+    /// The platform turned the start down (4002, -301): nothing was issued and it gave no words.
+    func testADefiniteRefusalSaysTheSchoolDidNotLetTheWaterRun() {
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.authorizeRefused), notice: nil),
+                       .failure(ShowerActionFailure("学校没让开水，打开校日常看看。")))
+        XCTAssertEqual(ShowerDisplay.failureTitle(ShowerFailure(reason: .authorizeRefused, needsReview: false)), "水没开成")
+    }
+
     func testAnEndSettlesOrSaysWhy() {
         XCTAssertEqual(ShowerActionOutcome.after(start: false, ShowerState(phase: .done), notice: nil), .success(.settled))
         // Back on the timer: the close was not sent.

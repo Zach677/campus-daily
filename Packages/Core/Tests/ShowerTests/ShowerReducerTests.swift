@@ -108,7 +108,7 @@ final class ShowerReducerTests: XCTestCase {
         let (r, _) = reduce(authorizing(), .authorizeFailed(refusal))
         XCTAssertEqual(r.failure, ShowerFailure(reason: .authorizeRefused, needsReview: false, error: refusal))
         XCTAssertTrue(r.canStart)
-        XCTAssertEqual(ShowerDisplay(r).title, "热水平台没同意开水。")
+        XCTAssertEqual(ShowerDisplay(r).title, "水没开成")
 
         for e in [ServiceError.timedOut, .offline, .uncertain(.lxt6), .malformed(.lxt6, "x"), .tls] {
             let (u, _) = reduce(authorizing(), .authorizeFailed(e))

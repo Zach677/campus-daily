@@ -704,7 +704,7 @@ public struct ShowerDisplay: Sendable, Equatable {
         case .deviceUnavailable: return "没连上水控，靠近一点再试。"
         case .wrongDevice: return "这不是你宿舍的水控。"
         case .deviceBusy: return "水控正在使用中。"
-        case .authorizeRefused: return "热水平台没同意开水。"
+        case .authorizeRefused: return ShowerAuthorizeRefusedText.title
         case .authorizeUncertain: return ShowerAuthorizeUnclearText.title(platformMessage: f.platformMessage)
         case .authorizationInvalid: return "开水结果未确认"
         case .closeUnconfirmed: return "结束指令未确认"
@@ -712,6 +712,15 @@ public struct ShowerDisplay: Sendable, Equatable {
         case .settleUnconfirmed: return "结算待核对"
         }
     }
+}
+
+/// The platform definitely turned the authorize down (`authorizeRefused`: 4002, -301, or before
+/// sending): nothing was issued, and those answers carry no sentence of the platform's.
+public enum ShowerAuthorizeRefusedText {
+    /// The page, the status line and the lock screen.
+    public static let title = "水没开成"
+    /// Siri and Shortcuts.
+    public static let spoken = "学校没让开水，打开校日常看看。"
 }
 
 /// An authorize the platform answered in a way the app can't read (`authorizeUncertain`).

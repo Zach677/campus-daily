@@ -25,6 +25,9 @@ public enum ShowerActionOutcome: Sendable, Equatable {
             if result.failure?.reason == .authorizeUncertain {
                 return .failure(ShowerActionFailure(ShowerAuthorizeUnclearText.spoken(platformMessage: result.failure?.platformMessage)))
             }
+            if result.failure?.reason == .authorizeRefused {
+                return .failure(ShowerActionFailure(ShowerAuthorizeRefusedText.spoken))
+            }
             return .failure(ShowerActionFailure(ShowerDisplay.failureTitle(result.failure)))
         }
         if start {

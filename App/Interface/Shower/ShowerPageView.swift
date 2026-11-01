@@ -14,7 +14,7 @@ enum ShowerPageText {
     static let doneLabel = "洗好了"
     static let connectFailed = "没连上水控"
     static let connectFailedBody = "站近一点，确认蓝牙开着，再试一次。"
-    static let denied = "水控没让开水"
+    static let denied = ShowerAuthorizeRefusedText.title
     static let deniedBody = "这次没扣钱。过一会儿再试，一直这样就去学校的热水记录里看看。"
     static let inUse = "水控有人在用"
     static let inUseBody = "附近的水控有人在用，现在开不了水。等它空了再试。这次没扣钱。"
