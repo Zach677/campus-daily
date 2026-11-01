@@ -90,6 +90,8 @@ enum ShowerProfileFiles {
     private let gateway = ShowerGatewayBox()
     private let bluetooth = BluetoothTransport()
     private var syncGate = ShowerSyncGate()
+    /// What the 「还在计时」 reminder counts from (`ShowerReminderStart`).
+    private var reminderStart: Date?
 
     init() {
         binding = (try? AppEnvironment.showerVault.binding()) ?? nil
@@ -213,9 +215,10 @@ enum ShowerProfileFiles {
     private func apply(_ next: ShowerState) {
         let old = state
         state = next
+        reminderStart = ShowerReminderStart.next(next, after:old, current:reminderStart, now:Date())
         if syncGate.shouldSync(next, after:old) {
             ShowerActivityController.shared.sync(state:next)
-            Reminders.shared.syncShower(started:next.mayBeFlowing ? next.startedAt : nil)
+            Reminders.shared.syncShower(started:reminderStart)
         }
     }
 
