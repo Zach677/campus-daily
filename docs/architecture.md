@@ -580,9 +580,10 @@ Rules:
 - `creating` uncertain (or a success without a usable id) → `reconcile`: `scanWasherCode` of the
   same QR gives the account's unfinished `orderId`; adopt it only if `order(id)` matches machine +
   program, was created within 2 min of the local confirmation and is not above the confirmed
-  price. Never create a second one; if nothing matches the user checks the U净 app and clears
-  (a confirmed 「没有订单，清除」 on the laundry page). `createAt` is read as
-  ISO 8601 or as `yyyy-MM-dd HH:mm:ss` Beijing time (the captures only show ISO 8601; the real
+  price. Never create a second one. Only when the last lookup found no unfinished order on the
+  machine may the user, after checking the U净 app, clear the record (a confirmed 「没有订单，清除」
+  on the laundry page); not after a failed lookup, an order that didn't match, or a relaunch
+  before a fresh lookup. `createAt` is read as ISO 8601 or as `yyyy-MM-dd HH:mm:ss` Beijing time (the captures only show ISO 8601; the real
   format is still to be checked on a device).
 - The record keeps the U净 account id it was created with. While it is open the login entry
   is closed, except after a read came back `sessionExpired`: then only that account may sign in

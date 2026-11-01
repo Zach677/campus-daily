@@ -102,6 +102,29 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(fx, [.diagnostic("laundry.resolvedManually")])
     }
 
+    /// Clearing the record on the user's word needs a lookup that found no order on the machine.
+    func testManualClearOnlyAfterNothingWasFound() {
+        let reconcile = reduce(creating, .createFailed(.timedOut)).0
+        let found = reduce(reconcile, .activeOrderFound(L.orderID)).0
+        let mismatch = reduce(found, .orderRead(L.order("10", device: "other"), at: t0)).0
+        XCTAssertEqual(mismatch.notice, .orderMismatch)
+        let lookupFailed = reduce(reconcile, .activeOrderLookupFailed(.offline)).0
+        XCTAssertEqual(lookupFailed.notice, .readFailed(.offline))
+        let expired = reduce(reconcile, .activeOrderLookupFailed(.sessionExpired(.ujing))).0
+        XCTAssertEqual(expired.notice, .sessionExpired)
+        let nothing = reduce(reconcile, .activeOrderFound(nil)).0
+        let restored = R.restore(nothing.persistable)
+        for s in [reconcile, found, mismatch, lookupFailed, expired, restored] {
+            XCTAssertEqual(s.phase, .reconcile)
+            XCTAssertFalse(s.canResolveManually, "\(String(describing: s.notice))")
+            let (after, fx) = reduce(s, .resolveManually)
+            XCTAssertEqual(after.phase, .reconcile)
+            XCTAssertEqual(fx, [])
+        }
+        XCTAssertTrue(nothing.canResolveManually)
+        XCTAssertEqual(reduce(nothing, .resolveManually).0.phase, .none)
+    }
+
     /// U净's `createAt` has only been seen in ISO 8601; a plain Beijing time must not make
     /// reconcile reject our own order.
     func testCreateTimeFormats() {

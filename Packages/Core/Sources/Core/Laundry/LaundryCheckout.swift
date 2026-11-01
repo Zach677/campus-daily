@@ -178,8 +178,10 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     /// Cancel only an unpaid 10/17 order.
     public var canCancel: Bool { phase == .created && order?.isUnpaid == true }
 
-    /// `reconcile` can be cleared by the user after checking the U净 app.
-    public var canResolveManually: Bool { phase == .reconcile }
+    /// `reconcile` can be cleared by the user after checking the U净 app, only once the last
+    /// lookup found no order on the machine. The notice isn't stored, so after a relaunch a
+    /// fresh lookup comes first.
+    public var canResolveManually: Bool { phase == .reconcile && notice == .orderNotFound }
 
     /// Whether signing in to U净 as `id` may replace the stored login (`stored`, the account id
     /// saved on this phone). With an order open only the account that placed it may sign in again
@@ -325,7 +327,7 @@ public enum LaundryReducer {
             s.phase = .created
             return apply(order, at: at, to: s)
 
-        case (.reconcile, .resolveManually):
+        case (.reconcile, .resolveManually) where state.canResolveManually:
             return (state.cleared(outcome: nil), [.diagnostic("laundry.resolvedManually")])
 
         // MARK: reads in order phases
