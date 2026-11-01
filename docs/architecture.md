@@ -7,7 +7,7 @@ school-login script and, later, the fixtures.
 Ground rules: the BLE frame format and the `wxcode`/MD5 signing are kept byte for byte; any
 change to signing, BLE commands or school/U净 response parsing goes in its own commit with its
 reason. Money paths stop rather than guess. The repo never contains real names, ids, rooms,
-tokens or the hot-water platform `secret`/`sid`.
+tokens or the hot-water platform `secret`/`sid`; every public build does contain them (see 2.2).
 
 ---
 
@@ -380,7 +380,15 @@ node only (1 row).
 
 **Platform profile.** `secret`, `sid`, `bleName`, `typeId`, `version` are shared platform
 parameters staged into the app bundle at build time from a git-ignored file (`Scripts/stage-water-profile.py stage`, run by the
-App build phase). They are never in the repo, logs or fixtures.
+App build phase). They are not in the repo or fixtures, and the app does not log them, but they are
+not secret: every public build carries them in plain text (`CampusWaterPlatform.json` in the
+bundle), and `Scripts/stage-water-profile.py fetch` itself takes them from a public IPA. They are
+the same for every user, and they alone sign every lxt6 call: authorize and settle sign only
+`studentId`, `schoolId`, `machineid`, `machinedata`… (`LxtSigning.operationFields`) with no user
+credential, so anyone holding them can authorize or settle for any student number and machine.
+This is a platform risk the client cannot fix, accepted as such. The redacted `description`, the
+exact-key check on `.waterconfig` files and iOS file protection on the imported copy keep the
+values out of logs and stray files; they do not protect them.
 
 **Identity hand-off.** `EcyktClient.signData` → `appdata` (`vsuppid, appid, userId, deptId,
 username, phone, sign, nonce, timestamp`) → `getUserMsg` (signed, `requestType=1`) → water
@@ -864,7 +872,7 @@ Headers as in A.1. Envelope `{code, message, data}`, HTTP 200.
 ### A.4 Hot water: isv.lxt6.cn
 
 Signed GET: `?wxcode=<k=v*_k=v…>&sign=md5(secret + formEncode(wxcode))&sid=<sid>[&requestType=1]`.
-`secret`/`sid` come from the private water profile (never in the repo). Envelope casing differs
+`secret`/`sid` come from the platform profile (see 2.2: not in the repo, but in every public build). Envelope casing differs
 per backend: `Code/Data/Message` (AECC) vs `code/data/message|msg` (zk_*); some error bodies are
 a JSON string containing JSON.
 
