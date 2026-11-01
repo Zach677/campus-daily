@@ -69,9 +69,10 @@ struct PowerChoice: Identifiable, Equatable {
 
     /// Re-read the Keychain (launch, after sign-in/out).
     func reload() {
-        configured = ((try? AppEnvironment.schoolVault.ecyktSession()) ?? nil) != nil
-        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
-        account = (try? AppEnvironment.schoolVault.account()) ?? nil
+        let shown = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:AppEnvironment.schoolVault)
+        configured = shown.signedIn
+        profile = shown.profile
+        account = shown.account
         snapshot = refresher.latest()
     }
 
