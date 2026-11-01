@@ -62,8 +62,9 @@ public actor SnapshotRefresher {
     let store: SnapshotStoring
     /// Failures worth a look, by event name only (no values), e.g. the snapshot could not be saved.
     let diagnostic: @Sendable (String) -> Void
-    /// Nil = this process is the only refresher (tests of the in-process rules).
-    let lease: RefreshLease?
+    /// Nil = this process is the only refresher (tests of the in-process rules). Public for a
+    /// write that only needs the lease file's lock (`RefreshLease.locked`).
+    public nonisolated let lease: RefreshLease?
     let leaseWait: TimeInterval
     let sleep: @Sendable (TimeInterval) async -> Void
     /// How often the lease is renewed while a read runs.

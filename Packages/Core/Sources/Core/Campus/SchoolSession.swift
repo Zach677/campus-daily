@@ -120,10 +120,6 @@ public actor SchoolSession {
     /// Sign-in, the dorm and meter, the hot-water hand-off and recharge check it before writing,
     /// so the previous person's late answer never lands in the next person's account.
     private var personGeneration = 0
-    /// Bumped whenever the saved password is set or removed here (sign-in, 保存密码 on and off,
-    /// sign-out): a late second off-write (`forgetPasswordAgain`) leaves alone what was saved
-    /// after it, even the same password typed again.
-    private var passwordGeneration = 0
     /// How long the card records may take after the numbers were handed over.
     let recordsTimeout: TimeInterval
     /// Apartments whose buildings the lookup reads to find the dorm's; more and it stops there.
@@ -197,43 +193,20 @@ public actor SchoolSession {
             try vault.savePortalToken(portalToken)
             try vault.saveAccount(saving)
         }
-        passwordGeneration += 1
     }
 
-    /// What `forgetPassword()` removed, for `forgetPasswordAgain(forgotten:)`.
-    public struct ForgottenPassword: Sendable, Equatable {
-        /// The account as it was before.
-        public let account: SchoolAccount
-        let generation: Int
-    }
-
-    /// Turning 保存密码 off: the password goes at once; the account name stays for display.
-    /// nil, and nothing changed, when no password is saved: an earlier off's pending second
-    /// write still holds then.
-    @discardableResult public func forgetPassword() throws -> ForgottenPassword? {
-        guard let stored = try vault.account(), stored.password != nil else { return nil }
-        passwordGeneration += 1
-        try vault.saveAccount(SchoolAccount(account: stored.account))
-        return ForgottenPassword(account: stored, generation: passwordGeneration)
-    }
-
-    /// The same once more, under the lease: a refresh that read the account before the first
-    /// write may have written it back with the password. Only that password goes (the rest of
-    /// that write stays). Left alone: anything saved here since (switched back on, even with the
-    /// same password; signed in or out), another account, another password.
-    /// The compare and the write are one locked step under `owning`; lost, nothing is written
-    /// and `SchoolLoginFailure.busy` is thrown.
-    public func forgetPasswordAgain(forgotten: ForgottenPassword, owning: LeaseOwnership) throws {
-        guard forgotten.generation == passwordGeneration else { return }
-        let before = forgotten.account, vault = vault
-        let ran = try owning.write { () -> Bool in
-            guard var stored = try vault.account(), stored.account == before.account,
-                  stored.password != nil, stored.password == before.password else { return true }
-            stored.password = nil
-            try vault.saveAccount(stored)
-            return true
+    /// Turning 保存密码 off: the password goes; the account name stays for display. Read and
+    /// written inside the lease file's lock (`RefreshLease.locked`, whoever holds the lease), so
+    /// it never lands between a refresh's compare and write of the saved account: that refresh's
+    /// write-back then finds another password and leaves the account alone. Never waits for the
+    /// lease itself, so a refresh running elsewhere doesn't make it fail.
+    public func forgetPassword(lockingWith lease: RefreshLease?) throws {
+        let vault = vault
+        let forget = {
+            guard let stored = try vault.account(), stored.password != nil else { return }
+            try vault.saveAccount(SchoolAccount(account: stored.account))
         }
-        guard ran == true else { throw SchoolLoginFailure.busy }
+        if let lease { try lease.locked(forget) } else { try forget() }
     }
 
     /// False only when the card session was read and is not there. Async like the
@@ -377,7 +350,6 @@ public actor SchoolSession {
             throw error
         }
         if match != .same { started = newPerson() }
-        if saving != nil { passwordGeneration += 1 }
         return SignInSummary(switchedAccount: match == .different,
                              previousPersonUnconfirmed: before != nil && match == .unknown,
                              dormAndMeterCleared: Self.cleared(old, now: profile))
@@ -451,7 +423,6 @@ public actor SchoolSession {
     public func signOut() throws {
         signOutGeneration += 1
         personGeneration += 1
-        passwordGeneration += 1
         loggedExpiries = []
         var failed: [String] = []
         let steps: [(String, () throws -> Void)] = [
@@ -849,9 +820,8 @@ public actor SchoolSession {
         case .changed?: return .retryLater
         case .written?: break
         }
-        // The account gone right after all the same (a sign-out that deleted the items without
-        // removing the lease first: an older build, or a failed removal): the token is taken
-        // back out, in one more locked step. A new sign-in there writes its token before its
+        // The account gone right after all the same (a sign-out whose removal of the lease
+        // failed, so it deleted the items without it): the token is taken back out, in one more locked step. A new sign-in there writes its token before its
         // account, so a token that is no longer this one is theirs and stays.
         if accountGone {
             let removed = (try? owning.write { () -> Bool in

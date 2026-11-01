@@ -16,9 +16,6 @@ public enum StoreKey: String, Sendable, CaseIterable {
     case laundryCheckout = "laundry.checkout"
     case sharedSnapshot = "shared.snapshot"
     case sharedReminderLines = "shared.reminderLines"
-    /// Where builds before the lease file kept the refresh lease (a random owner id and an
-    /// expiry). Only deleted now: `SchoolRefreshStack` removes a leftover at launch.
-    case sharedRefreshLease = "shared.refreshLease"
     /// The credential-lifetime lines (kind and minutes only) for the exported diagnostics.
     case sharedCredentialLog = "shared.credentialLog"
     /// A reset is under way, since when (`ResetMarker`). Holds a time only.
@@ -45,7 +42,7 @@ public enum StoreKey: String, Sendable, CaseIterable {
     /// laundry items live only in the app's private group, which the widget is not entitled to.
     public var isShared: Bool {
         switch self {
-        case .sharedSnapshot, .sharedReminderLines, .sharedRefreshLease, .sharedCredentialLog, .sharedResetMarker, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
+        case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
             return true
         case .showerBinding, .showerSession, .laundryAccount, .laundryCheckout: return false
         }

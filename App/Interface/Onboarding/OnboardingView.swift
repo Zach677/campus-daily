@@ -584,23 +584,13 @@ struct OnboardingView: View {
         if preview != nil { advance(); return }
         loginFocus = nil
         loginState = .loading
-        let name = account.trimmingCharacters(in:.whitespaces), secret = password, save = savePassword
+        let name = account, secret = password, save = savePassword
         Task {
-            do {
-                try await campus.signIn(account:name, password:secret, savePassword:save)
-                password = ""
-                await campus.refresh(force:true)
-                loginState = .idle
-                if step == .login { advance() }
-            } catch SchoolLoginFailure.wrongCredentials {
-                password = ""
-                loginState = .wrong
-                loginFocus = .password
-            } catch SchoolLoginFailure.cannotLoginDirectly {
-                loginState = .cannotDirect
-            } catch {
-                loginState = .failed(SchoolLoginText.text(error))
-            }
+            let next = await campus.submitLogin(account:name, password:secret, savePassword:save)
+            if next == .idle || next == .wrong { password = "" }
+            loginState = next
+            if next == .wrong { loginFocus = .password }
+            if next == .idle, step == .login { advance() }
         }
     }
 

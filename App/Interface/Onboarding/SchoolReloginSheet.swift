@@ -136,24 +136,14 @@ struct SchoolReloginSheet: View {
         if preview != nil { return }
         focus = nil
         state = .loading
-        let name = account.trimmingCharacters(in:.whitespaces), secret = password, save = savePassword
+        let name = account, secret = password, save = savePassword
         Task {
-            do {
-                try await campus.signIn(account:name, password:secret, savePassword:save)
-                password = ""
-                await campus.refresh(force:true)
-                await signedIn()
-                state = .idle
-                dismiss()
-            } catch SchoolLoginFailure.wrongCredentials {
-                password = ""
-                state = .wrong
-                focus = .password
-            } catch SchoolLoginFailure.cannotLoginDirectly {
-                state = .cannotDirect
-            } catch {
-                state = .failed(SchoolLoginText.text(error))
-            }
+            let next = await campus.submitLogin(account:name, password:secret, savePassword:save)
+            if next == .idle || next == .wrong { password = "" }
+            if next == .idle { await signedIn() }
+            state = next
+            if next == .wrong { focus = .password }
+            if next == .idle { dismiss() }
         }
     }
 

@@ -46,6 +46,22 @@ final class RefreshLeaseTests: XCTestCase {
         XCTAssertTrue(widget.holds())
     }
 
+    /// A locked step runs whoever holds the lease, keeps the lock while it runs, and leaves the
+    /// lease as it was. Without a file it just runs.
+    func testALockedStepRunsWhoeverHoldsTheLease() throws {
+        let app = lease("app-1"), widget = lease("widget-1")
+        XCTAssertTrue(widget.acquire())
+        let value = try app.locked { () -> Int in
+            XCTAssertFalse(widget.tryClear(), "locked while the step runs")
+            return 7
+        }
+        XCTAssertEqual(value, 7)
+        XCTAssertTrue(widget.holds())
+        XCTAssertFalse(app.holds())
+        XCTAssertThrowsError(try app.locked { throw CocoaError(.fileWriteUnknown) }, "what the step throws is rethrown")
+        XCTAssertEqual(try RefreshLease(file: nil, owner: "app-2").locked { 8 }, 8)
+    }
+
     /// Sign-out from the app while the widget is inside a lease step: the wait for the file
     /// lock happens off the main thread, so the screen keeps responding until it is free.
     @MainActor func testRevokingTheLeaseWaitsForTheLockOffTheMainThread() async throws {

@@ -244,7 +244,7 @@ struct HomeView: View {
             if let index = path.firstIndex(of:.records) { path.removeSubrange(index...) }
         }
         .onChange(of:phase) { _, value in
-            if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
+            if value == .active { Task { await campus.refresh(); await laundry.refresh() } }
         }
         .onChange(of:shower.state.phase) { old, value in
             // The result is on the shower page; the balance it was taken from is read again.

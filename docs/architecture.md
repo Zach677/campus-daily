@@ -298,8 +298,9 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   it, so nobody else wrote): that step takes the lease again and keeps the owner and compare
   checks; the hold, the pause and lifting the hold are written the same way. A cancelled task (the widget at its deadline) writes nothing, as for every
   other write, and the hold stays. Only deletions skip the lease check: sign-out and
-  reset remove the lease first (below), and the first 保存密码 off-write removes the password at
-  once, its second write under the lease taking out one a refresh wrote back;
+  reset remove the lease first (below), and 保存密码 off removes the password inside the lease
+  file's lock without taking the lease (`RefreshLease.locked`), so a refresh's compare-and-write
+  of the account never straddles it;
 - each `holdingLease` call (a login, 保存密码, recharge, the hot-water hand-off) takes the lease
   under its own owner (the process's owner plus `-login-` and a random UUID): two of them at once
   (the login sheet closed and submitted again) take turns like the two processes, and the first
@@ -316,8 +317,6 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   (`Application Support/refresh.lease`, `RefreshLease.appFile`), so its reads, logins, recharge
   and hand-off still take turns; the widget has no lease file and never takes the lease: it draws
   the stored snapshot, so the two still never read at the same time.
-Builds before the lease file kept the lease in the Keychain item `shared.refreshLease`;
-`SchoolRefreshStack` deletes that leftover at launch.
 
 **The widget's own refresh.** `SchoolRefreshStack` builds the school session (with the CAS
 password login) and the refresher with its lease, the same in both processes (`role` "app" /

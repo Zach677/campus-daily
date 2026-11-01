@@ -212,6 +212,24 @@ struct PowerChoice: Identifiable, Equatable {
         matchPowerAutomatically(.signedIn)
     }
 
+    /// 登录 on the login form (first run and 重新登录学校账号): one login, never retried (failures
+    /// count towards the school's lock), then a forced refresh. Returns the form's next state:
+    /// `.idle` once signed in, `.wrong` (clear and focus the password), `.cannotDirect` (offer the
+    /// school's web page) or `.failed` with the text to show.
+    func submitLogin(account: String, password: String, savePassword: Bool) async -> SchoolLoginState {
+        do {
+            try await signIn(account:account.trimmingCharacters(in:.whitespaces), password:password, savePassword:savePassword)
+            await refresh(force:true)
+            return .idle
+        } catch SchoolLoginFailure.wrongCredentials {
+            return .wrong
+        } catch SchoolLoginFailure.cannotLoginDirectly {
+            return .cannotDirect
+        } catch {
+            return .failed(SchoolLoginText.text(error))
+        }
+    }
+
     /// The app's own login form. Throws `SchoolLoginFailure` for the login itself (shown on the
     /// form), or a service / storage error for the steps after it.
     func signIn(account: String, password: String, savePassword: Bool) async throws {
@@ -265,16 +283,12 @@ struct PowerChoice: Identifiable, Equatable {
         if known == nil { await refresh(force:true) }
     }
 
-    /// 保存密码 off: the password goes at once; the account stays for display. Then once more
-    /// under the lease: a widget refresh that read the account before and writes it back (a pause
-    /// or a hold) would otherwise bring the password back. That second write leaves a password
-    /// saved since (switched back on) alone. A failed write is thrown: the switch shows it.
+    /// 保存密码 off: the password goes; the account stays for display. Written inside the lease
+    /// file's lock, so a widget refresh that read the account before can't write the password
+    /// back. A failed write is thrown: the switch shows it.
     func forgetPassword() async throws {
-        let session = session
         defer { reload() }
-        guard let forgotten = try await session.forgetPassword() else { return }
-        reload()
-        try await refresher.holdingLease { owning in try await session.forgetPasswordAgain(forgotten:forgotten, owning:owning) }
+        try await session.forgetPassword(lockingWith:refresher.lease)
     }
 
     /// Reset, before the stores are cleared: a refresh still running must not write the old

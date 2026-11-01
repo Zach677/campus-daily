@@ -13,7 +13,8 @@ enum AccountText {
     static let notSavedFooter = "不保存的话，过几个小时小组件就要打开 App 才能更新。"
     static let pausedRefused = "存的密码登录不上，自动登录先停了。可能是在学校那边改过密码，重新输入就能恢复。"
     static let signOutFailed = "退出没完成，再试一次。"
-    static let pausedNoAnswer = "上次登录学校没回应，为免账号被锁，自动登录先停几个小时，到时会自己恢复。"
+    /// The hold: the school never answered the last login, or answered it and then failed a later step.
+    static let pausedNoAnswer = "上次登录学校没走完，自动登录先停一会儿，免得反复发密码，过几个小时会自己再试。"
 
     /// The 学校账号 row on the settings page.
     static func row(signedIn: Bool, account: SchoolAccount?, at now: Date = Date()) -> String {

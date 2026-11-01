@@ -15,7 +15,7 @@ public enum SharedKeychain {
                                    kSecAttrService as String:StoreKey.servicePrefix + "probe",
                                    kSecAttrAccount as String:StoreKey.account,
                                    kSecUseDataProtectionKeychain as String:true]
-        // Older builds left a probe in the shared group; start clean so the answer is today's default.
+        // The probe an earlier launch added would make this add fail as a duplicate: start clean.
         SecItemDelete(probe as CFDictionary)
         var add = probe
         add[kSecValueData as String] = Data()

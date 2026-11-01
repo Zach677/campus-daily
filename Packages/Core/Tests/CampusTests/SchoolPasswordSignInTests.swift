@@ -135,73 +135,25 @@ final class SchoolPasswordSignInTests: XCTestCase {
         try await h.session().savePassword("synthetic-pw-991", owning: .unchecked)
         XCTAssertEqual(try h.vault.account()?.usablePassword, "synthetic-pw-991")
         XCTAssertEqual(login.calls.map(\.account), ["99100991", "99100991"])
-        _ = try await h.session().forgetPassword()
+        try await h.session().forgetPassword(lockingWith: nil)
         XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
     }
 
-    /// 保存密码 off, written twice: at once, and again under the lease in case a refresh that
-    /// read the account before writes the password back. A password saved again in between
-    /// (switched back on) stays; the old one written back goes.
-    func testTheSecondForgetLeavesAPasswordSavedSinceAndUndoesAWriteBack() async throws {
+    /// 保存密码 off while the widget holds the lease: the password goes at once, inside the file
+    /// lock, without waiting for the lease or taking it; the widget's lease stays. Nothing
+    /// saved: nothing changes.
+    func testForgetNeedsOnlyTheLockNotTheLease() async throws {
         let h = harness(FakePasswordLogin())
         try h.signedIn()
-        let saved = SchoolAccount(account: "99100991", password: "synthetic-old-pw")
-        try h.vault.saveAccount(saved)
-        let session = h.session()
-        let first = try await session.forgetPassword()
-        let forgotten = try XCTUnwrap(first)
-        XCTAssertEqual(forgotten.account, saved)
-        XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
-
-        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-new-pw"))
-        try await session.forgetPasswordAgain(forgotten: forgotten, owning: .unchecked)
-        XCTAssertEqual(try h.vault.account()?.password, "synthetic-new-pw", "saved again since: kept")
-
-        var writtenBack = saved
-        writtenBack.paused = true
-        try h.vault.saveAccount(writtenBack)
-        try await session.forgetPasswordAgain(forgotten: forgotten, owning: .unchecked)
-        XCTAssertNil(try h.vault.account()?.password, "the old password written back goes")
-        XCTAssertEqual(try h.vault.account()?.paused, true, "the rest of that write stays")
-
-        try h.vault.saveAccount(SchoolAccount(account: "99100992", password: "synthetic-old-pw"))
-        try await session.forgetPasswordAgain(forgotten: forgotten, owning: .unchecked)
-        XCTAssertEqual(try h.vault.account()?.password, "synthetic-old-pw", "another account is not touched")
-    }
-
-    /// Switched off, then on again with the same password while the second off-write waited
-    /// for the lease (the widget held it): the password saved again stays, though it is the
-    /// one that was forgotten.
-    func testTheSecondForgetLeavesTheSamePasswordSavedAgain() async throws {
-        let h = harness(FakePasswordLogin(.success(Self.freshToken)))
-        try h.signedIn()
         try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
-        let session = h.session()
-        let forgotten = try await session.forgetPassword()
-        try await session.savePassword("synthetic-pw-991", owning: .unchecked)
-        try await session.forgetPasswordAgain(forgotten: try XCTUnwrap(forgotten), owning: .unchecked)
-        XCTAssertEqual(try h.vault.account()?.password, "synthetic-pw-991", "saved again since: kept")
-    }
-
-    /// Off, on again with a password that failed (nothing saved), off once more: that last
-    /// off finds no password and changes nothing, so the first off's pending second write still
-    /// removes the password a refresh wrote back meanwhile.
-    func testOffAgainAfterAFailedOnKeepsThePendingSecondForget() async throws {
-        let h = harness(FakePasswordLogin(.failure(.wrongCredentials)))
-        try h.signedIn()
-        let saved = SchoolAccount(account: "99100991", password: "synthetic-pw-991")
-        try h.vault.saveAccount(saved)
-        let session = h.session()
-        let first = try await session.forgetPassword()
-        let forgotten = try XCTUnwrap(first)
-        do { try await session.savePassword("synthetic-wrong-pw", owning: .unchecked); XCTFail("the login fails") } catch {}
-        let again = try await session.forgetPassword()
-        XCTAssertNil(again, "no password to forget")
+        let widget = RefreshLease(file: h.store.leaseFile, owner: "widget-1")
+        XCTAssertTrue(widget.acquire())
+        let app = RefreshLease(file: h.store.leaseFile, owner: "app-1")
+        try await h.session().forgetPassword(lockingWith: app)
         XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
-
-        try h.vault.saveAccount(saved)   // a refresh that read the account before the first off
-        try await session.forgetPasswordAgain(forgotten: forgotten, owning: .unchecked)
-        XCTAssertNil(try h.vault.account()?.password, "the written-back password still goes")
+        XCTAssertEqual(h.store.leaseFile.storedOwner(), "widget-1")
+        try await h.session().forgetPassword(lockingWith: app)
+        XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
     }
 
     // MARK: Refresh ladder

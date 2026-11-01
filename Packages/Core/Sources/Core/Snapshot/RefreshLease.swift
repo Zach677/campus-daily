@@ -125,6 +125,19 @@ public struct RefreshLease: Sendable {
         return try ran?.get()
     }
 
+    /// `body` inside the file's lock, whoever holds the lease; the lease itself is left as it is.
+    /// For a write that needs no lease of its own but must not land between another owner's
+    /// compare and write (保存密码 off). Without a usable file `body` just runs. What `body`
+    /// throws is rethrown.
+    public func locked<T>(_ body: () throws -> T) throws -> T {
+        var ran: Result<T, Error>?
+        _ = update { current -> (Record?, Void) in
+            ran = Result { try body() }
+            return (current, ())
+        }
+        return try (ran ?? Result { try body() }).get()
+    }
+
     /// `acquire()` without waiting for the lock: false while another step holds it. Tests use it
     /// as the other process trying at one exact moment.
     func tryAcquire() -> Bool {
