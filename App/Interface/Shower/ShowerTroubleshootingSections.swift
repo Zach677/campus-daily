@@ -24,7 +24,6 @@ struct ShowerTroubleshootingSections: View {
                     if let device = water.verifiedDevice {
                         LabeledContent("水控名称", value:device.name)
                         LabeledContent("水控编号", value:device.machineID).accessibilityIdentifier("verifiedWaterMachine")
-                        if let rssi = device.rssi { LabeledContent("本次信号", value:"\(rssi) dBm") }
                         VStack(alignment:.leading, spacing:4) {
                             Text("水控标识 " + String(device.id.prefix(8)) + "…")
                             Text("发现 \(device.nearbyCount) 台同名水控，已按宿舍水控编号匹配。")

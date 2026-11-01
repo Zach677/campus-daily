@@ -6,7 +6,6 @@ struct VerifiedShowerDevice {
     let id: String
     let name: String
     let machineID: String
-    let rssi: Int?
     let nearbyCount: Int
     let verifiedAt: Date
 }
@@ -41,7 +40,6 @@ struct VerifiedShowerDevice {
     private var targets: [UUID: CBPeripheral] = [:]
     private var signalLevels: [UUID: Int] = [:]
     private var targetName = ""
-    private var observedIDs = Set<UUID>()
     private var notify: CBCharacteristic?
     private var write: CBCharacteristic?
     /// Replies on the notify characteristic; only those inside an exchange count.
@@ -98,7 +96,7 @@ struct VerifiedShowerDevice {
         retiring = nil
     }
     private func scanTargets() async throws {
-        targets.removeAll(); observedIDs.removeAll(); signalLevels.removeAll()
+        targets.removeAll(); signalLevels.removeAll()
         // Some water controllers omit FFE0 from advertising, so inspect names first.
         manager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
         do { try await Task.sleep(for: .seconds(12)) }
@@ -139,9 +137,6 @@ struct VerifiedShowerDevice {
         chosen.delegate = nil
         write = nil; notify = nil
     }
-    func verifiedInformation(id: String, machineID: String) -> VerifiedShowerDevice {
-        VerifiedShowerDevice(id:id,name:targetName,machineID:machineID.uppercased(),rssi:UUID(uuidString:id).flatMap { signalLevels[$0] },nearbyCount:targets.count,verifiedAt:Date())
-    }
     /// Read-only scan for the 连接检查 screen: how many controllers carry this name nearby.
     func inspect(bleName: String, remembered: String?) async throws -> Int {
         try await prepare(bleName:bleName)
@@ -160,7 +155,7 @@ struct VerifiedShowerDevice {
         let remembered = required ?? preferred
         if let remembered, let uuid = UUID(uuidString:remembered),
            let cached = manager.retrievePeripherals(withIdentifiers:[uuid]).first {
-            targets.removeAll(); observedIDs.removeAll()
+            targets.removeAll()
             do {
                 return try await establish(cached)
             } catch {
@@ -235,7 +230,6 @@ struct VerifiedShowerDevice {
     }
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        observedIDs.insert(peripheral.identifier)
         if peripheral.name == targetName || advertisementData[CBAdvertisementDataLocalNameKey] as? String == targetName {
             targets[peripheral.identifier] = peripheral
             if RSSI.intValue != 127 { signalLevels[peripheral.identifier] = RSSI.intValue }

@@ -23,7 +23,6 @@ public enum ShowerFrames {
     public static let identityFrameLength = 20
     public static let ackLength = 9
     public static let authorizationLength = 15
-    public static let closeCommandLength = 5
 
     /// Machine id (upper hex) of a 20-byte `55` frame, else nil.
     public static func identity(_ frame: Data) -> String? {
@@ -63,15 +62,6 @@ public enum ShowerFrames {
         case .active: return .busy
         case .unreadable: return .unreadable
         }
-    }
-
-    /// Which command a write is, for diagnostics (never the bytes themselves).
-    public enum Command: String, Sendable { case probe, authorization, close, other }
-    public static func command(_ data: Data) -> Command {
-        if data == probeCommand { return .probe }
-        if data.count == authorizationLength { return .authorization }
-        if data.count == closeCommandLength, data.first == 0xAC { return .close }
-        return .other
     }
 }
 

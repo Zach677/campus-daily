@@ -454,7 +454,7 @@ enum ShowerProfileFiles {
                 return
             case .verified(let found): id = found
             }
-            verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:binding.machineId.uppercased(), rssi:nil, nearbyCount:nearby, verifiedAt:Date())
+            verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:binding.machineId.uppercased(), nearbyCount:nearby, verifiedAt:Date())
             if let proven = outcome.peripheralToRemember { rememberVerified(proven, for:binding) }
             inspectionStatus = Self.inspectionVerifiedText
             inspectionOutcome = .verified

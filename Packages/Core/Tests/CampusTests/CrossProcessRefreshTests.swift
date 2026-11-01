@@ -158,7 +158,7 @@ final class CrossProcessRefreshTests: XCTestCase {
 
 /// When a card session or portal token turns out dead, one diagnostic line: kind and measured
 /// minutes only.
-final class CredentialLifetimeLogTests: XCTestCase {
+final class ExpiredCredentialLogLineTests: XCTestCase {
     static let pattern = #"^school\.credentialExpired kind=(card|portal) ageMinutes=(\d+|unknown)( aliveMinutes=(\d+|unknown))?$"#
 
     func testCardSessionAgeAndLastAliveAreLoggedOnce() async throws {
