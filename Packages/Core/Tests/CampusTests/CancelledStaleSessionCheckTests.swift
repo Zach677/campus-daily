@@ -23,4 +23,19 @@ final class CancelledStaleSessionCheckTests: XCTestCase {
         XCTAssertEqual(reading.outcome, .interrupted)
         XCTAssertTrue(h.server.requests(path: "/getMyECard").isEmpty, "nothing is renewed")
     }
+
+    /// The first check, of the session this read started from, cancelled the same way.
+    func testACancelledCheckOfTheStoredSessionIsAnInterruption() async throws {
+        let h = Harness()
+        try h.signedIn(portal: true)
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        let session = h.session()
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await session.refresh(inBackground: true, owning: .unchecked)
+        }
+        let reading = await task.value
+        XCTAssertEqual(reading.outcome, .interrupted)
+        XCTAssertTrue(h.server.requests(path: "/getMyECard").isEmpty, "nothing is renewed")
+    }
 }
