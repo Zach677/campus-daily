@@ -285,14 +285,15 @@ public actor SchoolSession {
 
     /// A random 32-hex id, kept for this install so the school sees the same browser each time.
     /// A new one is stored in one locked step under `owning`, only while none is stored (one
-    /// the other process stored meanwhile is used instead). nil = the lease is lost.
+    /// the other process stored meanwhile is used instead). nil = the lease is lost, or the new
+    /// id could not be stored (sent anyway, the school would see a new browser on every login).
     private func loginDeviceID(owning: LeaseOwnership) -> String? {
         if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return id }
         let fresh = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
         let vault = vault
-        return (try? owning.write { () -> String in
+        return (try? owning.write { () -> String? in
             if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return id }
-            try? vault.saveLoginDeviceID(fresh)
+            guard (try? vault.saveLoginDeviceID(fresh)) != nil else { return nil }
             return fresh
         }) ?? nil
     }
