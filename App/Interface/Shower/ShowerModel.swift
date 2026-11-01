@@ -365,6 +365,7 @@ enum ShowerProfileFiles {
 
     func requestSettleRetry() async {
         guard let engine, !busy else { return }
+        busy = true; defer { busy = false }
         if let result = try? await engine.requestSettleRetry() { apply(result) }
     }
 
