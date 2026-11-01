@@ -353,8 +353,15 @@ enum ShowerProfileFiles {
     /// 清除这条记录 on an unreadable record, after its confirmation (the user checked the school's
     /// record). Removed only while it still can't be read; then the engine starts over.
     func clearUnreadableRecord() {
-        guard recordUnreadable, !busy, (try? AppEnvironment.showerVault.clearUnreadableRecord()) != nil else { return }
-        rebuildEngine()
+        guard recordUnreadable, !busy else { return }
+        let removed = try? AppEnvironment.showerVault.clearUnreadableRecord()
+        if removed == true {
+            rebuildEngine()
+        } else if removed == false {
+            // Kept: it reads again (another build rewrote it), so the engine can follow it now.
+            rebuildEngine()
+        }
+        // nil: the Keychain refused; the record and the clear button stay.
     }
 
     func resolveManually() async {
