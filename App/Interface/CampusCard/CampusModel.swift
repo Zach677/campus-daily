@@ -67,7 +67,8 @@ struct PowerChoice: Identifiable, Equatable {
         if (try? await session.dropCampusWideMeter()) == true { reload() }
     }
 
-    /// Re-read the Keychain (launch, after sign-in/out).
+    /// Re-read the Keychain (launch, back in the foreground, after sign-in/out). A read that
+    /// fails (before the first unlock after a reboot, when the app is pre-warmed) changes nothing.
     func reload() {
         let shown = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:AppEnvironment.schoolVault)
         configured = shown.signedIn
@@ -79,7 +80,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// Only the saved account: a refresh in this or the widget's process may have paused or
     /// held the password since the last `reload()`.
     func reloadAccount() {
-        let stored = (try? AppEnvironment.schoolVault.account()) ?? nil
+        let stored = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:AppEnvironment.schoolVault).account
         if stored != account { account = stored }
     }
 
@@ -157,7 +158,7 @@ struct PowerChoice: Identifiable, Equatable {
         case .notSignedIn: configured = false; issue = nil
         case .interrupted, .leaseLost: issue = nil
         }
-        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
+        profile = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:AppEnvironment.schoolVault).profile
         Reminders.shared.evaluateCampus(snapshot)
         if report.outcome == .ok {
             Reminders.shared.campusRead(snapshot)

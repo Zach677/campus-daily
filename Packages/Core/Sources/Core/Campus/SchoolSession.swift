@@ -29,7 +29,8 @@ public struct SchoolReading: Sendable, Equatable {
         case failed(ServiceError)
         case notSignedIn
         /// The saved password was changed while this read ran (保存密码, 重新输入密码), or the
-        /// Keychain refused a write or a read: nothing is known about the login. Not an error to
+        /// Keychain refused a write or a read (or a stored item no longer decodes): nothing is
+        /// known about the login. Not an error to
         /// show: the stored numbers stay as they are and the next refresh goes ahead.
         case interrupted
         /// This read lost the refresh lease (it ran out while the app was suspended, the other
@@ -246,10 +247,9 @@ public actor SchoolSession {
     /// page never tells us the account).
     public func account() -> SchoolAccount? { (try? vault.account()) ?? nil }
 
-    /// False only when the card session was read and is not there.
-    public func hasCardSession() -> Bool {
-        do { return try vault.ecyktSession() != nil } catch { return true }
-    }
+    /// False only when the card session was read and is not there. Async like the
+    /// `SchoolReader` requirement, so this is what the refresher calls (not the protocol's default).
+    public func hasCardSession() async -> Bool { vault.cardSessionStored() ?? true }
 
     /// The person signed in when `stored` was read, or nil when nobody was. A card session or
     /// account that is stored but no longer decodes still means someone was: a person nobody can
@@ -503,9 +503,11 @@ public actor SchoolSession {
     /// where no lease exists).
     public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true }, owning: LeaseOwnership,
                         numbers: @Sendable (SchoolReading) async -> Void = { _ in }) async -> SchoolReading {
-        guard let stored = (try? vault.ecyktSession()) ?? nil else {
-            return SchoolReading(outcome: .notSignedIn, checkedAt: now())
-        }
+        // A read that fails (before the first unlock, an item that no longer decodes) says
+        // nothing about the login: only a read that finds nothing is "not signed in".
+        let found: EcyktSession?
+        do { found = try vault.ecyktSession() } catch { return SchoolReading(outcome: .interrupted, checkedAt: now()) }
+        guard let stored = found else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         let started = signOutGeneration
 
         var reexchanged = false
@@ -517,7 +519,7 @@ public actor SchoolSession {
             logExpired(.card, obtainedAt: stored.obtainedAt, lastAliveAt: stored.lastAliveAt)
             guard await mayMint() else { return SchoolReading(outcome: .leaseLost, checkedAt: now()) }
             let current: EcyktSession?
-            do { current = try vault.ecyktSession() } catch { return SchoolReading(outcome: .failed(.offline), checkedAt: now()) }
+            do { current = try vault.ecyktSession() } catch { return SchoolReading(outcome: .interrupted, checkedAt: now()) }
             guard let current else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
             if current.token != stored.token, let found = try? await liveCard(current) {
                 // The other process renewed it while this one was reading: no second mint.
