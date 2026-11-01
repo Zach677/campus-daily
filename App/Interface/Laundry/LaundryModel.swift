@@ -168,8 +168,10 @@ enum LaundryLoginRefusal: Error { case otherAccount }
             throw LaundryLoginRefusal.otherAccount
         }
         let reread = checkout.map { $0.phase != .none } ?? false
+        let clearsLastOrder = LaundryCheckout.clearsLastOrder(record:checkout, signedInAs:signedIn.id, stored:account?.account?.id)
         let item = UjingAccountItem(mobileID:device.mobileID, account:signedIn)
         try AppEnvironment.laundryVault.saveAccountItem(item)
+        if clearsLastOrder { forgetLastOrder() }
         account = item
         accountConnected = true
         configured = selectedMachine != nil
@@ -190,10 +192,23 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     func signOut() {
         guard mayImport else { return }
+        let clearsLastOrder = LaundryCheckout.clearsLastOrder(record:checkout, signedInAs:nil, stored:account?.account?.id)
         try? AppEnvironment.laundryVault.saveAccountItem(account.map { UjingAccountItem(mobileID:$0.mobileID) })
         account = account.map { UjingAccountItem(mobileID:$0.mobileID) }
         accountConnected = false; configured = false; snapshot = nil
+        if clearsLastOrder { forgetLastOrder() }
         rebuildEngine()
+    }
+
+    /// The finished order's outcome and the last-order note belong to the account that placed
+    /// it: they go before the engine is rebuilt from the stored record. Only called with no order
+    /// open (`LaundryCheckout.clearsLastOrder`), when the record holds nothing but that outcome.
+    private func forgetLastOrder() {
+        if checkout?.lastOutcome != nil, (try? AppEnvironment.laundryVault.saveCheckout(nil)) != nil {
+            checkout = nil
+        }
+        lastOrder = nil
+        UserDefaults.standard.removeObject(forKey:Self.lastOrderKey)
     }
 
     /// After a reset cleared the stores: no U净 login, machines or order; the switch back on.
