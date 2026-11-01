@@ -46,6 +46,12 @@
 - Treat a stored school login that no longer reads as someone signed in: a new sign-in drops their dorm, meter and (web sign-in) portal token and says it could not tell who it was, and 保存密码 is refused until the user signs in again.
 - Start the shower timer, its Live Activity, the 「还在计时」 reminder and the shower's minutes when the water starts, not when 开始洗澡 is tapped, so the time spent connecting is not counted.
 - Run the Core package tests from the App scheme's App.xctestplan on an iOS Simulator; the workspace now lists Packages/Core, so the plan's test targets resolve instead of failing with no test bundles. `mise run check` runs this plan too.
+- Offer 「我在 U净 看过了，没有订单 · 清除」 (with a confirmation) on the laundry page when an order's creation was never confirmed and U净 shows none; laundry was blocked until a reset.
+- Read U净's order time also as 「yyyy-MM-dd HH:mm:ss」 Beijing time when checking an unconfirmed order.
+- Let the U净 account that placed an open laundry order sign in again after its login expired; another account is refused with 「还有一笔洗衣订单没结束，要用下单的那个 U净 账号登录。」.
+- Read a paid laundry order that hasn't started washing again every 45 s for up to 5 minutes while the app is open, and set the 「衣服洗好了」 reminder from the payment time plus the program until the wash's real end is known.
+- A notification tap no longer closes a top-up page or a laundry order being paid, and a tap that launches the app opens its page.
+- The reminder prompt no longer shows (and gets used up) while the school sign-in sheet is open.
 
 ### Removed
 
