@@ -756,9 +756,9 @@ Every endpoint gets at least: success, expired/unauthorized, refused with messag
 
 | Path | Fixtures |
 |---|---|
-| ecykt liveness ok / expired | `getSysBindCustInfo-ok`, `-badToken`, `-*Token-t1`, `-*-afterMint10`, `expiry-*` |
-| fresh login (recharge) ok / expired / bad params | `loginBySysId-mintSeries*`, `-noTimestamp`, `-timestamp*`, `-badToken`, `-missingSyscustid`, `-wrongSyscustid` (empty body), `-rotatedSyscustidInput`, `-mintedTokenAsInput` |
-| balance (incl. "no expiry signal here") | `getUserBalance-ok`, `-missingCustid` (empty body → badRequest), `-tokenHeaderOnly`, `-tokenBodyOnly`, `-rotatedSyscustid`, `-afterLoginBySysId`, `-mintedToken*` |
+| ecykt liveness ok / expired | `getSysBindCustInfo-ok`, `-badToken` |
+| fresh login (recharge) ok / expired / bad params | `loginBySysId-mintSeries1`, `-mintSeries2`, `-badToken`, `-missingSyscustid`, `-wrongSyscustid` (empty body) |
+| balance (incl. "no expiry signal here") | `getUserBalance-ok`, `-missingCustid` (empty body → badRequest) |
 | electricity tree / meters | `electric-getBuildingInfo-root`, `-level1..4`, `-leafEmpty`; `electric-getMeterStatus-ok` (campus), `-leaf`, `-room`, `-unknownBuilding` (`[]`); `electric-service-missingServer` (500) |
 | electricity web entry | `getPowerUrl-ok` (302 not followed) |
 | water hand-off | `getSignData-ok`, `-badToken` |
@@ -843,15 +843,14 @@ Legend: **RO** read-only, **ST** changes server state, **$$** spends money.
 
 **Token behaviour.**
 - `loginBySysId` ignores `timestamp`, mints a new token on every call, accepts minted tokens
-  as input, and does not revoke older tokens (original, first and last minted tokens all still
-  validated after 10 mints). It also returns a re-encrypted `syscustid` each time;
+  as input, and does not revoke older tokens. It also returns a re-encrypted `syscustid` each time;
   `getSysBindCustInfo` re-encrypts `custid` each time. All variants are accepted as input:
   never compare these ciphertexts, keep the latest.
 - Only `loginBySysId`, `getSysBindCustInfo` and `getSignData` validate the token
   (`code:-1, msg:"登录状态已过期，请重新登录！"`, HTTP 200). Balance and electricity endpoints
   don't signal expiry; use `getSysBindCustInfo` as the liveness check.
-- Lifetime: tokens were still valid after > 1 h including 28 min idle; the real TTL is measured
-  by scheduled probes.
+- Lifetime: the original token and the first and last of ten minted tokens all still validated
+  after more than 1 h, 28 min of it idle (recorded once; no test replays it).
 
 ### A.2 ecykt.gdbtu.edu.cn (`/ykt-mini`)
 
