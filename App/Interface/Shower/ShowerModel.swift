@@ -108,6 +108,8 @@ enum ShowerProfileFiles {
                                 busy:busy, inspecting:inspecting)
     }
     var mayFinish: Bool { configured && engine != nil && !busy && !storageBlocked && state.canFinish }
+    /// 检查水控状态: while water may run, and after a close that may not have taken.
+    var mayReview: Bool { configured && engine != nil && !busy && !storageBlocked && state.canReview }
     var mayResolveManually: Bool { engine != nil && !busy && state.canResolveManually }
     var mayRetrySettle: Bool { engine != nil && !busy && state.canRetrySettle }
     /// Binding / profile may change only with no session that could still be open or charged.
@@ -301,7 +303,7 @@ enum ShowerProfileFiles {
 
     /// Read-only state probe of the session's controller (Settings › 高级 › 检查水控状态).
     func reviewCurrentSession() async {
-        guard let engine, let binding, !busy, state.canFinish else { return }
+        guard let engine, let binding, !busy, state.canReview else { return }
         busy = true; defer { busy = false }
         if let result = try? await engine.review(binding) {
             apply(result)
@@ -309,10 +311,11 @@ enum ShowerProfileFiles {
         }
     }
 
-    /// 再查一次水控 on the needs-check face: the same read-only probe; still running goes back to
-    /// the timer (the record says so, nil), otherwise what it found or why it could not look.
+    /// 再查一次水控 on the needs-check face and on an unconfirmed close's unsure face: the same
+    /// read-only probe; still running goes back to the timer (the record says so, nil),
+    /// otherwise what it found or why it could not look.
     func recheckSession() async -> ShowerRecheckResult? {
-        guard let engine, let binding, state.canFinish else { return .unavailable }
+        guard let engine, let binding, state.canReview else { return .unavailable }
         guard !busy else { return .busy }
         busy = true; defer { busy = false }
         do {

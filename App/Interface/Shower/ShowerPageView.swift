@@ -224,6 +224,8 @@ struct ShowerPageView: View {
                 icon("questionmark.circle", Theme.accentText)
                 title(ShowerPageText.unsure)
                 bodyText(ShowerPageText.unsureBody)
+                // A close that may not have taken: water still running goes back to the timer.
+                if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
             case .needsCheck:
                 icon("questionmark.circle", Theme.accentText)
                 title(ShowerPageText.check)
@@ -325,7 +327,9 @@ struct ShowerPageView: View {
                 capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                 textButton("取消") { shower.pageEvent(.closeTapped) }
             case .unsure:
-                capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.reviewTapped) }
+                capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk, enabled:!flow.rechecking) {
+                    shower.pageEvent(.reviewTapped)
+                }
                 textButton("先回首页") { shower.pageEvent(.homeTapped) }
             case .needsCheck:
                 capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk, enabled:!flow.rechecking) {

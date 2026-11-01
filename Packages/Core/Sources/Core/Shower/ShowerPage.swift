@@ -68,7 +68,8 @@ public enum ShowerRecheckResult: Sendable, Equatable {
 
     /// From the record after the probe; nil when water runs again (the timer face).
     public init?(after record: ShowerState) {
-        guard record.mayBeFlowing, record.stateReviewRequired else { return nil }
+        let unconfirmedClose = record.phase == .failed && record.failure?.reason == .closeUnconfirmed
+        guard (record.mayBeFlowing && record.stateReviewRequired) || unconfirmedClose else { return nil }
         switch record.notice {
         case .notActive?: self = .stopped
         case .wrongDevice?: self = .otherController
@@ -264,8 +265,17 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var mayCollapse: Bool { page?.phase == .running }
     /// 我在学校记录里核对过了 on the needs-check face.
     public var mayResolve: Bool { page?.phase == .needsCheck && record.canResolveManually && !rechecking }
-    /// 再查一次水控 on the needs-check face.
-    public var mayRecheck: Bool { page?.phase == .needsCheck && record.canFinish && !rechecking }
+    /// 再查一次水控 on the needs-check face, and on the unsure face of a close that may not have
+    /// taken (water still running there goes back to the timer).
+    public var mayRecheck: Bool { showsRecheck && record.canReview && !rechecking }
+    /// The face has 再查一次水控.
+    public var showsRecheck: Bool {
+        switch page?.phase {
+        case .needsCheck?: return true
+        case .unsure?: return record.phase == .failed && record.failure?.reason == .closeUnconfirmed
+        default: return false
+        }
+    }
     public var mayCancel: Bool { page?.phase == .connecting && !cancelling && !cancelRefused }
     public var mayEnd: Bool { page?.phase == .running && record.canFinish && !ending }
 
@@ -322,7 +332,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
             // An end from there found the controller stopped: the check comes up the same way.
             // Only an end does that; a probe from Settings leaves the page where it is.
             if !flow.presented, flow.record.phase == .closing, next.mayBeFlowing, next.stateReviewRequired { f.presented = true }
-            if f.page?.phase != .needsCheck { f.recheckResult = nil }
+            if !f.showsRecheck { f.recheckResult = nil }
             // Nothing left to show (resolved elsewhere, an authorization that never applied).
             if f.presented, !f.starting, f.page == nil { f.presented = false }
             return (f, [])
@@ -382,7 +392,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
 
         case .recheckReturned(let result):
             f.rechecking = false
-            f.recheckResult = flow.page?.phase == .needsCheck ? result : nil
+            f.recheckResult = f.showsRecheck ? result : nil
             // Water runs again: the timer comes up, also when the probe ran from the 热水洗澡
             // screen (the only way back to the page from there).
             if flow.rechecking, f.page?.phase == .running { f.presented = true }

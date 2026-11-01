@@ -502,6 +502,11 @@ Rules:
   lost); `idle` with no charge only when the write provably never reached the controller
   (cancelled before it, or the write refused); `0xA5` → close.
 - Close is sent only after the probe returns `0xA5`; otherwise keep the session, flag review.
+  A close that never reached the controller (cancelled before the write, the link unusable, or
+  the write refused) goes back to the timer, so 结束 sends it again. Only a close lost after the
+  write was taken is `failed(closeUnconfirmed)`; from there a read-only review probe is
+  allowed (the unsure face's 「再查一次水控」, Settings' 检查水控状态): `0xA5` returns to
+  `running` (the close can be sent again), anything else keeps the check.
 - `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
   needs a second confirmation and is recorded in diagnostics.
 - A probe that finds the controller stopped under a running record sets `stateReviewRequired`:

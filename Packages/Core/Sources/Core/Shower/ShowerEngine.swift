@@ -186,11 +186,11 @@ public actor ShowerEngine {
         return try await run(b, .finish)
     }
 
-    /// Read-only state probe of the session's controller.
+    /// Read-only state probe of the session's controller (also from an unconfirmed close).
     @discardableResult
     public func review(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()
-        guard state.canFinish else { throw ShowerEngineError.notAllowed }
+        guard state.canReview else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
         return try await run(b, .review)
     }
@@ -321,6 +321,7 @@ public actor ShowerEngine {
         case .sendClose(let command):
             guard !Task.isCancelled else { return .cancelledBeforeSend }
             do { return .closeReplied(try await transport.exchange(command)) }
+            catch is ShowerCommandNotSent { return .cancelledBeforeSend }
             catch { return .closeFailed(Self.deviceError(error)) }
 
         case .settle(let frame):

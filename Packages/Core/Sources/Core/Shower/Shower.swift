@@ -150,6 +150,12 @@ public struct ShowerState: Sendable, Codable, Equatable {
 
     public var canFinish: Bool { (phase == .writePending || phase == .running) && !reviewing }
 
+    /// A read-only probe of the controller: while water may run, and from a close that may
+    /// not have taken (water still running there means the close can be sent again).
+    public var canReview: Bool {
+        canFinish || (phase == .failed && failure?.reason == .closeUnconfirmed && !reviewing)
+    }
+
     public var canResolveManually: Bool {
         (phase == .failed && failure?.needsReview == true)
             || ((phase == .writePending || phase == .running) && stateReviewRequired && !reviewing)
@@ -387,6 +393,36 @@ public enum ShowerReducer {
 
         case (.writePending, .probeFailed(let e)), (.running, .probeFailed(let e)):
             guard state.reviewing else { return (state, []) }
+            s.reviewing = false
+            s.notice = .device(e)
+            return (s, [.releaseDevice])
+
+        case (.failed, .review) where state.canReview:
+            s.reviewing = true
+            return (s, [.probe(peripheralID: state.peripheralID)])
+
+        case (.failed, .probeReplied(let frame)) where state.reviewing && state.failure?.reason == .closeUnconfirmed:
+            s.reviewing = false
+            switch ShowerFrames.classify(frame) {
+            case .active:
+                // The close didn't take: back to the timer, so 结束 sends it again.
+                s.phase = .running
+                s.failure = nil
+                s.closingFrom = nil
+                s.closeSent = false
+                s.stateReviewRequired = false
+                return (s, [.scheduleReminder, .releaseDevice])
+            case .idle(let id) where id == state.machineID:
+                // Stopped: the close may have taken, or water stopped by itself. The check stands.
+                s.notice = .notActive
+            case .idle:
+                s.notice = .wrongDevice
+            case .unreadable:
+                s.notice = .device(.malformedFrame)
+            }
+            return (s, [.releaseDevice])
+
+        case (.failed, .probeFailed(let e)) where state.reviewing:
             s.reviewing = false
             s.notice = .device(e)
             return (s, [.releaseDevice])
