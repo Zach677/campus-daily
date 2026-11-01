@@ -372,8 +372,8 @@ node only (1 row).
 | ecykt other non-zero `code` | `rejected(.ecykt, code, msg)` |
 | ecykt `data:"[]"` for meters | `.success([])` → "没找到电表" in UI, not an error |
 | portal `{code:-1001,"无效 token"}`, `{code:-1,"没有访问权限"}` | `sessionExpired(.portal)` |
-| HTTP 401/403 from CAS or the portal | `sessionExpired(service)` |
-| HTTP 401/403 from ecykt (never seen; a gateway or rate limit) | `rejected(.ecykt, "HTTP 40x", "")`, not expiry |
+| HTTP 401/403 from CAS | `sessionExpired(service)` |
+| HTTP 401/403 from the portal or ecykt (a gateway or rate limit: both say a dead token with HTTP 200 and a code) | `rejected(service, "HTTP 40x", "")`, not expiry |
 | missing `data`/fields, wrong JSON types | `malformed(service, path)` |
 
 ### 2.2 Hot water: isv.lxt6.cn + BLE controller
