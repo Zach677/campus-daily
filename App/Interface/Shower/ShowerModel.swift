@@ -68,6 +68,9 @@ enum ShowerProfileFiles {
     /// Last action's message (nil = nothing to say).
     @Published private(set) var message: String?
     @Published private(set) var storageBlocked = false
+    /// The saved shower record is there but can't be decoded (another build wrote it): a
+    /// relaunch doesn't help, the school's record says what happened.
+    @Published private(set) var recordUnreadable = false
     @Published private(set) var residenceReviewRequired = UserDefaults.standard.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
     @Published private(set) var verifiedDevice: VerifiedShowerDevice?
     @Published private(set) var inspectionStatus: String?
@@ -130,6 +133,7 @@ enum ShowerProfileFiles {
     var lastCost: Decimal? { (state.phase == .done ? state.receipt : state.lastReceipt)?.amount?.yuan }
     /// Line under the headline on the hot-water page.
     var status: String {
+        if recordUnreadable { return Self.recordUnreadableText }
         if storageBlocked { return "这台手机暂时存不了热水记录，重启 App 后再试。" }
         if let message { return message }
         if state.stateReviewRequired { return "水控没显示在用水，校日常就没发结束。去学校的热水记录里核对一下这次洗澡。" }
@@ -143,6 +147,7 @@ enum ShowerProfileFiles {
         return ""
     }
     nonisolated static let platformMissingText = "这个版本没带热水配置，热水暂时用不了。"
+    static let recordUnreadableText = "热水记录读不出来，去学校记录核对。"
 
     // MARK: Setup
 
@@ -156,6 +161,7 @@ enum ShowerProfileFiles {
         guard !busy else { return }
         observer?.cancel(); observer = nil; engine = nil
         syncGate.reset()
+        recordUnreadable = false
         guard binding != nil else {
             // No engine to report it: the restored state is this run's first, and the lock
             // screen and the reminder follow it like an engine's first report.
@@ -187,6 +193,7 @@ enum ShowerProfileFiles {
             }
         } catch {
             storageBlocked = true
+            recordUnreadable = (error as? ShowerEngineError) == .unreadableRecord
         }
     }
 

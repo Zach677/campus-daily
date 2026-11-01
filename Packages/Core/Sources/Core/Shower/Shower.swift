@@ -61,6 +61,16 @@ public struct ShowerFailure: Sendable, Codable, Equatable {
     public init(reason: ShowerFailureReason, needsReview: Bool, error: ServiceError? = nil, deviceError: ShowerDeviceError? = nil) {
         self.reason = reason; self.needsReview = needsReview; self.error = error; self.deviceError = deviceError
     }
+
+    /// Written by another build: without `needsReview` it is kept for a check; an error this
+    /// build doesn't know is dropped (it only explains the failure).
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        reason = try c.decode(ShowerFailureReason.self, forKey: .reason)
+        needsReview = try c.decodeIfPresent(Bool.self, forKey: .needsReview) ?? true
+        error = try? c.decodeIfPresent(ServiceError.self, forKey: .error)
+        deviceError = try? c.decodeIfPresent(ShowerDeviceError.self, forKey: .deviceError)
+    }
 }
 
 /// A non-fatal problem during an otherwise unchanged phase (e.g. 结束 tapped but the controller
@@ -171,6 +181,34 @@ public struct ShowerState: Sendable, Codable, Equatable {
 
     fileprivate func idleAfter(receipt: ShowerReceipt?) -> ShowerState {
         ShowerState(phase: .idle, machineID: machineID, peripheralID: peripheralID, lastReceipt: receipt)
+    }
+}
+
+extension ShowerState {
+    /// A record saved by another build (older or newer). Only the phase is required: without
+    /// it the record means nothing, and guessing one could hide an open shower. A missing
+    /// "sent" flag counts as sent (the request may have left); other missing flags get their
+    /// defaults. Unknown values in fields that only describe the record are dropped.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        phase = try c.decode(ShowerPhase.self, forKey: .phase)
+        machineID = try c.decodeIfPresent(String.self, forKey: .machineID)
+        peripheralID = try c.decodeIfPresent(String.self, forKey: .peripheralID)
+        startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
+        authorizeSent = try c.decodeIfPresent(Bool.self, forKey: .authorizeSent) ?? true
+        authorizationID = try c.decodeIfPresent(String.self, forKey: .authorizationID)
+        closingFrom = try? c.decodeIfPresent(ShowerPhase.self, forKey: .closingFrom)
+        closeSent = try c.decodeIfPresent(Bool.self, forKey: .closeSent) ?? true
+        consumption = try c.decodeIfPresent(String.self, forKey: .consumption)
+        receipt = try c.decodeIfPresent(ShowerReceipt.self, forKey: .receipt)
+        lastReceipt = try? c.decodeIfPresent(ShowerReceipt.self, forKey: .lastReceipt)
+        failure = try c.decodeIfPresent(ShowerFailure.self, forKey: .failure)
+        stateReviewRequired = try c.decodeIfPresent(Bool.self, forKey: .stateReviewRequired) ?? false
+        reviewing = try c.decodeIfPresent(Bool.self, forKey: .reviewing) ?? false
+        settleRetryArmed = try c.decodeIfPresent(Bool.self, forKey: .settleRetryArmed) ?? false
+        manualSettleAttempts = try c.decodeIfPresent(Int.self, forKey: .manualSettleAttempts) ?? 0
+        endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
+        notice = try? c.decodeIfPresent(ShowerNotice.self, forKey: .notice)
     }
 }
 

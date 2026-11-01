@@ -77,6 +77,9 @@ public enum ShowerEngineError: Error, Equatable, Sendable {
     case wrongBinding
     /// A session write failed: nothing more is sent until relaunch (fail closed).
     case storage
+    /// The saved session record is there but can't be decoded: nothing is sent, and a relaunch
+    /// doesn't help.
+    case unreadableRecord
 }
 
 /// Drives `ShowerReducer`: persists every state before running its effects, talks to the
@@ -115,7 +118,9 @@ public actor ShowerEngine {
         self.transport = transport; self.gateway = gateway; self.vault = vault; self.hooks = hooks
         self.configuration = configuration; self.now = now; self.resetMarker = resetMarker
         let persisted: ShowerState?
-        do { persisted = try vault.showerState() } catch { throw ShowerEngineError.storage }
+        do { persisted = try vault.showerState() }
+        catch ShowerEngineError.unreadableRecord { throw ShowerEngineError.unreadableRecord }
+        catch { throw ShowerEngineError.storage }
         let restored = ShowerReducer.restore(persisted)
         var blocked = false
         if let persisted, restored.persistable != persisted {
