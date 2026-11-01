@@ -65,6 +65,7 @@
 - A notification tap no longer closes a top-up page or a laundry order being paid, and a tap that launches the app opens its page.
 - The reminder prompt no longer shows (and gets used up) while the school sign-in sheet is open.
 - Keep reading the dorm's electricity after the school replaced its meter: when the room lists one meter under the room's name, it is read and the binding follows it, instead of showing no reading until the meter was picked again by hand.
+- Renew an expired card session once, as home does (portal token, else the saved password), before recharge or the hot-water setup asks to sign in again.
 
 ### Removed
 

@@ -630,9 +630,18 @@ submit APIs itself (not captured).
 idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded─► inPage ─back / app foreground─► confirming ─► idle
                       │expired                                      │ alipays:// | weixin:// link
                       ▼                                             ▼ open external app
-                  needsLogin (re-login, then retry once)        inPage (still)
+                  renewing (one forced refresh)                 inPage (still)
+                      │card read: checkingSession once more
+                      │not renewed, or expired again
+                      ▼
+                  needsLogin (re-login, then retry once)
 ```
 
+- `renewing`: an expired card session (here or in the hot-water hand-off) is renewed once the
+  way home renews it, by a forced refresh (portal token, else the saved password), outside the
+  step's lease; when that refresh read the card, the step runs once more
+  (`CardSessionRenewal`). The user is asked to sign in only when the refresh did not read the
+  card or the second try finds the session expired again.
 - `checkingSession`: `boundCards` (liveness) then `freshLogin` → build `elecampus_state`
   `{logintoken: <fresh token>, loginInfo, schoolid, custInfo, custid}` and inject it as a
   document-start user script, ecykt origin only. Card: `/ykt-view/recharge?isbind=1`.
