@@ -2,8 +2,8 @@ import XCTest
 @testable import Core
 
 /// The home card of a record that waits for its check: an authorize the platform answered
-/// unclearly started no water and settled nothing, so it says the water didn't start; every
-/// other record keeps the settlement words.
+/// unclearly, or with an authorization that can't be used, started no water and settled
+/// nothing, so it says the water didn't start; every other record keeps the settlement words.
 final class ShowerHomeReviewTests: XCTestCase {
     func testAnUnclearAuthorizeSaysTheWaterDidNotStart() {
         let review = ShowerHomeReview(ShowerFailure(reason: .authorizeUncertain, needsReview: true, error: .uncertain(.lxt6)))
@@ -25,8 +25,12 @@ final class ShowerHomeReviewTests: XCTestCase {
         XCTAssertEqual(ShowerHomeReview.settlement, ShowerHomeReview(button: "核对上次结算", caption: "上次洗澡不确定结算了没有"))
     }
 
-    func testAnUnusableAuthorizationKeepsTheSettlementWords() {
-        XCTAssertEqual(ShowerHomeReview(ShowerFailure(reason: .authorizationInvalid, needsReview: true)), .settlement)
+    func testAnUnusableAuthorizationSaysTheWaterDidNotStart() {
+        XCTAssertEqual(ShowerHomeReview(ShowerFailure(reason: .authorizationInvalid, needsReview: true)),
+                       ShowerHomeReview(button: "去核对", caption: "水没开"))
+    }
+
+    func testNoFailureKeepsTheSettlementWords() {
         XCTAssertEqual(ShowerHomeReview(nil), .settlement)
     }
 }

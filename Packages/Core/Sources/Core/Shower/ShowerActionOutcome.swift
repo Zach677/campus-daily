@@ -22,7 +22,7 @@ public enum ShowerActionOutcome: Sendable, Equatable {
             if result.failure?.reason == .deviceUnavailable, let device = result.failure?.deviceError {
                 return .failure(ShowerActionFailure(device.userText))
             }
-            if result.failure?.reason == .authorizeUncertain {
+            if result.failure?.reason.isUnclearAuthorize == true {
                 return .failure(ShowerActionFailure(ShowerAuthorizeUnclearText.spoken(platformMessage: result.failure?.platformMessage)))
             }
             if result.failure?.reason == .authorizeRefused {
@@ -67,7 +67,7 @@ public struct ShowerActionFailure: Error, LocalizedError, Sendable, Equatable {
     /// A start turned down while `failure` waits for its check. An authorize the platform
     /// answered unclearly settled nothing, so it isn't called a settlement.
     public static func blockedText(_ failure: ShowerFailure?) -> String {
-        if failure?.reason == .authorizeUncertain {
+        if failure?.reason.isUnclearAuthorize == true {
             return ShowerAuthorizeUnclearText.spoken(platformMessage: failure?.platformMessage)
         }
         return ShowerActionFailure(.blocked).message

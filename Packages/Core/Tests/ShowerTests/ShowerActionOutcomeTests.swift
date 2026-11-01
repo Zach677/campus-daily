@@ -28,7 +28,7 @@ final class ShowerActionOutcomeTests: XCTestCase {
         XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.authorizeUncertain, review: true), notice: nil),
                        .failure(ShowerActionFailure("水没开。打开校日常核对一下再开始。")))
         XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.authorizationInvalid, review: true), notice: nil),
-                       .failure(ShowerActionFailure("开水结果未确认")))
+                       .failure(ShowerActionFailure("水没开。打开校日常核对一下再开始。")))
     }
 
     /// The platform turned the start down (4002, -301): nothing was issued and it gave no words.

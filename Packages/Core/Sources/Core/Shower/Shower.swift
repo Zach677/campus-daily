@@ -49,6 +49,11 @@ public enum ShowerFailureReason: String, Sendable, Codable, Equatable {
         case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed: return false
         }
     }
+
+    /// The authorize got an answer the app can't read, or an OK whose authorization can't be
+    /// used: it waits for the check, but nothing reached the controller, so no water ran and
+    /// nothing is to be settled. Said as 「水没开」 (`ShowerAuthorizeUnclearText`).
+    public var isUnclearAuthorize: Bool { self == .authorizeUncertain || self == .authorizationInvalid }
 }
 
 public struct ShowerFailure: Sendable, Codable, Equatable {
@@ -705,8 +710,7 @@ public struct ShowerDisplay: Sendable, Equatable {
         case .wrongDevice: return "这不是你宿舍的水控。"
         case .deviceBusy: return "水控正在使用中。"
         case .authorizeRefused: return ShowerAuthorizeRefusedText.title
-        case .authorizeUncertain: return ShowerAuthorizeUnclearText.title(platformMessage: f.platformMessage)
-        case .authorizationInvalid: return "开水结果未确认"
+        case .authorizeUncertain, .authorizationInvalid: return ShowerAuthorizeUnclearText.title(platformMessage: f.platformMessage)
         case .closeUnconfirmed: return "结束指令未确认"
         case .settleRefused, .settleUncertain: return "结算未确认"
         case .settleUnconfirmed: return "结算待核对"
@@ -723,7 +727,8 @@ public enum ShowerAuthorizeRefusedText {
     public static let spoken = "学校没让开水，打开校日常看看。"
 }
 
-/// An authorize the platform answered in a way the app can't read (`authorizeUncertain`).
+/// An authorize the platform answered in a way the app can't read (`authorizeUncertain`), or
+/// with an authorization that can't be used (`authorizationInvalid`).
 /// Nothing reached the controller, so no water ran and nothing is to be settled: the words say
 /// the water didn't start, carry the platform's own sentence when it gave one, and keep the
 /// check before the next start.

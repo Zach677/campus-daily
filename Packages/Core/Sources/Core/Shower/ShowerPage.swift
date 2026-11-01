@@ -135,7 +135,8 @@ public struct ShowerPage: Sendable, Equatable {
     /// The controller didn't confirm the authorization write; shown as running on purpose.
     public var writeUnconfirmed: Bool
     /// The unsure face of an authorize the platform answered in a way the app can't read
-    /// (`authorizeUncertain`): its own words, with the platform's when it gave any.
+    /// (`authorizeUncertain`) or with an authorization that can't be used (`authorizationInvalid`):
+    /// its own words, with the platform's when it gave any.
     public var authorizeUnclear: ShowerPageCopy?
 
     /// Nil when nothing is going on (idle): the page has nothing to show.
@@ -166,12 +167,10 @@ public struct ShowerPage: Sendable, Equatable {
                 phase = .denied; steps = [.done, .failed, .future]; denial = .inUse
             case .authorizeRefused:
                 phase = .denied; steps = [.done, .failed, .future]; denial = .refused
-            case .authorizeUncertain:
+            case .authorizeUncertain, .authorizationInvalid:
                 phase = .unsure; steps = [.done, .failed, .future]
                 authorizeUnclear = ShowerPageCopy(title: ShowerAuthorizeUnclearText.title,
                                                   body: ShowerAuthorizeUnclearText.body(platformMessage: s.failure?.platformMessage))
-            case .authorizationInvalid:
-                phase = .unsure; steps = [.done, .failed, .future]
             case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed:
                 phase = .unsure; steps = [.done, .done, .failed]
             }

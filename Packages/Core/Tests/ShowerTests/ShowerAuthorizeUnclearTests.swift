@@ -61,9 +61,29 @@ final class ShowerAuthorizeUnclearTests: XCTestCase {
         XCTAssertEqual(siri(s), "水没开。学校提示：余额不足。打开校日常核对一下再开始。")
     }
 
+    /// The platform said OK but its authorization can't be used (another machine, a bad
+    /// payload or id): nothing was written to the controller, so it reads like an unclear answer.
+    func testAnUnusableAuthorizationSaysTheWaterDidNotStart() throws {
+        var s = ShowerReducer.reduce(.idle, .start(machineID: machine, preferredPeripheral: nil)).0
+        s = ShowerReducer.reduce(s, .connected(peripheralID: "P", probe: FakeFrames.identity(machine))).0
+        s = ShowerReducer.reduce(s, .authorized(ShowerAuthorization(machineID: "99999999", payload: Data(count: 15),
+                                                                    authorizationID: "001122FF"), at: Date())).0
+        XCTAssertEqual(s.failure?.reason, .authorizationInvalid)
+        XCTAssertEqual(s.failure?.needsReview, true, "still waits for the check")
+        XCTAssertFalse(s.canStart)
+
+        let page = try XCTUnwrap(ShowerPage(s))
+        XCTAssertEqual(page.phase, .unsure)
+        XCTAssertEqual(page.authorizeUnclear, ShowerPageCopy(title: "水没开", body: ShowerAuthorizeUnclearText.body))
+        XCTAssertEqual(ShowerDisplay(s).title, "水没开")
+        XCTAssertEqual(siri(s), "水没开。打开校日常核对一下再开始。")
+        XCTAssertEqual(ShowerActionFailure.blockedText(s.failure), "水没开。打开校日常核对一下再开始。")
+        XCTAssertEqual(ShowerHomeReview(s.failure), ShowerHomeReview(button: "去核对", caption: "水没开"))
+    }
+
     /// Other unsure faces keep their own copy.
     func testOnlyAnUnclearAuthorizeUsesThisCopy() {
-        for reason in [ShowerFailureReason.authorizationInvalid, .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed] {
+        for reason in [ShowerFailureReason.closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed] {
             let s = ShowerState(phase: .failed, machineID: machine,
                                 failure: ShowerFailure(reason: reason, needsReview: true, error: .rejected(.lxt6, code: "1", message: "合成提示")))
             XCTAssertNil(ShowerPage(s)?.authorizeUnclear, reason.rawValue)
