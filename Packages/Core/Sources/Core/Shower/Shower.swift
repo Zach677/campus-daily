@@ -139,6 +139,10 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// afterwards, most likely someone else's): the next consumption frame is kept for the user
     /// to settle with the two-tap retry, never settled by itself.
     public var holdSettle: Bool
+    /// When the session came back to the timer from the unsure face (a probe found water
+    /// running after an unconfirmed close). The 「还在计时」 reminder counts from here, also after
+    /// a relaunch: the water start may be long past.
+    public var timerResumedAt: Date?
 
     public init(phase: ShowerPhase = .idle, machineID: String? = nil, peripheralID: String? = nil, startedAt: Date? = nil,
                 authorizeSent: Bool = false, authorizationID: String? = nil, closingFrom: ShowerPhase? = nil,
@@ -146,14 +150,14 @@ public struct ShowerState: Sendable, Codable, Equatable {
                 lastReceipt: ShowerReceipt? = nil, failure: ShowerFailure? = nil, stateReviewRequired: Bool = false,
                 reviewing: Bool = false, settleRetryArmed: Bool = false, manualSettleAttempts: Int = 0,
                 endedAt: Date? = nil, notice: ShowerNotice? = nil, authorizationNotWritten: Bool = false,
-                holdSettle: Bool = false) {
+                holdSettle: Bool = false, timerResumedAt: Date? = nil) {
         self.phase = phase; self.machineID = machineID; self.peripheralID = peripheralID; self.startedAt = startedAt
         self.authorizeSent = authorizeSent; self.authorizationID = authorizationID; self.closingFrom = closingFrom
         self.closeSent = closeSent; self.consumption = consumption; self.receipt = receipt; self.lastReceipt = lastReceipt
         self.failure = failure; self.stateReviewRequired = stateReviewRequired; self.reviewing = reviewing
         self.settleRetryArmed = settleRetryArmed; self.manualSettleAttempts = manualSettleAttempts
         self.endedAt = endedAt; self.notice = notice; self.authorizationNotWritten = authorizationNotWritten
-        self.holdSettle = holdSettle
+        self.holdSettle = holdSettle; self.timerResumedAt = timerResumedAt
     }
 
     public static let idle = ShowerState()
@@ -187,6 +191,10 @@ public struct ShowerState: Sendable, Codable, Equatable {
 
     /// The reminder ("还没结束洗澡？") runs while water may be flowing.
     public var mayBeFlowing: Bool { phase == .writePending || phase == .running }
+
+    /// What the 「还在计时」 reminder counts from: the return to the timer, else the water start.
+    /// Nil when no water may be flowing.
+    public var reminderStart: Date? { mayBeFlowing ? (timerResumedAt ?? startedAt) : nil }
 
     /// Whole minutes of water on `done` (「上次 11 分钟」, the done page, the settled lock screen).
     public var minutes: Int? { phase == .done ? endedAt.flatMap(minutes(until:)) : nil }
@@ -244,6 +252,7 @@ extension ShowerState {
         notice = try? c.decodeIfPresent(ShowerNotice.self, forKey: .notice)
         authorizationNotWritten = try c.decodeIfPresent(Bool.self, forKey: .authorizationNotWritten) ?? false
         holdSettle = try c.decodeIfPresent(Bool.self, forKey: .holdSettle) ?? false
+        timerResumedAt = try? c.decodeIfPresent(Date.self, forKey: .timerResumedAt)
     }
 }
 

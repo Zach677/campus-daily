@@ -131,7 +131,7 @@ final class ShowerStateDecodingTests: XCTestCase {
                                                    settleNotSent: true, settleHeld: true),
                             stateReviewRequired: true, reviewing: true, settleRetryArmed: true, manualSettleAttempts: 3,
                             endedAt: t0.addingTimeInterval(60), notice: .device(.timedOut), authorizationNotWritten: true,
-                            holdSettle: true)
+                            holdSettle: true, timerResumedAt: t0.addingTimeInterval(30))
         XCTAssertEqual(try JSONDecoder().decode(ShowerState.self, from: JSONEncoder().encode(s)), s)
     }
 }

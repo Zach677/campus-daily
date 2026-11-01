@@ -257,7 +257,10 @@ public actor ShowerEngine {
         var queue = [first]
         while !queue.isEmpty {
             let event = queue.removeFirst()
-            let (next, effects) = ShowerReducer.reduce(state, event)
+            var (next, effects) = ShowerReducer.reduce(state, event)
+            // Back on the timer from the unsure face: the reminder counts from now (saved, so a
+            // relaunch counts from the same moment).
+            if state.phase == .failed, next.mayBeFlowing { next.timerResumedAt = now() }
             try await commit(next)
             for effect in effects {
                 if let follow = await perform(effect) { queue.append(follow) }
