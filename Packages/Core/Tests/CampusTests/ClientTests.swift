@@ -263,7 +263,8 @@ final class EcyktBalanceTests: XCTestCase {
         let c = EcyktClient(http: server.makeClient())
         await T.expectError(.malformed(.ecykt, "data")) { _ = try await c.balance(T.session(), custid: T.custid) }
         await T.expectError(.rejected(.ecykt, code: "2", message: "卡已挂失")) { _ = try await c.balance(T.session(), custid: T.custid) }
-        await T.expectError(.sessionExpired(.ecykt)) { _ = try await c.balance(T.session(), custid: T.custid) }
+        // A bare 401 is a gateway's, not the card system's word on the login (that is HTTP 200 code -1).
+        await T.expectError(.rejected(.ecykt, code: "HTTP 401", message: "")) { _ = try await c.balance(T.session(), custid: T.custid) }
     }
 
     func testCardRecords() async throws {

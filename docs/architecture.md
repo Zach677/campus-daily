@@ -219,9 +219,12 @@ foreground, the BG task and the widget):**
    (no network, a timeout, TLS, an unreadable reply, a bare HTTP status such as a 5xx) is a
    failed read, not 「重新登录」: the next refresh runs the same steps again.
 5. Saved password (foreground or background, only if the user chose to save it and it is not
-   paused): one CAS login (`CASLoginClient`), then `eCardTicketURL` → `exchange` → step 1. Any
-   failure except no network pauses the saved password (`SchoolAccount.paused`) and the UI asks
-   the user to sign in again; it is tried again only after the user signs in or saves a password.
+   paused): one CAS login (`CASLoginClient`), then `eCardTicketURL` → `exchange` → step 1. A
+   refused login pauses the saved password (`SchoolAccount.paused`) and the UI asks the user to
+   sign in again; it is tried again only after the user signs in or saves a password. Once CAS
+   accepted it, only a definite refusal of the card login (`sessionExpired`, `rejected` with the
+   service's own code, `badRequest`) pauses it; no network, a timeout or a school server error
+   is a failed read, and the next refresh exchanges the portal token that login stored.
    No loops, no retries beyond one.
 6. The live session (latest ciphertexts, `lastAliveAt`) is written back only while the stored one
    is still the session this read started from: a sign-out or a newer session from the other
@@ -369,7 +372,8 @@ node only (1 row).
 | ecykt other non-zero `code` | `rejected(.ecykt, code, msg)` |
 | ecykt `data:"[]"` for meters | `.success([])` → "没找到电表" in UI, not an error |
 | portal `{code:-1001,"无效 token"}`, `{code:-1,"没有访问权限"}` | `sessionExpired(.portal)` |
-| HTTP 401/403 from any school host | `sessionExpired(service)` |
+| HTTP 401/403 from CAS or the portal | `sessionExpired(service)` |
+| HTTP 401/403 from ecykt (never seen; a gateway or rate limit) | `rejected(.ecykt, "HTTP 40x", "")`, not expiry |
 | missing `data`/fields, wrong JSON types | `malformed(service, path)` |
 
 ### 2.2 Hot water: isv.lxt6.cn + BLE controller

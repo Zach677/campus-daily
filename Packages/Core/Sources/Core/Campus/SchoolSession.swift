@@ -614,6 +614,7 @@ public actor SchoolSession {
                                              since: started, mayMint: mayMint, owning: owning) {
         case .signedIn(let found): return .renewed(found)
         case .offline: return .stopped(SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: triedPortal))
+        case .failed(let e2): return .stopped(SchoolReading(outcome: .failed(e2), checkedAt: now(), reexchanged: triedPortal))
         case .retryLater: return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: triedPortal))
         case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: triedPortal))
         case .lostLease: return .stopped(SchoolReading(outcome: .leaseLost, checkedAt: now(), reexchanged: triedPortal))
@@ -701,10 +702,11 @@ public actor SchoolSession {
         return portal?.value == seenPortalToken
     }
 
-    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable, retryLater, lostLease, signedOut }
+    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, failed(ServiceError), unavailable, retryLater, lostLease, signedOut }
 
     /// The last step of the refresh: one login with the saved password. Anything but success
-    /// or no network pauses the password, so a wrong or blocked login is never repeated. A login
+    /// or no network pauses the password, so a wrong or blocked login is never repeated. After
+    /// the school accepted it, only a definite refusal of the card login pauses it. A login
     /// that was sent but got no answer holds automatic logins off for a few hours instead.
     ///
     /// The widget can be suspended or killed at any await, so each fact is stored as soon as it
@@ -815,15 +817,18 @@ public actor SchoolSession {
             let found = try await liveCard(fresh)
             guard started == signOutGeneration else { return .unavailable }
             return .signedIn(found)
-        } catch let e as ServiceError where e == .offline || e == .timedOut {
-            // The password was accepted; only the steps after it lost the network.
-            return .offline
-        } catch is CancellationError {
-            return .unavailable
-        } catch {
-            // The password worked but the card login after it did not: paused as before, so the
-            // next refresh does not log in again (the saved portal token is still tried first).
+        } catch let e as ServiceError where Self.isDefiniteRefusal(e) {
+            // The password worked but the school turned the card login after it down: paused as
+            // before, so the next refresh does not log in again (the saved portal token is still
+            // tried first).
             _ = updateSavedAccount(saved, since: started, owning: owning) { $0.paused = true }
+            return .unavailable
+        } catch let e as ServiceError {
+            // The password was accepted; the steps after it got no answer (no network, a timeout,
+            // a school server error). Nothing is paused: the next refresh exchanges the portal
+            // token this login stored.
+            return .failed(e)
+        } catch {
             return .unavailable
         }
     }
