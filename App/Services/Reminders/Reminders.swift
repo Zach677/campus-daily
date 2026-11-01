@@ -183,39 +183,33 @@ enum ReminderKey {
 
     /// Called whenever the order or machine reading changes (LaundryModel.syncActivity).
     func syncLaundry(facts: LaundryFacts, now: Date = Date()) {
-        let phase = facts.phase(now:now)
-        switch phase {
-        case .running(let end):
-            guard let id = facts.record?.orderId else { return }
-            // First successful payment: the moment to explain reminders.
-            requestAppPrompt()
-            let plan = LaundryPlan(orderId:id, end:end, machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机")
+        switch facts.phase(now:now) {
+        // Paid: the moment to explain reminders.
+        case .running, .starting: requestAppPrompt()
+        default: break
+        }
+        switch LaundryDoneReminder.step(facts.configured ? facts.record : nil, scheduled:scheduledLaundry, now:now) {
+        case .schedule(let reminder):
+            let plan = LaundryPlan(orderId:reminder.orderID, end:reminder.end, machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机")
             laundryPlan = plan
             applyLaundry(plan)
-        case .starting:
-            requestAppPrompt()
-            // Paid, end not known yet. A request already set for this order stays (an exact one
-            // from a washing read, or this fallback); otherwise remind at payment time + program
-            // length until a washing read gives the end (`.running` replaces it).
-            guard let record = facts.record, let id = record.orderId, let end = LaundryFollowUp.expectedEnd(record),
-                  defaults.string(forKey:ReminderKey.laundryOrder) != id else { return }
-            let plan = LaundryPlan(orderId:id, end:end, machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机")
-            laundryPlan = plan
-            applyLaundry(plan)
-        case .check:
-            break                     // unconfirmed: keep what is scheduled
-        default:
-            // Done (the app shows it), cancelled, failed, or another machine: nothing to remind.
+        case .keep:
+            break
+        case .cancel:
             laundryPlan = nil
             cancelLaundry()
         }
     }
+    /// The laundry-done request set now.
+    private var scheduledLaundry: LaundryDoneReminder.Plan? {
+        guard let id = defaults.string(forKey:ReminderKey.laundryOrder),
+              let end = defaults.object(forKey:ReminderKey.laundryEnd) as? Date else { return nil }
+        return LaundryDoneReminder.Plan(orderID:id, end:end)
+    }
     private func applyLaundry(_ plan: LaundryPlan) {
         guard defaults.bool(forKey:ReminderKey.laundryDone) else { cancelLaundry(); return }
-        let scheduledEnd = defaults.object(forKey:ReminderKey.laundryEnd) as? Date
         // Reschedule only when the order changed or the end moved (the order re-read refines it).
-        if defaults.string(forKey:ReminderKey.laundryOrder) == plan.orderId, let scheduledEnd,
-           abs(scheduledEnd.timeIntervalSince(plan.end)) < 30 { return }
+        if LaundryDoneReminder.isScheduled(LaundryDoneReminder.Plan(orderID:plan.orderId, end:plan.end), as:scheduledLaundry) { return }
         cancelLaundry()
         let delay = plan.end.timeIntervalSinceNow
         guard delay > 1 else { return }

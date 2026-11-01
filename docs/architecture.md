@@ -614,7 +614,7 @@ Rules:
   program's minutes until a washing read gives the end.
 - `40` → Live Activity (machine, program, endsAt) + laundry-done notification at `endsAt`;
   `50`/`53`/`51`/`52` end the activity and clear the record (`52` keeps a warning card until
-  acknowledged).
+  acknowledged). `LaundryDoneReminder` decides the notification.
 
 ### 3.3 Recharge (card and electricity)
 
