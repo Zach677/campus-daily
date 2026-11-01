@@ -621,7 +621,8 @@ Rules:
   `biz_content.total_amount` **equals** the order amount. Any amount parameter in a link (also
   nested) must equal it too. Anything else (other hosts/schemes, `weixin://`, unknown amount)
   is refused and nothing opens. `skipPay`/`jumpToQuery` → poll directly.
-- On return (or after 10 s foreground) poll `order(id)` after 2, 4, 8, 15, 15, 15 s (≈ 1 min);
+- On return (the AlipaySDK reporting back, which also covers its own in-app web page when Alipay
+  is not installed, the app becoming active, or after 10 s foreground) poll `order(id)` after 2, 4, 8, 15, 15, 15 s (≈ 1 min);
   still unpaid → back to `created` with "付款未确认". Paid = `payFlag 1` or any non-10/17 status.
 - Re-pay only while unpaid (10/17) at the confirmed price, ≥ 2 min after the last payment
   request, with an order read taken after that window and under 5 min old, **and** a second

@@ -116,7 +116,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         guard !checkoutBusy else { return }
         observer?.cancel(); observer = nil; engine = nil
         do {
-            let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(),
+            let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(returned:{ [weak self] in Task { await self?.refreshOrder() } }),
                                            hooks:LaundryEngineHooks(), accountID:account?.account?.id,
                                            resetMarker:AppResetter.marker)
             self.engine = engine
