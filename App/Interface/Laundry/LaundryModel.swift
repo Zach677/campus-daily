@@ -230,10 +230,11 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         catch { issue = Self.message(error) ?? "没认出这台洗衣机，换个角度再扫一次。" }
     }
 
+    /// Throws `WasherSetupRefusal`, whose text the page shows.
     func savePreparedMachine(name: String) throws {
-        guard mayImport, let value = candidate else { throw LaundryEngineError.busy }
-        let alias = name.trimmingCharacters(in:.whitespacesAndNewlines)
-        guard !alias.isEmpty, alias.count <= 40, alias.rangeOfCharacter(from:.controlCharacters) == nil else { throw LaundryEngineError.notAllowed }
+        if let refusal = machineChangeRefusal { throw refusal }
+        guard let value = candidate else { throw WasherSetupRefusal.nothingToSave }
+        let alias = try WasherSetupRefusal.machineName(name).get()
         var list = savedMachines
         if let index = list.firstIndex(where:{ $0.id == value.deviceID }) {
             list[index] = SavedWasher(id:value.deviceID, qrCode:value.qrCode, name:alias, savedAt:list[index].savedAt)
@@ -246,8 +247,10 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         candidate = nil; issue = nil; checkoutIssue = nil; lastAttempt = Date()
     }
 
+    /// Throws `WasherSetupRefusal`, whose text the page shows.
     func selectMachine(_ item: SavedWasher) throws {
-        guard mayImport, savedMachines.contains(where:{ $0.id == item.id }) else { throw LaundryEngineError.busy }
+        if let refusal = machineChangeRefusal { throw refusal }
+        guard savedMachines.contains(where:{ $0.id == item.id }) else { throw WasherSetupRefusal.notSaved }
         select(item.id)
         snapshot = nil; issue = nil; checkoutIssue = nil; lastAttempt = nil
     }
@@ -281,7 +284,11 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     // MARK: Order + payment
 
-    var mayImport: Bool { !loading && !checkoutBusy && (checkout?.phase ?? LaundryPhase.none) == LaundryPhase.none }
+    var mayImport: Bool { machineChangeRefusal == nil }
+    /// Why the machine can't change now (an open order, or a read or order step running), or nil.
+    private var machineChangeRefusal: WasherSetupRefusal? {
+        WasherSetupRefusal.check(orderOpen:(checkout?.phase ?? LaundryPhase.none) != LaundryPhase.none, busy:loading || checkoutBusy)
+    }
     var mayCreate: Bool {
         guard engine != nil, configured, !checkoutBusy, !loading, !storageBlocked, issue == nil,
               let snapshot, snapshot.isOrderable else { return false }

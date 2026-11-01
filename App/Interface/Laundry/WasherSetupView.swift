@@ -25,8 +25,8 @@ struct WasherSetupView: View {
             Section("常用洗衣机") {
                 ForEach(laundry.savedMachines) { item in
                     Button {
-                        do { try laundry.selectMachine(item); Task { await laundry.refresh(force:true) } }
-                        catch { issue = "机器名称最多 40 个字。" }
+                        do { try laundry.selectMachine(item); issue = nil; Task { await laundry.refresh(force:true) } }
+                        catch { issue = Self.text(error) }
                     } label: {
                         HStack {
                             Label(item.name,systemImage:"washer")
@@ -53,7 +53,7 @@ struct WasherSetupView: View {
                     TextField("机器名称（已自动填写，可修改）",text:$alias).accessibilityIdentifier("washerAlias")
                     Button("保存为常用机器") {
                         do { try laundry.savePreparedMachine(name:alias); issue = nil }
-                        catch { issue = "机器名称最多 40 个字。" }
+                        catch { issue = Self.text(error) }
                     }.disabled(!laundry.mayImport || alias.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("saveScannedWasher")
                 }
@@ -76,15 +76,26 @@ struct WasherSetupView: View {
                     defer { photoBusy = false; photo = nil }
                     do {
                         guard let data = try await item.loadTransferable(type:Data.self), data.count <= 20_000_000 else { throw CocoaError(.fileReadCorruptFile) }
-                        let request = VNDetectBarcodesRequest(); request.symbologies = [.qr]
-                        try VNImageRequestHandler(data:data).perform([request])
-                        let codes = Set((request.results ?? []).compactMap(\.payloadStringValue))
-                        guard codes.count == 1, let text = codes.first else { issue = "照片里有好几个码，选一张只拍了一台的。"; return }
+                        let codes = WasherPhotoCodes(payloads:try await Self.qrPayloads(in:data))
+                        guard case .one(let text) = codes else { issue = codes.message; return }
                         resolve(text)
                     } catch { issue = "没认出这台洗衣机，换个角度再扫一次。" }
                 }
             }
     }
+    private static func text(_ error: Error) -> String {
+        (error as? WasherSetupRefusal)?.message ?? AppErrorText.text(error)
+    }
+
+    /// Reads every QR code in the photo off the main actor: a large photo takes a while.
+    private nonisolated static func qrPayloads(in data: Data) async throws -> [String?] {
+        try await Task.detached(priority:.userInitiated) {
+            let request = VNDetectBarcodesRequest(); request.symbologies = [.qr]
+            try VNImageRequestHandler(data:data).perform([request])
+            return (request.results ?? []).map(\.payloadStringValue)
+        }.value
+    }
+
     private func resolve(_ text: String) {
         guard UjingInput.isWasherQR(text) else { issue = "扫洗衣机机身上的码。"; return }
         issue = nil
