@@ -236,7 +236,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     /// Scanned a code: read the machine (scan + programs), keep it as the candidate.
     func prepareMachine(qrCode: String) async {
-        guard mayImport else { issue = "先核对已有洗衣订单。"; return }
+        if let refusal = machineChangeRefusal { issue = refusal.message; return }
         guard accountConnected else { issue = "先登录 U净，再添加洗衣机。"; return }
         guard UjingInput.isWasherQR(qrCode) else { issue = "没认出这台洗衣机，换个角度再扫一次。"; return }
         loading = true; issue = nil; candidate = nil
