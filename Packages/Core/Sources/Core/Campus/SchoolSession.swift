@@ -275,27 +275,35 @@ public actor SchoolSession {
         try vault.saveProfile(nil)
     }
 
-    /// One login from the form or Settings. The lease lost before a new device id could be
-    /// stored: nothing is sent (`busy`).
+    /// One login from the form or Settings. Nothing is sent when the lease was lost before a
+    /// new device id could be stored (`busy`) or the id could not be stored (`cannotSave`).
     private func passwordLoginOnce(account: String, password: String, owning: LeaseOwnership) async throws -> PortalToken {
         guard let passwordLogin else { throw SchoolLoginFailure.cannotLoginDirectly }
-        guard let visitorID = loginDeviceID(owning: owning) else { throw SchoolLoginFailure.busy }
+        let visitorID: String
+        switch loginDeviceID(owning: owning) {
+        case .id(let id): visitorID = id
+        case .notSaved: throw SchoolLoginFailure.cannotSave
+        case .lostLease: throw SchoolLoginFailure.busy
+        }
         return try await passwordLogin.login(account: account, password: password, visitorID: visitorID)
     }
 
+    private enum LoginDeviceID { case id(String), notSaved, lostLease }
+
     /// A random 32-hex id, kept for this install so the school sees the same browser each time.
     /// A new one is stored in one locked step under `owning`, only while none is stored (one
-    /// the other process stored meanwhile is used instead). nil = the lease is lost, or the new
-    /// id could not be stored (sent anyway, the school would see a new browser on every login).
-    private func loginDeviceID(owning: LeaseOwnership) -> String? {
-        if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return id }
+    /// the other process stored meanwhile is used instead). A new id that could not be stored
+    /// (`notSaved`) is not sent: the school would see a new browser on every login.
+    private func loginDeviceID(owning: LeaseOwnership) -> LoginDeviceID {
+        if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return .id(id) }
         let fresh = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
         let vault = vault
-        return (try? owning.write { () -> String? in
-            if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return id }
-            guard (try? vault.saveLoginDeviceID(fresh)) != nil else { return nil }
-            return fresh
+        let step = (try? owning.write { () -> LoginDeviceID in
+            if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return .id(id) }
+            guard (try? vault.saveLoginDeviceID(fresh)) != nil else { return .notSaved }
+            return .id(fresh)
         }) ?? nil
+        return step ?? .lostLease
     }
 
     /// What a login compares again just before its writes: the stored card session, portal
@@ -769,7 +777,16 @@ public actor SchoolSession {
             return .retryLater
         }
         guard let passwordLogin else { return .notTried }
-        guard let visitorID = loginDeviceID(owning: owning) else { return .lostLease }
+        let visitorID: String
+        switch loginDeviceID(owning: owning) {
+        case .id(let id): visitorID = id
+        case .lostLease: return .lostLease
+        case .notSaved:
+            // The Keychain refused the new id: an interruption, so several in a row show on home
+            // as not saving.
+            diagnostic("school.passwordLogin skipped reason=deviceIDNotSaved")
+            return .retryLater
+        }
         let sentAt = now()
         // Not written: signed out only when the account is really gone. Changed meanwhile (保存密码,
         // 重新输入密码) or a write that failed leave the user signed in, with nothing to report;
