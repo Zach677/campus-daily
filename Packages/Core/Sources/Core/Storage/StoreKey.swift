@@ -68,7 +68,7 @@ public extension SecureStore {
     func readJSON<T: Decodable>(_ type: T.Type, _ key: StoreKey) throws -> T? {
         guard let data = try read(key) else { return nil }
         do { return try JSONDecoder().decode(T.self, from: data) }
-        catch { throw StorageError(operation: "decode \(key.rawValue)", status: -1) }
+        catch { throw StorageError.undecodable(key.rawValue) }
     }
 
     func writeJSON<T: Encodable>(_ value: T?, _ key: StoreKey) throws {

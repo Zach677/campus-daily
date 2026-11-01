@@ -4,8 +4,8 @@ import os
 import CoreTestSupport
 
 /// A Keychain that can't be read (before the first unlock after a reboot, when the app is
-/// pre-warmed) or a card session that no longer decodes says nothing about the login: only a
-/// read that finds nothing is "not signed in".
+/// pre-warmed) says nothing about the login: only a read that finds nothing is "not signed in".
+/// A card session that was read and no longer decodes asks for a sign-in.
 final class UnreadableKeychainRefreshTests: XCTestCase {
     func testAKeychainThatCannotBeReadIsNotSignedOut() async throws {
         let h = Harness()
@@ -22,8 +22,9 @@ final class UnreadableKeychainRefreshTests: XCTestCase {
         XCTAssertEqual(reading.outcome, .notSignedIn)
     }
 
-    /// Home and the widget keep their numbers and don't say 登录过期.
-    func testACardSessionThatNoLongerDecodesKeepsTheSnapshot() async throws {
+    /// A card session that was read and no longer decodes (damaged, or an older shape) will not
+    /// read on the next try either: the user signs in again, and the numbers stay meanwhile.
+    func testACardSessionThatNoLongerDecodesAsksForASignIn() async throws {
         let h = Harness()
         try h.signedIn()
         let t0 = h.clock.now
@@ -33,11 +34,25 @@ final class UnreadableKeychainRefreshTests: XCTestCase {
         try h.store.write(Data(#"{"shape":"older"}"#.utf8), for: .schoolEcykt)
         h.clock.advance(60)
         let report = await h.refresher().refresh(inBackground: true)
-        XCTAssertEqual(report.outcome, .interrupted)
-        XCTAssertFalse(report.snapshot.needsLogin)
+        XCTAssertEqual(report.outcome, .needsLogin(.sessionExpired(.ecykt)))
+        XCTAssertTrue(report.snapshot.needsLogin)
         XCTAssertEqual(report.snapshot.card.value, Money(fen: 790))
-        XCTAssertEqual(try h.snapshots.loadSnapshot()?.needsLogin, false)
+        XCTAssertEqual(try h.snapshots.loadSnapshot()?.needsLogin, true)
+        XCTAssertTrue(h.server.requests.isEmpty, "nothing is sent")
         XCTAssertNotNil(try h.store.read(.schoolEcykt), "the item stays for a sign-in to write over")
+    }
+
+    /// The same when the session is read again before renewing it.
+    func testACardSessionThatNoLongerDecodesBeforeRenewingAsksForASignIn() async throws {
+        let h = Harness()
+        try h.signedIn(portal: true)
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken")
+        let store = h.store
+        let reading = await h.session().refresh(inBackground: false, mayMint: {
+            try? store.write(Data(#"{"shape":"older"}"#.utf8), for: .schoolEcykt); return true
+        }, owning: .unchecked)
+        XCTAssertEqual(reading.outcome, .needsLogin(.sessionExpired(.ecykt)))
+        XCTAssertTrue(h.server.requests(path: "/getMyECard").isEmpty)
     }
 
     /// The session is read again before renewing it: a failed read there is not "no network".

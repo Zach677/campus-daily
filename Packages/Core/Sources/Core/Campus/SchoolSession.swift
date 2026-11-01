@@ -29,8 +29,7 @@ public struct SchoolReading: Sendable, Equatable {
         case failed(ServiceError)
         case notSignedIn
         /// The saved password was changed while this read ran (保存密码, 重新输入密码), or the
-        /// Keychain refused a write or a read (or a stored item no longer decodes): nothing is
-        /// known about the login. Not an error to
+        /// Keychain refused a write or a read: nothing is known about the login. Not an error to
         /// show: the stored numbers stay as they are and the next refresh goes ahead.
         case interrupted
         /// This read lost the refresh lease (it ran out while the app was suspended, the other
@@ -513,10 +512,11 @@ public actor SchoolSession {
     /// where no lease exists).
     public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true }, owning: LeaseOwnership,
                         numbers: @Sendable (SchoolReading) async -> Void = { _ in }) async -> SchoolReading {
-        // A read that fails (before the first unlock, an item that no longer decodes) says
-        // nothing about the login: only a read that finds nothing is "not signed in".
+        // A read the Keychain refuses (before the first unlock) says nothing about the login:
+        // only a read that finds nothing is "not signed in". A session that no longer decodes
+        // won't on the next try either: the user signs in again.
         let found: EcyktSession?
-        do { found = try vault.ecyktSession() } catch { return SchoolReading(outcome: .interrupted, checkedAt: now()) }
+        do { found = try vault.ecyktSession() } catch { return unreadableSession(error) }
         guard let stored = found else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         let started = signOutGeneration
 
@@ -529,7 +529,7 @@ public actor SchoolSession {
             logExpired(.card, obtainedAt: stored.obtainedAt, lastAliveAt: stored.lastAliveAt)
             guard await mayMint() else { return SchoolReading(outcome: .leaseLost, checkedAt: now()) }
             let current: EcyktSession?
-            do { current = try vault.ecyktSession() } catch { return SchoolReading(outcome: .interrupted, checkedAt: now()) }
+            do { current = try vault.ecyktSession() } catch { return unreadableSession(error) }
             guard let current else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
             // What is stored now is what a renewed session is written over (`base`), so a
             // session the other process stored meanwhile doesn't make this read discard its
@@ -603,6 +603,13 @@ public actor SchoolSession {
         guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         reading.activity = a
         return reading
+    }
+
+    /// The stored card session could not be read: a session that no longer decodes needs a
+    /// sign-in; any other read failure is an interruption.
+    private func unreadableSession(_ error: Error) -> SchoolReading {
+        let undecodable = (error as? StorageError)?.isUndecodable == true
+        return SchoolReading(outcome: undecodable ? .needsLogin(.sessionExpired(.ecykt)) : .interrupted, checkedAt: now())
     }
 
     private enum Renewal { case renewed((BoundCard, EcyktSession)), stopped(SchoolReading) }
