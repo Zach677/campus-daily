@@ -102,6 +102,29 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(fx, [.diagnostic("laundry.resolvedManually")])
     }
 
+    /// U净's `createAt` has only been seen in ISO 8601; a plain Beijing time must not make
+    /// reconcile reject our own order.
+    func testCreateTimeFormats() {
+        func seconds(_ text: String) -> TimeInterval? { R.parseDate(text)?.timeIntervalSince(t0) }
+        XCTAssertEqual(seconds("2026-10-30T12:00:05+08:00"), 5)
+        XCTAssertEqual(seconds("2026-10-30T04:00:05Z"), 5)
+        XCTAssertEqual(try XCTUnwrap(seconds("2026-10-30T04:00:05.250Z")), 5.25, accuracy: 0.001)
+        XCTAssertEqual(seconds("2026-10-30 12:00:05"), 5, "plain text is Beijing time")
+        for bad in ["2026-10-30 12:00", "2026-10-30", "30/10/2026 12:00:05", "2026-13-30 12:00:05", ""] {
+            XCTAssertNil(R.parseDate(bad), bad)
+        }
+    }
+
+    func testReconcileAdoptsOrderWithPlainCreateTime() {
+        let found = reduce(reduce(creating, .createFailed(.timedOut)).0, .activeOrderFound(L.orderID)).0
+        let (adopted, _) = reduce(found, .orderRead(L.order("10", createdAt: "2026-10-30 12:00:05"), at: t0.addingTimeInterval(30)))
+        XCTAssertEqual(adopted.phase, .created)
+        XCTAssertEqual(adopted.orderID, L.orderID)
+        let (stale, _) = reduce(found, .orderRead(L.order("10", createdAt: "2026-10-30 11:50:00"), at: t0.addingTimeInterval(30)))
+        XCTAssertEqual(stale.phase, .reconcile)
+        XCTAssertEqual(stale.notice, .orderMismatch)
+    }
+
     // MARK: price and pay
 
     func testPriceAboveConfirmedBlocksPayment() {
