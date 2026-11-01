@@ -11,8 +11,12 @@ struct SchoolReloginSheet: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     /// After a successful sign-in (form or web), before the sheet closes.
     var signedIn: () async -> Void = {}
+    #if DEBUG
     /// DEBUG demo: seed from this account; nothing is sent.
     var preview: SchoolAccount? = nil
+    #else
+    private var preview: SchoolAccount? { nil }
+    #endif
     @State private var account = ""
     @State private var password = ""
     @State private var savePassword = false

@@ -38,8 +38,12 @@ struct CampusWebLogin {
 
 struct OfficialCampusBrowser: UIViewRepresentable {
     @ObservedObject var state: CampusBrowserState
+    #if DEBUG
     /// DEBUG demo: nothing is loaded (loading-state screenshots).
     var loads = true
+    #else
+    private var loads: Bool { true }
+    #endif
     func makeCoordinator() -> Coordinator { Coordinator(state) }
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()

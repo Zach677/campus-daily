@@ -104,8 +104,12 @@ struct PowerChoice: Identifiable, Equatable {
     var powerStop: MeterWalkStop? { lookup.pageStop(meterBound:powerConfigured) }
     /// The lookup stopped with rooms in several apartments: which one (nil once a meter is bound).
     var powerQuestion: MeterQuestion? { powerStop.flatMap { MeterQuestion($0, address:address ?? demoDorm) } }
+    #if DEBUG
     /// The dorm of a DEBUG demo stop (nil otherwise): the question names its building and room.
     private var demoDorm: DormAddress?
+    #else
+    private var demoDorm: DormAddress? { nil }
+    #endif
     /// Several apartments to tell apart and one not read: the meter page shows no list.
     var powerUnfinished: MeterWalkStop? { powerConfigured ? nil : lookup.unfinished }
     /// The stamp a pick of `powerQuestion`'s rows is saved under.

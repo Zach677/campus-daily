@@ -35,7 +35,15 @@ enum AccountText {
 /// 学校账号 detail: account, status, 保存密码 (and 重新输入密码 while paused),
 /// re-login, sign out.
 struct AccountView: View {
+    #if DEBUG
+    /// DEBUG demo data; nil = live model.
     var preview: HomeData? = nil
+    /// DEBUG demo: the switch flips locally (seeded from the demo data).
+    @State private var previewSaved: Bool?
+    #else
+    private var preview: HomeData? { nil }
+    private var previewSaved: Bool? { get { nil } nonmutating set {} }
+    #endif
     @EnvironmentObject private var campus: CampusModel
     @State private var confirmSignOut = false
     @State private var askPassword = false
@@ -52,8 +60,6 @@ struct AccountView: View {
     @State private var askReenter = false
     /// 重新登录学校账号: the account-and-password sheet.
     @State private var relogin = false
-    /// DEBUG demo: the switch flips locally (seeded from the demo data).
-    @State private var previewSaved: Bool?
     private var signedIn: Bool { preview?.signedIn ?? campus.configured }
     private var dorm: String? { preview?.dorm ?? Theme.dorm(campus.room) }
     private var account: SchoolAccount? { preview != nil ? preview?.schoolAccount : campus.account }
@@ -190,7 +196,7 @@ struct AccountView: View {
                 }
                 .tint(nil)
         }
-        .sheet(isPresented:$relogin) { SchoolReloginSheet(preview:preview.map { _ in account ?? SchoolAccount(account:"") }) }
+        .sheet(isPresented:$relogin) { reloginSheet }
         // A pause written by a refresh (foreground, background or the widget) shows on arrival.
         .onAppear { if preview == nil { campus.reloadAccount() } }
         .confirmationDialog("退出学校账号？", isPresented:$confirmSignOut, titleVisibility:.visible) {
@@ -201,6 +207,12 @@ struct AccountView: View {
             Text("首页的电量和余额会清空，热水记录和洗衣设置都还在。")
         }
     }
+
+    #if DEBUG
+    private var reloginSheet: SchoolReloginSheet { SchoolReloginSheet(preview:preview.map { _ in account ?? SchoolAccount(account:"") }) }
+    #else
+    private var reloginSheet: SchoolReloginSheet { SchoolReloginSheet() }
+    #endif
 
     /// One login checks the password before it is kept; never retried.
     private func save() {
