@@ -75,7 +75,7 @@ final class SchoolRefreshTests: XCTestCase {
         XCTAssertEqual(h.server.requests(path: "/getUserBalance").first?.bodyField("custid"), "TESTid00000000000000000000000002")
     }
 
-    /// Batch 1 acceptance: liveness `-1` → needsLogin while the old balance stays with its fetchedAt.
+    /// Liveness `-1` → needsLogin while the old balance stays with its fetchedAt.
     func testExpiredLivenessMarksNeedsLoginAndKeepsOldValues() async throws {
         let h = Harness()
         try h.signedIn(meter: Harness.roomBinding)
@@ -220,7 +220,7 @@ final class SchoolRefreshTests: XCTestCase {
 }
 
 final class SchoolRechargeTests: XCTestCase {
-    /// Batch 1 acceptance: the recharge session calls loginBySysId once and uses the fresh token.
+    /// The recharge session calls loginBySysId once and uses the fresh token.
     func testCardRechargeSessionUsesFreshToken() async throws {
         let h = Harness()
         try h.signedIn()
@@ -243,8 +243,8 @@ final class SchoolRechargeTests: XCTestCase {
         XCTAssertFalse("\(web)".contains("REDACTED_TOKEN_9"))
         XCTAssertEqual(try h.vault.ecyktSession()?.syscustid, "TESTid00000000000000000000000003")
         // Same shape as the official CSA state for the fields the page reads.
-        let official = try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"]
-        for key in ["logintoken", "loginInfo", "schoolid", "custInfo"] { XCTAssertNotNil(official?[key], key); XCTAssertNotNil(state[key], key) }
+        let official = try FixtureLoader.csaLoginState()
+        for key in ["logintoken", "loginInfo", "schoolid", "custInfo"] { XCTAssertNotNil(official[key], key); XCTAssertNotNil(state[key], key) }
     }
 
     func testElectricityRechargeStartsAtPowerEntry() async throws {
@@ -483,7 +483,7 @@ final class SchoolSignInTests: XCTestCase {
     func testAdoptWebStateFallback() async throws {
         let h = Harness()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let summary = try await h.session().adoptWebState(try state.encoded(), owning: .unchecked)
         XCTAssertFalse(summary.switchedAccount)
         let s = try XCTUnwrap(try h.vault.ecyktSession())

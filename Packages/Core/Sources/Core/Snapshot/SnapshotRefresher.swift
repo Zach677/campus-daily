@@ -87,6 +87,8 @@ public actor SnapshotRefresher {
     private var generation = 0
     /// Callers that joined a running refresh (for tests).
     private(set) var joinedCount = 0
+    /// Times a caller asking for changes waited for a read that started before them (for tests).
+    private(set) var changeWaitCount = 0
     /// Waiters whose task was cancelled (for tests).
     private(set) var cancelledWaiters = 0
 
@@ -123,6 +125,7 @@ public actor SnapshotRefresher {
     /// Runs a refresh, or joins the one already running (see the type's rules).
     public func refresh(inBackground: Bool, includingChanges: Bool = false) async -> RefreshReport {
         while includingChanges, let run = current, run.changes != changes {
+            changeWaitCount += 1
             _ = await wait(for: run.id, run.task)
         }
         if let run = current {

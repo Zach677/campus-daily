@@ -3,8 +3,8 @@ import XCTest
 import CoreTestSupport
 
 enum T {
-    static let syscustid = "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J"
-    static let custid = "TESTcustid000000000000000000000000000%1A00000%3G"
+    static let syscustid = "TESTsyscustid0000000000000000000000000001%"
+    static let custid = "TESTcustid0000000000000000000000000000001%"
     static let pcUrl = "https://ecykt.gdbtu.edu.cn/ykt-view/authcsatoken?areacode=450010&redirect=%2Fhome&ticket=SYNTHETIC-TICKET-1"
     static func session(token: String = "REDACTED_TOKEN_2", syscustid: String = T.syscustid) -> EcyktSession {
         EcyktSession(token: token, syscustid: syscustid, custid: T.custid, cardUnionID: "TESTid00000000000000000000000001")

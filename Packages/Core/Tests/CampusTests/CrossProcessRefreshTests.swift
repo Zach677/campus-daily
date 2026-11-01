@@ -12,10 +12,11 @@ final class Lines: @unchecked Sendable {
 /// The app and the widget are two processes over one Keychain: here two sessions and two
 /// refreshers (different lease owners) over one in-memory store.
 final class CrossProcessRefreshTests: XCTestCase {
-    func refresher(_ h: Harness, owner: String) -> SnapshotRefresher {
+    /// `leaseWaits` gets a line each time this refresher waits for the other's lease.
+    func refresher(_ h: Harness, owner: String, leaseWaits: Lines = Lines()) -> SnapshotRefresher {
         SnapshotRefresher(school: h.session(), store: h.snapshots,
                           lease: RefreshLease(file: h.store.leaseFile, owner: owner, now: h.clock.function),
-                          leaseWait: 500, sleep: { _ in try? await Task.sleep(nanoseconds: 5_000_000) })
+                          leaseWait: 500, sleep: { _ in leaseWaits.append("wait"); try? await Task.sleep(nanoseconds: 5_000_000) })
     }
 
     /// Both find the card session dead at once: only one mints (one ticket, one exchange); the
@@ -35,11 +36,12 @@ final class CrossProcessRefreshTests: XCTestCase {
             reached.fulfill()
             release.wait()
         }
-        let app = refresher(h, owner: "app-1"), widget = refresher(h, owner: "widget-1")
+        let widgetWaits = Lines()
+        let app = refresher(h, owner: "app-1"), widget = refresher(h, owner: "widget-1", leaseWaits: widgetWaits)
         async let first = app.refresh(inBackground: false)
         await fulfillment(of: [reached], timeout: 5)
         async let second = widget.refresh(inBackground: true)
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        await eventually { widgetWaits.all.count >= 2 }
         XCTAssertEqual(h.livenessCalls(), 1, "the widget waits for the lease instead of reading")
         release.signal()
         let (a, w) = await (first, second)
@@ -239,7 +241,7 @@ final class WriteBackComparisonTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-ok")
         let vault = h.vault
-        let rotated = T.session(syscustid: "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J" + "-rotated")
+        let rotated = T.session(syscustid: "TESTsyscustid0000000000000000000000000001%" + "-rotated")
         h.server.gate { r in
             guard r.url.path.hasSuffix("/getSysBindCustInfo") else { return }
             try? vault.saveEcyktSession(rotated)
@@ -306,7 +308,7 @@ final class LoginUnderLeaseTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         XCTAssertTrue(RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function).acquire())
         let app = refresher(h, owner: "app-1", wait: 3)
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"]).encoded()
+        let state = try FixtureLoader.csaLoginState().encoded()
         let session = h.session()
         do {
             _ = try await app.holdingLease { owning in try await session.adoptWebState(state, owning: owning) }
