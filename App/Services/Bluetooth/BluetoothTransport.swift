@@ -48,6 +48,8 @@ struct VerifiedShowerDevice {
     private var pendingFrame: Data?
     private var channelError: ShowerDeviceError?
     private var writeAcknowledged = false
+    /// The controller answered the current write with an error: it did not take the command.
+    private var writeRefused = false
     private var step: String?
     private let waiter = WaitSlot()
     private var timer: Task<Void, Never>?
@@ -200,13 +202,21 @@ struct VerifiedShowerDevice {
         guard let uuid = UUID(uuidString:id), let chosen = targets[uuid] else { throw ShowerDeviceError.notFound }
         return try await establish(chosen)
     }
+    /// Throws `ShowerCommandNotSent` when `data` never reached the controller (nothing was
+    /// written, or the write itself was refused); any other error means it may have.
     func exchange(_ data: Data) async throws -> Data {
-        if let channelError { throw channelError }
+        if let channelError { throw ShowerCommandNotSent(channelError) }
         guard let peripheral, peripheral.state == .connected, let write,
-              !decoder.hasPartialFrame, pendingFrame == nil else { throw ShowerDeviceError.disconnected }
-        writeAcknowledged = false
+              !decoder.hasPartialFrame, pendingFrame == nil else { throw ShowerCommandNotSent(.disconnected) }
+        writeAcknowledged = false; writeRefused = false
         ShowerDiagnosticReport.record("ble.write." + ShowerFrames.command(data).rawValue)
-        try await wait("exchange", seconds: 8) { peripheral.writeValue(data, for: write, type: .withResponse) }
+        var written = false
+        do {
+            try await wait("exchange", seconds: 8) { written = true; peripheral.writeValue(data, for: write, type: .withResponse) }
+        } catch {
+            if !written || writeRefused { throw ShowerCommandNotSent(ShowerEngine.deviceError(error)) }
+            throw error
+        }
         guard let frame = pendingFrame else { throw ShowerDeviceError.malformedFrame }
         ShowerDiagnosticReport.record("ble.reply.\(frame.count)")
         pendingFrame = nil
@@ -267,7 +277,7 @@ struct VerifiedShowerDevice {
     }
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         guard step == "exchange", characteristic === write else { return }
-        if error != nil { complete(.failure(ShowerDeviceError.disconnected)); return }
+        if error != nil { writeRefused = true; complete(.failure(ShowerDeviceError.disconnected)); return }
         writeAcknowledged = true
         finishExchangeIfReady()
     }

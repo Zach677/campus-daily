@@ -9,6 +9,8 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
     public enum Reply: Sendable {
         case frame(Data)
         case fail(ShowerDeviceError)
+        /// The command never reached the controller (`ShowerCommandNotSent`).
+        case notSent(ShowerDeviceError)
         /// Suspends until the calling task is cancelled (the test fails after 10 s).
         case hang
         /// The frame, once `gate` yields (or finishes).
@@ -60,6 +62,7 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
         switch reply {
         case .frame(let f): return f
         case .fail(let e): throw e
+        case .notSent(let e): throw ShowerCommandNotSent(e)
         case .hang:
             await eventually(seconds: 10) { Task.isCancelled }
             throw ShowerDeviceError.interrupted

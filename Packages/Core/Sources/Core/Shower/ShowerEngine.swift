@@ -14,6 +14,14 @@ public protocol ShowerTransport: Sendable {
     func disconnect() async
 }
 
+/// Thrown by `ShowerTransport.exchange` when the command never reached the controller: the
+/// task was cancelled or the link was unusable before the write, or the controller refused the
+/// write itself. `cause` is what the user is told.
+public struct ShowerCommandNotSent: Error, Sendable, Equatable {
+    public var cause: ShowerDeviceError
+    public init(_ cause: ShowerDeviceError) { self.cause = cause }
+}
+
 /// Peripheral choice without guessing (ported from the existing app).
 public enum ShowerTargetSelection {
     public static func select(_ candidates: [String], required: String?, preferred: String?) throws -> String {
@@ -46,6 +54,8 @@ public enum ShowerTargetSelection {
             } catch is CancellationError {
                 throw ShowerDeviceError.interrupted
             } catch ShowerDeviceError.interrupted {
+                throw ShowerDeviceError.interrupted
+            } catch let e as ShowerCommandNotSent where e.cause == .interrupted {
                 throw ShowerDeviceError.interrupted
             } catch {
                 // Busy, malformed and unreachable devices are not verified targets.
@@ -294,7 +304,9 @@ public actor ShowerEngine {
             catch { return .authorizeFailed(.uncertain(.lxt6)) }
 
         case .writeAuthorization(let payload):
+            guard !Task.isCancelled else { return .cancelledBeforeSend }
             do { return .writeReplied(try await transport.exchange(payload)) }
+            catch is ShowerCommandNotSent { return .cancelledBeforeSend }
             catch { return .writeFailed(Self.deviceError(error)) }
 
         case .probe(let peripheral):
@@ -342,8 +354,9 @@ public actor ShowerEngine {
         }
     }
 
-    static func deviceError(_ error: Error) -> ShowerDeviceError {
+    public static func deviceError(_ error: Error) -> ShowerDeviceError {
         if let e = error as? ShowerDeviceError { return e }
+        if let e = error as? ShowerCommandNotSent { return e.cause }
         if error is CancellationError { return .interrupted }
         return .disconnected
     }

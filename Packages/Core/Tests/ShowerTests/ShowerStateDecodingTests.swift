@@ -12,7 +12,7 @@ final class ShowerStateDecodingTests: XCTestCase {
         try JSONDecoder().decode(ShowerState.self, from: Data(json.utf8))
     }
 
-    /// The record the shower's first release wrote.
+    /// The record the shower's first release wrote, before `authorizationNotWritten` existed.
     func testTheRecordOfTheFirstReleaseDecodes() throws {
         let s = try decode("""
         {"phase":"writePending","machineID":"11223344","peripheralID":"P","startedAt":\(t0.timeIntervalSinceReferenceDate),
@@ -22,6 +22,7 @@ final class ShowerStateDecodingTests: XCTestCase {
         XCTAssertEqual(s.phase, .writePending)
         XCTAssertEqual(s.startedAt, t0)
         XCTAssertEqual(s.authorizationID, "001122FF")
+        XCTAssertFalse(s.authorizationNotWritten, "not proven unsent")
         XCTAssertTrue(s.canFinish)
     }
 
@@ -89,7 +90,7 @@ final class ShowerStateDecodingTests: XCTestCase {
                             receipt: ShowerReceipt(amount: Money(fen: 1)), lastReceipt: ShowerReceipt(amount: Money(fen: 2)),
                             failure: ShowerFailure(reason: .settleRefused, needsReview: true, error: .timedOut, deviceError: .busy),
                             stateReviewRequired: true, reviewing: true, settleRetryArmed: true, manualSettleAttempts: 3,
-                            endedAt: t0.addingTimeInterval(60), notice: .device(.timedOut))
+                            endedAt: t0.addingTimeInterval(60), notice: .device(.timedOut), authorizationNotWritten: true)
         XCTAssertEqual(try JSONDecoder().decode(ShowerState.self, from: JSONEncoder().encode(s)), s)
     }
 }

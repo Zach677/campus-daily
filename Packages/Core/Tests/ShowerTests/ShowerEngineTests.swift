@@ -322,7 +322,9 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(transport.writes.last, close)
     }
 
-    func testFinishFromWritePendingWhenAuthorizationNeverAppliedDoesNotSettle() async throws {
+    /// The write was answered with something else: it may have been applied, so a controller
+    /// that reads idle at 结束 leaves the record for a check, never settled and never dropped.
+    func testFinishFromWritePendingWithAnUnexpectedReplyNeedsACheck() async throws {
         let e = try engine()
         transport.script(.frame(identity), .frame(Data([0xAA, 0])))
         gateway.scriptAuthorize(.ok(auth))
@@ -330,10 +332,11 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(started.notice, .writeUnconfirmed)
         transport.script(.frame(identity))
         let s = try await e.finish(binding)
-        XCTAssertEqual(s.phase, .idle)
+        XCTAssertEqual(s.phase, .writePending)
+        XCTAssertTrue(s.stateReviewRequired)
         XCTAssertTrue(gateway.settleFrames.isEmpty)
         XCTAssertFalse(transport.writes.contains(close))
-        XCTAssertTrue(hooks.events.contains("finish.writeNeverApplied"))
+        XCTAssertFalse(hooks.events.contains("finish.writeNeverApplied"))
     }
 
     func testFinishWithControllerUnreachableKeepsSession() async throws {
@@ -533,6 +536,15 @@ final class ShowerEngineTests: XCTestCase {
         let resolved = try await e.resolveManually()
         XCTAssertEqual(resolved.phase, .idle)
         XCTAssertTrue(hooks.events.contains("cancel"))
+    }
+
+    /// A probe that never went out because the task was cancelled stops the search like any
+    /// other interruption, instead of reading as "not this controller".
+    func testAnUnsentProbeCancelledMidSearchStopsIt() async {
+        do {
+            _ = try await ShowerTargetSelection.identify(["A", "B"], machineID: machine) { _ in throw ShowerCommandNotSent(.interrupted) }
+            XCTFail("expected interrupted")
+        } catch { XCTAssertEqual(error as? ShowerDeviceError, .interrupted) }
     }
 
     func testTargetSelectionNeverGuesses() async throws {

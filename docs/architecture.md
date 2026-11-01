@@ -497,7 +497,10 @@ Rules:
 - Any state but `idle`/`done` blocks `start`. Authorize: explicit refusal → `failed(needsReview:
   false)` (nothing issued); anything else → `failed(needsReview: true)`; never re-authorize.
 - `writePending` shows as running on purpose (the controller may have accepted without acking).
-  `finish` from it: probe shows the device idle with our identity → `idle`, no charge; else close.
+  `finish` from it: probe shows the device idle with our identity → the check face
+  (`stateReviewRequired`, as from `running`: the write may have been applied with only its ack
+  lost); `idle` with no charge only when the write provably never reached the controller
+  (cancelled before it, or the write refused); `0xA5` → close.
 - Close is sent only after the probe returns `0xA5`; otherwise keep the session, flag review.
 - `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
   needs a second confirmation and is recorded in diagnostics.

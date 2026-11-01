@@ -380,7 +380,7 @@ enum ShowerProfileFiles {
             inspectionOutcome = .verified
         } catch {
             await bluetooth.disconnect()
-            let device = (error as? ShowerDeviceError) ?? .disconnected
+            let device = ShowerEngine.deviceError(error)
             inspectionStatus = Self.deviceText(device)
             switch device {
             case .bluetoothOff: inspectionOutcome = .bluetoothOff

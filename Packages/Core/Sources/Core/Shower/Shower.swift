@@ -118,19 +118,23 @@ public struct ShowerState: Sendable, Codable, Equatable {
     public var manualSettleAttempts: Int
     public var endedAt: Date?
     public var notice: ShowerNotice?
+    /// The authorization write provably never reached the controller (cancelled before it, or
+    /// the write was refused): no water could run, so an idle controller at 结束 ends the
+    /// record without a check. An unconfirmed write may have been applied and never sets it.
+    public var authorizationNotWritten: Bool
 
     public init(phase: ShowerPhase = .idle, machineID: String? = nil, peripheralID: String? = nil, startedAt: Date? = nil,
                 authorizeSent: Bool = false, authorizationID: String? = nil, closingFrom: ShowerPhase? = nil,
                 closeSent: Bool = false, consumption: String? = nil, receipt: ShowerReceipt? = nil,
                 lastReceipt: ShowerReceipt? = nil, failure: ShowerFailure? = nil, stateReviewRequired: Bool = false,
                 reviewing: Bool = false, settleRetryArmed: Bool = false, manualSettleAttempts: Int = 0,
-                endedAt: Date? = nil, notice: ShowerNotice? = nil) {
+                endedAt: Date? = nil, notice: ShowerNotice? = nil, authorizationNotWritten: Bool = false) {
         self.phase = phase; self.machineID = machineID; self.peripheralID = peripheralID; self.startedAt = startedAt
         self.authorizeSent = authorizeSent; self.authorizationID = authorizationID; self.closingFrom = closingFrom
         self.closeSent = closeSent; self.consumption = consumption; self.receipt = receipt; self.lastReceipt = lastReceipt
         self.failure = failure; self.stateReviewRequired = stateReviewRequired; self.reviewing = reviewing
         self.settleRetryArmed = settleRetryArmed; self.manualSettleAttempts = manualSettleAttempts
-        self.endedAt = endedAt; self.notice = notice
+        self.endedAt = endedAt; self.notice = notice; self.authorizationNotWritten = authorizationNotWritten
     }
 
     public static let idle = ShowerState()
@@ -209,6 +213,7 @@ extension ShowerState {
         manualSettleAttempts = try c.decodeIfPresent(Int.self, forKey: .manualSettleAttempts) ?? 0
         endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
         notice = try? c.decodeIfPresent(ShowerNotice.self, forKey: .notice)
+        authorizationNotWritten = try c.decodeIfPresent(Bool.self, forKey: .authorizationNotWritten) ?? false
     }
 }
 
@@ -343,6 +348,12 @@ public enum ShowerReducer {
             s.notice = .device(e)
             return (s, [.releaseDevice])
 
+        case (.writePending, .cancelledBeforeSend) where !state.reviewing:
+            // The authorization never reached the controller.
+            s.authorizationNotWritten = true
+            s.notice = .device(.interrupted)
+            return (s, [.releaseDevice])
+
         // MARK: finish / review
         case (.writePending, .finish), (.running, .finish):
             guard state.canFinish else { return (state, []) }
@@ -391,10 +402,11 @@ public enum ShowerReducer {
                 s.stateReviewRequired = false
                 return (s, [.sendClose(command)])
             case .idle(let id) where id == state.machineID:
-                if from == .writePending {
-                    // The authorization never took effect: no water, no charge.
+                if from == .writePending, state.authorizationNotWritten {
+                    // The authorization never reached the controller: no water, no charge.
                     return (state.idleAfter(receipt: state.lastReceipt), [.cancelReminder, .releaseDevice, .diagnostic("finish.writeNeverApplied")])
                 }
+                // Stopped now, but an unconfirmed write may have been applied and run water.
                 var b = back(s, to: from, notice: .notActive)
                 b.stateReviewRequired = true
                 return (b, [.releaseDevice])
