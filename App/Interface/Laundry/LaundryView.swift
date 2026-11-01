@@ -606,7 +606,7 @@ struct LaundryRunHero: View {
                         }
                         .padding(.top,16)
                 }
-                Text(program + " · " + LaundryFormat.clock(end) + " 洗完。" + (notify ? "洗好了会通知你。" : ""))
+                Text(program + " · " + CampusFormat.clock(end) + " 洗完。" + (notify ? "洗好了会通知你。" : ""))
                     .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).lineSpacing(3)
                     .fixedSize(horizontal:false, vertical:true)
                     .padding(.top,10)

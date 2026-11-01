@@ -193,7 +193,7 @@ struct CampusOnboardingView: View {
                     login = true
                 }
             }
-            .scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
+            .scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
     }
     private var dormMenus: some View {
         ForEach(0..<4,id:\.self) {level in

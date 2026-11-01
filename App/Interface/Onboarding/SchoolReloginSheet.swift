@@ -35,10 +35,12 @@ struct SchoolReloginSheet: View {
             Button { dismiss() } label: {
                 Image(systemName:"xmark").font(.system(size:15, weight:.semibold)).foregroundStyle(Theme.ink2)
                     .frame(width:36, height:36).background(Theme.fill, in:Circle())
+                    // A 44 pt target around the 36 pt circle, which stays where it was.
+                    .frame(width:44, height:44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("关闭")
-            .padding(.top,18).padding(.leading,24)
+            .padding(.top,14).padding(.leading,20)
             ScrollView {
                 VStack(alignment:.leading, spacing:0) {
                     Text("登录学校账号").scaledFont(28, .bold, relativeTo:.largeTitle).foregroundStyle(Theme.ink)

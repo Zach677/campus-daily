@@ -15,7 +15,7 @@ struct HomeData {
             case .unknown, .idle: return "常用"
             case .unpaid: return "订单还没付款"
             case .starting: return "已付款，等机器启动"
-            case .running(let program, let end): return program + " · " + LaundryFormat.clock(end) + " 洗完"
+            case .running(let program, let end): return program + " · " + CampusFormat.clock(end) + " 洗完"
             case .done: return "刚刚洗完"
             case .inUse: return "有人在用"
             case .unavailable(.offline): return "机器离线"

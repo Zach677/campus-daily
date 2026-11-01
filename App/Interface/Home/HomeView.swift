@@ -244,6 +244,7 @@ struct HomeView: View {
             if let index = path.firstIndex(of:.records) { path.removeSubrange(index...) }
         }
         .onChange(of:phase) { _, value in
+            // The order is read by the app scene on the same event (back from Alipay).
             if value == .active { Task { await campus.refresh(); await laundry.refresh() } }
         }
         .onChange(of:shower.state.phase) { old, value in

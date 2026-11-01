@@ -78,6 +78,11 @@
 - Forget the last laundry order's result and note when the U净 account that placed it signs out or another account signs in.
 - Read the laundry order as soon as the Alipay SDK reports back, also when Alipay pays in its own web page, instead of after 10 s.
 - Show only the 最近 rows that fit on home, and leave out 最近 when not even one fits under its header, instead of three rows that made home scroll.
+- Draw the tick of a chosen location in the label colour on the accent, so it stays readable in dark mode.
+- Show the last shower's amount on the hot-water screen as 「¥1.32」, as everywhere else, instead of 「CN¥1.32」 on some region settings.
+- The reset confirmation no longer lists 「选的主题」: the app has no theme setting.
+- The sign-in sheet's close button takes taps in a 44 pt square around its circle.
+- Read the laundry order once when the app comes back, not twice.
 
 ### Removed
 
