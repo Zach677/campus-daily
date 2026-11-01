@@ -5,17 +5,18 @@ import plistlib
 import subprocess
 from pathlib import Path
 
+# The default APP_BUNDLE_IDENTIFIER; a build carries its own in Info.plist KeychainGroupIdentifier.
 PRIVATE = 'com.beamjason.xiaorichang'
-SHARED = 'com.beamjason.xiaorichang.shared'
 
 
-def keychain_problem(app_groups, widget_groups):
+def keychain_problem(app_groups, widget_groups, private=PRIVATE):
     """The first rule the two keychain-access-groups lists break, or None.
 
     iOS writes an item without a group into the first listed group, so the order is part of
     the contract: the app lists <prefix>.PRIVATE first, the widget lists <prefix>.SHARED and
-    nothing else, both under the same team prefix.
+    nothing else, both under the same team prefix. SHARED is PRIVATE + '.shared'.
     """
+    shared = private + '.shared'
     if any('*' in g for g in app_groups + widget_groups):
         return 'Keychain access groups must be explicit'
     if len(widget_groups) != 1:
@@ -23,10 +24,10 @@ def keychain_problem(app_groups, widget_groups):
     if not app_groups:
         return 'The main app lists no keychain group'
     prefix, dot, rest = app_groups[0].partition('.')
-    if not prefix or not dot or rest != PRIVATE:
-        return 'The main app must list its private keychain group <prefix>.%s first' % PRIVATE
-    if widget_groups[0] != prefix + '.' + SHARED:
-        return 'The widget group must be %s.%s (same team prefix as the app)' % (prefix, SHARED)
+    if not prefix or not dot or rest != private:
+        return 'The main app must list its private keychain group <prefix>.%s first' % private
+    if widget_groups[0] != prefix + '.' + shared:
+        return 'The widget group must be %s.%s (same team prefix as the app)' % (prefix, shared)
     if widget_groups[0] not in app_groups:
         return 'The main app must list the shared keychain group too'
     if app_groups[0] in widget_groups:
@@ -50,7 +51,8 @@ def main():
         return plistlib.loads(r.stdout)
 
     a, w = entitlements(app), entitlements(widget)
-    problem = keychain_problem(list(a.get('keychain-access-groups', [])), list(w.get('keychain-access-groups', [])))
+    private = plistlib.loads((app / 'Info.plist').read_bytes()).get('KeychainGroupIdentifier', PRIVATE)
+    problem = keychain_problem(list(a.get('keychain-access-groups', [])), list(w.get('keychain-access-groups', [])), private)
     if problem:
         p.error(problem)
     for bundle in [app, widget]:

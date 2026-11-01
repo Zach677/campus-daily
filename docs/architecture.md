@@ -265,7 +265,7 @@ records the failure and its time per tile.
 **One writer across two processes.** The app and the widget extension each have one
 `SnapshotRefresher` over one Keychain. They take turns
 through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the App Group container
-(`group.com.beamjason.xiaorichang`):
+(`group.$(APP_BUNDLE_IDENTIFIER)`, read from Info.plist `AppGroupIdentifier`, see 4.2):
 - every step (take, renew, check, give back, clear) is one read-compare-write done while holding
   an exclusive `flock` on that file, so two processes never both find the same lease free and a
   holder whose lease ran out never writes over the next one's; the lock is held only for that
@@ -713,9 +713,9 @@ Session stores (water/laundry) write synchronously and fail closed: a failed wri
 next side effect (`storage` error), same as today.
 
 Widget sharing: App.entitlements lists two keychain access groups, in this order: the app's
-private group `$(AppIdentifierPrefix)com.beamjason.xiaorichang` (`SharedKeychain.privateGroupIdentifier`),
-then the shared group `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared`
-(`SharedKeychain.groupIdentifier`). Widget.entitlements lists only the shared group. Order matters:
+private group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER)` (`AppIdentity.keychainGroup`),
+then the shared group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER).shared`
+(`AppIdentity.sharedKeychainGroup`). Widget.entitlements lists only the shared group. Order matters:
 iOS puts an item written without a group into the first listed group. Items marked "yes" are
 written to the shared group; all others are written to the private group, which the widget is
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
@@ -727,8 +727,9 @@ token (then WhenUnlocked) and the login device id in the private group. At launc
 (`migrateItemGroups()`) and on any read that finds one there, the item is written to its group
 with today's accessibility, read back, and only then deleted from the old group; a failed step
 keeps the original and retries next launch, so nobody is signed out or loses a binding. The App
-Group (`group.com.beamjason.xiaorichang`, both targets) holds only the lease file; a re-signed
-build without it keeps working, with the widget leaving every refresh to the app. Live Activities get data via ActivityKit content
+Group (`group.$(APP_BUNDLE_IDENTIFIER)`, both targets) holds only the lease file; a re-signed
+build without it keeps working: the app reads, signs in and recharges without the lease, and the
+widget leaves every refresh to the app, so the two never read at once. Live Activities get data via ActivityKit content
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.
 
@@ -741,6 +742,7 @@ become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidence
 |---|---|
 | App bundle id | `com.beamjason.xiaorichang` (matches Android `applicationId`) |
 | Widget extension | `com.beamjason.xiaorichang.balances` |
+| App Group | `group.com.beamjason.xiaorichang` |
 | Keychain access groups | app: `$(AppIdentifierPrefix)com.beamjason.xiaorichang`, then `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared`; widget: the shared one only |
 | Keychain services | `com.beamjason.xiaorichang.<name>.v1` |
 | BG task id | `com.beamjason.xiaorichang.refresh` |
@@ -750,6 +752,15 @@ become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidence
 | Xcode workspace / project / targets | `XiaoRiChang.xcworkspace` / `App.xcodeproj` / `App` (product `XiaoRiChang.app`), `Widget` (product `XiaoRiChangWidget.appex`) |
 | Swift package / product | `Packages/Core` / `Core` |
 | Display names | 校日常 / widget gallery title 校日常 |
+
+The App Group, the keychain groups and the BG task id are not written into the code: both
+entitlements files and both Info.plists are filled from `APP_BUNDLE_IDENTIFIER` at build time
+(Info.plist keys `AppGroupIdentifier` = `group.$(APP_BUNDLE_IDENTIFIER)` and
+`KeychainGroupIdentifier` = `$(APP_BUNDLE_IDENTIFIER)`, read by `AppIdentity`; the widget carries
+the app's values, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
+`$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. A build
+with another `APP_BUNDLE_IDENTIFIER` (Developer.xcconfig) gets its own groups; the Keychain service
+names stay `com.beamjason.xiaorichang.<name>.v1` in every build.
 
 Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
 Store/TestFlight record. Paid-team signers register `com.beamjason.xiaorichang` and

@@ -32,6 +32,12 @@ class KeychainGroupRuleTests(unittest.TestCase):
     def test_app_must_list_the_shared_group(self):
         self.assertIsNotNone(keychain_problem([APP_PRIVATE], [SHARED]))
 
+    def test_groups_follow_the_builds_keychain_group(self):
+        own, own_shared = 'TEAM000099.org.example.daily', 'TEAM000099.org.example.daily.shared'
+        self.assertIsNone(keychain_problem([own, own_shared], [own_shared], 'org.example.daily'))
+        self.assertIsNotNone(keychain_problem([own, own_shared], [own_shared]))
+        self.assertIsNotNone(keychain_problem([APP_PRIVATE, SHARED], [SHARED], 'org.example.daily'))
+
     def test_wildcards_and_empty_lists_are_refused(self):
         self.assertIsNotNone(keychain_problem([APP_PRIVATE, 'TEAM000099.*'], [SHARED]))
         self.assertIsNotNone(keychain_problem([], [SHARED]))

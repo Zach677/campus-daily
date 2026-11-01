@@ -16,19 +16,17 @@ import Glibc
 ///
 /// A holder that dies leaves its lease to expire after `duration`; the next process takes it.
 /// Without the shared container (a build signed without the App Group) `file` is nil and the
-/// lease can never be taken.
+/// lease can never be taken; the app then runs without it (`SchoolRefreshStack`).
 public struct RefreshLease: Sendable {
     struct Record: Codable, Equatable {
         var owner: String
         var expiresAt: Date
     }
 
-    /// The App Group both targets are entitled to.
-    public static let groupIdentifier = "group.com.beamjason.xiaorichang"
-
-    /// The lease file in the shared container, or nil when this build has no App Group.
-    public static func sharedFile() -> LeaseFile? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupIdentifier)
+    /// The lease file in the shared container, or nil when this build has no App Group (none
+    /// named in Info.plist, or not entitled to the one named).
+    public static func sharedFile(appGroup: String? = AppIdentity.main.appGroup) -> LeaseFile? {
+        appGroup.flatMap { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
             .map { LeaseFile(url: $0.appendingPathComponent("refresh.lease")) }
     }
 
