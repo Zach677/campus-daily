@@ -72,6 +72,7 @@
 - Siri, Shortcuts and the Live Activity say why a start or an end did not go through (for example 「蓝牙没开，打开后再试。」 or 「这次没能结束，打开校日常再试一次。」), and the start no longer says the water is ready when the controller did not confirm it.
 - Let sign-in, recharge and the shower hand-off run in a build signed without the App Group instead of failing as busy (they still take turns with the app's refresh, through a lease file in the app's own container; the widget leaves every school read to the app there), and take the App Group, keychain groups and background refresh id from `APP_BUNDLE_IDENTIFIER`; the default bundle id keeps the values earlier builds used.
 - `Scripts/check-widget-signature.py` also fails a signed build when the app or the widget is not entitled to the App Group named in its Info.plist (`AppGroupIdentifier`), which would leave the widget without fresh numbers.
+- If you built the app from source with your own `APP_BUNDLE_IDENTIFIER` before this version, you are signed out of the school account once after upgrading and need to type the saved password again; builds with the default bundle id are not affected.
 - Scan a picked washer photo off the main thread, say 「照片里没找到二维码，换一张拍清楚的。」 when it has no code, and give each refusal on the common-washer page its own text instead of 「机器名称最多 40 个字。」.
 - Forget the last laundry order's result and note when the U净 account that placed it signs out or another account signs in.
 - Read the laundry order as soon as the Alipay SDK reports back, also when Alipay pays in its own web page, instead of after 10 s.
