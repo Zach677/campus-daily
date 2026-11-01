@@ -10,6 +10,7 @@ final class ShowerGatewayBox: ShowerGateway, @unchecked Sendable {
         get { lock.withLock { gateway } }
         set { lock.withLock { gateway = newValue } }
     }
+    var isAvailable: Bool { current != nil }
     func authorize(_ binding: ShowerBinding, frame: Data) async throws -> ShowerAuthorization {
         guard let current else { throw ServiceError.badRequest(.lxt6) }
         return try await current.authorize(binding, frame:frame)
@@ -107,15 +108,19 @@ enum ShowerProfileFiles {
         ShowerLinkRule.mayStart(state, ready:configured && !platformMissing && !residenceReviewRequired && engine != nil && !storageBlocked,
                                 busy:busy, inspecting:inspecting)
     }
-    var mayFinish: Bool { configured && engine != nil && !busy && !storageBlocked && state.canFinish }
+    /// Not without a platform profile: the water would close with no way to settle it.
+    var mayFinish: Bool { configured && !platformMissing && engine != nil && !busy && !storageBlocked && state.canFinish }
     /// 检查水控状态: while water may run, and after a close that may not have taken.
     var mayReview: Bool { configured && engine != nil && !busy && !storageBlocked && state.canReview }
     var mayResolveManually: Bool { engine != nil && !busy && state.canResolveManually }
-    var mayRetrySettle: Bool { engine != nil && !busy && state.canRetrySettle }
+    var mayRetrySettle: Bool { !platformMissing && engine != nil && !busy && state.canRetrySettle }
     /// Binding / profile may change only with no session that could still be open or charged.
     var mayImport: Bool {
         !busy && !storageBlocked && (state.phase == .idle || state.phase == .done || (state.phase == .failed && state.failure?.needsReview == false))
     }
+    /// 导入热水配置: also while a shower waits on a missing profile (nothing to replace; it is
+    /// what 结束 and 再结算一次 need).
+    var mayImportProfile: Bool { mayImport || (platformMissing && !busy && !storageBlocked) }
     /// Why the controller check can't run now (a shower open, or one waiting for its check);
     /// nil when it can.
     var inspectionBlockedText: String? {
@@ -257,7 +262,7 @@ enum ShowerProfileFiles {
 
     /// `.waterconfig` import (Settings › 高级). The profile is the shared platform part only.
     func importConfig(_ url: URL) throws {
-        guard mayImport else { throw ShowerEngineError.blocked }
+        guard mayImportProfile else { throw ShowerEngineError.blocked }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf:url)
@@ -278,6 +283,7 @@ enum ShowerProfileFiles {
             guard mayStart else { throw ShowerEngineError.blocked }
         } else {
             guard state.canFinish else { throw ShowerEngineError.notAllowed }
+            guard !platformMissing else { message = Self.platformMissingText; throw ShowerEngineError.platformMissing }
             ShowerActivityController.shared.settling()
         }
         busy = true; message = nil

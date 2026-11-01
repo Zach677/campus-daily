@@ -90,6 +90,9 @@ public enum ShowerEngineError: Error, Equatable, Sendable {
     /// The saved session record is there but can't be decoded: nothing is sent, and a relaunch
     /// doesn't help.
     case unreadableRecord
+    /// No hot-water platform profile: the settlement couldn't be sent, so 结束 (close, then
+    /// settle) and a settle retry are refused before anything goes out.
+    case platformMissing
 }
 
 /// Drives `ShowerReducer`: persists every state before running its effects, talks to the
@@ -183,6 +186,8 @@ public actor ShowerEngine {
         try guardIdle()
         guard state.canFinish else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
+        // Closing the water without a way to settle would leave a charge nobody can send.
+        guard gateway.isAvailable else { throw ShowerEngineError.platformMissing }
         return try await run(b, .finish)
     }
 
@@ -209,6 +214,7 @@ public actor ShowerEngine {
         try guardIdle()
         guard state.canRetrySettle, state.settleRetryArmed else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
+        guard gateway.isAvailable else { throw ShowerEngineError.platformMissing }
         return try await run(b, .confirmSettleRetry)
     }
 

@@ -297,10 +297,11 @@ struct ShowerPageView: View {
             case .connecting:
                 capsule("取消", background:Theme.fill, ink:Theme.ink, enabled:flow.mayCancel) { shower.pageEvent(.cancelTapped) }
             case .running:
-                if let failure = flow.endFailed {
+                // No platform profile: 结束 would close the water with no way to settle it.
+                if let line = shower.platformMissing ? ShowerModel.platformMissingText : flow.endFailed.map(ShowerPageText.endFailed) {
                     HStack(alignment:.firstTextBaseline, spacing:6) {
                         Image(systemName:"exclamationmark.circle.fill").scaledFont(17, relativeTo:.body).accessibilityHidden(true)
-                        Text(ShowerPageText.endFailed(failure)).scaledFont(15, relativeTo:.subheadline)
+                        Text(line).scaledFont(15, relativeTo:.subheadline)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal:false, vertical:true)
                     }
@@ -311,9 +312,9 @@ struct ShowerPageView: View {
                     .accessibilityElement(children:.combine)
                 }
                 capsule("结束并结算", background:Theme.accent, ink:scheme == .dark ? Color(white:0.07) : .white,
-                        enabled:flow.mayEnd) { shower.pageEvent(.endTapped) }
+                        enabled:flow.mayEnd && !shower.platformMissing) { shower.pageEvent(.endTapped) }
                 // The end-failed line takes its place while shown.
-                if flow.endFailed == nil {
+                if flow.endFailed == nil && !shower.platformMissing {
                     Text(ShowerPageText.runningNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                         .multilineTextAlignment(.center).padding(.top,6)
                 }

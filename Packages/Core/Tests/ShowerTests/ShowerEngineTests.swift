@@ -12,6 +12,13 @@ final class FakeGateway: ShowerGateway, @unchecked Sendable {
     private var settleResults: [Outcome<ShowerReceipt>] = []
     private var _authorizeFrames: [Data] = []
     private var _settleFrames: [Data] = []
+    private var _available = true
+
+    /// False: like the app's gateway without a platform profile.
+    var isAvailable: Bool {
+        get { lock.withLock { _available } }
+        set { lock.withLock { _available = newValue } }
+    }
 
     func scriptAuthorize(_ o: Outcome<ShowerAuthorization>...) { lock.withLock { authorizeResults += o } }
     func scriptSettle(_ o: Outcome<ShowerReceipt>...) { lock.withLock { settleResults += o } }
