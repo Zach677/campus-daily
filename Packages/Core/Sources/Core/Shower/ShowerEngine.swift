@@ -16,7 +16,7 @@ public protocol ShowerTransport: Sendable {
 
 /// Thrown by `ShowerTransport.exchange` when the command never reached the controller: the
 /// task was cancelled or the link was unusable before the write, or the controller refused the
-/// write itself. `cause` is what the user is told.
+/// write itself with an ATT error response (`ShowerWriteDelivery`). `cause` is what the user is told.
 public struct ShowerCommandNotSent: Error, Sendable, Equatable {
     public var cause: ShowerDeviceError
     public init(_ cause: ShowerDeviceError) { self.cause = cause }

@@ -203,7 +203,8 @@ struct VerifiedShowerDevice {
         return try await establish(chosen)
     }
     /// Throws `ShowerCommandNotSent` when `data` never reached the controller (nothing was
-    /// written, or the write itself was refused); any other error means it may have.
+    /// written, or the controller answered the write with an ATT error); any other error, a link
+    /// lost after the write included, means it may have.
     func exchange(_ data: Data) async throws -> Data {
         if let channelError { throw ShowerCommandNotSent(channelError) }
         guard let peripheral, peripheral.state == .connected, let write,

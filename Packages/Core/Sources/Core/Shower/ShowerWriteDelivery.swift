@@ -13,8 +13,10 @@ public enum ShowerWriteDelivery: Sendable, Equatable {
 
     /// `written`: the write was handed to CoreBluetooth. `writeErrorDomain`: the domain of the
     /// error `didWriteValueFor` reported for it, nil when it reported none.
+    /// Only an ATT error response is the controller refusing the write. A link error reported
+    /// there (disconnected, connection timeout) can come after the controller applied it.
     public static func after(written: Bool, writeErrorDomain: String?) -> ShowerWriteDelivery {
-        if !written || writeErrorDomain != nil { return .notSent }
+        if !written || writeErrorDomain == attErrorDomain { return .notSent }
         return .maybeSent
     }
 }
