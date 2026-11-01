@@ -124,7 +124,8 @@ struct HomeView: View {
 
     /// Home is what the user sees: nothing pushed, no sheet, cover or panel on top, app in front.
     var homeClear: Bool {
-        var clear = phase == .active && path.isEmpty && !settings && onboarding == nil && panel == nil && !shower.page.presented
+        var clear = phase == .active && path.isEmpty && !settings && !relogin && onboarding == nil && panel == nil
+            && !shower.page.presented
         #if DEBUG
         clear = clear && activityPreview == nil && widgetPreview == nil
         #endif
