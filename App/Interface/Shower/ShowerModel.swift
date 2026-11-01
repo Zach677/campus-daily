@@ -162,7 +162,7 @@ enum ShowerProfileFiles {
         if platformMissing { return Self.platformMissingText }
         return ""
     }
-    nonisolated static let platformMissingText = "这个版本没带热水配置，热水暂时用不了。"
+    nonisolated static let platformMissingText = ShowerActionFailure.platformMissingText
     static let recordUnreadableText = "读不到热水记录。去学校的热水记录里看看这次扣了没有。"
 
     // MARK: Setup
@@ -292,15 +292,16 @@ enum ShowerProfileFiles {
 
     // MARK: Actions
 
-    /// 开始洗澡 / 结束并结算 (home, detail page, Shortcuts, Live Activity).
-    func run(start: Bool) async throws {
-        guard let engine, let binding else { throw ShowerEngineError.notAllowed }
-        guard !busy else { throw ShowerEngineError.busy }
+    /// 开始洗澡 / 结束并结算 (home, detail page, Shortcuts, Live Activity). Throws
+    /// `ShowerActionFailure` with the real reason when it did not go through.
+    @discardableResult func run(start: Bool) async throws -> ShowerActionOutcome {
+        guard let engine, let binding else { throw ShowerActionFailure(unavailableText) }
+        guard !busy else { throw ShowerActionFailure(.busy) }
         if start {
-            guard mayStart else { throw ShowerEngineError.blocked }
+            guard mayStart else { throw ShowerActionFailure(startRefusalText) }
         } else {
-            guard state.canFinish else { throw ShowerEngineError.notAllowed }
-            guard !platformMissing else { message = Self.platformMissingText; throw ShowerEngineError.platformMissing }
+            guard state.canFinish else { throw ShowerActionFailure(.notAllowed) }
+            guard !platformMissing else { message = Self.platformMissingText; throw ShowerActionFailure(.platformMissing) }
             ShowerActivityController.shared.settling()
         }
         busy = true; message = nil
@@ -316,12 +317,39 @@ enum ShowerProfileFiles {
             message = Self.noticeText(result.notice)
             // Back on the timer: the page says why the end did not go through.
             if !start, result.mayBeFlowing { pageEvent(.endNotSent(result.notice)) }
-            if result.phase == .failed { throw ShowerEngineError.notAllowed }
-            if !start, result.phase != .done { throw ShowerEngineError.notAllowed }
+            return try ShowerActionOutcome.after(start:start, result, notice:message).get()
+        } catch let failure as ShowerActionFailure {
+            throw failure
         } catch {
             storageBlocked = await engine.storageBlocked
-            throw error
+            throw Self.actionFailure(error)
         }
+    }
+
+    /// Why there is no engine to run on, for the callers that can't see the page.
+    private var unavailableText: String {
+        if !configured { return "选好宿舍后就能用热水。" }
+        if recordUnreadable { return ShowerActionFailure(.unreadableRecord).message }
+        if storageBlocked { return ShowerActionFailure(.storage).message }
+        if platformMissing { return Self.platformMissingText }
+        return "热水暂时用不了，打开校日常看一眼。"
+    }
+
+    /// Why 开始洗澡 is not allowed now (`mayStart`), for the callers that can't see the page.
+    private var startRefusalText: String {
+        if platformMissing { return Self.platformMissingText }
+        if storageBlocked { return ShowerActionFailure(.storage).message }
+        if residenceReviewRequired { return "换了登录的同学，先在校日常里核对宿舍的水控。" }
+        if inspecting { return "正在核对水控，核对完再开始。" }
+        if !state.canStart { return ShowerActionFailure(.blocked).message }
+        return "现在开始不了，打开校日常看一眼。"
+    }
+
+    nonisolated static func actionFailure(_ error: Error) -> ShowerActionFailure {
+        if let e = error as? ShowerActionFailure { return e }
+        if let e = error as? ShowerEngineError { return ShowerActionFailure(e) }
+        if let e = error as? ShowerDeviceError { return ShowerActionFailure(e.userText) }
+        return ShowerActionFailure(AppErrorText.text(error))
     }
 
     /// Read-only state probe of the session's controller (Settings › 高级 › 检查水控状态).
@@ -477,15 +505,5 @@ enum ShowerProfileFiles {
         }
     }
 
-    static func deviceText(_ e: ShowerDeviceError) -> String {
-        switch e {
-        case .bluetoothOff: return "蓝牙没开，打开后再试。"
-        case .notFound: return "附近没找到水控，靠近一点再试。"
-        case .ambiguous: return "附近有好几台同名水控，没认出你宿舍的那台。靠近一点再试。"
-        case .timedOut: return "水控没回应，靠近一点再试。"
-        case .disconnected, .interrupted: return "和水控的连接断了，再试一次。"
-        case .malformedFrame: return "水控回的内容看不懂，再试一次。"
-        case .busy: return "正在和水控通信，稍等一下。"
-        }
-    }
+    static func deviceText(_ e: ShowerDeviceError) -> String { e.userText }
 }

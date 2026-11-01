@@ -1,0 +1,51 @@
+import XCTest
+@testable import Core
+import CoreTestSupport
+
+/// What Siri, Shortcuts and the Live Activity say after 开始洗澡 / 结束并结算: the real reason a
+/// start or an end did not go through, and an unconfirmed start is not called confirmed.
+final class ShowerActionOutcomeTests: XCTestCase {
+    func failed(_ reason: ShowerFailureReason, review: Bool = false, device: ShowerDeviceError? = nil) -> ShowerState {
+        var s = ShowerState(phase: .failed)
+        s.failure = ShowerFailure(reason: reason, needsReview: review, deviceError: device)
+        return s
+    }
+
+    func testAStartSaysWhetherTheControllerConfirmed() {
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, ShowerState(phase: .running), notice: nil), .success(.started))
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, ShowerState(phase: .writePending), notice: nil), .success(.startUnconfirmed))
+        XCTAssertNotEqual(ShowerActionOutcome.startedText, ShowerActionOutcome.startUnconfirmedText)
+        XCTAssertTrue(ShowerActionOutcome.startUnconfirmedText.contains(ShowerDisplay.writeUnconfirmedHint))
+    }
+
+    func testAFailedStartCarriesItsReason() {
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.deviceBusy), notice: nil),
+                       .failure(ShowerActionFailure("水控正在使用中。")))
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.deviceUnavailable, device: .bluetoothOff), notice: nil),
+                       .failure(ShowerActionFailure("蓝牙没开，打开后再试。")), "the device's own reason first")
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.deviceUnavailable), notice: nil),
+                       .failure(ShowerActionFailure("没连上水控，靠近一点再试。")))
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.authorizeUncertain, review: true), notice: nil),
+                       .failure(ShowerActionFailure("开水结果未确认")))
+    }
+
+    func testAnEndSettlesOrSaysWhy() {
+        XCTAssertEqual(ShowerActionOutcome.after(start: false, ShowerState(phase: .done), notice: nil), .success(.settled))
+        // Back on the timer: the close was not sent.
+        XCTAssertEqual(ShowerActionOutcome.after(start: false, ShowerState(phase: .running), notice: "水控没回应，靠近一点再试。"),
+                       .failure(ShowerActionFailure("水控没回应，靠近一点再试。")))
+        XCTAssertEqual(ShowerActionOutcome.after(start: false, ShowerState(phase: .running), notice: nil),
+                       .failure(ShowerActionFailure(ShowerActionOutcome.endNotSentText)))
+        XCTAssertEqual(ShowerActionOutcome.after(start: false, failed(.settleUncertain, review: true), notice: nil),
+                       .failure(ShowerActionFailure("结算未确认")))
+    }
+
+    func testEngineRefusalsSayWhatToDo() {
+        let all: [ShowerEngineError] = [.busy, .blocked, .notAllowed, .wrongBinding, .storage, .unreadableRecord, .platformMissing]
+        let texts = all.map { ShowerActionFailure($0).message }
+        XCTAssertEqual(Set(texts).count, all.count, "each its own text")
+        XCTAssertFalse(texts.contains(""))
+        XCTAssertEqual(ShowerActionFailure(.platformMissing).message, ShowerActionFailure.platformMissingText)
+        XCTAssertEqual(ShowerActionFailure("x").errorDescription, "x")
+    }
+}
