@@ -46,21 +46,22 @@
 - Treat a stored school login that no longer reads as someone signed in: a new sign-in drops their dorm, meter and (web sign-in) portal token and says it could not tell who it was, and 保存密码 is refused until the user signs in again.
 - Start the shower timer, its Live Activity, the 「还在计时」 reminder and the shower's minutes when the water starts, not when 开始洗澡 is tapped, so the time spent connecting is not counted.
 - Run the Core package tests from the App scheme's App.xctestplan on an iOS Simulator; the workspace now lists Packages/Core, so the plan's test targets resolve instead of failing with no test bundles. `mise run check` runs this plan too.
-- Read a shower record saved by another build of the app field by field instead of failing on it; a record that still can't be read says 「读不到热水记录。去学校的热水记录里看看这次扣了没有。」 instead of asking for a restart.
-- When 结束 finds the controller idle under a shower whose start was never acknowledged, show the check face instead of dropping the record without a settlement.
-- When 结束 fails before the controller took the close, go back to the timer with 「还没发出去，没结束。再点一次。」 instead of the unsure face; an unconfirmed close can be checked with 「再查一次水控」, and water still running goes back to the timer.
-- Offer 「再结算一次」 (a second tap sends it) on the unsure face of a settlement that failed with the shower's consumption kept, instead of only marking it checked.
-- Refuse 结束 (also from the lock screen and Shortcuts) before the water is closed when the build has no hot-water profile, with 「这个版本没带热水配置，热水暂时用不了。」, instead of closing the water with a charge that can't be sent.
-- Keep the user signed in when a Keychain read fails (for example before the first unlock after a reboot); only an item that is really gone means signed out.
-- Treat a portal token exchange that got no answer (no network, a timeout, a school server error) as a failed read instead of asking the user to sign in again.
-- Pause automatic password sign-in only when the school turns the card login down, not on a timeout or a school server error after the password was accepted.
-- Keep a card session the widget stored while the app was renewing one, instead of writing the older renewal over it.
-- Do not start a school login when the browser id for the login page could not be saved, so two logins never send different ids.
+- Read a shower record saved by another build of the app field by field instead of failing on it. A record that still can't be read says 「读不到热水记录。去学校的热水记录里看看这次扣了没有。」 instead of asking for a restart, ends its 洗澡中 Live Activity and 「还在计时」 reminder, and can be removed with 「清除这条记录」 after a confirmation.
+- When 结束 finds the controller idle under a shower whose start was never acknowledged (including a Bluetooth link lost after the write), show the check face instead of dropping the record without a settlement; only a write cancelled before it went out or refused by the controller counts as never sent.
+- When our authorization provably never reached the controller and 结束 finds it running, send no close and say 「水控有人在用，没发结束，免得关掉别人的水。」 instead of stopping someone else's water and settling it here.
+- When the controller refused the close, go back to the timer with 「还没发出去，没结束。再点一次。」 instead of the unsure face. An unconfirmed close can be checked with 「再查一次水控」; water still running goes back to the timer (the old lock screen result goes, the reminder counts from the return), and the next 结束 keeps that water's consumption on the unsure face for 再结算一次 or 我在学校记录里核对过了 instead of settling it.
+- Offer 「再结算一次」 (a second tap sends it; leaving the page takes back the first tap) on the unsure face of a settlement that failed with the shower's consumption kept, instead of only marking it checked. The face says whether the school refused the settlement, it never went out, or no answer came.
+- Refuse 结束 (also from the lock screen and Shortcuts) before the water is closed when the build has no hot-water profile, with 「这个版本没带热水配置，热水暂时用不了。」, instead of closing the water with a charge that can't be sent. A profile imported then waits for the launch load and turns 结束 back on once the work in flight is done.
+- Keep the user signed in when a Keychain read fails (for example before the first unlock after a reboot); only an item that is really gone means signed out, and a stored card session that no longer decodes asks for a sign-in (the numbers stay).
+- Do not ask the user to sign in again when a portal token exchange got no answer: with no network it is a failed read; after a timeout, a school server error or a bare HTTP status the saved password is tried once (without one it is a failed read).
+- Pause automatic password sign-in only when the school turns the card login down, not on a timeout, a school server error or a bare 401/403 from the portal or the card system after the password was accepted.
+- Keep a card session the widget stored while the app was renewing one, instead of writing the older renewal over it; a cancelled check of that session is an interruption, not a failed read.
+- Do not start a school login when the browser id for the login page could not be saved, so two logins never send different ids; the form and Settings › 保存密码 say 「登录信息没存上，再试一次。」 and keep what was typed.
 - Keep the U净 SMS cooldown under one fixed key without anything derived from the phone number; keys from earlier builds are removed.
-- Offer 「没有订单，清除」 (with a confirmation) on the laundry page when an order's creation was never confirmed and U净 shows none; laundry was blocked until a reset.
-- Read U净's order time also as 「yyyy-MM-dd HH:mm:ss」 Beijing time when checking an unconfirmed order.
-- Let the U净 account that placed an open laundry order sign in again after its login expired; another account is refused with 「还有一笔洗衣订单没结束，要用下单的那个 U净 账号登录。」.
-- Read a paid laundry order that hasn't started washing again every 45 s for up to 5 minutes while the app is open, and set the 「衣服洗好了」 reminder from the payment time plus the program until the wash's real end is known.
+- Offer 「没有订单，清除」 (with a confirmation) on the laundry page when an order's creation was never confirmed and a lookup on U净 found no unfinished order; laundry was blocked until a reset.
+- Read U净's order time without an offset (「yyyy-MM-dd HH:mm:ss」 or ISO 8601) as Beijing time when checking an unconfirmed order.
+- Keep the U净 login open while a laundry order is open, so the account that placed it can sign in again after its login expired; another account is refused with 「还有一笔洗衣订单没结束，要用下单的那个 U净 账号登录。」.
+- Read a paid laundry order that hasn't started washing again every 45 s for up to 5 minutes while the app is open, and set the 「衣服洗好了」 reminder from the payment time plus the program until the wash's real end is known. The reminder is cancelled when the machine fails to start, and kept through a cold launch and the settings toggle.
 - A notification tap no longer closes a top-up page or a laundry order being paid, and a tap that launches the app opens its page.
 - The reminder prompt no longer shows (and gets used up) while the school sign-in sheet is open.
 
