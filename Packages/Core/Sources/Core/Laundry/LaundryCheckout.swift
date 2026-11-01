@@ -511,21 +511,22 @@ public enum LaundryReducer {
         return true
     }
 
-    /// `createAt`: ISO 8601 (all the captured replies), or `yyyy-MM-dd HH:mm:ss` read as Beijing
-    /// time, the other form U净's servers may send; a format we can't read never matches.
+    /// `createAt`: ISO 8601 with an offset (all the captured replies), or a time without one,
+    /// `yyyy-MM-dd HH:mm:ss` or `yyyy-MM-ddTHH:mm:ss`, read as Beijing time (U净's servers are in
+    /// China); a format we can't read never matches.
     static func parseDate(_ text: String) -> Date? {
         let f = ISO8601DateFormatter()
         if let d = f.date(from: text) { return d }
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let d = f.date(from: text) { return d }
-        guard text.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$"#, options: .regularExpression) != nil else { return nil }
+        guard text.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$"#, options: .regularExpression) != nil else { return nil }
         let plain = DateFormatter()
         plain.calendar = Calendar(identifier: .gregorian)
         plain.locale = Locale(identifier: "en_US_POSIX")
         plain.timeZone = TimeZone(identifier: "Asia/Shanghai")
         plain.dateFormat = "yyyy-MM-dd HH:mm:ss"
         plain.isLenient = false
-        return plain.date(from: text)
+        return plain.date(from: text.replacingOccurrences(of: "T", with: " "))
     }
 
     static func verify(_ state: LaundryCheckout) -> (LaundryCheckout, [LaundryEffect]) {

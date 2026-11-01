@@ -6,6 +6,18 @@ final class LaundryReducerTests: XCTestCase {
     typealias R = LaundryReducer
     let t0 = L.t0
 
+    private var savedZone: TimeZone!
+    // Away from UTC+8, so a parser that used the device zone instead of Beijing time fails here.
+    override func setUp() {
+        super.setUp()
+        savedZone = NSTimeZone.default
+        NSTimeZone.default = TimeZone(identifier: "America/New_York")!
+    }
+    override func tearDown() {
+        NSTimeZone.default = savedZone
+        super.tearDown()
+    }
+
     func reduce(_ s: LaundryCheckout, _ e: LaundryEvent) -> (LaundryCheckout, [LaundryEffect]) { R.reduce(s, e) }
 
     var creating: LaundryCheckout { reduce(.empty, .confirm(L.draft, at: t0)).0 }
@@ -133,7 +145,8 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(seconds("2026-10-30T04:00:05Z"), 5)
         XCTAssertEqual(try XCTUnwrap(seconds("2026-10-30T04:00:05.250Z")), 5.25, accuracy: 0.001)
         XCTAssertEqual(seconds("2026-10-30 12:00:05"), 5, "plain text is Beijing time")
-        for bad in ["2026-10-30 12:00", "2026-10-30", "30/10/2026 12:00:05", "2026-13-30 12:00:05", ""] {
+        XCTAssertEqual(seconds("2026-10-30T12:00:05"), 5, "ISO without an offset is Beijing time")
+        for bad in ["2026-10-30 12:00", "2026-10-30T12:00", "2026-10-30T25:00:05", "2026-10-30", "30/10/2026 12:00:05", "2026-13-30 12:00:05", ""] {
             XCTAssertNil(R.parseDate(bad), bad)
         }
     }
@@ -143,6 +156,8 @@ final class LaundryReducerTests: XCTestCase {
         let (adopted, _) = reduce(found, .orderRead(L.order("10", createdAt: "2026-10-30 12:00:05"), at: t0.addingTimeInterval(30)))
         XCTAssertEqual(adopted.phase, .created)
         XCTAssertEqual(adopted.orderID, L.orderID)
+        let (iso, _) = reduce(found, .orderRead(L.order("10", createdAt: "2026-10-30T12:00:05"), at: t0.addingTimeInterval(30)))
+        XCTAssertEqual(iso.phase, .created)
         let (stale, _) = reduce(found, .orderRead(L.order("10", createdAt: "2026-10-30 11:50:00"), at: t0.addingTimeInterval(30)))
         XCTAssertEqual(stale.phase, .reconcile)
         XCTAssertEqual(stale.notice, .orderMismatch)
