@@ -318,6 +318,11 @@ public struct ShowerPageFlow: Sendable, Equatable {
         var (next, effects) = step(flow, event)
         // Leaving the page with 再结算一次 armed: coming back later must take two taps again.
         if flow.presented, !next.presented, next.record.settleRetryArmed { effects.append(.disarmSettleRetry) }
+        // The first tap landed after the page went down (left while it was on its way): take it
+        // back too, once.
+        else if !flow.presented, !next.presented, next.record.settleRetryArmed, !flow.record.settleRetryArmed {
+            effects.append(.disarmSettleRetry)
+        }
         return (next, effects)
     }
 
