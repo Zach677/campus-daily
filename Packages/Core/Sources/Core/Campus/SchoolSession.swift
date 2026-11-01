@@ -521,13 +521,28 @@ public actor SchoolSession {
             let current: EcyktSession?
             do { current = try vault.ecyktSession() } catch { return SchoolReading(outcome: .interrupted, checkedAt: now()) }
             guard let current else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
-            if current.token != stored.token, let found = try? await liveCard(current) {
-                // The other process renewed it while this one was reading: no second mint.
-                base = current
+            // What is stored now is what a renewed session is written over (`base`), so a
+            // session the other process stored meanwhile doesn't make this read discard its
+            // fresh one. A new one from the other process is checked first: alive, nothing is minted.
+            base = current
+            var firstError = e
+            var found: (BoundCard, EcyktSession)?
+            if current.token != stored.token {
+                do {
+                    found = try await liveCard(current)
+                } catch let e2 as ServiceError where e2.isSessionExpired {
+                    firstError = e2
+                } catch let e2 as ServiceError {
+                    return SchoolReading(outcome: .failed(e2), checkedAt: now())
+                } catch {
+                    return SchoolReading(outcome: .failed(.offline), checkedAt: now())
+                }
+            }
+            if let found {
                 live = found
             } else {
-                switch await renew(stored, firstError: e, since: started, mayMint: mayMint, owning: owning) {
-                case .renewed(let found): reexchanged = true; live = found
+                switch await renew(current, firstError: firstError, since: started, mayMint: mayMint, owning: owning) {
+                case .renewed(let renewed): reexchanged = true; live = renewed
                 case .stopped(let reading): return reading
                 }
             }
