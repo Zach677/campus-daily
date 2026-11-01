@@ -65,7 +65,14 @@ enum ShowerProfileFiles {
     var startTask: Task<Void, Never>?
     @Published private(set) var binding: ShowerBinding?
     @Published private(set) var profile: ShowerPlatformProfile?
-    @Published private(set) var busy = false
+    /// The launch's profile load has finished: before it, `profile` is nil without being missing.
+    @Published private(set) var profileLoaded = false
+    @Published private(set) var busy = false {
+        didSet { if oldValue, !busy, rebuildPending { rebuildPending = false; rebuildEngine() } }
+    }
+    /// A rebuild (after a profile import, say) came while something was in flight: it runs once
+    /// that is done, so 结束 isn't left without the new profile's gateway.
+    private var rebuildPending = false
     /// Last action's message (nil = nothing to say).
     @Published private(set) var message: String?
     @Published private(set) var storageBlocked = false
@@ -117,12 +124,12 @@ enum ShowerProfileFiles {
     var mayResolveManually: Bool { engine != nil && !busy && state.canResolveManually }
     var mayRetrySettle: Bool { !platformMissing && engine != nil && !busy && state.canRetrySettle }
     /// Binding / profile may change only with no session that could still be open or charged.
-    var mayImport: Bool {
-        !busy && !storageBlocked && (state.phase == .idle || state.phase == .done || (state.phase == .failed && state.failure?.needsReview == false))
-    }
+    var mayImport: Bool { ShowerImportRule.mayImport(state, busy:busy, storageBlocked:storageBlocked) }
     /// 导入热水配置: also while a shower waits on a missing profile (nothing to replace; it is
     /// what 结束 and 再结算一次 need).
-    var mayImportProfile: Bool { mayImport || (platformMissing && !busy && !storageBlocked) }
+    var mayImportProfile: Bool {
+        ShowerImportRule.mayImportProfile(state, profileLoaded:profileLoaded, profileMissing:platformMissing, busy:busy, storageBlocked:storageBlocked)
+    }
     /// Why the controller check can't run now (a shower open, or one waiting for its check);
     /// nil when it can.
     var inspectionBlockedText: String? {
@@ -162,12 +169,13 @@ enum ShowerProfileFiles {
 
     func reloadProfile() async {
         profile = await ShowerProfileFiles.localProfile()
+        profileLoaded = true
         rebuildEngine()
     }
 
     /// (Re)creates the engine for the current binding. Only while nothing is in flight.
     private func rebuildEngine() {
-        guard !busy else { return }
+        guard !busy else { rebuildPending = true; return }
         observer?.cancel(); observer = nil; engine = nil
         syncGate.reset()
         recordUnreadable = false
