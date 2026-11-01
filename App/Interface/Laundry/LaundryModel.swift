@@ -175,11 +175,8 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         if reread { Task { await refreshOrder() } }
     }
 
-    /// The U净 login entry: free with no order open; with one, while its login has expired.
-    var mayLogin: Bool {
-        guard !loading, !checkoutBusy else { return false }
-        return mayImport || checkout?.notice == .sessionExpired
-    }
+    /// The U净 login entry. With an order open, `login` accepts only the account that placed it.
+    var mayLogin: Bool { !loading && !checkoutBusy }
 
     static func loginText(_ error: Error) -> String {
         if error is LaundryLoginRefusal { return "还有一笔洗衣订单没结束，要用下单的那个 U净 账号登录。" }
