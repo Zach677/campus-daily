@@ -215,9 +215,12 @@ foreground, the BG task and the widget):**
    stored session is read again: one the other process stored meanwhile is used instead.
    Silent re-exchange: if a portal token exists and its `exp` (known after a password login) has
    not passed, `eCardTicketURL` → `exchange` → retry step 1 once. Portal `-1001`/`-1` →
-   `sessionExpired(.portal)` → go to step 5. A re-exchange that gets no answer about the login
-   (no network, a timeout, TLS, an unreadable reply, a bare HTTP status such as a 5xx) is a
-   failed read, not 「重新登录」: the next refresh runs the same steps again.
+   `sessionExpired(.portal)` → go to step 5. A re-exchange with no network is a failed read, not
+   「重新登录」, and nothing more is sent. Any other answer that says nothing about the login (a
+   timeout, TLS, an unreadable reply, a bare HTTP status such as a 5xx or a 403) also goes to
+   step 5: the portal may be down while CAS works, and its token would keep failing until it
+   expires. The saved password's hold stops that from repeating; with no password to send, it is
+   a failed read. Only a check of the newly exchanged session that gets no answer stops there.
 5. Saved password (foreground or background, only if the user chose to save it and it is not
    paused): one CAS login (`CASLoginClient`), then `eCardTicketURL` → `exchange` → step 1. A
    refused login pauses the saved password (`SchoolAccount.paused`) and the UI asks the user to

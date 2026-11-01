@@ -2,9 +2,9 @@ import XCTest
 @testable import Core
 import CoreTestSupport
 
-/// The card session is dead and the portal re-exchange fails without an answer about the login
-/// (no network, a timeout, a school server error): that is a failed read, not 「重新登录」, and
-/// the next refresh goes through the same steps again (the saved password included).
+/// The card session is dead and the portal re-exchange fails without an answer about the login.
+/// No network: a failed read, not 「重新登录」, and nothing more is sent. A timeout or a school
+/// server error: the saved password goes once (its hold stops repeats), else a failed read.
 final class PortalExchangeFailureTests: XCTestCase {
     static let eCardURL = "https://portal.gdbtu.edu.cn/portal-api/v2/personalData/getMyECard"
 
@@ -40,31 +40,70 @@ final class PortalExchangeFailureTests: XCTestCase {
         XCTAssertEqual(try h.vault.ecyktSession()?.token, "AFTER-PASSWORD")
     }
 
-    func testATimedOutPortalExchangeIsAFailedRead() async throws {
-        let login = FakePasswordLogin()
+    /// A timeout or a school server error is not no network: the portal (or the exchange
+    /// behind it) may be down while CAS works, so the saved password goes once. Its hold keeps
+    /// it from going again on every refresh.
+    func testATimedOutPortalExchangeFallsThroughToTheSavedPassword() async throws {
+        let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
         let h = try harness(login)
-        try h.server.serve("ecykt/getSysBindCustInfo-badToken")
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
         h.server.serve(try T.eCardWithTicket())
-        h.server.fail("POST", T.exchangeURL, with: .timedOut)
+        h.server.fail("POST", T.exchangeURL, with: .timedOut, times: 1)
+        h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getUserBalance-ok")
         let report = await h.refresher().refresh(inBackground: false)
-        XCTAssertEqual(report.outcome, .failed(.timedOut))
+        XCTAssertEqual(report.outcome, .ok)
+        XCTAssertEqual(login.calls.count, 1)
+        XCTAssertEqual(try h.vault.ecyktSession()?.token, "AFTER-PASSWORD")
+    }
+
+    func testAPortalServerErrorFallsThroughToTheSavedPassword() async throws {
+        for (url, method) in [(Self.eCardURL, "GET"), (T.exchangeURL, "POST")] {
+            let login = FakePasswordLogin(.success(SchoolPasswordSignInTests.freshToken))
+            let h = try harness(login)
+            try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+            h.server.respond(method, url, status: 502, body: Data("bad gateway".utf8), times: 1)
+            h.server.serve(try T.eCardWithTicket())
+            h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
+            try h.server.serve("ecykt/getSysBindCustInfo-ok")
+            try h.server.serve("ecykt/getUserBalance-ok")
+            let report = await h.refresher().refresh(inBackground: true)
+            XCTAssertEqual(report.outcome, .ok, url)
+            XCTAssertEqual(login.calls.count, 1, url)
+            XCTAssertEqual(try h.vault.ecyktSession()?.token, "AFTER-PASSWORD", url)
+            XCTAssertEqual(try h.vault.portalToken()?.value, SchoolPasswordSignInTests.freshToken.value, url)
+            XCTAssertEqual(try h.vault.account()?.paused, false, url)
+        }
+    }
+
+    /// Nothing to fall through to (no saved password): still a failed read, not 「重新登录」.
+    func testAPortalServerErrorWithoutASavedPasswordIsAFailedRead() async throws {
+        let login = FakePasswordLogin()
+        var h = Harness()
+        h.passwordLogin = login
+        try h.signedIn(portal: true)
+        try h.vault.saveAccount(SchoolAccount(account: "99100991"))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken")
+        h.server.respond("GET", Self.eCardURL, status: 502, body: Data("bad gateway".utf8))
+        let report = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(report.outcome, .failed(.rejected(.portal, code: "HTTP 502", message: "")))
         XCTAssertFalse(report.snapshot.needsLogin)
         XCTAssertTrue(login.calls.isEmpty)
     }
 
-    func testASchoolServerErrorDuringTheExchangeIsAFailedRead() async throws {
-        for (url, method, service) in [(Self.eCardURL, "GET", Service.portal), (T.exchangeURL, "POST", Service.ecykt)] {
-            let login = FakePasswordLogin()
-            let h = try harness(login)
-            try h.server.serve("ecykt/getSysBindCustInfo-badToken")
-            h.server.respond(method, url, status: 502, body: Data("bad gateway".utf8))
-            h.server.serve(try T.eCardWithTicket())
-            let report = await h.refresher().refresh(inBackground: false)
-            XCTAssertEqual(report.outcome, .failed(.rejected(service, code: "HTTP 502", message: "")), url)
-            XCTAssertFalse(report.snapshot.needsLogin, url)
-            XCTAssertTrue(login.calls.isEmpty, url)
-            XCTAssertEqual(try h.vault.account()?.paused, false, url)
-        }
+    /// The saved password already went and got no answer (its hold is on): the portal's failure
+    /// is what the read reports, and nothing is sent again.
+    func testAPortalServerErrorDuringTheHoldSendsNothing() async throws {
+        let login = FakePasswordLogin()
+        let h = try harness(login)
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991", unansweredAt: h.clock.now))
+        try h.server.serve("ecykt/getSysBindCustInfo-badToken")
+        h.server.respond("GET", Self.eCardURL, status: 502, body: Data("bad gateway".utf8))
+        let report = await h.refresher().refresh(inBackground: true)
+        XCTAssertEqual(report.outcome, .failed(.rejected(.portal, code: "HTTP 502", message: "")))
+        XCTAssertFalse(report.snapshot.needsLogin)
+        XCTAssertTrue(login.calls.isEmpty)
     }
 
     /// A definite answer still asks for a login, as before.
