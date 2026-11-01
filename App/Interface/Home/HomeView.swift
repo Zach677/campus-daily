@@ -152,14 +152,14 @@ struct HomeView: View {
         ZStack {
             NavigationStack(path:$path) {
                 ScrollViewReader { proxy in
-                    // Home fits the screen (「最近」 takes the rows that fit, none when none fits) and
-                    // only bounces, for the pull. Below the accessibility sizes the content is never
-                    // taller than the screen, so there is nothing to scroll to; at those sizes home
-                    // scrolls rather than cutting off the cards. Not `.scrollBounceBehavior(.basedOnSize)`:
-                    // content that fits would then not bounce, and the pull would not refresh.
+                    // 「最近」 takes the rows that fit (none when none fits), so home fits the screen
+                    // and only bounces, for the pull. When the rest alone is taller than the screen
+                    // (accessibility sizes, a small phone at a large size) home scrolls: content is
+                    // never held to the screen's height and cut off. Not
+                    // `.scrollBounceBehavior(.basedOnSize)`: content that fits would then not
+                    // bounce, and the pull would not refresh.
                     ScrollView {
                         content(data).padding(.bottom,CGFloat(RecentFit.bottomGap))
-                            .frame(maxHeight:typeSize.isAccessibilitySize || homeViewport <= 0 ? nil : homeViewport, alignment:.top)
                     }
                     // The height between the bars, where the content's top is.
                     .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { homeViewport = $0 }

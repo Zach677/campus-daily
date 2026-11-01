@@ -74,7 +74,7 @@
 - Scan a picked washer photo off the main thread, say 「照片里没找到二维码，换一张拍清楚的。」 when it has no code, and give each refusal on the common-washer page its own text instead of 「机器名称最多 40 个字。」.
 - Forget the last laundry order's result and note when the U净 account that placed it signs out or another account signs in.
 - Read the laundry order as soon as the Alipay SDK reports back, also when Alipay pays in its own web page, instead of after 10 s.
-- Hold home to the screen below the accessibility text sizes, and show no 最近 rows when not even one fits, instead of three rows that made home scroll.
+- Show only the 最近 rows that fit on home, and none when not even one fits, instead of three rows that made home scroll.
 
 ### Removed
 
