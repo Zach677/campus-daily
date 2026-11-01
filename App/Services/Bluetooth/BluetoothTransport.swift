@@ -44,9 +44,8 @@ struct VerifiedShowerDevice {
     private var observedIDs = Set<UUID>()
     private var notify: CBCharacteristic?
     private var write: CBCharacteristic?
-    private var decoder = ShowerFrameAssembler()
-    private var pendingFrame: Data?
-    private var channelError: ShowerDeviceError?
+    /// Replies on the notify characteristic; only those inside an exchange count.
+    private var channel = ShowerNotifyChannel()
     private var writeAcknowledged = false
     /// The domain of the error the current write was answered with (`ShowerWriteDelivery`).
     private var writeErrorDomain: String?
@@ -85,11 +84,16 @@ struct VerifiedShowerDevice {
             try await wait("power") {}
         }
         guard manager.state == .poweredOn else { throw ShowerDeviceError.bluetoothOff }
+        try await awaitRetired()
+        targetName = bleName
+    }
+    /// A link let go stays `retiring` until its disconnect arrives (`ShowerRetiringLink`), so a
+    /// late callback for it can't fail the next connect, even to the same controller.
+    private func awaitRetired() async throws {
         if let old = retiring, old.state != .disconnected {
             try await wait("disconnect") { manager.cancelPeripheralConnection(old) }
         }
         retiring = nil
-        targetName = bleName
     }
     private func scanTargets() async throws {
         targets.removeAll(); observedIDs.removeAll(); signalLevels.removeAll()
@@ -110,6 +114,7 @@ struct VerifiedShowerDevice {
         }
     }
     private func establish(_ chosen: CBPeripheral) async throws -> String {
+        if chosen === retiring { try await awaitRetired() }
         peripheral = chosen
         chosen.delegate = self
         if chosen.state != .connected { try await wait("connect") { manager.connect(chosen) } }
@@ -125,7 +130,7 @@ struct VerifiedShowerDevice {
         guard let notify, let write, notify.properties.contains(.notify), write.properties.contains(.write) else {
             throw ShowerDeviceError.disconnected
         }
-        decoder = ShowerFrameAssembler(); pendingFrame = nil; channelError = nil
+        channel.reset()
         try await wait("subscribe") { chosen.setNotifyValue(true, for: notify) }
         return chosen.identifier.uuidString
     }
@@ -137,7 +142,8 @@ struct VerifiedShowerDevice {
             else { try? await wait("disconnect", seconds:4) { manager.cancelPeripheralConnection(chosen) } }
         }
         if peripheral === chosen { peripheral = nil }
-        if retiring === chosen { retiring = nil }
+        // Still `retiring` while its disconnect is due (cancelled or timed out above).
+        if retiring === chosen, chosen.state == .disconnected { retiring = nil }
         chosen.delegate = nil
         write = nil; notify = nil
     }
@@ -156,6 +162,7 @@ struct VerifiedShowerDevice {
         // Reuse the live link (the official client keeps it after authorization).
         if let current = peripheral, current.state == .connected, write != nil, notify != nil,
            required == nil || current.identifier.uuidString == required {
+            channel.reset()
             return current.identifier.uuidString
         }
         if let current = peripheral { await abandon(current) }
@@ -206,9 +213,8 @@ struct VerifiedShowerDevice {
     /// written, or the controller answered the write with an ATT error); any other error, a link
     /// lost after the write included, means it may have.
     func exchange(_ data: Data) async throws -> Data {
-        if let channelError { throw ShowerCommandNotSent(channelError) }
-        guard let peripheral, peripheral.state == .connected, let write,
-              !decoder.hasPartialFrame, pendingFrame == nil else { throw ShowerCommandNotSent(.disconnected) }
+        if let blocker = channel.blocker { throw ShowerCommandNotSent(blocker) }
+        guard let peripheral, peripheral.state == .connected, let write else { throw ShowerCommandNotSent(.disconnected) }
         writeAcknowledged = false; writeErrorDomain = nil
         ShowerDiagnosticReport.record("ble.write." + ShowerFrames.command(data).rawValue)
         var written = false
@@ -220,9 +226,8 @@ struct VerifiedShowerDevice {
             }
             throw error
         }
-        guard let frame = pendingFrame else { throw ShowerDeviceError.malformedFrame }
+        guard let frame = channel.take() else { throw ShowerDeviceError.malformedFrame }
         ShowerDiagnosticReport.record("ble.reply.\(frame.count)")
-        pendingFrame = nil
         return frame
     }
     func disconnect() async {
@@ -235,7 +240,7 @@ struct VerifiedShowerDevice {
             manager.cancelPeripheralConnection(peripheral)
         }
         peripheral = nil; write = nil; notify = nil
-        decoder = ShowerFrameAssembler(); pendingFrame = nil
+        channel.reset()
     }
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         if step == "power" {
@@ -258,10 +263,14 @@ struct VerifiedShowerDevice {
         if peripheral === self.peripheral { complete(.failure(ShowerDeviceError.disconnected)) }
     }
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        if peripheral === retiring, step == "disconnect" { complete(.success(())) }
-        else if peripheral === self.peripheral {
+        switch ShowerRetiringLink.disconnected(isRetiring: peripheral === retiring, isCurrent: peripheral === self.peripheral) {
+        case .retired:
+            retiring = nil
+            if step == "disconnect" { complete(.success(())) }
+        case .lost:
             ShowerDiagnosticReport.record("ble.connectionLost." + (step ?? "idle"))
             complete(.failure(ShowerDeviceError.disconnected))
+        case .unrelated: break
         }
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
@@ -276,7 +285,7 @@ struct VerifiedShowerDevice {
         }
     }
     private func finishExchangeIfReady() {
-        if step == "exchange", writeAcknowledged, pendingFrame != nil { complete(.success(())) }
+        if step == "exchange", writeAcknowledged, channel.hasFrame { complete(.success(())) }
     }
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         guard step == "exchange", characteristic === write else { return }
@@ -286,18 +295,11 @@ struct VerifiedShowerDevice {
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard characteristic === notify else { return }
-        guard error == nil, let value = characteristic.value else {
-            channelError = .disconnected
-            complete(.failure(ShowerDeviceError.disconnected)); return
-        }
-        do {
-            let frames = try decoder.append(value)
-            guard frames.count <= 1, pendingFrame == nil else { throw ShowerDeviceError.malformedFrame }
-            if let frame = frames.first { pendingFrame = frame }
-            finishExchangeIfReady()
-        } catch {
-            channelError = .malformedFrame
-            complete(.failure(ShowerDeviceError.malformedFrame))
+        // A notification while nothing was asked is dropped, not kept for the next command.
+        switch channel.receive(characteristic.value, failed: error != nil, inExchange: step == "exchange") {
+        case .ignored, .partial: break
+        case .frame: finishExchangeIfReady()
+        case .failed(let e): complete(.failure(e))
         }
     }
 }
