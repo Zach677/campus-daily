@@ -613,8 +613,8 @@ Rules:
   (`LaundryFollowUp`), and the laundry-done notification is set for the first paid read + the
   program's minutes until a washing read gives the end.
 - `40` → Live Activity (machine, program, endsAt) + laundry-done notification at `endsAt`;
-  `50`/`53`/`51`/`52` end the activity and clear the record (`52` keeps a warning card until
-  acknowledged). `LaundryDoneReminder` decides the notification.
+  `50`/`53`/`51`/`52` end the activity and the laundry-done notification and clear the record
+  (`52` keeps a warning card until acknowledged). `LaundryDoneReminder` decides the notification.
 
 ### 3.3 Recharge (card and electricity)
 

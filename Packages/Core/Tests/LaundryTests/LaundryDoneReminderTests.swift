@@ -63,4 +63,13 @@ final class LaundryDoneReminderTests: XCTestCase {
         }
         XCTAssertEqual(D.step(nil, scheduled: fallback, now: seen), .cancel, "no machine set up")
     }
+
+    /// Order 52: paid but the machine never ran, so the fallback must not say the clothes are done.
+    func testFailedStartCancelsTheFallback() {
+        let failed = reduce(paid(at: seen), .orderRead(L.order("52"), at: seen.addingTimeInterval(120)))
+        XCTAssertEqual(failed.phase, .attention)
+        XCTAssertEqual(D.step(failed, scheduled: fallback, now: seen.addingTimeInterval(120)), .cancel)
+        let restored = LaundryReducer.restore(failed.persistable)
+        XCTAssertEqual(D.step(restored, scheduled: fallback, now: seen.addingTimeInterval(120)), .cancel)
+    }
 }

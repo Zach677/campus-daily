@@ -16,7 +16,7 @@ public enum LaundryDoneReminder {
         /// Whatever is set stays: the result isn't confirmed, the end isn't known yet, or a
         /// request for this order is set already.
         case keep
-        /// Nothing to remind: done, cancelled, unpaid or no order.
+        /// Nothing to remind: done, cancelled, failed to start, unpaid or no order.
         case cancel
     }
 
@@ -29,9 +29,10 @@ public enum LaundryDoneReminder {
     public static func step(_ c: LaundryCheckout?, scheduled: Plan?, now: Date) -> Step {
         guard let c else { return .cancel }
         switch c.phase {
-        case .none:
+        case .none, .attention:
+            // Order 52: the machine never ran, so the clothes won't be done.
             return .cancel
-        case .creating, .reconcile, .cancelling, .attention:
+        case .creating, .reconcile, .cancelling:
             return .keep
         case .created:
             return c.order?.isUnpaid == true ? .cancel : .keep
