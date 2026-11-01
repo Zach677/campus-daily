@@ -144,11 +144,6 @@ enum ShowerProfileFiles {
         return Self.inspectionShoweringText
     }
     var problem: Bool { state.failure?.needsReview == true || state.stateReviewRequired || storageBlocked }
-    /// The close was sent or the settlement is unconfirmed: money may have moved.
-    var unresolvedClose: Bool {
-        guard state.phase == .failed, let reason = state.failure?.reason else { return false }
-        return [.closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed].contains(reason)
-    }
     var sessionStarted: Date? { state.startedAt }
     var lastEnded: Date? { state.phase == .done ? state.endedAt : nil }
     var lastCost: Decimal? { (state.phase == .done ? state.receipt : state.lastReceipt)?.amount?.yuan }

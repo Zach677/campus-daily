@@ -9,8 +9,8 @@ public enum ShowerHomeStatus: Equatable, Sendable {
     case starting
     case showering(Date)
     case settling(Date)
-    /// A record that needs checking before another start (stage label).
-    case unresolved(String)
+    /// A record that needs checking before another start.
+    case unresolved(ShowerHomeReview)
     /// The controller showed itself stopped while the record says water runs (「核对上次洗澡」).
     case needsCheck
     public var showering: Date? {
@@ -25,6 +25,31 @@ public enum ShowerHomeStatus: Equatable, Sendable {
         switch self {
         case .idle, .unconfigured, .unavailable: return true
         case .starting, .showering, .settling, .unresolved, .needsCheck: return false
+        }
+    }
+}
+
+/// The home card of a record that waits for its check. An authorize the platform answered in a
+/// way the app can't read started no water and settled nothing, so it says the water didn't
+/// start (with the platform's words when it gave any); every other record keeps the settlement
+/// words.
+public struct ShowerHomeReview: Equatable, Sendable {
+    /// The button.
+    public let button: String
+    /// The accent line under it.
+    public let caption: String
+
+    public init(button: String, caption: String) {
+        self.button = button; self.caption = caption
+    }
+
+    public static let settlement = ShowerHomeReview(button: "核对上次结算", caption: "上次洗澡不确定结算了没有")
+
+    public init(_ failure: ShowerFailure?) {
+        if let failure, failure.reason == .authorizeUncertain {
+            self.init(button: "去核对", caption: ShowerAuthorizeUnclearText.title(platformMessage: failure.platformMessage))
+        } else {
+            self = .settlement
         }
     }
 }
