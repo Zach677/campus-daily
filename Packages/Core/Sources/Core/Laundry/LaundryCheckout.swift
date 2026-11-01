@@ -121,15 +121,17 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     public var pollAttempt: Int
     public var lastOutcome: LaundryOutcome?
     public var notice: LaundryNotice?
+    /// The U净 account (`UjingAccount.id`) the order was placed with. Nil in records written before it was kept.
+    public var accountID: String?
 
     public init(phase: LaundryPhase = .none, draft: LaundryDraft? = nil, createdAt: Date? = nil, orderID: String? = nil,
                 order: LaundryOrder? = nil, orderReadAt: Date? = nil, candidateOrderID: String? = nil,
                 paymentRequestedAt: Date? = nil, repayArmed: Bool = false, cancelSent: Bool = false, pollAttempt: Int = 0,
-                lastOutcome: LaundryOutcome? = nil, notice: LaundryNotice? = nil) {
+                lastOutcome: LaundryOutcome? = nil, notice: LaundryNotice? = nil, accountID: String? = nil) {
         self.phase = phase; self.draft = draft; self.createdAt = createdAt; self.orderID = orderID; self.order = order
         self.orderReadAt = orderReadAt; self.candidateOrderID = candidateOrderID; self.paymentRequestedAt = paymentRequestedAt
         self.repayArmed = repayArmed; self.cancelSent = cancelSent; self.pollAttempt = pollAttempt
-        self.lastOutcome = lastOutcome; self.notice = notice
+        self.lastOutcome = lastOutcome; self.notice = notice; self.accountID = accountID
     }
 
     public static let empty = LaundryCheckout()
@@ -173,6 +175,15 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     /// `reconcile` can be cleared by the user after checking the U净 app.
     public var canResolveManually: Bool { phase == .reconcile }
 
+    /// Whether signing in to U净 as `id` may replace the stored login (`stored`, the account id
+    /// saved on this phone). With an order open only the account that placed it may sign in again
+    /// (an expired login is renewed, the order stays readable); another account is refused.
+    public func allowsLogin(as id: String, stored: String?) -> Bool {
+        guard phase != .none else { return true }
+        guard let owner = accountID ?? stored else { return false }
+        return owner == id
+    }
+
     /// What goes to the Keychain (no one-shot notice / arming).
     public var persistable: LaundryCheckout {
         var c = self
@@ -187,8 +198,8 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
 }
 
 public enum LaundryEvent: Sendable, Equatable {
-    /// The user confirmed machine, program and price.
-    case confirm(LaundryDraft, at: Date)
+    /// The user confirmed machine, program and price, signed in as `account` (`UjingAccount.id`).
+    case confirm(LaundryDraft, at: Date, account: String? = nil)
     case created(orderID: String)
     case createFailed(ServiceError)
     /// `scanWasherCode` during reconcile: the account's unfinished order on the machine.
@@ -255,8 +266,8 @@ public enum LaundryReducer {
         switch (state.phase, event) {
 
         // MARK: create
-        case (.none, .confirm(let draft, let at)):
-            let n = LaundryCheckout(phase: .creating, draft: draft, createdAt: at, lastOutcome: state.lastOutcome)
+        case (.none, .confirm(let draft, let at, let account)):
+            let n = LaundryCheckout(phase: .creating, draft: draft, createdAt: at, lastOutcome: state.lastOutcome, accountID: account)
             return (n, [.create(draft.request)])
 
         case (.creating, .created(let id)):

@@ -20,6 +20,9 @@ private struct LaundryEngineHooks: LaundryHooks {
 
 /// UI state over `UjingClient` (login, machine reads) and `LaundryEngine` (order + payment).
 /// No ordering or payment rules here: the engine decides what may be sent.
+/// Another U净 account tried to sign in while an order placed with the stored one is open.
+enum LaundryLoginRefusal: Error { case otherAccount }
+
 @MainActor final class LaundryModel: ObservableObject {
     @Published private(set) var configured = false
     @Published private(set) var accountConnected = false
@@ -113,7 +116,8 @@ private struct LaundryEngineHooks: LaundryHooks {
         observer?.cancel(); observer = nil; engine = nil
         do {
             let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(),
-                                           hooks:LaundryEngineHooks(), resetMarker:AppResetter.marker)
+                                           hooks:LaundryEngineHooks(), accountID:account?.account?.id,
+                                           resetMarker:AppResetter.marker)
             self.engine = engine
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
@@ -148,10 +152,17 @@ private struct LaundryEngineHooks: LaundryHooks {
         try await client.requestSMS(mobile:mobile)
     }
 
+    /// With an order open (its login expired), only the account that placed it may sign in again:
+    /// the new login is checked before anything is saved (`LaundryCheckout.allowsLogin`).
     func login(mobile: String, code: String) async throws {
-        guard mayImport else { throw LaundryEngineError.busy }
+        guard mayLogin else { throw LaundryEngineError.busy }
         let device = device
         let signedIn = try await UjingClient(http:AppEnvironment.laundryHTTP, device:device).login(mobile:mobile, code:code)
+        guard !loading, !checkoutBusy else { throw LaundryEngineError.busy }
+        if let record = checkout, !record.allowsLogin(as:signedIn.id, stored:account?.account?.id) {
+            throw LaundryLoginRefusal.otherAccount
+        }
+        let reread = checkout.map { $0.phase != .none } ?? false
         let item = UjingAccountItem(mobileID:device.mobileID, account:signedIn)
         try AppEnvironment.laundryVault.saveAccountItem(item)
         account = item
@@ -159,6 +170,19 @@ private struct LaundryEngineHooks: LaundryHooks {
         configured = selectedMachine != nil
         issue = nil; lastAttempt = nil
         rebuildEngine()
+        // The open order is readable again (read only).
+        if reread { Task { await refreshOrder() } }
+    }
+
+    /// The U净 login entry: free with no order open; with one, while its login has expired.
+    var mayLogin: Bool {
+        guard !loading, !checkoutBusy else { return false }
+        return mayImport || checkout?.notice == .sessionExpired
+    }
+
+    static func loginText(_ error: Error) -> String {
+        if error is LaundryLoginRefusal { return "还有一笔洗衣订单没结束，要用下单的那个 U净 账号登录。" }
+        return (error as? ServiceError)?.userMessage ?? "登录没完成，核对手机号和验证码再试。"
     }
 
     func signOut() {

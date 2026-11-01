@@ -151,6 +151,17 @@ final class LaundryEngineTests: XCTestCase {
         XCTAssertEqual(api.count("create"), 1)
     }
 
+    func testOrderRecordsTheSignedInAccount() async throws {
+        api.creates = [.ok(L.orderID)]
+        api.orders = [.ok(L.order("10"))]
+        let sleeps = self.sleeps!
+        let t = L.t0.addingTimeInterval(10)
+        let e = try LaundryEngine(api: api, vault: vault, launcher: launcher, hooks: hooks, accountID: "acct-1",
+                                  now: { t }, sleep: { sleeps.record($0) })
+        _ = try await e.confirmOrder(L.snapshot(at: L.t0.addingTimeInterval(5)), program: L.standard)
+        XCTAssertEqual(try vault.checkout()?.accountID, "acct-1")
+    }
+
     func testStaleOrChangedWasherNeverCreates() async throws {
         let e = try engine(at: 100)
         do { _ = try await e.confirmOrder(L.snapshot(), program: L.standard); XCTFail() }

@@ -338,6 +338,47 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(reduce(sent, .cancelledBeforeSend).0.phase, .created)
     }
 
+    // MARK: signing in again
+
+    func testRecordKeepsTheAccountThatPlacedIt() {
+        let (s, _) = reduce(.empty, .confirm(L.draft, at: t0, account: "acct-1"))
+        XCTAssertEqual(s.accountID, "acct-1")
+        let paid = reduce(reduce(s, .created(orderID: L.orderID)).0, .orderRead(L.order("20"), at: t0)).0
+        XCTAssertEqual(paid.accountID, "acct-1")
+        XCTAssertEqual(R.restore(paid.persistable).accountID, "acct-1")
+        XCTAssertNil(reduce(paid, .orderRead(L.order("50"), at: t0)).0.accountID, "cleared with the record")
+    }
+
+    /// The U净 login expires while an order is open: the same account may sign in again, another may not.
+    func testOnlyTheOrderAccountSignsInWhileAnOrderIsOpen() {
+        XCTAssertTrue(LaundryCheckout.empty.allowsLogin(as: "acct-2", stored: "acct-1"), "no order: any account")
+        let open = reduce(.empty, .confirm(L.draft, at: t0, account: "acct-1")).0
+        let expired = reduce(reduce(reduce(open, .created(orderID: L.orderID)).0, .orderRead(L.order("20"), at: t0)).0,
+                             .orderReadFailed(.sessionExpired(.ujing))).0
+        XCTAssertEqual(expired.notice, .sessionExpired)
+        for record in [open, expired] {
+            XCTAssertTrue(record.allowsLogin(as: "acct-1", stored: "acct-1"))
+            XCTAssertTrue(record.allowsLogin(as: "acct-1", stored: nil))
+            XCTAssertFalse(record.allowsLogin(as: "acct-2", stored: "acct-1"))
+            XCTAssertFalse(record.allowsLogin(as: "acct-2", stored: "acct-2"), "the order's account wins over the stored one")
+        }
+        // A record written before the account was kept: the stored (expired) login decides.
+        var legacy = expired
+        legacy.accountID = nil
+        XCTAssertTrue(legacy.allowsLogin(as: "acct-1", stored: "acct-1"))
+        XCTAssertFalse(legacy.allowsLogin(as: "acct-2", stored: "acct-1"))
+        XCTAssertFalse(legacy.allowsLogin(as: "acct-1", stored: nil), "nobody to compare with: refused")
+    }
+
+    func testRecordWithoutAccountStillDecodes() throws {
+        let data = try JSONEncoder().encode(created().persistable)
+        var object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["accountID"] = nil
+        let decoded = try JSONDecoder().decode(LaundryCheckout.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(decoded.phase, .created)
+        XCTAssertNil(decoded.accountID)
+    }
+
     // MARK: relaunch
 
     func testRestoreEachPhase() {

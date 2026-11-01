@@ -31,7 +31,7 @@ import Core
         do {
             try await laundry.login(mobile:mobile, code:code)
             return true
-        } catch { issue = (error as? ServiceError)?.userMessage ?? "登录没完成，核对手机号和验证码再试。"; return false }
+        } catch { issue = LaundryModel.loginText(error); return false }
     }
 }
 
@@ -69,7 +69,7 @@ struct UjingLoginView: View {
                 Button {
                     Task { if await login.login(mobile,code:code,laundry:laundry) { code = ""; dismiss() } }
                 } label: { HStack { if login.busy { ProgressView() }; Text("登录 U净") }.frame(maxWidth:.infinity) }
-                    .disabled(login.busy || !consent || !UjingInput.isMobile(mobile) || code.count < 4 || !laundry.mayImport)
+                    .disabled(login.busy || !consent || !UjingInput.isMobile(mobile) || code.count < 4 || !laundry.mayLogin)
                     .accessibilityIdentifier("confirmUjingLogin")
             }.navigationTitle("登录 U净").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() }.disabled(login.busy) } }

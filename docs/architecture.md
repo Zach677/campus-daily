@@ -576,6 +576,10 @@ Rules:
   (a confirmed 「我在 U净 看过了，没有订单 · 清除」 on the laundry page). `createAt` is read as
   ISO 8601 or as `yyyy-MM-dd HH:mm:ss` Beijing time (the captures only show ISO 8601; the real
   format is still to be checked on a device).
+- The record keeps the U净 account id it was created with. While it is open the login entry
+  is closed, except after a read came back `sessionExpired`: then only that account may sign in
+  again (records from before the id was kept compare with the stored login); another account is
+  refused and nothing is saved. The engine is rebuilt with the new token and the order read.
 - Payment: `payment/methods`, prefer `alipay`, then `alipayF2F` (`alipayF2FNoAds=true`); no
   WeChat and no automatic-debit channel. `paying` (with `paymentRequestedAt`) is persisted before
   `payment/arguments` is sent. The reply is launched only if `PaymentLaunchPolicy` accepts it:
