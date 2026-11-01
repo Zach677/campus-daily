@@ -2,7 +2,7 @@
 
 How the iOS code is organised and why. Endpoint details (params, envelopes, raw shapes) are in
 Appendix A; the Android app in `Android/` is a separate Gradle project that only shares the
-school-login script and, later, the fixtures.
+school-login script.
 
 Ground rules: the BLE frame format and the `wxcode`/MD5 signing are kept byte for byte; any
 change to signing, BLE commands or school/U净 response parsing goes in its own commit with its
@@ -16,8 +16,9 @@ built into every public build in plain text (see 2.2).
 
 Open `XiaoRiChang.xcworkspace`. It holds `App.xcodeproj` (targets **App** and **Widget**, both
 using file-system synchronized folders, so adding a file needs no project edit) and the local
-package `Packages/Core`. Build settings live in `Configuration/*.xcconfig`; a per-developer
-`Configuration/Developer.xcconfig` (untracked) overrides team and bundle id.
+package `Packages/Core`. Debug and Release both use `Configuration/Base.xcconfig` (with
+`Version.xcconfig`); a per-developer `Configuration/Developer.xcconfig` (untracked) overrides
+team and bundle id.
 
 ```
 App/
@@ -26,11 +27,12 @@ App/
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders
   Resources/          Assets, Fonts, Info.plist, App.entitlements
+  Demo/               DEBUG-only demo screens and data behind campusdaily://demo/… (not in Release)
 Shared/               compiled into App and Widget
   WidgetViews/        widget views (also used by the in-app preview)
   LiveActivityViews/  ActivityAttributes and Live Activity views
   Theme/              formatting and the mascot shape the widget also draws (app colours and fonts
-                      are in App/Interface/Common: Theme, NothingTheme)
+                      are in App/Interface/Common: Theme, NativeTheme)
 Widget/               XiaoRiChangWidget, ShowerLiveActivity, LaundryLiveActivity, Info.plist, Widget.entitlements
 Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macOS 14, Swift 6 mode)
   Sources/Core/
@@ -86,15 +88,11 @@ Pure / testable vs platform:
 Rules: clients are `Sendable` structs, engines are actors, time is injected in Core, only
 Networking makes sessions.
 
-**Current state of the App layer.** The screen models are `ObservableObject` classes passed down
+**App layer.** The screen models are `ObservableObject` classes passed down
 with `@EnvironmentObject`. `ShowerModel.shared`, `CampusModel.shared` and `Reminders.shared` are
 singletons (the Live Activity intent, background refresh and notification delegate reach them
 outside the view tree); `LaundryModel` is created by the app scene. Core, the App and the Widget
 targets all build in Swift 6 language mode.
-
-**Target design.** Models become `@Observable`
-adapters that observe the engines' `AsyncStream<State>`, created in `AppEnvironment` and passed
-through initializers or the environment, with no singletons.
 
 ### Networking
 
@@ -244,9 +242,8 @@ liveness OK); `school.portal` carries `obtainedAt` (first saved). When the liven
 portal says one is dead, one diagnostic line records only the kind and measured minutes:
 `school.credentialExpired kind=card ageMinutes=152 aliveMinutes=92` / `kind=portal ageMinutes=481`
 (once per credential per process). Both processes write it to the system log only (subsystem
-`com.beamjason.xiaorichang`, category `snapshot`). Builds before kept the lines in the shared
-Keychain item `shared.credentialLog` for the removed 导出热水诊断 report; the app deletes that
-item at launch (`RetiredDiagnostics`), and reset deletes it too.
+`com.beamjason.xiaorichang`, category `snapshot`). The `shared.credentialLog` Keychain item
+older builds wrote is deleted at launch (`RetiredDiagnostics`) and by reset.
 
 **One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
 the background task, the refreshes after a state change (sign-in, meter choice, recharge), and
@@ -355,7 +352,7 @@ with its location 「校区 · 公寓 · 楼栋 · 房间」. A level matching n
 meter page opens there with the matched levels on one line, 「重选」, and the level's list headed
 「选校区」/「选公寓」/「选楼栋」/「选楼层」/「选房间」, suggested rows first with 「可能是这个」
 (`MeterPageText`). Each read is retried twice with growing waits on a timeout or a lost
-connection; there is no campus-wide meter read and no longer wait or second network session.
+connection.
 Only room nodes are bound. A campus-node binding saved by an older build counts as no meter: at
 launch it is removed from the profile (the dorm stays) and the launch lookup walks to the room;
 neither refresh nor the recharge check reads it meanwhile.
@@ -691,7 +688,7 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
-| credential-lifetime lines left by older builds (no longer written; deleted at launch) | Keychain `shared.credentialLog` | same | **yes** |
+| credential-lifetime lines from older builds (deleted at launch, never written) | Keychain `shared.credentialLog` | same | **yes** |
 | refresh lease (`{owner, expiresAt}`, one school read at a time across processes) | file `refresh.lease` in the App Group container | until first unlock | **yes** (the widget takes it for its own read) |
 | reset-in-progress marker (start time) | Keychain `shared.resetMarker` | same | **yes** (any process that can start a shower or a laundry order checks it) |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard), keys prefixed `xrc.` | – | no |
@@ -752,7 +749,7 @@ become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidence
 | BG task id | `com.beamjason.xiaorichang.refresh` |
 | Widget kind | `XiaoRiChangBalances` |
 | Alipay return scheme | `com.beamjason.xiaorichang.alipay` (derived, see below) |
-| Navigation scheme | `campusdaily://home`, `campusdaily://demo/<state>` |
+| Navigation scheme | `campusdaily://home`; `campusdaily://demo/<state>` in DEBUG builds only |
 | Xcode workspace / project / targets | `XiaoRiChang.xcworkspace` / `App.xcodeproj` / `App` (product `XiaoRiChang.app`), `Widget` (product `XiaoRiChangWidget.appex`) |
 | Swift package / product | `Packages/Core` / `Core` |
 | Display names | 校日常 / widget gallery title 校日常 |
@@ -855,9 +852,7 @@ Recorded with read-only requests only. Redacted fixtures live in
 `Location` values and the hot-water `sid` are `REDACTED_TOKEN_n` (same value → same number
 across fixtures). Personal identifiers (`syscustid`, `custid`, `custunionid`, name, `idno`,
 phone, `studentid`, `userId`, `deptId`, `vsuppid`, appid, `headurl`, `voucherno`, meter
-`comAddress`, water `machineId`/`Mac`/`machineName`, portal `gydz`/`szbj`, and in `me/user`
-`username`/`userUid`, `organizationId`, `accountId`, `userId`, `imageUrl`,
-`organizationName`/`organizationCode`, `identityTypeId`, `userName`) are fake values. Numeric
+`comAddress`, water `machineId`/`Mac`/`machineName`, portal `gydz`/`szbj`) are fake values. Numeric
 ids and ciphertexts use shapes no real value has, so `Scripts/privacy-check.sh` can allow them by whole value: zero-padded
 counters (`TESTid` + 26 digits, meter `000000000991`), numeric ids starting with `99` (dorm
 building ids `991001…`, hot-water area ids `997…`, room `991000000000000002`), or a few fixed
@@ -936,7 +931,6 @@ Headers as in A.1. Envelope `{code, message, data}`, HTTP 200.
 |---|---|---|---|
 | `GET /portalData/v2/personalData/getMyInfo` | `{gydz:"示例校区99栋9号1层991房", szbj}` (`gydz` = registered dorm address) | bad token `code:-1001 "无效 token"`; no token `code:-1 "没有访问权限"` | RO |
 | `GET /portal-api/v2/personalData/getMyECard` | `{balance, monthBalance, cardStatus, lastExpenditure[], lastIncome[], appUrl, pcUrl, …}` | same | RO (new CAS ticket in `pcUrl` each call) |
-| `GET https://authx-service.gdbtu.edu.cn/personal/api/v1/personal/me/user` | `{username, roles, attributes}` | same | RO |
 
 ### A.4 Hot water: isv.lxt6.cn
 
