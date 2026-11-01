@@ -443,7 +443,7 @@ three fields. Envelope casing differs by backend: `Code/Data/Message` (AECC) vs
 | `Code:-301 "…sign 不合法"` | `badRequest(.lxt6)` (same handling as 4002) |
 | `code:4034 "查无此信息…"` | `rejected(.lxt6, "4034", msg)` → onboarding shows "学校没有登记这个地址" |
 | `code:5000 "当前房间未绑定设备"` | `rejected(.lxt6, "5000", msg)` → "这个房间没有水控" |
-| authorize/settle: explicit non-zero code | `rejected` (definite refusal, nothing charged for authorize) |
+| authorize/settle: any other non-zero code | `rejected(.lxt6, code, msg)`. For authorize only 4002/-301 (`badRequest`, `LxtClient.requestRefusalCodes`) prove nothing was issued; every other code, a low balance included (none has been seen), is `authorizeUncertain` and waits for a check |
 | authorize/settle: transport error, non-200, unreadable body | `uncertain(.lxt6)` |
 
 Authorize/settle reply shapes and their refusal codes are **not captured**; the
@@ -524,8 +524,9 @@ idle ──start──► authorizing ──auth ok──► writePending ──
 
 Rules:
 
-- Any state but `idle`/`done` blocks `start`. Authorize: explicit refusal → `failed(needsReview:
-  false)` (nothing issued); anything else → `failed(needsReview: true)`; never re-authorize.
+- Any state but `idle`/`done` blocks `start`. Authorize: definite refusal (refused before
+  sending, or 4002/-301) → `failed(needsReview: false)` (nothing issued); anything else, any
+  other platform code included → `failed(needsReview: true)`; never re-authorize.
 - `writePending` shows as running on purpose (the controller may have accepted without acking).
   `finish` from it: probe shows the device idle with our identity → the check face
   (`stateReviewRequired`, as from `running`: the write may have been applied with only its ack

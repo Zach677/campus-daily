@@ -317,6 +317,17 @@ public enum ShowerReducer {
         }
     }
 
+    /// An authorize answer that proves nothing was issued: a refusal before anything was sent,
+    /// or one of the codes the platform is known to answer before it acts on a request
+    /// (`LxtClient.requestRefusalCodes`, both `badRequest`). Any other non-zero code is
+    /// `rejected` and may come after the authorization was created, so it is not one.
+    public static func isDefiniteAuthorizeRefusal(_ e: ServiceError) -> Bool {
+        switch e {
+        case .badRequest, .sessionExpired: return true
+        default: return false
+        }
+    }
+
     public static func reduce(_ state: ShowerState, _ event: ShowerEvent) -> (ShowerState, [ShowerEffect]) {
         var s = state
         s.notice = nil
@@ -373,8 +384,12 @@ public enum ShowerReducer {
             return (s, [.scheduleReminder, .writeAuthorization(auth.payload)])
 
         case (.authorizing, .authorizeFailed(let e)) where state.authorizeSent:
-            if isDefiniteRefusal(e) {
+            if isDefiniteAuthorizeRefusal(e) {
                 return (failed(s, .authorizeRefused, review: false, error: e), [.releaseDevice])
+            }
+            // A code we don't know keeps its answer with the record; nothing else is assumed from it.
+            if case .rejected = e {
+                return (failed(s, .authorizeUncertain, review: true, error: e), [.releaseDevice])
             }
             return (failed(s, .authorizeUncertain, review: true, error: .uncertain(.lxt6)), [.releaseDevice])
 

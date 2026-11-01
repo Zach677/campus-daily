@@ -268,11 +268,11 @@ final class ShowerEngineTests: XCTestCase {
     func testRefusalLeavesNoRecordAndAllowsAnotherStart() async throws {
         let e = try engine()
         transport.script(.frame(identity))
-        gateway.scriptAuthorize(.fail(.rejected(.lxt6, code: "1", message: "余额不足")))
+        gateway.scriptAuthorize(.fail(.badRequest(.lxt6)))
         let s = try await e.start(binding)
         XCTAssertEqual(s.failure?.reason, .authorizeRefused)
         let title = await e.display.title
-        XCTAssertEqual(title, "余额不足")
+        XCTAssertEqual(title, "热水平台没同意开水。")
         XCTAssertEqual(try vault.showerState()?.phase, .idle)
         XCTAssertEqual(transport.writes, [ShowerFrames.probeCommand], "nothing written to the controller")
         try await startRunning(e)
