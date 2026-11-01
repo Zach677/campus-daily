@@ -39,7 +39,7 @@ final class FakeGateway: ShowerGateway, @unchecked Sendable {
         case .ok(let v): return v
         case .fail(let e): throw e
         case .hang:
-            while !Task.isCancelled { try? await Task.sleep(nanoseconds: 5_000_000) }
+            await eventually(seconds: 10) { Task.isCancelled }
             throw CancellationError()
         }
     }
@@ -180,10 +180,6 @@ final class ShowerEngineTests: XCTestCase {
 
     // MARK: Cancel while connecting
 
-    func waitUntil(_ condition: @escaping () async -> Bool) async {
-        for _ in 0..<400 where !(await condition()) { try? await Task.sleep(nanoseconds: 5_000_000) }
-    }
-
     /// 取消 during the Bluetooth connect: the task is cut short, nothing reaches the platform and
     /// no record is left.
     func testACancelDuringTheConnectSendsNothing() async throws {
@@ -191,7 +187,7 @@ final class ShowerEngineTests: XCTestCase {
         transport.script(.hang)
         let b = binding
         let task = Task { try? await e.start(b) }
-        await waitUntil { [transport] in transport!.writes.count == 1 }
+        await eventually { [transport] in transport!.writes.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertTrue(accepted)
         task.cancel()
@@ -212,7 +208,7 @@ final class ShowerEngineTests: XCTestCase {
         transport.script(.after(gate, identity))
         let b = binding
         let task = Task { try? await e.start(b) }
-        await waitUntil { [transport] in transport!.writes.count == 1 }
+        await eventually { [transport] in transport!.writes.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertTrue(accepted)
         open.yield(); open.finish()
@@ -231,7 +227,7 @@ final class ShowerEngineTests: XCTestCase {
         gateway.scriptAuthorize(.hang)
         let b = binding
         let task = Task { try? await e.start(b) }
-        await waitUntil { [gateway] in gateway!.authorizeFrames.count == 1 }
+        await eventually { [gateway] in gateway!.authorizeFrames.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertFalse(accepted)
         task.cancel()
@@ -381,7 +377,7 @@ final class ShowerEngineTests: XCTestCase {
         gateway.scriptSettle(.hang)
         let b = binding
         let task = Task { try await e.finish(b) }
-        while gateway.settleFrames.isEmpty { try await Task.sleep(nanoseconds: 2_000_000) }
+        await eventually { [gateway] in !gateway!.settleFrames.isEmpty }
         await expect(.busy) { try await e.dismiss() }
         task.cancel()
         let s = try await task.value
@@ -505,7 +501,7 @@ final class ShowerEngineTests: XCTestCase {
         gateway.scriptAuthorize(.hang)
         let b = binding
         let task = Task { try await e.start(b) }
-        while gateway.authorizeFrames.isEmpty { try await Task.sleep(nanoseconds: 2_000_000) }
+        await eventually { [gateway] in !gateway!.authorizeFrames.isEmpty }
         task.cancel()
         let s = try await task.value
         XCTAssertEqual(s.failure?.reason, .authorizeUncertain)
@@ -517,7 +513,7 @@ final class ShowerEngineTests: XCTestCase {
         transport.script(.hang)
         let b = binding
         let task = Task { try await e.start(b) }
-        while transport.writes.isEmpty { try await Task.sleep(nanoseconds: 2_000_000) }
+        await eventually { [transport] in !transport!.writes.isEmpty }
         task.cancel()
         let s = try await task.value
         XCTAssertEqual(s.failure?.reason, .deviceUnavailable)
