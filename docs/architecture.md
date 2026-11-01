@@ -312,8 +312,10 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   never on the app's main thread, before the school items are deleted;
 - snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
   dropped (unless more than 30 minutes older: the clock moved back, and the reading is written), and a "nobody signed in" reading leaves an emptied snapshot empty.
-- signed without the App Group (no container), the app refreshes on its own and the widget never
-  takes the lease: it draws the stored snapshot, so the two still never read at the same time.
+- signed without the App Group (no container), the app keeps the lease in its own container
+  (`Application Support/refresh.lease`, `RefreshLease.appFile`), so its reads, logins, recharge
+  and hand-off still take turns; the widget has no lease file and never takes the lease: it draws
+  the stored snapshot, so the two still never read at the same time.
 Builds before the lease file kept the lease in the Keychain item `shared.refreshLease`;
 `SchoolRefreshStack` deletes that leftover at launch.
 

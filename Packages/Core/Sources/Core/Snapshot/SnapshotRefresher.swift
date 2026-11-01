@@ -193,7 +193,7 @@ public actor SnapshotRefresher {
     /// ours, so there is no variant without it. The heartbeat stops quietly when a renewal fails
     /// (the app was suspended past the lease, and the other process may have taken it), while
     /// the body keeps running; its writes then find the lease lost and write nothing. Without a
-    /// lease, or with one that has no file to lock (a build without the App Group, where no
+    /// lease, or with one that has no file to lock (the app with no container for one, where no
     /// other process can take it either), `body` just runs with `.unchecked`.
     public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable (_ owning: LeaseOwnership) async throws -> T) async throws -> T {
         guard let shared = lease, shared.isAvailable else { return try await body(.unchecked) }
