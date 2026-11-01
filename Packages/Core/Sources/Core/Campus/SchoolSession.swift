@@ -646,9 +646,11 @@ public actor SchoolSession {
                 // refresh exchanges the same portal token again.
                 return .stopped(SchoolReading(outcome: .failed(e2), checkedAt: now(), reexchanged: true))
             } catch let e2 as ServiceError {
-                // A timeout or a school server error: the portal (or the exchange behind it) may
-                // be down while CAS works, and its token would keep failing until it expires. The
-                // saved password goes once; its hold keeps it from going on every refresh.
+                // A timeout, a school server error or a bare 401/403: the portal (or the exchange
+                // behind it) may be down while CAS works, and its token would keep failing until
+                // it expires. The saved password goes once. Its hold stays on when that login got
+                // no answer, and goes back on when the login was accepted but the steps after it
+                // failed again, so the password does not go on every refresh.
                 portalNoAnswer = e2
             } catch {
                 // Cancelled (the widget at its deadline): nothing is known.
@@ -758,7 +760,8 @@ public actor SchoolSession {
     /// The last step of the refresh: one login with the saved password. Anything but success
     /// or no network pauses the password, so a wrong or blocked login is never repeated. After
     /// the school accepted it, only a definite refusal of the card login pauses it. A login
-    /// that was sent but got no answer holds automatic logins off for a few hours instead.
+    /// that was sent but got no answer holds automatic logins off for a few hours instead, and so
+    /// does an accepted one whose card session then could not be made.
     ///
     /// The widget can be suspended or killed at any await, so each fact is stored as soon as it
     /// is known: the hold is written before the password goes out and lifted once an answer (or
@@ -885,8 +888,11 @@ public actor SchoolSession {
             return .unavailable
         } catch let e as ServiceError {
             // The password was accepted; the steps after it got no answer (no network, a timeout,
-            // a school server error). Nothing is paused: the next refresh exchanges the portal
-            // token this login stored.
+            // a school server error, a bare 401/403). Nothing is paused: the next refresh
+            // exchanges the portal token this login stored. The hold goes back on, in the shared
+            // account item: while the portal keeps failing, neither process falls through to
+            // the password again on every refresh.
+            _ = updateSavedAccount(saved, since: started, owning: owning) { if $0.unansweredAt == nil { $0.unansweredAt = sentAt } }
             return .failed(e)
         } catch {
             return .unavailable
