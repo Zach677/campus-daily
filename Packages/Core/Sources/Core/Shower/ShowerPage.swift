@@ -102,8 +102,9 @@ public enum ShowerSettleRetryCause: Sendable, Equatable {
     case notSent
     /// It went out (or may have) and no answer came back.
     case noAnswer
-    /// Held back, never sent: the water was found still running after a close that may not
-    /// have taken, so the consumption is most likely someone else's.
+    /// Held back because the consumption may be someone else's (`ShowerState.holdSettle`): the
+    /// water was found still running after a close that may not have taken, or the controller
+    /// never acknowledged the session. Stays so when a retry of that frame fails.
     case held
 }
 

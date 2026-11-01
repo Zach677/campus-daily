@@ -36,8 +36,9 @@ enum ShowerPageText {
     static let settleRefusedBody = "学校拒绝了这次结算。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
     /// The settlement never left.
     static let settleNotSentBody = "结算没发出去，学校那边应该还没扣钱。再结算一次就行。"
-    /// Held back after a close that may not have taken: the water read since may be someone else's.
-    static let settleHeldBody = "中间有人用过这台水控，这次读到的用水可能不是你的。先去学校的热水记录里看你这次洗澡扣了没有：扣了，点「我在学校记录里核对过了」；没扣、又确定刚才是你在用，再结算一次。"
+    /// Held back because the water read may be someone else's: after a close that may not have
+    /// taken, or a session the controller never confirmed. Also after a retry of it that failed.
+    static let settleHeldBody = "水控没能确认这段水是你开的，这次读到的用水可能不是你的。先去学校的热水记录里看你这次洗澡扣了没有：扣了，点「我在学校记录里核对过了」；没扣、又确定刚才是你在用，再结算一次。"
     static func settleRetryBody(_ cause: ShowerSettleRetryCause) -> String {
         switch cause {
         case .refused: return settleRefusedBody

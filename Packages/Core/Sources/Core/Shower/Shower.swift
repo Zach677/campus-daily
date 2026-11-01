@@ -61,8 +61,8 @@ public struct ShowerFailure: Sendable, Codable, Equatable {
     /// The settlement provably never left (cancelled before it, or held for the user): the
     /// school can't have charged it. False when it may have left.
     public var settleNotSent: Bool
-    /// The settlement was held back after an unconfirmed close found the water still running:
-    /// the consumption read since is most likely someone else's.
+    /// The settlement was held back because the consumption may be someone else's
+    /// (`ShowerState.holdSettle`), or this is a failed retry of that held frame.
     public var settleHeld: Bool
     public init(reason: ShowerFailureReason, needsReview: Bool, error: ServiceError? = nil, deviceError: ShowerDeviceError? = nil,
                 settleNotSent: Bool = false, settleHeld: Bool = false) {
