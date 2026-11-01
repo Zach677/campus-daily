@@ -508,7 +508,9 @@ Rules:
   allowed (the unsure face's 「再查一次水控」, Settings' 检查水控状态): `0xA5` returns to
   `running` (the close can be sent again), anything else keeps the check.
 - `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
-  needs a second confirmation and is recorded in diagnostics.
+  needs a second confirmation and is recorded in diagnostics. It is 「再结算一次」 on the unsure
+  face of a settlement that failed with its consumption frame kept: the first tap arms it, the
+  second sends it.
 - A probe that finds the controller stopped under a running record sets `stateReviewRequired`:
   the shower page shows a check face (去核对 / 「我在学校记录里核对过了」) and the home card's
   button reads 去核对. 「再查一次水控」 on that face runs the same read-only probe again: water

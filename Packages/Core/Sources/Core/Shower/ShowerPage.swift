@@ -205,6 +205,8 @@ public enum ShowerPageEvent: Sendable, Equatable {
     case recheckTapped
     /// That probe came back; nil when water runs again.
     case recheckReturned(ShowerRecheckResult?)
+    /// 再结算一次 (unsure, a settlement that failed): the first tap arms it, the second sends it.
+    case settleRetryTapped
 }
 
 public enum ShowerPageEffect: Sendable, Equatable {
@@ -220,6 +222,10 @@ public enum ShowerPageEffect: Sendable, Equatable {
     case resolveManually
     /// Read-only probe of the session's controller (`ShowerEngine.review`).
     case recheck
+    /// First tap of 再结算一次 (`ShowerEngine.requestSettleRetry`).
+    case requestSettleRetry
+    /// Second tap: settle once more (`ShowerEngine.confirmSettleRetry`).
+    case confirmSettleRetry
 }
 
 /// The page's own state: whether it is up, and the taps still waiting on the engine.
@@ -278,6 +284,10 @@ public struct ShowerPageFlow: Sendable, Equatable {
     }
     public var mayCancel: Bool { page?.phase == .connecting && !cancelling && !cancelRefused }
     public var mayEnd: Bool { page?.phase == .running && record.canFinish && !ending }
+    /// 再结算一次 on the unsure face: a settlement that failed with its consumption kept.
+    public var mayRetrySettle: Bool { page?.phase == .unsure && record.canRetrySettle }
+    /// The first tap of 再结算一次 is in: the next one sends it.
+    public var settleRetryArmed: Bool { mayRetrySettle && record.settleRetryArmed }
 
     public static func reduce(_ flow: ShowerPageFlow, _ event: ShowerPageEvent) -> (ShowerPageFlow, [ShowerPageEffect]) {
         var f = flow
@@ -402,6 +412,10 @@ public struct ShowerPageFlow: Sendable, Equatable {
             guard !flow.rechecking, flow.page?.phase == .unsure || flow.page?.phase == .needsCheck else { return (flow, []) }
             f.presented = false
             return (f, [.openReview])
+
+        case .settleRetryTapped:
+            guard flow.mayRetrySettle, !flow.rechecking else { return (flow, []) }
+            return (f, [flow.settleRetryArmed ? .confirmSettleRetry : .requestSettleRetry])
 
         case .homeTapped:
             guard flow.page?.phase == .unsure else { return (flow, []) }

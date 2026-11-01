@@ -55,6 +55,10 @@ extension ShowerModel {
                 // Water runs again: the timer comes up wherever the probe was tapped.
                 if result == nil, page.presented { pageWanted += 1 }
             }
+        case .requestSettleRetry:
+            Task { await requestSettleRetry() }
+        case .confirmSettleRetry:
+            Task { await confirmSettleRetry() }
         }
     }
 
