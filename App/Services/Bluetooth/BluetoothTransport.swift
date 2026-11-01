@@ -48,8 +48,8 @@ struct VerifiedShowerDevice {
     private var pendingFrame: Data?
     private var channelError: ShowerDeviceError?
     private var writeAcknowledged = false
-    /// The controller answered the current write with an error: it did not take the command.
-    private var writeRefused = false
+    /// The domain of the error the current write was answered with (`ShowerWriteDelivery`).
+    private var writeErrorDomain: String?
     private var step: String?
     private let waiter = WaitSlot()
     private var timer: Task<Void, Never>?
@@ -208,13 +208,15 @@ struct VerifiedShowerDevice {
         if let channelError { throw ShowerCommandNotSent(channelError) }
         guard let peripheral, peripheral.state == .connected, let write,
               !decoder.hasPartialFrame, pendingFrame == nil else { throw ShowerCommandNotSent(.disconnected) }
-        writeAcknowledged = false; writeRefused = false
+        writeAcknowledged = false; writeErrorDomain = nil
         ShowerDiagnosticReport.record("ble.write." + ShowerFrames.command(data).rawValue)
         var written = false
         do {
             try await wait("exchange", seconds: 8) { written = true; peripheral.writeValue(data, for: write, type: .withResponse) }
         } catch {
-            if !written || writeRefused { throw ShowerCommandNotSent(ShowerEngine.deviceError(error)) }
+            if ShowerWriteDelivery.after(written:written, writeErrorDomain:writeErrorDomain) == .notSent {
+                throw ShowerCommandNotSent(ShowerEngine.deviceError(error))
+            }
             throw error
         }
         guard let frame = pendingFrame else { throw ShowerDeviceError.malformedFrame }
@@ -277,7 +279,7 @@ struct VerifiedShowerDevice {
     }
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         guard step == "exchange", characteristic === write else { return }
-        if error != nil { writeRefused = true; complete(.failure(ShowerDeviceError.disconnected)); return }
+        if let error { writeErrorDomain = (error as NSError).domain; complete(.failure(ShowerDeviceError.disconnected)); return }
         writeAcknowledged = true
         finishExchangeIfReady()
     }
