@@ -99,6 +99,7 @@
 ### Removed
 
 - Remove 「导出热水诊断」 (Settings › 高级 › 热水排查) and every diagnostic record behind it: the hot-water event file, the school credential-lifetime lines in the shared Keychain and the Bluetooth scan note. The app deletes what older builds left at launch.
+- Remove 「导出热水诊断」 from the Android app too, with its event file and file provider; a file an older build left is deleted at launch.
 - Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `Android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
 - Remove the process documents, promotional images and the old project generator; their history stays in Git.
 
