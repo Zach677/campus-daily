@@ -92,6 +92,11 @@ struct LaundryDetail: View {
             await laundry.refreshOrder()
         }
         .sheet(item:$sheet) { item in sheetView(item, facts:facts).typesettingLanguage(Theme.typesetting) }
+        // A lookup after the sheet came up (back from the U净 app) found something other than
+        // no order: the clear is no longer allowed, so its sheet goes instead of doing nothing.
+        .onChange(of:facts.record?.canResolveManually == true) { _, allowed in
+            if !allowed, sheet == .resolve { sheet = nil }
+        }
         .sensoryFeedback(.selection, trigger:selectedId)
     }
 

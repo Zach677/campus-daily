@@ -322,7 +322,11 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     /// Reconcile found nothing and the user checked U净.
     func resolveManually() async {
-        guard let engine, checkout?.canResolveManually == true else { return }
+        guard let engine, checkout?.canResolveManually == true else {
+            // The last lookup no longer says there is no order: say so instead of doing nothing.
+            checkoutIssue = Self.engineText(LaundryEngineError.notAllowed)
+            return
+        }
         await perform(progress:nil) { try await engine.resolveManually() }
     }
 
