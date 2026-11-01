@@ -757,7 +757,7 @@ Every endpoint gets at least: success, expired/unauthorized, refused with messag
 | Path | Fixtures |
 |---|---|
 | ecykt liveness ok / expired | `getSysBindCustInfo-ok`, `-badToken` |
-| fresh login (recharge) ok / expired / bad params | `loginBySysId-mintSeries1`, `-mintSeries2`, `-badToken`, `-missingSyscustid`, `-wrongSyscustid` (empty body) |
+| fresh login (recharge) ok / expired / bad params | `loginBySysId-mintSeries1`, `-mintSeries2`, `-badToken`, `-missingSyscustid` (empty body → badRequest) |
 | balance (incl. "no expiry signal here") | `getUserBalance-ok`, `-missingCustid` (empty body → badRequest) |
 | electricity tree / meters | `electric-getBuildingInfo-root`, `-level1..4`, `-leafEmpty`; `electric-getMeterStatus-ok` (campus), `-leaf`, `-room`, `-unknownBuilding` (`[]`); `electric-service-missingServer` (500) |
 | electricity web entry | `getPowerUrl-ok` (302 not followed) |
@@ -765,7 +765,7 @@ Every endpoint gets at least: success, expired/unauthorized, refused with messag
 | recharge web session state | `localStorage-elecampus_state-csaLogin` |
 | card records (最近, 昨天花了) | `card-getRecordList-ok` |
 | portal | `getMyInfo-ok`, `-badtoken` (-1001), `-notoken` (-1), `getMyECard-ok`, `me-user-ok` |
-| lxt6 reads | `getUserMsg-ok`, `-badSign` (-301, JSON-in-string); `areaInfo-level0..3`, `-badSign`/`-missingId` (4002), `-unknownParent` (4034); `getMachineMacAddress-ok`, `-unknownRoom` (5000) |
+| lxt6 reads | `getUserMsg-ok`, `-badSign` (-301, JSON-in-string); `areaInfo-level0..3`, `-badSign` (4002), `-unknownParent` (4034); `getMachineMacAddress-ok`, `-unknownRoom` (5000) |
 | U净 auth errors | `ujing/programInfo-noAuth`, `orderDetail-badAuth` (401 shapes, captured); `scanWasherCode-badAuth`, `orderCreate-badAuth` |
 | U净 (synthetic, shapes from the existing app) | `captcha-ok`/`-refused`; `login-ok`/`-tempToken`/`-challenge`/`-refused`; `scanWasherCode-ok`/`-activeOrder`/`-refused`; `programInfo-ok`/`-refused`; `orderCreate-ok`/`-refused`; `orderDetail-unpaid`/`-paid`/`-washing`/`-done`/`-failedStart`/`-cancelled`/`-refused`; `paymentMethods-ok`/`-refused`; `paymentArguments-f2f`/`-sdk`/`-skipPay`/`-refused`; `orderCancel-ok`/`-refused` |
 

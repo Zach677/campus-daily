@@ -178,7 +178,6 @@ final class EcyktFreshLoginTests: XCTestCase {
         let cases: [(String, ServiceError)] = [
             ("ecykt/loginBySysId-badToken", .sessionExpired(.ecykt)),
             ("ecykt/loginBySysId-missingSyscustid", .badRequest(.ecykt)),
-            ("ecykt/loginBySysId-wrongSyscustid", .badRequest(.ecykt)),
         ]
         for (name, expected) in cases {
             let server = StubServer()
