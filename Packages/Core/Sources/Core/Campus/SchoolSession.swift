@@ -902,6 +902,9 @@ public actor SchoolSession {
             // exchanges the portal token this login stored. The hold written before the
             // password went out stays, in the shared account item.
             return .failed(e)
+        } catch is CancellationError {
+            // Cancelled (the widget at its deadline): nothing is known, an interruption.
+            return .retryLater
         } catch {
             return .unavailable
         }

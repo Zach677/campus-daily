@@ -102,7 +102,7 @@ final class PortalOutageHoldTests: XCTestCase {
     /// The portal fails with a 502 throughout; `during` runs while the exchange of the token the
     /// accepted password returned is in flight (the second portal request).
     func refreshDuringOutage(_ h: Harness, refresher: SnapshotRefresher,
-                             during: @escaping @Sendable (Task<RefreshReport, Never>) -> Void) async {
+                             during: @escaping @Sendable (Task<RefreshReport, Never>) -> Void) async -> RefreshReport {
         try? h.server.serve("ecykt/getSysBindCustInfo-badToken")
         h.server.respond("GET", PortalExchangeFailureTests.eCardURL, status: 502, body: Data("gateway".utf8))
         let reached = expectation(description: "exchange after the password in flight")
@@ -117,8 +117,9 @@ final class PortalOutageHoldTests: XCTestCase {
         await fulfillment(of: [reached], timeout: 5)
         during(read)
         release.signal()
-        _ = await read.value
+        let report = await read.value
         h.server.gate { _ in }
+        return report
     }
 
     /// The read is given up (the widget at its deadline) during the exchange after the accepted
@@ -127,7 +128,9 @@ final class PortalOutageHoldTests: XCTestCase {
         let login = login()
         let h = try harness(login)
         let sentAt = h.clock.now
-        await refreshDuringOutage(h, refresher: h.refresher()) { $0.cancel() }
+        let given = await refreshDuringOutage(h, refresher: h.refresher()) { $0.cancel() }
+        XCTAssertEqual(given.outcome, .interrupted, "nothing is known: not a sign-in")
+        XCTAssertFalse(given.snapshot.needsLogin)
         XCTAssertEqual(try h.vault.account()?.unansweredAt, sentAt, "the hold stays")
         let next = await h.refresher().refresh(inBackground: true)
         XCTAssertEqual(next.outcome, .failed(.rejected(.portal, code: "HTTP 502", message: "")))
@@ -140,7 +143,7 @@ final class PortalOutageHoldTests: XCTestCase {
         let login = login()
         let h = try harness(login)
         let sentAt = h.clock.now
-        await refreshDuringOutage(h, refresher: leased(h, "app-1")) { _ in
+        _ = await refreshDuringOutage(h, refresher: leased(h, "app-1")) { _ in
             h.clock.advance(RefreshLease.defaultDuration + 1)
             XCTAssertTrue(RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function).acquire())
         }
