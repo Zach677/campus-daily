@@ -405,7 +405,8 @@ struct ReminderHooks: ViewModifier {
                 guard !Task.isCancelled else { return }
                 await reminders.presentPendingPrompt()
             }
-            .onChange(of:reminders.route) { _, route in
+            // initial: a tap that launched the app may set the route before this view is attached.
+            .onChange(of:reminders.route, initial:true) { _, route in
                 guard let route else { return }
                 reminders.route = nil
                 open(route == .laundry ? [.laundry] : [])
