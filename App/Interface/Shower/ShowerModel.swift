@@ -24,7 +24,8 @@ final class ShowerGatewayBox: ShowerGateway, @unchecked Sendable {
 private struct ShowerModelHooks: ShowerHooks {
     func scheduleUnsettledReminder(after seconds: TimeInterval) async {}
     func cancelUnsettledReminder() async {}
-    func diagnostic(_ event: String) async { await ShowerDiagnosticReport.record(event) }
+    /// Nothing is recorded: the engine's event names stay in the engine (and its tests).
+    func diagnostic(_ event: String) async {}
 }
 
 /// Where the hot-water platform profile comes from (bundled / imported `.waterconfig`).
@@ -101,6 +102,10 @@ enum ShowerProfileFiles {
     private var reminderStart: Date?
 
     init() {
+        // What older builds' 导出热水诊断 kept on the phone; nothing writes it any more.
+        RetiredDiagnostics.removeLeftovers(store:AppEnvironment.store,
+                                           applicationSupport:FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask)[0],
+                                           temporary:FileManager.default.temporaryDirectory)
         binding = (try? AppEnvironment.showerVault.binding()) ?? nil
         if let persisted = (try? AppEnvironment.showerVault.showerState()) ?? nil { state = ShowerReducer.restore(persisted) }
         page = ShowerPageFlow(record:state)
@@ -285,7 +290,8 @@ enum ShowerProfileFiles {
         let data = try Data(contentsOf:url)
         _ = try ShowerConfigFile.parse(data, source:.imported(fileName:"imported.waterconfig"))
         let target = ShowerProfileFiles.importedURL
-        try FileManager.default.createDirectory(at:target.deletingLastPathComponent(), withIntermediateDirectories:true)
+        // The copy holds the platform secret: its folder is kept out of backups before it is written.
+        try ShowerImportFolder.prepare(for:target)
         try data.write(to:target, options:[.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         Task { await reloadProfile() }
     }
@@ -479,10 +485,6 @@ enum ShowerProfileFiles {
         stored.peripheralID = nil
         guard (try? AppEnvironment.showerVault.saveBinding(stored)) != nil else { return }
         binding = stored
-    }
-
-    func exportDiagnostics() throws -> URL {
-        try ShowerDiagnosticReport.export(phase:state.phase, needsReview:problem, manualSettleAttempts:state.manualSettleAttempts)
     }
 
     func show(_ error: Error) { message = AppErrorText.text(error) }

@@ -21,7 +21,7 @@ public struct SchoolRefreshStack: Sendable {
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
         session = SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http),
                                 vault: StoredSchoolVault(store: store), passwordLogin: CASLoginClient(http: http),
-                                diagnostic: diagnostic, credentialLog: CredentialLifetimeLog(store: store),
+                                diagnostic: diagnostic,
                                 createsLoginDeviceID: role != "widget")
         try? store.delete(.sharedRefreshLease)
         let lease: RefreshLease? = leaseFile == nil && role != "widget" ? nil : RefreshLease(file: leaseFile, owner: RefreshLease.owner(role))

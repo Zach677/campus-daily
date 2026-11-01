@@ -110,8 +110,6 @@ public actor SchoolSession {
     let now: @Sendable () -> Date
     /// Event names and measured ages only, never values (the credential-lifetime log).
     let diagnostic: @Sendable (String) -> Void
-    /// Where the same lifetime lines are kept for the in-app diagnostics export.
-    let credentialLog: CredentialLifetimeLog?
     /// False in the widget. Every saved password came with a login device id, so a widget that
     /// sees a password but no id is running before the app moved the id (and the portal token)
     /// out of its private group; a login then would start a second "browser" at the school and
@@ -142,11 +140,11 @@ public actor SchoolSession {
 
     public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, passwordLogin: SchoolPasswordLogin? = nil,
                 now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in },
-                credentialLog: CredentialLifetimeLog? = nil, createsLoginDeviceID: Bool = true,
+                createsLoginDeviceID: Bool = true,
                 recordsTimeout: TimeInterval = CardActivity.timeout,
                 meterRetryWait: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }) {
         self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
-        self.diagnostic = diagnostic; self.credentialLog = credentialLog; self.createsLoginDeviceID = createsLoginDeviceID
+        self.diagnostic = diagnostic; self.createsLoginDeviceID = createsLoginDeviceID
         self.recordsTimeout = recordsTimeout; self.meterRetryWait = meterRetryWait
     }
 
@@ -747,7 +745,6 @@ public actor SchoolSession {
         guard loggedExpiries.insert(id).inserted else { return }
         let line = Self.expiredEvent(kind, obtainedAt: obtainedAt, lastAliveAt: lastAliveAt, now: now())
         diagnostic(line)
-        credentialLog?.append(line, at: now())
     }
 
     /// A portal token gets its `obtainedAt` when this app first saves it.

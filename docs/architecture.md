@@ -243,11 +243,10 @@ foreground, the BG task and the widget):**
 liveness OK); `school.portal` carries `obtainedAt` (first saved). When the liveness check or the
 portal says one is dead, one diagnostic line records only the kind and measured minutes:
 `school.credentialExpired kind=card ageMinutes=152 aliveMinutes=92` / `kind=portal ageMinutes=481`
-(once per credential per process). Both processes write it to the system log (subsystem
-`com.beamjason.xiaorichang`, category `snapshot`) and append it to the shared Keychain item
-`shared.credentialLog` (`CredentialLifetimeLog`: the last 50 lines with their times), which the
-app's 导出热水诊断 report carries as `credentialLifetime`, apart from the 300 hot-water lines.
-Sign-out keeps it (nothing personal in it); reset deletes it.
+(once per credential per process). Both processes write it to the system log only (subsystem
+`com.beamjason.xiaorichang`, category `snapshot`). Builds before kept the lines in the shared
+Keychain item `shared.credentialLog` for the removed 导出热水诊断 report; the app deletes that
+item at launch (`RetiredDiagnostics`), and reset deletes it too.
 
 **One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
 the background task, the refreshes after a state change (sign-in, meter choice, recharge), and
@@ -403,8 +402,10 @@ what such a call charges lands on that student's own hot-water balance. An autho
 open the water. The read endpoints (areas, rooms, machines) are signable the same way;
 `getUserMsg` also needs the `appdata` of the school's ecykt hand-off (`LxtClient.userInfo`), so
 it is harder to misuse. This is a platform risk the client cannot fix, accepted as such. The redacted `description`, the
-exact-key check on `.waterconfig` files and iOS file protection on the imported copy keep the
-values out of logs and stray files; they do not protect them.
+exact-key check on `.waterconfig` files, iOS file protection on the imported copy
+(`Application Support/Water/imported.waterconfig`) and its folder kept out of backups
+(`ShowerImportFolder`, set before the copy is written and again at launch for older copies) keep
+the values out of logs, backups and stray files; they do not protect them.
 
 **Identity hand-off.** `EcyktClient.signData` → `appdata` (`vsuppid, appid, userId, deptId,
 username, phone, sign, nonce, timestamp`) → `getUserMsg` (signed, `requestType=1`) → water
@@ -550,7 +551,7 @@ Rules:
   someone else's on the same controller before 结束, is not caught: nothing the controller
   sends tells them apart.
 - `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
-  needs a second confirmation and is recorded in diagnostics. It is 「再结算一次」 on the unsure
+  needs a second confirmation and is counted on the record (`manualSettleAttempts`). It is 「再结算一次」 on the unsure
   face of a settlement that failed with its consumption frame kept: the first tap arms it, the
   second sends it.
 - A probe that finds the controller stopped under a running record sets `stateReviewRequired`:
@@ -688,10 +689,11 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
-| credential-lifetime lines (kind, minutes, time; last 50) | Keychain `shared.credentialLog` | same | **yes** (the widget's refresh appends) |
+| credential-lifetime lines left by older builds (no longer written; deleted at launch) | Keychain `shared.credentialLog` | same | **yes** |
 | refresh lease (`{owner, expiresAt}`, one school read at a time across processes) | file `refresh.lease` in the App Group container | until first unlock | **yes** (the widget takes it for its own read) |
 | reset-in-progress marker (start time) | Keychain `shared.resetMarker` | same | **yes** (any process that can start a shower or a laundry order checks it) |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard), keys prefixed `xrc.` | – | no |
+| imported hot-water config | file `Application Support/Water/imported.waterconfig`, folder excluded from backup | until first unlock | no |
 
 Reset (Settings › 重置) is all or nothing. It writes `shared.resetMarker` first; while the
 marker is under five minutes old, `ShowerEngine.start` and `LaundryEngine.confirmOrder` refuse
@@ -718,7 +720,7 @@ iOS puts an item written without a group into the first listed group. Items mark
 written to the shared group; all others are written to the private group, which the widget is
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
 registration. The widget reads the school items above for its own refresh, and `shared.snapshot`,
-and `shared.reminderLines`, appends to `shared.credentialLog`, and shares the lease file in the App
+and `shared.reminderLines`, and shares the lease file in the App
 Group container. An item can still sit in its old group: builds before the private group existed kept
 every item in the shared group, and builds before the widget refreshed by itself kept the portal
 token (then WhenUnlocked) and the login device id in the private group. At launch

@@ -127,7 +127,8 @@ public struct ShowerState: Sendable, Codable, Equatable {
     public var reviewing: Bool
     /// First tap of a manual settle retry; the second confirmation sends it.
     public var settleRetryArmed: Bool
-    /// Manual settle retries made (diagnostics: idempotency unknown).
+    /// Manual settle retries made on this record (whether the school dedupes a settlement is not
+    /// known). Kept in the record only; nothing shows or exports it.
     public var manualSettleAttempts: Int
     public var endedAt: Date?
     public var notice: ShowerNotice?

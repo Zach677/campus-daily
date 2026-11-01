@@ -58,7 +58,6 @@ struct VerifiedShowerDevice {
         guard !waiter.isWaiting else { throw ShowerDeviceError.busy }
         // The timer and cancel handler only ever finish this wait (token), never a later step.
         let token = waiter.reserve()
-        ShowerDiagnosticReport.record("ble." + name)
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 step = name
@@ -103,16 +102,6 @@ struct VerifiedShowerDevice {
         catch { manager.stopScan(); throw ShowerDeviceError.interrupted }
         manager.stopScan()
     }
-    private func recordScan(remembered: String?, scanSeconds: Int = 12, cachedPeripheral: Bool = false) {
-        let object: [String:Any] = ["observedAt":ISO8601DateFormatter().string(from:Date()),"scanSeconds":scanSeconds,
-            "observedCount":observedIDs.count,"matchingCount":targets.count,
-            "rememberedFound":cachedPeripheral || (remembered.map { id in targets.keys.contains { $0.uuidString == id } } ?? false),
-            "cachedPeripheralUsed":cachedPeripheral]
-        let folder = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("WaterSession",isDirectory:true)
-        if let bytes = try? JSONSerialization.data(withJSONObject:object) {
-            try? bytes.write(to:folder.appendingPathComponent("last-scan.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
-        }
-    }
     private func establish(_ chosen: CBPeripheral) async throws -> String {
         if chosen === retiring { try await awaitRetired() }
         peripheral = chosen
@@ -154,7 +143,6 @@ struct VerifiedShowerDevice {
     func inspect(bleName: String, remembered: String?) async throws -> Int {
         try await prepare(bleName:bleName)
         try await scanTargets()
-        recordScan(remembered:remembered)
         return targets.count
     }
     func connect(bleName: String, machineID: String, required: String?, preferred: String?) async throws -> String {
@@ -171,9 +159,7 @@ struct VerifiedShowerDevice {
            let cached = manager.retrievePeripherals(withIdentifiers:[uuid]).first {
             targets.removeAll(); observedIDs.removeAll()
             do {
-                let id = try await establish(cached)
-                recordScan(remembered:remembered,scanSeconds:0,cachedPeripheral:true)
-                return id
+                return try await establish(cached)
             } catch {
                 await abandon(cached)
                 // Connecting by remembered CoreBluetooth ID is only a fast path. If it fails,
@@ -181,7 +167,6 @@ struct VerifiedShowerDevice {
             }
         }
         try await scanTargets()
-        recordScan(remembered:remembered)
         let id: String
         do {
             id = try ShowerTargetSelection.select(targets.keys.map(\.uuidString),required:required,preferred:preferred)
@@ -216,7 +201,6 @@ struct VerifiedShowerDevice {
         if let blocker = channel.blocker { throw ShowerCommandNotSent(blocker) }
         guard let peripheral, peripheral.state == .connected, let write else { throw ShowerCommandNotSent(.disconnected) }
         writeAcknowledged = false; writeErrorDomain = nil
-        ShowerDiagnosticReport.record("ble.write." + ShowerFrames.command(data).rawValue)
         var written = false
         do {
             try await wait("exchange", seconds: 8) { written = true; peripheral.writeValue(data, for: write, type: .withResponse) }
@@ -227,11 +211,9 @@ struct VerifiedShowerDevice {
             throw error
         }
         guard let frame = channel.take() else { throw ShowerDeviceError.malformedFrame }
-        ShowerDiagnosticReport.record("ble.reply.\(frame.count)")
         return frame
     }
     func disconnect() async {
-        ShowerDiagnosticReport.record("ble.disconnect")
         manager?.stopScan()
         complete(.failure(ShowerDeviceError.interrupted))
         if let peripheral {
@@ -268,7 +250,6 @@ struct VerifiedShowerDevice {
             retiring = nil
             if step == "disconnect" { complete(.success(())) }
         case .lost:
-            ShowerDiagnosticReport.record("ble.connectionLost." + (step ?? "idle"))
             complete(.failure(ShowerDeviceError.disconnected))
         case .unrelated: break
         }
