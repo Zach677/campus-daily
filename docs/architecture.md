@@ -572,7 +572,8 @@ Rules:
 - `creating` uncertain (or a success without a usable id) → `reconcile`: `scanWasherCode` of the
   same QR gives the account's unfinished `orderId`; adopt it only if `order(id)` matches machine +
   program, was created within 2 min of the local confirmation and is not above the confirmed
-  price. Never create a second one; if nothing matches the user checks the U净 app and clears.
+  price. Never create a second one; if nothing matches the user checks the U净 app and clears
+  (a confirmed 「我在 U净 看过了，没有订单 · 清除」 on the laundry page).
 - Payment: `payment/methods`, prefer `alipay`, then `alipayF2F` (`alipayF2FNoAds=true`); no
   WeChat and no automatic-debit channel. `paying` (with `paymentRequestedAt`) is persisted before
   `payment/arguments` is sent. The reply is launched only if `PaymentLaunchPolicy` accepts it:

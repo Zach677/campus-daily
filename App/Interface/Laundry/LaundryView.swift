@@ -343,7 +343,17 @@ struct LaundryDetail: View {
                 }
             }
         case .check(let failedStart):
-            DockBar { checkButton(facts, failedStart:failedStart) }
+            DockBar {
+                checkButton(facts, failedStart:failedStart)
+                // The create's result is unknown and the check found nothing: once the user has
+                // looked in the U净 app, the record can be cleared (it otherwise blocks laundry for good).
+                if facts.record?.canResolveManually == true {
+                    Button { sheet = .resolve } label: { DockRoundLabel(symbol:"xmark") }
+                        .buttonStyle(PressScaleStyle()).disabled(facts.busy)
+                        .accessibilityLabel("清除待核对的订单")
+                        .accessibilityIdentifier("resolveLaundryOrder")
+                }
+            }
         case .inUse, .unavailable:
             DockBar {
                 DockPillLabel(title:unavailableTitle(phase), style:.disabled)
@@ -430,6 +440,11 @@ struct LaundryDetail: View {
                 sheet = nil
                 cancel()
             }
+        case .resolve:
+            LaundryResolveSheet {
+                sheet = nil
+                Task { await laundry.resolveManually() }
+            }
         }
     }
 
@@ -479,10 +494,13 @@ enum LaundrySheet: Identifiable, Equatable {
     /// `program` for a new order; nil to pay the existing unpaid order.
     case confirm(program: WasherProgram?, newOrder: Bool)
     case cancel
+    /// Clear an order whose creation was never confirmed (reconcile).
+    case resolve
     var id: String {
         switch self {
         case .confirm(let program, let newOrder): return "confirm-\(newOrder)-\(program?.id ?? -1)"
         case .cancel: return "cancel"
+        case .resolve: return "resolve"
         }
     }
     static func == (a: LaundrySheet, b: LaundrySheet) -> Bool { a.id == b.id }
@@ -644,6 +662,30 @@ private struct LaundryCancelSheet: View {
                 .buttonStyle(PressScaleStyle()).disabled(submitted)
                 .padding(.top,24)
                 .accessibilityIdentifier("confirmCancelLaundryOrder")
+            Button { dismiss() } label: {
+                Text("留着").scaledFont(17, .medium).foregroundStyle(Theme.ink2)
+                    .frame(maxWidth:.infinity).frame(minHeight:50).contentShape(Rectangle())
+            }.buttonStyle(RowPressStyle())
+        }
+    }
+}
+
+/// Clearing a record whose order U净 never showed: only after the user looked in the U净 app.
+private struct LaundryResolveSheet: View {
+    let confirm: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var submitted = false
+    var body: some View {
+        LaundrySheetBody(height:300) {
+            Text("清除这笔待核对的订单？").scaledFont(24, .bold, relativeTo:.title2).foregroundStyle(Theme.ink)
+                .fixedSize(horizontal:false, vertical:true)
+            Text("先去 U净 App 的订单里看看。没有这笔订单再清除；有的话，在 U净 App 里处理。")
+                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).lineSpacing(4)
+                .fixedSize(horizontal:false, vertical:true).padding(.top,14)
+            Button { submitted = true; confirm() } label: { DockPillLabel(title:"我在 U净 看过了，没有订单 · 清除", style:.destructive) }
+                .buttonStyle(PressScaleStyle()).disabled(submitted)
+                .padding(.top,24)
+                .accessibilityIdentifier("confirmResolveLaundryOrder")
             Button { dismiss() } label: {
                 Text("留着").scaledFont(17, .medium).foregroundStyle(Theme.ink2)
                     .frame(maxWidth:.infinity).frame(minHeight:50).contentShape(Rectangle())
