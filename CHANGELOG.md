@@ -40,6 +40,7 @@
 - Fold the release notes from `docs/release-*.md` into this file.
 - Upgrade note: if you built the app from source with your own `APP_BUNDLE_IDENTIFIER` before this version, you are signed out of the school account once after upgrading and need to type the saved password again; builds with the default bundle id are not affected.
 - Hide the guide card on 常用洗衣机 once signed in to U净 with a machine saved, and take 「更新 U净 登录」 out of it.
+- Show Settings › 版本 as 「0.8.0 Beta（48）」 on TestFlight and development builds and 「0.8.0（48）」 from the App Store, instead of 「0.8.0（48）· 测试版」 everywhere.
 
 ### Fixed
 
