@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// 2.7, the bottom inset: the phase's primary button (his blue `ShowerButtonStyle`), a text
+/// 2.7, the bottom inset: the phase's primary button (`ClearShowerButtonStyle`), a text
 /// button under it where the phase has one, then a centered footnote.
 ///
 /// Buttons that end the page send their page event first, then `dismiss()`: the root takes a pop
@@ -103,7 +103,8 @@ struct ClearShowerDock: View {
                          action: @escaping () -> Void) -> some View {
         Button(action:action) {
             HStack {
-                if spinning { ProgressView().tint(Theme.pillInk).controlSize(.small) }
+                // Tinted by the style: white on blue, grey while disabled.
+                if spinning { ProgressView().controlSize(.small) }
                 Text(title)
                 Spacer()
                 if let symbol { Image(systemName:symbol).accessibilityHidden(true) }
@@ -111,7 +112,7 @@ struct ClearShowerDock: View {
             .padding(.horizontal,18).frame(minHeight:52)
             .contentShape(Rectangle())
         }
-        .buttonStyle(ShowerButtonStyle(primary:true, accent:NativeTheme.tint))
+        .buttonStyle(ClearShowerButtonStyle())
         .disabled(!enabled)
     }
 
