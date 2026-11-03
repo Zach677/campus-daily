@@ -6,6 +6,8 @@
 
 ### Added
 
+- Add 「U净 账号」 at the bottom of 常用洗衣机 while signed in to U净: the phone number as 138****5678 and 「退出 U净」 behind 「退出 U净？」. Signing out keeps the saved machines. While a laundry order is unfinished the button is greyed out with 「还有一笔洗衣订单没处理完，处理完才能退出。」.
+- Say 「U净 登录过期了。」 with a 「重新登录 U净」 button on the laundry page (both themes) and on 常用洗衣机 when U净 says the login ran out, on a machine read or an order step.
 - Add Settings › 外观 › 主题 with two themes: 暖橙 (the current look, the default) and 清爽 (blue and white on the system grouped look, with the 0.8.0 page layout). Both themes run on the same logic; only the pages differ. A tap switches at once and returns to home; the home-screen widget follows at its next reload and the Live Activities at their next update. While a shower is under way (from 开始洗澡, while it connects and authorizes, until the settlement) or a laundry order is unfinished the options are greyed out with the reason above the footer, and they grey out as soon as one starts with the page open.
 - In 清爽, the app opens on three tabs, 日常, 记录 and 设置. 日常 shows 电量和校园卡 with 充电费 › and 充校园卡 ›, the 热水洗澡 and 洗衣 tiles, 继续设置 until first-run setup is done, and as many 最近 rows as fit; on short screens it drops the room line, then the large title, then tightens its cards, so it never scrolls below accessibility text sizes. 热水洗澡 and 洗衣 are pages pushed from their tiles with the main button at the bottom; while the shower connects, settles or waits for a check the page hides its back button and the tab bar. 记录 lists what is still open, then the card's records by day. 设置 opens with 首次设置 and holds 快捷指令 and the version. First-run setup is a checklist (学校账号, 宿舍, 学校洗衣机, 水控) whose button names the next row.
 
@@ -37,6 +39,7 @@
 - Name the hot-water feature "Shower" throughout the code. User-facing text is unchanged.
 - Fold the release notes from `docs/release-*.md` into this file.
 - Upgrade note: if you built the app from source with your own `APP_BUNDLE_IDENTIFIER` before this version, you are signed out of the school account once after upgrading and need to type the saved password again; builds with the default bundle id are not affected.
+- Hide the guide card on 常用洗衣机 once signed in to U净 with a machine saved, and take 「更新 U净 登录」 out of it.
 
 ### Fixed
 

@@ -6,6 +6,10 @@ import Core
 
 struct WasherSetupView: View {
     @EnvironmentObject private var laundry: LaundryModel
+    #if DEBUG
+    /// campusdaily://demo/washer/...: synthetic account and machines; nothing is changed.
+    var preview: WasherSetupDemo?
+    #endif
     @State private var camera = false
     @State private var photoPicker = false
     @State private var photo: PhotosPickerItem?
@@ -18,28 +22,58 @@ struct WasherSetupView: View {
     /// What was tapped while signed out: opened once the U净 login goes through.
     @State private var pending: WasherSetupFlow.Method?
 
+    private var signedIn: Bool {
+        #if DEBUG
+        if let preview { return preview.signedIn }
+        #endif
+        return laundry.accountConnected
+    }
+    private var machines: [SavedWasher] {
+        #if DEBUG
+        if let preview { return preview.machines }
+        #endif
+        return laundry.savedMachines
+    }
+    private var selectedID: String? {
+        #if DEBUG
+        if let preview { return preview.machines.first?.id }
+        #endif
+        return laundry.selectedMachineID
+    }
     private var addDisabled: Bool { WasherSetupFlow.addDisabled(mayImport:laundry.mayImport, busy:photoBusy) }
+    private var isPreview: Bool {
+        #if DEBUG
+        preview != nil
+        #else
+        false
+        #endif
+    }
+
     var body: some View {
         Form {
-            Section {
-                Text(laundry.accountConnected ? "下一步：扫描机身二维码" : "第一步：用手机号登录 U净")
-                    .font(.headline)
-                Text(laundry.accountConnected ? "机器名称会自动填写，核对后点保存即可。" : "收到验证码后登录，再扫一次二维码，以后就能直接找到机器。")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Button(laundry.accountConnected ? "更新 U净 登录" : "登录 U净") { pending = nil; login = true }
-                    .disabled(!laundry.mayLogin).accessibilityIdentifier("ujingLoginEntry")
+            if let guide = WasherSetupGuide.card(signedIn:signedIn, hasSavedMachine:!machines.isEmpty) {
+                Section {
+                    Text(guide == .signIn ? "第一步：用手机号登录 U净" : "下一步：扫描机身二维码")
+                        .font(.headline)
+                    Text(guide == .signIn ? "收到验证码后登录，再扫一次二维码，以后就能直接找到机器。" : "机器名称会自动填写，核对后点保存即可。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if guide == .signIn {
+                        Button("登录 U净") { pending = nil; login = true }
+                            .disabled(!laundry.mayLogin).accessibilityIdentifier("ujingLoginEntry")
+                    }
+                }
             }
             Section("常用洗衣机") {
-                ForEach(laundry.savedMachines) { item in
+                ForEach(machines) { item in
                     Button { choose(item) } label: {
                         HStack {
                             Label(item.name,systemImage:"washer")
                             Spacer()
-                            if laundry.selectedMachineID == item.id { Image(systemName:"checkmark").accessibilityLabel("当前机器") }
+                            if selectedID == item.id { Image(systemName:"checkmark").accessibilityLabel("当前机器") }
                         }
                     }.disabled(!laundry.mayImport).accessibilityIdentifier("savedWasher-" + item.id)
                 }
-                if laundry.savedMachines.isEmpty { Text("扫一次机身二维码，即可保存常用机器").foregroundStyle(.secondary) }
+                if machines.isEmpty { Text("扫一次机身二维码，即可保存常用机器").foregroundStyle(.secondary) }
             }
             Section {
                 if DataScannerViewController.isSupported {
@@ -62,7 +96,16 @@ struct WasherSetupView: View {
                         .accessibilityIdentifier("saveScannedWasher")
                 }
             }
-            if let text = issue ?? laundry.issue { Section { Text(text).font(.footnote).foregroundStyle(NativeTheme.notice) } }
+            if let text = issue ?? laundry.issue {
+                Section {
+                    Text(text).font(.footnote).foregroundStyle(NativeTheme.notice)
+                    if laundry.sessionExpired && !isPreview {
+                        Button(UjingAccountText.relogin) { pending = nil; login = true }
+                            .disabled(!laundry.mayLogin).accessibilityIdentifier("ujingRelogin")
+                    }
+                }
+            }
+            if signedIn { accountSection }
         }.scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
             .navigationTitle("常用洗衣机").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented:$login, onDismiss:continueAfterLogin) { UjingLoginView() }
@@ -95,9 +138,22 @@ struct WasherSetupView: View {
             .onDisappear { photoTask?.cancel(); photoTask = nil }
     }
 
+    @ViewBuilder private var accountSection: some View {
+        #if DEBUG
+        if let preview {
+            UjingAccountSection(mobile:preview.mobile, refusal:preview.orderOpen ? .orderOpen : nil, signOut:{})
+        } else {
+            UjingAccountSection(mobile:laundry.ujingMobile, refusal:laundry.signOutRefusal, signOut:laundry.signOut)
+        }
+        #else
+        UjingAccountSection(mobile:laundry.ujingMobile, refusal:laundry.signOutRefusal, signOut:laundry.signOut)
+        #endif
+    }
+
     /// 扫描机身二维码 / 从照片识别. Signed out: the U净 login first, then straight on.
     private func add(_ method: WasherSetupFlow.Method) {
-        switch WasherSetupFlow.tap(method, signedIn:laundry.accountConnected) {
+        if isPreview { return }
+        switch WasherSetupFlow.tap(method, signedIn:signedIn) {
         case .open(let method): open(method)
         case .signIn(let then): pending = then; login = true
         }
@@ -118,6 +174,7 @@ struct WasherSetupView: View {
     }
 
     private func choose(_ item: SavedWasher) {
+        if isPreview { return }
         do { try laundry.selectMachine(item); issue = nil; Task { await laundry.refresh(force:true) } }
         catch { issue = Self.text(error) }
     }

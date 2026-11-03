@@ -237,7 +237,12 @@ extension HomeView {
             #else
             LaundryDetail()
             #endif
-        case .washerSetup: WasherSetupView()
+        case .washerSetup:
+            #if DEBUG
+            WasherSetupView(preview:washerDemo)
+            #else
+            WasherSetupView()
+            #endif
         case .records:
             #if DEBUG
             CardRecordsView(app:recordsDemo?.app() ?? data.recentActivities, source:recordsDemo?.source ?? .live)
