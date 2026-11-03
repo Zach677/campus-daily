@@ -257,7 +257,7 @@ struct ShowerPageView: View {
                     bodyText(ShowerPageText.deniedBody)
                 }
             case .unsure:
-                icon("questionmark.circle", Theme.accentText)
+                icon("questionmark.circle", Theme.notice)
                 if let copy = page?.authorizeUnclear {
                     // Nothing reached the controller: no settlement to talk about.
                     title(copy.title)
@@ -270,7 +270,7 @@ struct ShowerPageView: View {
                 if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
                 if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }
             case .needsCheck:
-                icon("questionmark.circle", Theme.accentText)
+                icon("questionmark.circle", Theme.notice)
                 title(ShowerPageText.check)
                 bodyText(ShowerPageText.checkBody)
                 ShowerRecheckRow().padding(.top,18)
@@ -342,7 +342,7 @@ struct ShowerPageView: View {
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal:false, vertical:true)
                     }
-                    .foregroundStyle(Theme.accentText)
+                    .foregroundStyle(Theme.notice)
                     // From the capsule's left edge across its width, 12 pt above it.
                     .frame(maxWidth:.infinity, alignment:.leading)
                     .padding(.bottom,6)

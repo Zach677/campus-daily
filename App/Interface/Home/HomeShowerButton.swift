@@ -35,7 +35,7 @@ struct HomeShowerButton: View {
             if let caption {
                 Text(caption.text)
                     .scaledFont(13, relativeTo:.footnote)
-                    .foregroundStyle(caption.accent ? Theme.accentText : Theme.ink2)
+                    .foregroundStyle(caption.notice ? Theme.notice : Theme.ink2)
                     .multilineTextAlignment(.center)
                     // The school's own words can be long: two lines on home, the whole text
                     // on the shower page (and to VoiceOver, below).
@@ -105,7 +105,7 @@ struct HomeShowerButton: View {
         }
     }
 
-    private var caption: (text: String, accent: Bool)? {
+    private var caption: (text: String, notice: Bool)? {
         switch kind {
         case .start(let caption?): return (caption, false)
         case .showering(_, let caption): return (caption, false)

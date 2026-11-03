@@ -108,7 +108,7 @@ struct HomeDuoColumn: View {
                 } else if let subline = figure.subline {
                     Text(subline.text)
                         .scaledFont(13, relativeTo:.footnote)
-                        .foregroundStyle(figure.low ? Theme.redText : subline == .meterNotFound ? Theme.accentText : Theme.ink2)
+                        .foregroundStyle(figure.low ? Theme.redText : subline == .meterNotFound ? Theme.notice : Theme.ink2)
                         .fixedSize(horizontal:false, vertical:true)
                         .padding(.top,4)
                 }

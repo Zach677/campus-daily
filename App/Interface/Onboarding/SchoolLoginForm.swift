@@ -109,7 +109,7 @@ struct SchoolLoginForm: View {
                 Label { Text(message).fixedSize(horizontal:false, vertical:true) } icon: {
                     Image(systemName:"exclamationmark.circle.fill").font(.system(size:17))
                 }
-                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.notice)
                 .padding(.top,14)
                 .accessibilityIdentifier("loginIssue")
             }

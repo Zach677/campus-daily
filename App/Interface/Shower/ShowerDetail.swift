@@ -107,7 +107,7 @@ struct ShowerDetail: View {
     /// running again is the only way back to the shower page.
     private var checkBlock: some View {
         VStack(alignment:.leading, spacing:0) {
-            Image(systemName:"questionmark.circle").font(.system(size:34)).foregroundStyle(Theme.accentText)
+            Image(systemName:"questionmark.circle").font(.system(size:34)).foregroundStyle(Theme.notice)
                 .accessibilityHidden(true).padding(.bottom,14)
             Text(ShowerPageText.check).scaledFont(28, .bold, relativeTo:.title).foregroundStyle(Theme.ink)
                 .fixedSize(horizontal:false, vertical:true).accessibilityAddTraits(.isHeader)

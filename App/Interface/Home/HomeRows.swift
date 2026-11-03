@@ -5,7 +5,7 @@ import Core
 enum RowValue: Equatable {
     case number(String, unit: String?, low: Bool)
     case word(String)
-    /// Needs attention but isn't "running out": accentText.
+    /// Needs attention but isn't "running out": `notice`.
     case accentWord(String)
     /// Laundry running: 「还剩」 + minutes + 「分钟」, same anatomy as 电量. Ticks each minute.
     case countdown(end: Date)
@@ -71,7 +71,7 @@ struct StatusRow: View {
         case .word(let word)?:
             Text(word).scaledFont(17, .medium).foregroundStyle(Theme.ink2)
         case .accentWord(let word)?:
-            Text(word).scaledFont(17, .medium).foregroundStyle(Theme.accentText)
+            Text(word).scaledFont(17, .medium).foregroundStyle(Theme.notice)
         case .countdown(let end)?:
             TimelineView(minuteSchedule(to:end)) { context in
                 HStack(alignment:.firstTextBaseline, spacing:0) {
@@ -98,7 +98,7 @@ struct StatusRow: View {
 /// 「最近」 row: min height 56, icon 20, 16pt text.
 struct RecentRow: View {
     let item: RecentItem
-    /// Replaces the amount with an accentText word (laundry 「待核对」).
+    /// Replaces the amount with a `notice` word (laundry 「待核对」).
     var accentWord: String? = nil
     /// Under a day header (校园卡记录): the time alone, 「12:05 · 示例面馆」.
     var clockOnly = false
@@ -130,7 +130,7 @@ struct RecentRow: View {
     }
     @ViewBuilder private var amountView: some View {
         if let accentWord {
-            Text(accentWord).scaledFont(17, .medium).foregroundStyle(Theme.accentText)
+            Text(accentWord).scaledFont(17, .medium).foregroundStyle(Theme.notice)
         } else if let amount = item.amountText {
             Text(amount).scaledFont(16, .medium, relativeTo:.callout).monospacedDigit().foregroundStyle(Theme.ink)
                 .lineLimit(1).minimumScaleFactor(0.7)

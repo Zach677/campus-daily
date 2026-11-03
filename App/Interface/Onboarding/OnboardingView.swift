@@ -284,7 +284,7 @@ struct OnboardingView: View {
         if let waterBlocked, !waterChecking {
             Label { Text(waterBlocked).scaledFont(15, relativeTo:.subheadline) }
                 icon: { Image(systemName:"info.circle").font(.system(size:17)) }
-                .foregroundStyle(Theme.accentText)
+                .foregroundStyle(Theme.notice)
                 .fixedSize(horizontal:false, vertical:true)
         } else if waterChecking {
             HStack(spacing:10) {
@@ -298,7 +298,7 @@ struct OnboardingView: View {
             } else {
                 Label { Text(Self.waterText(outcome)).scaledFont(15, relativeTo:.subheadline) }
                     icon: { Image(systemName:"exclamationmark.circle.fill").font(.system(size:17)) }
-                    .foregroundStyle(Theme.accentText)
+                    .foregroundStyle(Theme.notice)
                     .fixedSize(horizontal:false, vertical:true)
             }
         }
