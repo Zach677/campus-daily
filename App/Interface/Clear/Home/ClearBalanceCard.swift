@@ -5,13 +5,15 @@ import Core
 /// 「电表 ›」 to the meter page, and the update line at the bottom. Only the links are buttons.
 struct ClearBalanceCard: View {
     let data: HomeData
+    /// Short screens (`HomeCompaction.tightCards`): the numbers 6 under the header row, not 16.
+    var tight = false
     @Environment(ClearNavigator.self) private var navigator
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let now = Date()
         VStack(alignment:.leading, spacing:8) {
-            VStack(alignment:.leading, spacing:16) {
+            VStack(alignment:.leading, spacing:tight ? 6 : 16) {
                 header
                 if typeSize.isAccessibilitySize {
                     VStack(alignment:.leading, spacing:16) { powerColumn(now); Divider(); cardColumn(now) }
