@@ -289,7 +289,8 @@ struct PowerChoice: Identifiable, Equatable {
 
     /// 保存密码 off: the password goes; the account stays for display. Written inside the lease
     /// file's lock, so a widget refresh that read the account before can't write the password
-    /// back. A failed write is thrown: the switch shows it.
+    /// back. A failed write, or a lease file that can't be locked, is thrown with the password
+    /// still stored: the switch reads it back (on) and says it wasn't turned off.
     func forgetPassword() async throws {
         defer { reload() }
         try await session.forgetPassword(lockingWith:refresher.lease)

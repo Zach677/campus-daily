@@ -284,8 +284,8 @@ the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
   process can't take the lease or store its own value in between; the step is synchronous (a
   Keychain write), with no `await` inside the lock;
 - every other write of the card session, portal token, saved account or login device id goes the
-  same way: the app's logins (the form, 保存密码 / 重新输入密码, the web sign-in, the second 保存密码
-  off-write) through `holdingLease`'s `owning`, and the refresh's saved-password login (its hold,
+  same way: the app's logins (the form, 保存密码 / 重新输入密码, the web sign-in) through
+  `holdingLease`'s `owning`, and the refresh's saved-password login (its hold,
   its pause, the portal token it brings back). A login compares the stored session, portal token
   and account with the ones it started from and writes everything in that one step; lost lease or
   changed credentials (the app was suspended past the lease and the widget stored newer ones),
@@ -298,7 +298,9 @@ the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
   other write, and the hold stays. Only deletions skip the lease check: sign-out and
   reset remove the lease first (below), and 保存密码 off removes the password inside the lease
   file's lock without taking the lease (`RefreshLease.locked`), so a refresh's compare-and-write
-  of the account never straddles it;
+  of the account never straddles it. A lease file that can't be opened or locked (before the
+  first unlock) fails the off instead: the password stays, 学校账号 says
+  「密码还存着，没关掉。再试一次。」 and the switch shows on;
 - each `holdingLease` call (a login, 保存密码, recharge, the hot-water hand-off) takes the lease
   under its own owner (the process's owner plus `-login-` and a random UUID): two of them at once
   (the login sheet closed and submitted again) take turns like the two processes, and the first
@@ -716,8 +718,13 @@ private group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER)` (`AppIdentity.key
 then the shared group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER).shared`
 Widget.entitlements lists only the shared group. Order matters:
 iOS puts an item written without a group into the first listed group, and the code takes the
-groups from that default group (`SharedKeychain.sharedGroup(defaultGroup:inExtension:)`): the
-app's shared group is its default plus `.shared`, the widget's is its default itself. Items marked "yes" are
+groups from that default group (`SharedKeychain.sharedGroup(defaultGroup:inExtension:bundleID:)`): the
+app's shared group is its default plus `.shared`, the widget's is its default itself. A re-signer
+that grants a wildcard (`TEAM.*`) makes each default group the process's own bundle id; the
+widget's default then doesn't end in `.shared`, and it uses `TEAM.<bundle id without
+.balances>.shared`, the app's (a signature that doesn't allow it falls back to no group). The
+first probe of the default group (a throwaway item deleted and added again) is serialised, so two
+first uses at once can't make one of them fail. Items marked "yes" are
 written to the shared group; all others are written to the private group, which the widget is
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
 registration. The widget reads the school items above for its own refresh, and `shared.snapshot`,
@@ -729,8 +736,10 @@ token (then WhenUnlocked) and the login device id in the private group. At launc
 with today's accessibility, read back, and only then deleted from the old group; a failed step
 keeps the original and retries next launch, so nobody is signed out or loses a binding. The App
 Group (`group.$(APP_BUNDLE_IDENTIFIER)`, both targets) holds only the lease file; a re-signed
-build without it keeps working: the app reads, signs in and recharges without the lease, and the
-widget leaves every refresh to the app, so the two never read at once. Live Activities get data via ActivityKit content
+build without it keeps working: the app keeps its lease file in its own container
+(`RefreshLease.appFile`, Application Support, excluded from backup), so its reads, logins,
+recharge and hot-water hand-off still take turns, and the widget, which can't open that file,
+leaves every refresh to the app, so the two never read at once. Live Activities get data via ActivityKit content
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.
 

@@ -463,6 +463,47 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertNil(widget.privateGroup)
     }
 
+    /// Re-signed with a wildcard keychain entitlement (`TEAM.*`): each process's default group
+    /// is its own bundle id, so the widget's is `TEAM.<app id>.balances`. It then uses the
+    /// app's shared group, `TEAM.<app id>.shared`, as the app does, so the two still meet.
+    /// A default group that is already a shared one is used as it is.
+    func testAWildcardReSignedWidgetUsesTheAppsSharedGroup() {
+        let wildcard = "TEAMID1234.org.example.daily.balances"
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: wildcard, inExtension: true, bundleID: "org.example.daily.balances"),
+                       "TEAMID1234.org.example.daily.shared")
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: "TEAMID1234.org.example.daily", inExtension: false, bundleID: "org.example.daily"),
+                       "TEAMID1234.org.example.daily.shared", "the app's, for comparison")
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: group, inExtension: true, bundleID: "org.example.daily.balances"), group,
+                       "explicit groups: the widget's default is the shared one")
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: wildcard, inExtension: true, bundleID: nil), wildcard,
+                       "no bundle id to go by: the default group")
+        let widget = KeychainGroupProbe(inExtension: true, bundleID: "org.example.daily.balances") { wildcard }
+        XCTAssertEqual(widget.sharedGroup, "TEAMID1234.org.example.daily.shared")
+        XCTAssertNil(widget.privateGroup)
+    }
+
+    /// Two first uses at the same moment: one probe runs (its delete and add are never
+    /// interleaved with another's, which would fail the second add as a duplicate), and both
+    /// get its answer.
+    func testConcurrentFirstUsesProbeOnce() {
+        let running = Counter(), overlapped = Counter(), calls = Counter()
+        let probe = KeychainGroupProbe(inExtension: false, bundleID: nil) {
+            calls.bump(); running.bump()
+            if running.value > 1 { overlapped.bump() }
+            Thread.sleep(forTimeInterval: 0.05)
+            running.drop()
+            return FakeKeychain.app
+        }
+        let answers = OSAllocatedUnfairLock<[String?]>(initialState: [])
+        DispatchQueue.concurrentPerform(iterations: 8) { _ in
+            let found = probe.defaultGroup
+            answers.withLock { $0.append(found) }
+        }
+        XCTAssertEqual(overlapped.value, 0, "no two probes at once")
+        XCTAssertEqual(calls.value, 1, "the first answer is kept for the others")
+        XCTAssertEqual(answers.withLock { $0 }, Array(repeating: FakeKeychain.app, count: 8))
+    }
+
     func testReadErrorsThrow() {
         let kc = FakeKeychain()
         kc.readStatus = -25308 // errSecInteractionNotAllowed (locked device)
@@ -515,6 +556,7 @@ final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var n = 0
     func bump() { lock.withLock { n += 1 } }
+    func drop() { lock.withLock { n -= 1 } }
     var value: Int { lock.withLock { n } }
 }
 

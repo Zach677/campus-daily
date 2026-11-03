@@ -62,6 +62,17 @@ final class RefreshLeaseTests: XCTestCase {
         XCTAssertEqual(try RefreshLease(file: nil, owner: "app-2").locked { 8 }, 8)
     }
 
+    /// A lease file is configured but can't be opened (protected before the first unlock): the
+    /// locked step does not run its body unlocked; it throws, and nothing ran. Only a lease
+    /// with no file at all runs it as it is.
+    func testALockedStepThatCannotTakeTheLockDoesNotRun() {
+        let missing = FileManager.default.temporaryDirectory.appendingPathComponent("no-such-dir-\(UUID().uuidString)/lease")
+        var ran = false
+        XCTAssertThrowsError(try RefreshLease(file: LeaseFile(url: missing), owner: "app-1", now: clock.function).locked { ran = true })
+        XCTAssertFalse(ran, "the body never ran without the lock")
+        XCTAssertEqual(try RefreshLease(file: nil, owner: "app-2").locked { 8 }, 8)
+    }
+
     /// Sign-out from the app while the widget is inside a lease step: the wait for the file
     /// lock happens off the main thread, so the screen keeps responding until it is free.
     @MainActor func testRevokingTheLeaseWaitsForTheLockOffTheMainThread() async throws {
@@ -357,6 +368,24 @@ final class LeaseRenewRaceTests: XCTestCase {
         XCTAssertTrue(appTook != widgetTook, "exactly one holder (app \(appTook), widget \(widgetTook))")
         XCTAssertEqual(app.holds(), appTook)
         XCTAssertEqual(widget.holds(), widgetTook)
+    }
+
+    /// A locked step (保存密码 off) holds the file lock from its read to the end of its body:
+    /// the other process can neither take the free lease nor clear it while the body runs,
+    /// and can again once it ended.
+    func testALockedStepKeepsTheOtherProcessOutWhileItsBodyRuns() throws {
+        let app = hooked("app-1"), widget = other("widget-1")
+        var read = false
+        hook.set { read = true }
+        try app.locked {
+            XCTAssertTrue(read, "the body runs after the locked read")
+            XCTAssertTrue(self.lockIsHeld())
+            XCTAssertFalse(widget.tryAcquire(), "the lease can't be taken while the body runs")
+            XCTAssertFalse(widget.tryClear(), "nor cleared")
+        }
+        XCTAssertNil(LeaseFile(url: url).storedOwner(), "the step left the lease as it was")
+        XCTAssertTrue(widget.tryAcquire(), "free again once the body ended")
+        XCTAssertTrue(widget.tryClear())
     }
 
     /// The holder's lease runs out between its renewal's read and its write, and the other

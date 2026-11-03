@@ -60,7 +60,8 @@ extension SchoolSession {
     /// written inside the lease file's lock (`RefreshLease.locked`, whoever holds the lease), so
     /// it never lands between a refresh's compare and write of the saved account: that refresh's
     /// write-back then finds another password and leaves the account alone. Never waits for the
-    /// lease itself, so a refresh running elsewhere doesn't make it fail.
+    /// lease itself, so a refresh running elsewhere doesn't make it fail. A lease file that
+    /// can't be locked (before the first unlock) throws and leaves the password stored.
     public func forgetPassword(lockingWith lease: RefreshLease?) throws {
         let vault = vault
         let forget = {

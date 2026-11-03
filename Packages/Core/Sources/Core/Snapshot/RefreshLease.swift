@@ -135,15 +135,24 @@ public struct RefreshLease: Sendable {
 
     /// `body` inside the file's lock, whoever holds the lease; the lease itself is left as it is.
     /// For a write that needs no lease of its own but must not land between another owner's
-    /// compare and write (保存密码 off). Without a usable file `body` just runs. What `body`
-    /// throws is rethrown.
+    /// compare and write (保存密码 off). Only a lease with no file at all (a build with no
+    /// container for it) runs `body` as it is. A file that can't be opened, locked or read
+    /// (protected before the first unlock) throws that error and `body` does not run: unlocked,
+    /// it could land between the other process's compare and write. What `body` throws is
+    /// rethrown; once `body` ran, its result stands even if the file could not be written after.
     public func locked<T>(_ body: () throws -> T) throws -> T {
+        guard let file else { return try body() }
         var ran: Result<T, Error>?
-        _ = update { current -> (Record?, Void) in
-            ran = Result { try body() }
-            return (current, ())
+        do {
+            _ = try file.update { current -> (RefreshLease.Record?, Void) in
+                ran = Result { try body() }
+                return (current, ())
+            }
+        } catch {
+            guard ran != nil else { throw error }
         }
-        return try (ran ?? Result { try body() }).get()
+        guard let ran else { throw LeaseFile.Failure(step: "lock", code: EIO) }
+        return try ran.get()
     }
 
     /// `acquire()` without waiting for the lock: false while another step holds it. Tests use it

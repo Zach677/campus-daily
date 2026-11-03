@@ -156,6 +156,19 @@ final class SchoolPasswordSignInTests: XCTestCase {
         XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
     }
 
+    /// 保存密码 off when the lease file is there but can't be locked (protected before the
+    /// first unlock): the off is refused, not written outside the lock, and the password stays,
+    /// so the switch can show it is still on.
+    func testForgetFailsWhenTheLockCannotBeTaken() async throws {
+        let h = harness(FakePasswordLogin())
+        try h.signedIn()
+        try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        let missing = FileManager.default.temporaryDirectory.appendingPathComponent("no-such-dir-\(UUID().uuidString)/lease")
+        let app = RefreshLease(file: LeaseFile(url: missing), owner: "app-1")
+        do { try await h.session().forgetPassword(lockingWith: app); XCTFail("written without the lock") } catch {}
+        XCTAssertEqual(try h.vault.account()?.password, "synthetic-pw-991")
+    }
+
     // MARK: Refresh ladder
 
     func testExpiredCardAndPortalTokenSignInWithTheSavedPassword() async throws {

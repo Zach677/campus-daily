@@ -13,6 +13,8 @@ enum AccountText {
     static let notSavedFooter = "不保存的话，过几个小时小组件就要打开 App 才能更新。"
     static let pausedRefused = "存的密码登录不上，自动登录先停了。可能是在学校那边改过密码，重新输入就能恢复。"
     static let signOutFailed = "退出没完成，再试一次。"
+    /// 保存密码 off didn't go through (the Keychain or the lease file couldn't be written yet).
+    static let forgetFailed = "密码还存着，没关掉。再试一次。"
     /// The hold: the school never answered the last login, or answered it and then failed a later step.
     static let pausedNoAnswer = "上次登录学校没走完，自动登录先停一会儿，免得反复发密码，过几个小时会自己再试。"
 
@@ -83,9 +85,10 @@ struct AccountView: View {
                 previewSaved = false
             } else {
                 Task {
-                    // Not stored as asked (the Keychain refused, or an update held the lease):
-                    // the switch shows what is stored, and this says why.
-                    do { try await campus.forgetPassword() } catch { saveIssue = SchoolLoginText.text(error) }
+                    // Not removed (the Keychain or the lease file refused, before the first
+                    // unlock say): the password is still stored, so the switch reads it back
+                    // and shows on again, and this says so.
+                    do { try await campus.forgetPassword() } catch { saveIssue = AccountText.forgetFailed }
                 }
             }
         })
