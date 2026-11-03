@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Core
 
-/// 高级: config imports, Bluetooth connection check, Shortcuts hint, version, reset.
+/// 高级: config imports, Bluetooth connection check, Shortcuts hint, version (both in 暖橙 only), reset.
 struct AdvancedSettingsView: View {
     #if DEBUG
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
@@ -76,10 +76,13 @@ struct AdvancedSettingsView: View {
             #else
             ShowerTroubleshootingSections()
             #endif
-            ShortcutsSection()
-            Section {
-                VersionRow()
-            }.listRowBackground(Theme.group)
+            if Theme.current != .clear {
+                // 清爽's 设置 tab shows these two itself.
+                ShortcutsSection()
+                Section {
+                    VersionRow()
+                }.listRowBackground(Theme.group)
+            }
             resetSection
         }
         .listStyle(.insetGrouped)
