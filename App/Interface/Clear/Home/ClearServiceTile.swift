@@ -23,7 +23,8 @@ struct ClearServiceTile<Status: View>: View {
                 }
                 Spacer(minLength:0)
                 HStack(alignment:.firstTextBaseline, spacing:6) {
-                    status.font(.caption).fixedSize(horizontal:false, vertical:true)
+                    // First claim on the width, before the spacer: the longest form that fits.
+                    status.font(.caption).fixedSize(horizontal:false, vertical:true).layoutPriority(1)
                     Spacer(minLength:0)
                     Image(systemName:"arrow.up.right").font(.caption).foregroundStyle(Theme.accentText).accessibilityHidden(true)
                 }

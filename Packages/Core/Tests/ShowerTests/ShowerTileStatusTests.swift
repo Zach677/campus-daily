@@ -9,15 +9,16 @@ final class ShowerTileStatusTests: XCTestCase {
     }
 
     func testIdleShowsTheLastShower() {
-        XCTAssertEqual(status(.idle), ShowerTileStatus(text: "上次 11 分钟 · ¥1.32"))
-        XCTAssertEqual(status(.idle, cost: nil).text, "上次 11 分钟")
+        XCTAssertEqual(status(.idle), ShowerTileStatus(text: "上次 11 分钟 · ¥1.32", shorter: ["11 分钟 · ¥1.32", "¥1.32"]))
+        XCTAssertEqual(status(.idle, cost: nil).forms, ["上次 11 分钟", "11 分钟"])
         XCTAssertEqual(status(.idle, minutes: nil).text, "")
-        XCTAssertEqual(status(.idle, issue: "没连上水控").text, "没连上水控", "the last start's problem wins")
+        XCTAssertEqual(status(.idle, issue: "没连上水控").forms, ["没连上水控"], "the last start's problem wins, with no shorter form")
     }
 
     func testRunningStates() {
         let start = Date(timeIntervalSince1970: 1000)
-        XCTAssertEqual(status(.showering(start)), ShowerTileStatus(text: "正在洗澡", tone: .accent, timerStart: start))
+        XCTAssertEqual(status(.showering(start)), ShowerTileStatus(text: "正在洗澡", tone: .accent, timerStart: start,
+                                                                shorter: [""]), "shorter: the timer alone")
         XCTAssertEqual(status(.settling(start)).text, "正在结算…")
         XCTAssertNil(status(.settling(start)).timerStart)
         XCTAssertEqual(status(.starting).text, "正在连接水控…")

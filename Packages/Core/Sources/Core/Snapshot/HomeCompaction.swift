@@ -13,12 +13,15 @@ public enum HomeCompaction: Int, Sendable, CaseIterable, Comparable {
     case inlineTitle = 2
     /// The tiles' padding and spacing and the balance card's header gap are tightened.
     case tightCards = 3
+    /// 「继续设置」 drops its small line and keeps its title and chevron (VoiceOver still reads both).
+    case setupTitleOnly = 4
 
     public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 
     public var hidesRoomLine: Bool { self >= .noRoomLine }
     public var usesInlineTitle: Bool { self >= .inlineTitle }
     public var tightensCards: Bool { self >= .tightCards }
+    public var shortensSetup: Bool { self >= .setupTitleOnly }
 
     /// Home's sections over 「最近」, each measured at the card's width at the current text size.
     public struct Sections: Sendable, Equatable {
@@ -29,16 +32,17 @@ public enum HomeCompaction: Int, Sendable, CaseIterable, Comparable {
         /// 电量和校园卡, as designed and tightened.
         public var balance: Double
         public var balanceTight: Double
-        /// 继续设置; 0 when it isn't shown.
+        /// 继续设置, and with its title only; 0 when it isn't shown.
         public var setup: Double
+        public var setupShort: Double
         /// The 热水 and 洗衣 tiles, as designed and tightened.
         public var tiles: Double
         public var tilesTight: Double
 
-        public init(title: Double, roomLine: Double, balance: Double, balanceTight: Double, setup: Double, tiles: Double,
-                    tilesTight: Double) {
+        public init(title: Double, roomLine: Double, balance: Double, balanceTight: Double, setup: Double, setupShort: Double,
+                    tiles: Double, tilesTight: Double) {
             self.title = title; self.roomLine = roomLine; self.balance = balance; self.balanceTight = balanceTight
-            self.setup = setup; self.tiles = tiles; self.tilesTight = tilesTight
+            self.setup = setup; self.setupShort = setupShort; self.tiles = tiles; self.tilesTight = tilesTight
         }
     }
 
@@ -48,7 +52,7 @@ public enum HomeCompaction: Int, Sendable, CaseIterable, Comparable {
         var heights = [tightensCards ? sections.balanceTight : sections.balance,
                        tightensCards ? sections.tilesTight : sections.tiles]
         if !hidesRoomLine { heights.append(sections.roomLine) }
-        if sections.setup > 0 { heights.append(sections.setup) }
+        if sections.setup > 0 { heights.append(shortensSetup ? sections.setupShort : sections.setup) }
         let title = usesInlineTitle ? 0 : sections.title
         return title + 2 * pagePadding + heights.reduce(0, +) + gap * Double(heights.count - 1)
     }
@@ -59,6 +63,8 @@ public enum HomeCompaction: Int, Sendable, CaseIterable, Comparable {
     public static func choose(viewport: Double, sections: Sections, pagePadding: Double, gap: Double,
                               accessibilitySize: Bool) -> HomeCompaction {
         guard !accessibilitySize, viewport > 0 else { return .full }
-        return allCases.first { $0.contentHeight(sections, pagePadding: pagePadding, gap: gap) <= viewport + 0.5 } ?? .tightCards
+        // Without 继续设置 the last step changes nothing: the one before it.
+        let steps = sections.setup > 0 ? allCases : allCases.filter { !$0.shortensSetup }
+        return steps.first { $0.contentHeight(sections, pagePadding: pagePadding, gap: gap) <= viewport + 0.5 } ?? steps[steps.count - 1]
     }
 }

@@ -13,7 +13,7 @@ extension ClearHomeView {
     }
 
     /// The large title, the room line, 电量和校园卡 and the tiles as designed and tightened, and
-    /// 继续设置, hidden at the card's width, for their heights.
+    /// 继续设置 with and without its small line, hidden at the card's width, for their heights.
     func sectionMeasure(_ data: HomeData) -> some View {
         VStack(spacing:0) {
             ClearHomeTitle().fixedSize(horizontal:false, vertical:true)
@@ -27,6 +27,8 @@ extension ClearHomeView {
             // In a stack of its own, so it measures 0 while it isn't shown.
             VStack(spacing:0) { setupCard(data) }.fixedSize(horizontal:false, vertical:true)
                 .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { sections.setup = Double($0) }
+            VStack(spacing:0) { setupCard(data, titleOnly:true) }.fixedSize(horizontal:false, vertical:true)
+                .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { sections.setupShort = Double($0) }
             tiles(data, tight:false)
                 .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { sections.tiles = Double($0) }
             tiles(data, tight:true)

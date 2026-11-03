@@ -4,7 +4,7 @@ import Core
 /// 日常 tab root (清爽 home): room line, 电量和校园卡, 继续设置 while something is not set,
 /// the 热水 and 洗衣 tiles, and as many 最近 rows as fit (`RecentCardFit`), so home never scrolls
 /// below the accessibility sizes. On a short screen it first compresses (`HomeCompaction`): no
-/// room line, then the inline title, then tighter cards.
+/// room line, then the inline title, then tighter cards, then 继续设置 without its small line.
 ///
 /// Pages open through `ClearNavigator`; the root hosts the shower page, the laundry-done sheet
 /// and the sign-in sheet.
@@ -22,7 +22,8 @@ struct ClearHomeView: View {
     @State var recentHeights: [RecentItem.ID: CGFloat] = [:]
     /// For `compaction`: the title and the sections measured hidden, as designed and tightened,
     /// at `sectionsWidth`.
-    @State var sections = HomeCompaction.Sections(title:0, roomLine:0, balance:0, balanceTight:0, setup:0, tiles:0, tilesTight:0)
+    @State var sections = HomeCompaction.Sections(title:0, roomLine:0, balance:0, balanceTight:0, setup:0, setupShort:0, tiles:0,
+                                                   tilesTight:0)
     @State var sectionsWidth: CGFloat = 0
 
     static let fit = RecentCardFit.clearHome
@@ -64,7 +65,7 @@ struct ClearHomeView: View {
             VStack(alignment:.leading, spacing:CGFloat(fit.gapAbove)) {
                 if !step.hidesRoomLine { roomLine(data) }
                 ClearBalanceCard(data:data, tight:step.tightensCards)
-                setupCard(data)
+                setupCard(data, titleOnly:step.shortensSetup)
                 tiles(data, tight:step.tightensCards)
                     .onGeometryChange(for:CGFloat.self) { $0.frame(in:.named(Self.contentSpace)).maxY } action: { tilesBottom = $0 }
                 recents(data)
@@ -88,10 +89,10 @@ struct ClearHomeView: View {
         ClearRoomLine(dorm:data.signedIn ? data.dorm : nil, signedIn:data.signedIn, refreshing:data.refreshing)
     }
 
-    @ViewBuilder func setupCard(_ data: HomeData) -> some View {
+    @ViewBuilder func setupCard(_ data: HomeData, titleOnly: Bool = false) -> some View {
         if let detail = HomeSetupCard.detail(signedIn:data.signedIn, dormSet:data.shower != .unconfigured,
                                              laundryEnabled:data.laundryEnabled, laundryBound:data.laundryBound) {
-            ClearSetupCard(detail:detail) { navigator.push(.setupChecklist) }
+            ClearSetupCard(detail:detail, titleOnly:titleOnly) { navigator.push(.setupChecklist) }
         }
     }
 
