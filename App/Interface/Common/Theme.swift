@@ -1,24 +1,55 @@
 import SwiftUI
 import Core
 
-/// Round-1 design tokens (Assets.xcassets/Theme, Any/Dark).
+/// Design tokens. Each resolves from the active theme (`ThemeStore`, 暖橙 or 清爽): a view that
+/// reads one in its body is drawn again when the theme changes.
 enum Theme {
-    static let bg = Color("Theme/bg")
-    static let group = Color("Theme/group")
-    static let ink = Color("Theme/ink")
-    static let ink2 = Color("Theme/ink2")
-    static let ink3 = Color("Theme/ink3")
-    static let separator = Color("Theme/separator")
-    static let fill = Color("Theme/fill")
-    static let accent = Color("Theme/accent")
-    static let accentLarge = Color("Theme/accentLarge")
-    static let accentText = Color("Theme/accentText")
-    /// Label on an `accent` background: white in light, #111 in dark.
-    static let accentInk = Color("Theme/accentInk")
-    static let redLarge = Color("Theme/redLarge")
-    static let redText = Color("Theme/redText")
-    static let pill = Color("Theme/pill")
-    static let pillInk = Color("Theme/pillInk")
+    /// The app's theme; the store the Settings › 外观 › 主题 page writes.
+    static let store = ThemeStore(preference:ThemePreference(storage:ThemePreference.sharedStorage()))
+    static var current: AppTheme { store.theme }
+    private static var palette: ThemePalette { .of(store.theme) }
+
+    static var bg: Color { palette.bg }
+    static var group: Color { palette.group }
+    static var ink: Color { palette.ink }
+    static var ink2: Color { palette.ink2 }
+    static var ink3: Color { palette.ink3 }
+    static var separator: Color { palette.separator }
+    static var fill: Color { palette.fill }
+    static var accent: Color { palette.accent }
+    static var accentLarge: Color { palette.accentLarge }
+    static var accentText: Color { palette.accentText }
+    /// Label on an `accent` background: white in light, #111 in dark (清爽: white in both).
+    static var accentInk: Color { palette.accentInk }
+    static var redLarge: Color { palette.redLarge }
+    static var redText: Color { palette.redText }
+    static var pill: Color { palette.pill }
+    static var pillInk: Color { palette.pillInk }
+    /// Problems that aren't "running out": errors, 「暂停」, what the school refused. accentText in 暖橙.
+    static var notice: Color { palette.notice }
+    /// Line icons at the start of rows and beside labels: ink2 in 暖橙, accentText in 清爽.
+    static var icon: Color { store.theme == .clear ? palette.accentText : palette.ink2 }
+
+    /// Home's sections (双余额, 洗衣, 最近) and the lists under section headers sit in `group`
+    /// cards (清爽), or flat on `bg` (暖橙). See `SectionCard`.
+    static var sectionCards: Bool { store.theme == .clear }
+    /// Side inset of a row's content (and of the duo): 24 on the flat page, 16 inside a card.
+    static var rowInset: CGFloat { sectionCards ? 16 : 24 }
+    /// Side inset of section headers and of the lines between sections: 24, or 32 to line up
+    /// with what's inside the cards.
+    static var headerInset: CGFloat { sectionCards ? 32 : 24 }
+    /// Space above a home section's header: 30 on the flat page; 20 between 清爽's cards, so the
+    /// cards' padding doesn't cost 最近 its rows on a small phone.
+    static var sectionGap: CGFloat { sectionCards ? 20 : 30 }
+    /// Corner radius of a custom `group` container (sign-in form, result panel): its 暖橙 value,
+    /// 16 in 清爽.
+    static func cardRadius(_ warm: CGFloat) -> CGFloat { store.theme == .clear ? 16 : warm }
+    static var buttonShape: ThemeButtonShape { ThemeButtonShape(rounded:store.theme == .clear) }
+    /// Big numbers: rounded in 暖橙, the default design in 清爽 (monospaced digits in both).
+    static var numberDesign: Font.Design { store.theme == .clear ? .default : .rounded }
+    /// Home's 校园卡 and 电量 numbers.
+    static var heroSize: CGFloat { store.theme == .clear ? 34 : 40 }
+    static var titleFont: ThemeTitleFont { store.theme == .clear ? .clear : .warm }
 
     /// UI copy language for `.typesettingLanguage(_:)`.
     static let typesetting = Locale.Language(identifier:"zh-Hans")
