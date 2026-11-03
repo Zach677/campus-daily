@@ -24,6 +24,7 @@ team and bundle id.
 App/
   Application/        XiaoRiChangApp (entry, scene), AppEnvironment (builds the services)
   Interface/<Feature>/ Home, CampusCard, Shower, Laundry, Onboarding, Settings, Location (shared dorm/meter pickers), Common
+  Interface/Clear/    清爽's page tree (ClearRootView); CampusRootView picks 暖橙's (the feature folders) or 清爽's by theme
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders
   Resources/          Assets, Fonts, Info.plist, App.entitlements
