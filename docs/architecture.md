@@ -42,7 +42,8 @@ Shared/               compiled into App and Widget
   Theme/              formatting and the mascot shape the widget also draws, and the colours the
                       widget and Live Activities need in both themes (ClearPalette, CampusWidgetPalette,
                       LiveActivityAccent); the app's tokens and fonts are in App/Interface/Common
-                      (Theme, ThemeStore, ThemePalette, NativeTheme)
+                      (Theme, ThemeColor, ThemeStore, ThemePalette, NativeTheme): the app owns one
+                      ThemeStore and injects it; tokens resolve from the view environment (\.appTheme)
 Widget/               XiaoRiChangWidget, ShowerLiveActivity, LaundryLiveActivity, Info.plist, Widget.entitlements
 Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macOS 14, Swift 6 mode)
   Sources/Core/

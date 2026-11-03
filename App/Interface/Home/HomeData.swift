@@ -51,7 +51,7 @@ struct HomeData {
         let detail: String
     }
     /// One run of a sentence with its own colour (the laundry page's hero).
-    struct Segment { let text: String; var color: Color? = nil }
+    struct Segment { let text: String; var color: ThemeColor? = nil }
 
     var signedIn = true
     /// Settings › 学校账号 (nil after a web sign-in by someone not known to be the same person).

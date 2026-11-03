@@ -3,6 +3,7 @@ import Core
 
 /// First-run guide, presented as a full-screen cover: 登录 → 学校洗衣机 → 宿舍 → 水控 → 好了.
 struct OnboardingView: View {
+    @Environment(\.appTheme) private var appTheme
     enum Step: Int, CaseIterable { case login, washer, dorm, water, done }
     /// Steps with a page dot (好了 has none).
     static let dotted = 4
@@ -190,7 +191,7 @@ struct OnboardingView: View {
                     .padding(.top,10)
             }
             if step == .dorm, !choosingApartment, let dorm {
-                Text(dorm).font(.system(size:40, weight:.semibold, design:Theme.numberDesign)).foregroundStyle(Theme.ink)
+                Text(dorm).font(.system(size:40, weight:.semibold, design:appTheme.numberDesign)).foregroundStyle(Theme.ink)
                     .minimumScaleFactor(0.6).lineLimit(1)
                     .padding(.top,28)
                 // The full location only when the electricity directory gave one: it is what
@@ -339,7 +340,7 @@ struct OnboardingView: View {
                     .lineLimit(2).minimumScaleFactor(0.8).multilineTextAlignment(.center)
                     .padding(.horizontal,20).padding(.vertical,8)
                     .frame(maxWidth:.infinity, minHeight:keyboardUp ? 52 : 60)
-                    .background(primaryDimmed ? Theme.fill : Theme.pill, in:Theme.buttonShape.shape)
+                    .background(primaryDimmed ? Theme.fill : Theme.pill, in:appTheme.buttonShape.shape)
                     .contentTransition(reduceMotion ? .opacity : .interpolate)
             }
             .buttonStyle(PressScaleStyle())
@@ -413,7 +414,7 @@ struct OnboardingView: View {
         return waitingForApartment
     }
 
-    private var primaryInk: Color {
+    private var primaryInk: ThemeColor {
         guard primaryDimmed else { return Theme.pillInk }
         return step == .login && !loggingIn || waitingForApartment ? Theme.ink3 : Theme.ink2
     }

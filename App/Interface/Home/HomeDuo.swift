@@ -67,6 +67,7 @@ struct HomeDuo: View {
 
 /// One half of the duo: label, big number, optional small line. One VoiceOver element.
 struct HomeDuoColumn: View {
+    @Environment(\.appTheme) private var appTheme
     /// SF Symbol name: grey like the label, never red.
     let symbol: String
     let title: String
@@ -87,7 +88,7 @@ struct HomeDuoColumn: View {
                 .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
                 HStack(alignment:.firstTextBaseline, spacing:4) {
                     Text(value ?? "—")
-                        .scaledFont(Theme.heroSize, .semibold, design:Theme.numberDesign, relativeTo:.largeTitle)
+                        .scaledFont(appTheme.heroSize, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle)
                         .monospacedDigit().tracking(-1)
                         .foregroundStyle(value == nil ? Theme.ink3 : figure.low ? Theme.redLarge : Theme.ink)
                         .contentTransition(.numericText())

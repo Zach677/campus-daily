@@ -10,6 +10,7 @@ struct ClearRootView: View {
     @EnvironmentObject var campus: CampusModel
     @EnvironmentObject var laundry: LaundryModel
     @Environment(\.scenePhase) var phase
+    @Environment(ThemeStore.self) var themeStore
     @State var navigator = ClearNavigator()
     @State var successTick = 0
     @ObservedObject var reminders = Reminders.shared

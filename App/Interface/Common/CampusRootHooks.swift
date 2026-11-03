@@ -14,6 +14,7 @@ struct CampusRootHooks: ViewModifier {
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
+    @Environment(ThemeStore.self) private var themeStore
     @Environment(\.scenePhase) private var phase
     @ObservedObject private var resetter = AppResetter.shared
     @AppStorage("didSeeQuickSetup") private var didSeeQuickSetup = false
@@ -23,7 +24,7 @@ struct CampusRootHooks: ViewModifier {
             .task {
                 if demo { return }
                 // A reset the app was killed in: finished now (then the setup opens), or not, and why.
-                await resetter.resumeIfInterrupted(campus:campus, shower:shower, laundry:laundry)
+                await resetter.resumeIfInterrupted(campus:campus, shower:shower, laundry:laundry, theme:themeStore)
                 if resetter.completed > 0 { return }
                 if !didSeeQuickSetup && !campus.configured && !shower.configured && !laundry.configured { firstRun() }
             }

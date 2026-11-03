@@ -13,6 +13,7 @@ struct ThemeSettingsView: View {
     #endif
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var laundry: LaundryModel
+    @Environment(ThemeStore.self) private var store
 
     private var lock: ThemeLock? {
         preview != nil ? preview?.themeLock : ThemeLock.lock(shower:shower.state, laundry:laundry.checkout?.phase)
@@ -20,12 +21,12 @@ struct ThemeSettingsView: View {
 
     var body: some View {
         let lock = lock
-        let selected = Theme.current
+        let selected = store.theme
         List {
             Section {
                 ForEach(AppTheme.allCases, id:\.self) { theme in
                     ThemeOptionRow(theme:theme, selected:theme == selected, locked:lock != nil) {
-                        withAnimation(.easeInOut(duration:0.25)) { Theme.store.select(theme) }
+                        withAnimation(.easeInOut(duration:0.25)) { store.select(theme) }
                     }
                 }
             } footer: {

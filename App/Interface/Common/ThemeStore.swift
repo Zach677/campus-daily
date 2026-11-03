@@ -3,9 +3,10 @@ import Observation
 import WidgetKit
 import Core
 
-/// The theme the app draws with, read by every token in `Theme`. Observable: a view whose body
-/// read a token is drawn again when the theme changes, so a switch shows at once, without a
-/// restart. Written on the main actor only (`select`).
+/// The theme the app draws with. The app owns one (`XiaoRiChangApp`) and injects it into the
+/// environment; `CampusRootView` hands its theme down as `\.appTheme`, which the tokens resolve
+/// from. Observable: the pages are drawn again when the theme changes, so a switch shows at once,
+/// without a restart. Written on the main actor only (`select`, `reload`).
 @Observable final class ThemeStore: @unchecked Sendable {
     private(set) var theme: AppTheme
     @ObservationIgnored private let preference: ThemePreference

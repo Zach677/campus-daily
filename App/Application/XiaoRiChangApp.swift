@@ -5,6 +5,10 @@ import Core
     @StateObject private var water = ShowerModel.shared
     @StateObject private var campus = CampusModel.shared
     @StateObject private var laundry = LaundryModel()
+    /// The theme the pages draw with, stored in the App Group where the widget and the Live
+    /// Activities read it; injected, so nothing global holds it.
+    @State private var theme = ThemeStore(preference:ThemePreference(storage:ThemePreference.sharedStorage()),
+                                          lock:AppEnvironment.sharedLock)
     init() {
         // Before any model reads: older builds kept items in the other keychain group.
         SharedKeychain.migrateItemGroups()
@@ -16,7 +20,7 @@ import Core
     @Environment(\.scenePhase) private var phase
     var body: some Scene {
         WindowGroup {
-            CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry)
+            CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry).environment(theme)
                 .onChange(of:campus.room,initial:true) { ShowerActivityController.shared.dorm = Theme.dorm(campus.room) ?? "" }
                 .task {
                     await campus.dropCampusWideMeter()

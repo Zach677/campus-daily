@@ -31,7 +31,7 @@ struct ClearShowerTileStatus: View {
         }
     }
 
-    private var color: Color {
+    private var color: ThemeColor {
         switch status.tone {
         case .secondary: Theme.ink2
         case .notice: Theme.notice

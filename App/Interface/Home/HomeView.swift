@@ -6,10 +6,12 @@ enum HomeRoute: Hashable { case power, powerSetup, card, shower, laundry, washer
 
 /// Single home screen: date · the two numbers · update line · shower button · 洗衣 · 最近.
 struct HomeView: View {
+    @Environment(\.appTheme) var appTheme
     @EnvironmentObject var shower: ShowerModel
     @EnvironmentObject var campus: CampusModel
     @EnvironmentObject var laundry: LaundryModel
     @Environment(\.scenePhase) var phase
+    @Environment(ThemeStore.self) var themeStore
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @Environment(\.dynamicTypeSize) var typeSize
     @State var path: [HomeRoute] = []

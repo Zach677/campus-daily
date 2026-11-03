@@ -49,21 +49,21 @@ import Core
     /// `AppReset.run`: marker, lock, sign out, clear, reload. Returns the lock that stopped it
     /// (nil = reset done).
     @discardableResult
-    func reset(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async throws -> AppReset.Stop? {
+    func reset(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async throws -> AppReset.Stop? {
         guard !running else { return nil }
         running = true
         defer { running = false }
         let stopped = try await AppReset.run(marker:Self.marker, now:Date(),
                                              lock:{ Self.anyLock(shower:shower, laundry:laundry) },
                                              signOut:{ await campus.signOutForReset() },
-                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) },
+                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
                                              resync:{ Self.resync(campus:campus, shower:shower) })
         if stopped == nil { completed += 1 }
         return stopped
     }
 
     /// At launch: finish a reset the app was killed in the middle of (or say why not).
-    func resumeIfInterrupted(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async {
+    func resumeIfInterrupted(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async {
         guard !running else { return }
         running = true
         defer { running = false }
@@ -72,7 +72,7 @@ import Core
             resumed = try await AppReset.resume(marker:Self.marker, now:Date(),
                                                 lock:{ Self.anyLock(shower:shower, laundry:laundry) },
                                                 signOut:{ await campus.signOutForReset() },
-                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) },
+                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
                                                 resync:{ Self.resync(campus:campus, shower:shower) })
         } catch {
             resumeFailed = AppErrorText.text(error)
@@ -92,9 +92,9 @@ import Core
                            shared:AppEnvironment.sharedPreferences, files:files)
     }
 
-    private static func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async {
+    private static func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async {
         campus.reload()
-        Theme.store.reload()
+        theme.reload()
         await shower.reloadAfterReset()
         laundry.reloadAfterReset()
         Reminders.shared.clearAfterReset()

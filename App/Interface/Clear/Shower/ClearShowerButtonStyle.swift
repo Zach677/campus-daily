@@ -10,9 +10,9 @@ struct ClearShowerButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body.weight(.semibold))
-            .foregroundStyle(enabled ? Theme.pillInk : Color(uiColor:.secondaryLabel))
-            .tint(enabled ? Theme.pillInk : Color(uiColor:.secondaryLabel))
-            .background(enabled ? NativeTheme.action : Color(uiColor:.tertiarySystemFill), in:RoundedRectangle(cornerRadius:12))
+            .foregroundStyle(enabled ? Theme.pillInk : .fixed(Color(uiColor:.secondaryLabel)))
+            .tint(enabled ? Theme.pillInk : .fixed(Color(uiColor:.secondaryLabel)))
+            .background(enabled ? NativeTheme.action : .fixed(Color(uiColor:.tertiarySystemFill)), in:RoundedRectangle(cornerRadius:12))
             .opacity(configuration.isPressed ? 0.76 : 1)
     }
 }

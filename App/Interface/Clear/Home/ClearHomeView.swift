@@ -13,6 +13,7 @@ struct ClearHomeView: View {
     @EnvironmentObject var campus: CampusModel
     @EnvironmentObject var laundry: LaundryModel
     @Environment(ClearNavigator.self) var navigator
+    @Environment(\.appTheme) var appTheme
     @Environment(\.dynamicTypeSize) var typeSize
     /// For 最近 (`recentCount`): the scroll view's visible size, the tiles' bottom, the header's
     /// height and each row's height, measured hidden at the card's width.
@@ -47,7 +48,7 @@ struct ClearHomeView: View {
         .toolbar {
             if !typeSize.isAccessibilitySize {
                 ToolbarItem(placement:.principal) {
-                    Text("校日常").font(.headline).foregroundStyle(Theme.ink)
+                    Text("校日常").font(.headline).foregroundStyle(Theme.ink.color(appTheme))
                         .opacity(step.usesInlineTitle ? 1 : 0)
                         .accessibilityHidden(!step.usesInlineTitle)
                 }

@@ -4,6 +4,8 @@ import Core
 
 /// 高级: config imports, Bluetooth connection check, Shortcuts hint, version (both in 暖橙 only), reset.
 struct AdvancedSettingsView: View {
+    @Environment(ThemeStore.self) private var themeStore
+    @Environment(\.appTheme) private var appTheme
     #if DEBUG
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
     var preview: HomeData? = nil
@@ -53,7 +55,7 @@ struct AdvancedSettingsView: View {
         #endif
         guard preview == nil else { return }
         Task {
-            do { resetBlocked = try await resetter.reset(campus:campus, shower:shower, laundry:laundry) }
+            do { resetBlocked = try await resetter.reset(campus:campus, shower:shower, laundry:laundry, theme:themeStore) }
             catch { resetIssue = AppErrorText.text(error) }
         }
     }
@@ -76,7 +78,7 @@ struct AdvancedSettingsView: View {
             #else
             ShowerTroubleshootingSections()
             #endif
-            if Theme.current != .clear {
+            if appTheme != .clear {
                 // 清爽's 设置 tab shows these two itself.
                 ShortcutsSection()
                 Section {

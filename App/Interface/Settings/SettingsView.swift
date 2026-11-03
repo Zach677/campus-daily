@@ -19,6 +19,7 @@ struct SettingsView: View {
     private var themePage: ThemeSettingsView { ThemeSettingsView() }
     #endif
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.appTheme) private var appTheme
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
@@ -59,7 +60,7 @@ struct SettingsView: View {
             .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement:.confirmationAction) {
-                    Button { dismiss() } label: { Text("完成").fontWeight(.semibold).foregroundStyle(Theme.accentText) }
+                    Button { dismiss() } label: { Text("完成").fontWeight(.semibold).foregroundStyle(Theme.accentText.color(appTheme)) }
                 }
             }
             .navigationDestination(isPresented:$hotWaterSetup) {

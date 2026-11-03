@@ -126,6 +126,7 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
 
 /// A web page that can't be shown: centred icon, one sentence, 「再试一次」.
 struct WebPageUnavailable: View {
+    @Environment(\.appTheme) private var appTheme
     let text: String
     let retry: () -> Void
     var body: some View {
@@ -137,7 +138,7 @@ struct WebPageUnavailable: View {
             Button(action:retry) {
                 Text("再试一次").scaledFont(17, .semibold, relativeTo:.headline).foregroundStyle(Theme.pillInk)
                     .padding(.horizontal,32).frame(minHeight:52)
-                    .background(Theme.pill, in:Theme.buttonShape.shape)
+                    .background(Theme.pill, in:appTheme.buttonShape.shape)
             }
             .buttonStyle(PressScaleStyle())
             .padding(.top,10)

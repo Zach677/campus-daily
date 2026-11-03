@@ -1,44 +1,30 @@
 import SwiftUI
 import Core
 
-/// Design tokens. Each resolves from the active theme (`ThemeStore`, 暖橙 or 清爽): a view that
-/// reads one in its body is drawn again when the theme changes.
+/// Design tokens. The colours are `ThemeColor`s, resolved from the theme in the view's
+/// environment (`\.appTheme`) where they are drawn; the other tokens are `AppTheme`'s
+/// (`AppTheme+Tokens`).
 enum Theme {
-    /// The app's theme; the store the Settings › 外观 › 主题 page writes.
-    static let store = ThemeStore(preference:ThemePreference(storage:ThemePreference.sharedStorage()), lock:AppEnvironment.sharedLock)
-    static var current: AppTheme { store.theme }
-    private static var palette: ThemePalette { .of(store.theme) }
-
-    static var bg: Color { palette.bg }
-    static var group: Color { palette.group }
-    static var ink: Color { palette.ink }
-    static var ink2: Color { palette.ink2 }
-    static var ink3: Color { palette.ink3 }
-    static var separator: Color { palette.separator }
-    static var fill: Color { palette.fill }
-    static var accent: Color { palette.accent }
-    static var accentLarge: Color { palette.accentLarge }
-    static var accentText: Color { palette.accentText }
+    static let bg = ThemeColor(.bg)
+    static let group = ThemeColor(.group)
+    static let ink = ThemeColor(.ink)
+    static let ink2 = ThemeColor(.ink2)
+    static let ink3 = ThemeColor(.ink3)
+    static let separator = ThemeColor(.separator)
+    static let fill = ThemeColor(.fill)
+    static let accent = ThemeColor(.accent)
+    static let accentLarge = ThemeColor(.accentLarge)
+    static let accentText = ThemeColor(.accentText)
     /// Label on an `accent` background: white in light, #111 in dark (清爽: white in both).
-    static var accentInk: Color { palette.accentInk }
-    static var redLarge: Color { palette.redLarge }
-    static var redText: Color { palette.redText }
-    static var pill: Color { palette.pill }
-    static var pillInk: Color { palette.pillInk }
+    static let accentInk = ThemeColor(.accentInk)
+    static let redLarge = ThemeColor(.redLarge)
+    static let redText = ThemeColor(.redText)
+    static let pill = ThemeColor(.pill)
+    static let pillInk = ThemeColor(.pillInk)
     /// Problems that aren't "running out": errors, 「暂停」, what the school refused. accentText in 暖橙.
-    static var notice: Color { palette.notice }
+    static let notice = ThemeColor(.notice)
     /// Line icons at the start of rows and beside labels: ink2 in 暖橙, accentText in 清爽.
-    static var icon: Color { store.theme == .clear ? palette.accentText : palette.ink2 }
-
-    /// Corner radius of a custom `group` container (sign-in form, result panel): its 暖橙 value,
-    /// 16 in 清爽.
-    static func cardRadius(_ warm: CGFloat) -> CGFloat { store.theme == .clear ? 16 : warm }
-    static var buttonShape: ThemeButtonShape { ThemeButtonShape(rounded:store.theme == .clear) }
-    /// Big numbers: rounded in 暖橙, the default design in 清爽 (monospaced digits in both).
-    static var numberDesign: Font.Design { store.theme == .clear ? .default : .rounded }
-    /// Home's 校园卡 and 电量 numbers.
-    static var heroSize: CGFloat { store.theme == .clear ? 34 : 40 }
-    static var titleFont: ThemeTitleFont { store.theme == .clear ? .clear : .warm }
+    static let icon = ThemeColor(.icon)
 
     /// UI copy language for `.typesettingLanguage(_:)`.
     static let typesetting = Locale.Language(identifier:"zh-Hans")
