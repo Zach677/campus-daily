@@ -42,3 +42,17 @@ final class ShowerTileStatusTests: XCTestCase {
         XCTAssertEqual(status(.showering(start), signedIn: false).text, "正在洗澡")
     }
 }
+
+/// The 热水 tile's second line: the dorm while signed in, nothing otherwise.
+final class ShowerTileDormLineTests: XCTestCase {
+    func testDormWhileSignedIn() {
+        XCTAssertEqual(ShowerTileStatus.dormLine("3 栋 108", signedIn: true), "3 栋 108")
+    }
+
+    /// Signed out the dorm a demo or a stale profile still has is not shown; with no dorm, no line.
+    func testNoLineSignedOutOrWithoutDorm() {
+        XCTAssertNil(ShowerTileStatus.dormLine("3 栋 108", signedIn: false))
+        XCTAssertNil(ShowerTileStatus.dormLine(nil, signedIn: true))
+        XCTAssertNil(ShowerTileStatus.dormLine("", signedIn: true))
+    }
+}

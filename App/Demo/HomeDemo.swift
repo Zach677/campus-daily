@@ -158,7 +158,7 @@ enum HomeDemo: String, CaseIterable {
             data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
             return (data, nil)
         case .empty:
-            var empty = HomeData(); empty.signedIn = false; empty.dorm = "3 栋 108"
+            var empty = HomeData(); empty.signedIn = false  // Signed out the profile, and so the dorm, is gone.
             empty.laundryBound = true; empty.laundryMachine = "3"; empty.laundry = .idle
             return (empty, nil)
         case .shower:

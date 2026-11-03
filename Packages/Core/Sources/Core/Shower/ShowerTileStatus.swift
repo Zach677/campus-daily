@@ -27,6 +27,13 @@ public struct ShowerTileStatus: Equatable, Sendable {
     /// `text`, then the shorter ways to say it.
     public var forms: [String] { [text] + shorter }
 
+    /// The tile's second line: the dorm while signed in; signed out or with no dorm, no line
+    /// (not a dorm left over from before the sign-out).
+    public static func dormLine(_ dorm: String?, signedIn: Bool) -> String? {
+        guard signedIn, let dorm, !dorm.isEmpty else { return nil }
+        return dorm
+    }
+
     /// `issue`: the last start's problem (shown instead of the last shower).
     public static func of(_ status: ShowerHomeStatus, signedIn: Bool, lastMinutes: Int?, lastCost: Decimal?,
                           issue: String?) -> ShowerTileStatus {

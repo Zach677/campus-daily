@@ -21,7 +21,7 @@ extension ClearHomeView {
     func showerTile(_ data: HomeData, tight: Bool) -> some View {
         let status = ShowerTileStatus.of(data.shower, signedIn:data.signedIn, lastMinutes:data.lastShowerMinutes,
                                          lastCost:data.lastShowerCost, issue:data.showerIssue)
-        return ClearServiceTile(symbol:"drop", title:"热水洗澡", detail:data.dorm ?? "宿舍热水", dimmed:status.dimmed, tight:tight,
+        return ClearServiceTile(symbol:"drop", title:"热水洗澡", detail:ShowerTileStatus.dormLine(data.dorm, signedIn:data.signedIn) ?? "宿舍热水", dimmed:status.dimmed, tight:tight,
                                 action:{ openShower(status, data:data) }) {
             ClearShowerTileStatus(status:status)
         }
