@@ -10,11 +10,13 @@ struct SettingsView: View {
     @State private var previewLaundry: Bool?
     private var account: AccountView { AccountView(preview:preview) }
     private var advanced: AdvancedSettingsView { AdvancedSettingsView(preview:preview) }
+    private var themePage: ThemeSettingsView { ThemeSettingsView(preview:preview) }
     #else
     private var preview: HomeData? { nil }
     private var previewLaundry: Bool? { get { nil } nonmutating set {} }
     private var account: AccountView { AccountView() }
     private var advanced: AdvancedSettingsView { AdvancedSettingsView() }
+    private var themePage: ThemeSettingsView { ThemeSettingsView() }
     #endif
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var shower: ShowerModel
@@ -34,6 +36,8 @@ struct SettingsView: View {
     @State private var hotWaterSetup = false
     /// 学校账号, pushed when the widget asked for it.
     @State private var accountPage = false
+    /// 主题, pushed by a DEBUG demo.
+    @State private var themePageShown = false
 
     /// 「学校洗衣机」 switch.
     var laundryOn: Bool { preview != nil ? (previewLaundry ?? preview?.laundryEnabled ?? true) : laundry.schoolEnabled }
@@ -97,6 +101,13 @@ struct SettingsView: View {
                         .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                 }.listRowBackground(Theme.group)
                 reminderSection
+                Section("外观") {
+                    NavigationLink { themePage } label: {
+                        SettingsRow(symbol:"paintpalette", title:"主题", value:Theme.current.name)
+                    }
+                    .accessibilityLabel(Theme.current.settingsRowLabel)
+                    .accessibilityIdentifier("themeRow")
+                }.listRowBackground(Theme.group)
                 Section {
                     NavigationLink { advanced } label: {
                         SettingsRow(symbol:"wrench.and.screwdriver", title:"高级")
@@ -120,9 +131,11 @@ struct SettingsView: View {
                 if shower.configured { ShowerDetail() } else { CampusOnboardingView() }
             }
             .navigationDestination(isPresented:$accountPage) { account }
+            .navigationDestination(isPresented:$themePageShown) { themePage }
             .onAppear {
                 if preview == nil { campus.reloadAccount() }
                 if campus.hotWaterSetupRequested { campus.hotWaterSetupRequested = false; hotWaterSetup = true }
+                if preview?.themePageShown == true { themePageShown = true }
                 openAccountPageIfRequested()
             }
             .onChange(of:campus.accountPageRequested) { _, _ in openAccountPageIfRequested() }
