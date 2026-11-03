@@ -82,10 +82,10 @@ struct WidgetPreview: View {
     }
     private func tile(_ model: CampusWidgetModel, medium: Bool = false, caption: String) -> some View {
         VStack(spacing:4) {
-            CampusWidgetFace(model:model, medium:medium)
+            CampusWidgetFace(model:model, medium:medium, theme:Theme.current)
                 .padding(16)
                 .frame(width:medium ? 364 : 170, height:170)
-                .background(CampusWidgetPalette.group, in:RoundedRectangle(cornerRadius:22, style:.continuous))
+                .background(CampusWidgetPalette.of(Theme.current).group, in:RoundedRectangle(cornerRadius:22, style:.continuous))
             Text(caption).font(.system(size:11, weight:.medium))
                 .foregroundStyle(scheme == .dark ? Color.white.opacity(0.8) : Color.black.opacity(0.6))
         }
