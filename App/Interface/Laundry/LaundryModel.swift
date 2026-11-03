@@ -8,14 +8,6 @@ import Core
 /// Another U净 account tried to sign in while an order placed with the stored one is open.
 enum LaundryLoginRefusal: Error { case otherAccount }
 
-/// A washer the user saved by scanning its code (UI preference, not a credential).
-struct SavedWasher: Codable, Identifiable, Equatable {
-    var id: String
-    var qrCode: String
-    var name: String
-    var savedAt = Date()
-}
-
 @MainActor final class LaundryModel: ObservableObject {
     @Published private(set) var configured = false
     @Published private(set) var accountConnected = false
@@ -30,6 +22,9 @@ struct SavedWasher: Codable, Identifiable, Equatable {
     @Published private(set) var candidate: WasherSnapshot?
     @Published private(set) var storageBlocked = false
     @Published private(set) var selectedMachineID: String?
+    /// Machines saved (the same one again included) or switched to since launch: the first-run
+    /// step finishes on each (`WasherSetupExit.finishesSetupStep`).
+    @Published private(set) var machineChoices = 0
     /// The number the U净 login was made with (nil signed out, or saved by an earlier build).
     @Published private(set) var ujingMobile: String?
     /// U净 said the login ran out (a machine read or an order step): 「重新登录 U净」 is offered.
@@ -257,16 +252,11 @@ struct SavedWasher: Codable, Identifiable, Equatable {
         if let refusal = machineChangeRefusal { throw refusal }
         guard let value = candidate else { throw WasherSetupRefusal.nothingToSave }
         let alias = try WasherSetupRefusal.machineName(name).get()
-        var list = savedMachines
-        if let index = list.firstIndex(where:{ $0.id == value.deviceID }) {
-            list[index] = SavedWasher(id:value.deviceID, qrCode:value.qrCode, name:alias, savedAt:list[index].savedAt)
-        } else {
-            list.append(SavedWasher(id:value.deviceID, qrCode:value.qrCode, name:alias))
-        }
-        storeMachines(list)
+        storeMachines(SavedWasher.saving(id:value.deviceID, qrCode:value.qrCode, name:alias, in:savedMachines))
         select(value.deviceID)
         snapshot = value
         candidate = nil; issue = nil; checkoutIssue = nil; lastAttempt = Date()
+        machineChoices += 1
     }
 
     /// Throws `WasherSetupRefusal`, whose text the page shows.
@@ -275,6 +265,7 @@ struct SavedWasher: Codable, Identifiable, Equatable {
         guard savedMachines.contains(where:{ $0.id == item.id }) else { throw WasherSetupRefusal.notSaved }
         select(item.id)
         snapshot = nil; issue = nil; checkoutIssue = nil; lastAttempt = nil
+        machineChoices += 1
     }
 
     private func select(_ id: String) {

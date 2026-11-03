@@ -6,6 +6,10 @@ import Core
 
 struct WasherSetupView: View {
     @EnvironmentObject private var laundry: LaundryModel
+    @Environment(\.dismiss) private var dismiss
+    /// After a machine is saved or switched; nil goes back a page. Home swaps the page for the
+    /// laundry page when it was opened from home (`WasherSetupExit.path`).
+    var onDone: (() -> Void)?
     #if DEBUG
     /// campusdaily://demo/washer/...: synthetic account and machines; nothing is changed.
     var preview: WasherSetupDemo?
@@ -90,7 +94,7 @@ struct WasherSetupView: View {
                     LabeledContent("当前状态",value:value.stateLabel)
                     TextField("机器名称（已自动填写，可修改）",text:$alias).accessibilityIdentifier("washerAlias")
                     Button("保存为常用机器") {
-                        do { try laundry.savePreparedMachine(name:alias); issue = nil }
+                        do { try laundry.savePreparedMachine(name:alias); issue = nil; finish() }
                         catch { issue = Self.text(error) }
                     }.disabled(!laundry.mayImport || alias.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("saveScannedWasher")
@@ -175,8 +179,17 @@ struct WasherSetupView: View {
 
     private func choose(_ item: SavedWasher) {
         if isPreview { return }
-        do { try laundry.selectMachine(item); issue = nil; Task { await laundry.refresh(force:true) } }
-        catch { issue = Self.text(error) }
+        do {
+            try laundry.selectMachine(item); issue = nil
+            Task { await laundry.refresh(force:true) }
+            finish()
+        } catch { issue = Self.text(error) }
+    }
+
+    /// Saved or switched: a success tap and back (or wherever the caller sends it).
+    private func finish() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        if let onDone { onDone() } else { dismiss() }
     }
 
     private static func text(_ error: Error) -> String {

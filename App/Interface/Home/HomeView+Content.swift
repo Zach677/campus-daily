@@ -237,11 +237,12 @@ extension HomeView {
             #else
             LaundryDetail()
             #endif
+        // Saved or switched: back a page, or on to 洗衣 when opened from home's unbound row.
         case .washerSetup:
             #if DEBUG
-            WasherSetupView(preview:washerDemo)
+            WasherSetupView(onDone:washerSetupDone, preview:washerDemo)
             #else
-            WasherSetupView()
+            WasherSetupView(onDone:washerSetupDone)
             #endif
         case .records:
             #if DEBUG
@@ -250,6 +251,10 @@ extension HomeView {
             CardRecordsView(app:data.recentActivities, source:.live)
             #endif
         }
+    }
+
+    func washerSetupDone() {
+        path = WasherSetupExit.path(path, setup:.washerSetup, laundry:.laundry)
     }
 
     // MARK: Toolbar
