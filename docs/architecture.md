@@ -24,7 +24,14 @@ team and bundle id.
 App/
   Application/        XiaoRiChangApp (entry, scene), AppEnvironment (builds the services)
   Interface/<Feature>/ Home, CampusCard, Shower, Laundry, Onboarding, Settings, Location (shared dorm/meter pickers), Common
-  Interface/Clear/    清爽's page tree (ClearRootView); CampusRootView picks 暖橙's (the feature folders) or 清爽's by theme
+  Interface/Clear/    清爽's page tree; CampusRootView picks 暖橙's (the feature folders) or 清爽's by theme.
+                      ClearRootView is a TabView (日常 / 记录 / 设置), one NavigationStack per tab, routes in
+                      ClearRoute and ClearDestination, tab/path/sheet state in ClearNavigator (an environment
+                      object). Pages: Home/, Shower/, Laundry/, Records/, Settings/, Setup/ (the first-run
+                      checklist). Pages only lay out and call the same models as 暖橙; the shared root
+                      handling (reset, first run, refresh, links) is in Common/CampusRootHooks and RootLink.
+                      Shared pages (meter, top-ups, 常用洗衣机, 学校账号, 高级, 主题) are 暖橙's views drawn in
+                      清爽's tokens.
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders
   Resources/          Assets, Fonts, Info.plist, App.entitlements

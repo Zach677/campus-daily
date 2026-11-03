@@ -1,7 +1,7 @@
 import Foundation
 
-/// The app's look, chosen in Settings › 外观 › 主题. Only colours, type and shapes differ: pages,
-/// copy, data and behaviour are the same in both.
+/// The app's look, chosen in Settings › 外观 › 主题. Each theme has its own pages (暖橙's feature
+/// folders, 清爽's `Interface/Clear`); data, copy and behaviour come from the same models in both.
 public enum AppTheme: String, Sendable, CaseIterable, Equatable {
     /// 暖橙: warm orange, big rounded numbers. The default.
     case warm
