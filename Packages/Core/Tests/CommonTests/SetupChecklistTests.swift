@@ -101,6 +101,26 @@ final class SetupChecklistTests: XCTestCase {
         XCTAssertEqual(list.doneCount, 0)
     }
 
+    /// One rule for the checklist's 宿舍 row and home's 继续设置 card: a bound controller, or the
+    /// dorm the user confirmed here when it is still the dorm (a dorm may have no controller).
+    func testDormIsSetByAControllerOrByConfirmingTheSameDorm() {
+        XCTAssertTrue(SetupChecklist.isDormSet(dorm:"3 栋 108", confirmedDorm:"", controllerBound:true))
+        XCTAssertTrue(SetupChecklist.isDormSet(dorm:"3 栋 108", confirmedDorm:"3 栋 108", controllerBound:false))
+        XCTAssertFalse(SetupChecklist.isDormSet(dorm:"3 栋 108", confirmedDorm:"", controllerBound:false))
+        XCTAssertFalse(SetupChecklist.isDormSet(dorm:"5 栋 201", confirmedDorm:"3 栋 108", controllerBound:false),
+                       "confirmed for another room")
+        XCTAssertFalse(SetupChecklist.isDormSet(dorm:nil, confirmedDorm:"", controllerBound:false))
+    }
+
+    /// A dorm with no controller, confirmed: the checklist is done, so home's card goes too.
+    func testConfirmedDormWithoutControllerFinishesSetupAndHomesCard() {
+        let dormSet = SetupChecklist.isDormSet(dorm:"3 栋 108", confirmedDorm:"3 栋 108", controllerBound:false)
+        let list = SetupChecklist(signedIn:true, dorm:dormSet ? "3 栋 108" : nil, laundry:.notUsed,
+                                  controllerBound:false, controllerChecked:false)
+        XCTAssertTrue(list.allDone)
+        XCTAssertNil(HomeSetupCard.detail(signedIn:true, dormSet:dormSet, laundryEnabled:false, laundryBound:false))
+    }
+
     func testCopy() {
         XCTAssertEqual(SetupChecklist.title(.account), "学校账号")
         XCTAssertEqual(SetupChecklist.title(.dorm), "宿舍")

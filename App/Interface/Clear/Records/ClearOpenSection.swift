@@ -11,7 +11,7 @@ struct ClearOpenSection: View {
             Section("进行中") {
                 ForEach(items) { item in
                     // Their pages live on 日常 (the shower page is the root's there).
-                    Button { navigator.show([item.route], in:.home) } label: {
+                    Button { navigator.open(item.route, in:.home) } label: {
                         ClearLinkRow { label(item) }
                     }
                     .accessibilityIdentifier(item.route == .shower ? "recordsOpenShower" : "recordsOpenLaundry")

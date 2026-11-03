@@ -119,7 +119,7 @@ struct ClearSetupChecklist: View {
     /// here (a dorm may have no controller to bind); a dorm confirmed for another room doesn't count.
     private var live: SetupChecklist {
         let dorm = Theme.dorm(campus.room) ?? water.binding.flatMap { Theme.dorm($0.roomLabel) }
-        let confirmed = water.configured || dorm != nil && dorm == confirmedDorm
+        let confirmed = SetupChecklist.isDormSet(dorm:dorm, confirmedDorm:confirmedDorm, controllerBound:water.configured)
         let laundryState: SetupChecklist.Laundry =
             !laundry.schoolEnabled ? .notUsed
             : laundry.configured ? .machine(laundry.snapshot.map { "\($0.deviceNo) 号机" } ?? "已绑定")

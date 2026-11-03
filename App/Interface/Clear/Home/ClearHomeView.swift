@@ -15,6 +15,8 @@ struct ClearHomeView: View {
     @Environment(ClearNavigator.self) var navigator
     @Environment(\.appTheme) var appTheme
     @Environment(\.dynamicTypeSize) var typeSize
+    /// The dorm confirmed on the checklist (a dorm may have no controller to bind).
+    @AppStorage(SetupChecklist.dormKey) var confirmedDorm = ""
     /// For 最近 (`recentCount`): the scroll view's visible size, the tiles' bottom, the header's
     /// height and each row's height, measured hidden at the card's width.
     @State var viewport: CGSize = .zero
@@ -91,7 +93,9 @@ struct ClearHomeView: View {
     }
 
     @ViewBuilder func setupCard(_ data: HomeData, titleOnly: Bool = false) -> some View {
-        if let detail = HomeSetupCard.detail(signedIn:data.signedIn, dormSet:data.shower != .unconfigured,
+        let dormSet = SetupChecklist.isDormSet(dorm:data.dorm, confirmedDorm:confirmedDorm,
+                                               controllerBound:data.shower != .unconfigured)
+        if let detail = HomeSetupCard.detail(signedIn:data.signedIn, dormSet:dormSet,
                                              laundryEnabled:data.laundryEnabled, laundryBound:data.laundryBound) {
             ClearSetupCard(detail:detail, titleOnly:titleOnly) { navigator.push(.setupChecklist) }
         }

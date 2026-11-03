@@ -70,7 +70,7 @@ struct ClearRecordsList: View {
     @ViewBuilder private func row(_ item: RecentItem) -> some View {
         if item.source == .app {
             Button {
-                navigator.show([item.kind == .laundry ? .laundry : .shower], in:.home)
+                navigator.open(item.kind == .laundry ? .laundry : .shower, in:.home)
             } label: {
                 ClearLinkRow { ClearRecordRow(item:item) }
             }

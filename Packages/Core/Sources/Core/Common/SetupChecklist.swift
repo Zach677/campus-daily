@@ -104,4 +104,11 @@ public struct SetupChecklist: Equatable, Sendable {
     /// UserDefaults key (String) of the dorm confirmed on the checklist; hot water may have no
     /// controller to bind, so a binding alone can't say the dorm was confirmed.
     public static let dormKey = PreferenceKey.prefix + "setup.dorm"
+
+    /// Whether the dorm is set, for the checklist and home's 继续设置 card alike: a controller is
+    /// bound to it, or it was confirmed here (`confirmedDorm`, stored at `dormKey`) and is still
+    /// the dorm.
+    public static func isDormSet(dorm: String?, confirmedDorm: String, controllerBound: Bool) -> Bool {
+        controllerBound || dorm != nil && dorm == confirmedDorm
+    }
 }

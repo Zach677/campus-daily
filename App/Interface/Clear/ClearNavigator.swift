@@ -9,7 +9,8 @@ import Core
 /// For pages:
 /// - push a page on the stack the page is on: `navigator.push(.laundry)` or
 ///   `NavigationLink(value:ClearRoute.laundry)` (every stack maps `ClearRoute` with `ClearDestination`);
-/// - switch tab: `navigator.select(.records)` (「全部 ›」 on home);
+/// - switch tab: `navigator.select(.records)` (「全部 ›」 on home); open a page on a tab keeping what is
+///   open there: `navigator.open(.laundry, in:.home)` (记录's rows);
 /// - go back: `@Environment(\.dismiss)` or `navigator.pop()`; to a tab's root: `navigator.popToRoot()`;
 /// - the first-run checklist as a sheet: `navigator.openSetup()`; the sign-in sheet or
 ///   Settings › 学校账号 from the expired-login line: `navigator.signInAgain(_:)`;
@@ -88,6 +89,20 @@ import Core
     func show(_ routes: [ClearRoute], in tab: Tab) {
         self.tab = tab
         setPath(routes, tab)
+    }
+
+    /// Selects a tab with this page showing, keeping the pages already open there (`PageStack`):
+    /// back to it when it is lower and only plain pages are over it, otherwise pushed on top.
+    /// 记录's rows open 洗衣 and 热水 on 日常 this way.
+    func open(_ route: ClearRoute, in tab: Tab) {
+        self.tab = tab
+        setPath(PageStack.opening(route, on:path(tab), mayClose:Self.mayClose), tab)
+    }
+
+    /// A page `open` may close to go back under it: not a top-up page, nor 洗衣, which may be
+    /// waiting for its payment to come back.
+    nonisolated static func mayClose(_ route: ClearRoute) -> Bool {
+        route != .card && route != .power && route != .laundry
     }
 
     func openSetup(at row: ClearSetupRow? = nil) { setup = SetupRequest(start:row) }
