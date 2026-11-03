@@ -25,7 +25,8 @@ struct CampusRootHooks: ViewModifier {
                 if demo { return }
                 // A reset the app was killed in: finished now (then the setup opens), or not, and why.
                 await resetter.resumeIfInterrupted(campus:campus, shower:shower, laundry:laundry, theme:themeStore)
-                if resetter.completed > 0 { return }
+                // A reset (running, or done and its setup still to open) opens the setup itself: once.
+                if resetter.running || resetter.setupDue || resetter.completed > 0 { return }
                 if !didSeeQuickSetup && !campus.configured && !shower.configured && !laundry.configured { firstRun() }
             }
             .alert(ResetLockText.blockedTitle(resetter.resumeStopped), isPresented:Binding(get:{ resetter.resumeStopped != nil },
@@ -47,6 +48,9 @@ struct CampusRootHooks: ViewModifier {
                 guard old != .done, value == .done else { return }
                 Task { await campus.refresh(force:true) }
             }
-            .onChange(of:resetter.completed) { _, _ in afterReset() }
+            // Also on appearing: a reset from 清爽 finishes with 暖橙's root already up.
+            .onChange(of:resetter.setupDue, initial:true) { _, due in
+                if due, resetter.takeSetup() { afterReset() }
+            }
     }
 }

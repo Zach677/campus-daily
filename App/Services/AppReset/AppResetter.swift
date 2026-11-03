@@ -9,6 +9,17 @@ import Core
     /// Bumped after each completed reset: the home screen closes settings and opens the guide.
     @Published private(set) var completed = 0
     @Published private(set) var running = false
+    /// A reset finished and the first-run setup is still to open: taken (`takeSetup`) by the root
+    /// on screen, once. A reset from 清爽 brings 暖橙's root up in the middle of it (the theme is
+    /// cleared), so the root that opens the setup may not be the one that saw the reset start.
+    @Published private(set) var setupDue = false
+
+    /// The setup is the caller's to open; false when no reset left one due.
+    func takeSetup() -> Bool {
+        guard setupDue else { return false }
+        setupDue = false
+        return true
+    }
 
     /// Not while a shower runs or its settlement still needs checking, with an unfinished
     /// laundry order, while a record can't be read, or while a controller check runs.
@@ -58,7 +69,7 @@ import Core
                                              signOut:{ await campus.signOutForReset() },
                                              clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
                                              resync:{ Self.resync(campus:campus, shower:shower) })
-        if stopped == nil { completed += 1 }
+        if stopped == nil { finished() }
         return stopped
     }
 
@@ -79,11 +90,16 @@ import Core
             return
         }
         switch resumed {
-        case .completed?: completed += 1
+        case .completed?: finished()
         case .stopped(let stop)?: resumeStopped = stop
         case .abandoned?: resumeFailed = Self.abandonedText
         case nil: break
         }
+    }
+
+    private func finished() {
+        completed += 1
+        setupDue = true
     }
 
     private static func clear() throws {
@@ -115,6 +131,6 @@ import Core
 
     #if DEBUG
     /// Demo settings: show what follows a reset without clearing anything.
-    func finishDemo() { completed += 1 }
+    func finishDemo() { finished() }
     #endif
 }

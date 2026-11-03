@@ -12,19 +12,24 @@ import Core
     @ObservationIgnored private let preference: ThemePreference
     /// The App Group's lock, which the widget and Live Activities' processes respect.
     @ObservationIgnored private let lock: any SharedLock
+    /// Why the theme can't change now (a shower or laundry run going on); nil when it can.
+    @ObservationIgnored private let themeLock: @MainActor () -> ThemeLock?
 
-    init(preference: ThemePreference, lock: any SharedLock) {
+    init(preference: ThemePreference, lock: any SharedLock, themeLock: @escaping @MainActor () -> ThemeLock?) {
         self.preference = preference
         self.lock = lock
+        self.themeLock = themeLock
         theme = preference.theme
     }
 
     /// Saves the choice where the widget and the Live Activities read it, and has the widget
-    /// draw again. When the shared lock can't be taken (the container locked before the first
-    /// unlock) nothing changes: the option stays unselected.
+    /// draw again. Nothing changes while a run locks the theme (`ThemeLock`, whoever asks; 主题
+    /// greys its options out too), or when the shared lock can't be taken (the container locked
+    /// before the first unlock): the option stays unselected.
     @MainActor func select(_ theme: AppTheme) {
-        guard theme != self.theme else { return }
-        do { try preference.set(theme, under:lock) } catch { return }
+        do {
+            guard try preference.select(theme, current:self.theme, lock:themeLock(), under:lock) else { return }
+        } catch { return }
         self.theme = theme
         WidgetCenter.shared.reloadAllTimelines()
     }

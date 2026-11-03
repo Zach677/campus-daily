@@ -100,6 +100,32 @@ final class ThemePreferenceTests: XCTestCase {
         XCTAssertEqual(ThemePreference(storage: storage).theme, .warm)
     }
 
+    /// 主题's choice: refused while a shower or laundry run locks the theme (`ThemeLock`), whoever
+    /// asks, and nothing is written or locked then; the theme already shown writes nothing either.
+    func testSelectIsRefusedWhileTheThemeIsLocked() throws {
+        let lock = SpyLock()
+        let storage = LockCheckedPreferences(lock: lock)
+        let preference = ThemePreference(storage: storage)
+        for themeLock in [ThemeLock.shower, .laundry, .showerAndLaundry] {
+            XCTAssertFalse(try preference.select(.clear, current: .warm, lock: themeLock, under: lock), "\(themeLock)")
+        }
+        XCTAssertEqual(lock.steps, 0)
+        XCTAssertEqual(preference.theme, .warm)
+        XCTAssertFalse(try preference.select(.warm, current: .warm, lock: nil, under: lock))
+        XCTAssertEqual(lock.steps, 0)
+        XCTAssertTrue(try preference.select(.clear, current: .warm, lock: nil, under: lock))
+        XCTAssertEqual(preference.theme, .clear)
+        XCTAssertEqual(storage.writesOutsideLock, 0)
+    }
+
+    func testSelectWithoutTheSharedLockChangesNothing() {
+        let lock = SpyLock()
+        lock.fails = true
+        let preference = ThemePreference(storage: LockCheckedPreferences(lock: lock))
+        XCTAssertThrowsError(try preference.select(.clear, current: .warm, lock: nil, under: lock))
+        XCTAssertEqual(preference.theme, .warm)
+    }
+
     /// No App Group (tests, a re-signed install without one): this process's own preferences.
     func testSharedStorageWithoutAGroupIsTheProcessOwn() {
         XCTAssertTrue(ThemePreference.sharedStorage(appGroup: nil) === UserDefaults.standard)

@@ -21,6 +21,16 @@ public struct ThemePreference {
         }
     }
 
+    /// 主题's choice over `current` (the theme shown): nothing while `lock` says a shower or laundry
+    /// run is going on, whoever asks, and nothing when it is already shown; otherwise stored as
+    /// `set(_:under:)`. True when the theme changed.
+    public func select(_ theme: AppTheme, current: AppTheme, lock themeLock: ThemeLock?,
+                       under lock: any SharedLock) throws -> Bool {
+        guard theme != current, themeLock == nil else { return false }
+        try set(theme, under: lock)
+        return true
+    }
+
     /// The preferences the app and its extensions share: the App Group's, or this process's own
     /// when it has no group (tests, an install re-signed without one).
     public static func sharedStorage(appGroup: String? = AppIdentity.usableAppGroup) -> any PreferenceStorage {

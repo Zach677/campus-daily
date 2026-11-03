@@ -59,4 +59,20 @@ final class ShowerPushedPageTests: XCTestCase {
         XCTAssertEqual(flow.pushedPhase, .needsCheck)
         XCTAssertTrue(flow.mayLeave)
     }
+
+    /// The page down (after a relaunch or 先回首页): a record the user may mark checked still shows
+    /// a face with 我在学校记录里核对过了 (unsure, needs-check).
+    func testADownPageKeepsTheResolveFace() {
+        let reasons: [ShowerFailureReason] = [.deviceUnavailable, .wrongDevice, .deviceBusy, .authorizeRefused,
+                                              .authorizeUncertain, .authorizationInvalid, .closeUnconfirmed,
+                                              .settleRefused, .settleUncertain, .settleUnconfirmed]
+        var resolvable = reasons.map { failed($0, review: true) }
+        resolvable.append(ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive))
+        resolvable.append(ShowerState(phase: .writePending, startedAt: t0, stateReviewRequired: true))
+        for record in resolvable {
+            XCTAssertTrue(record.canResolveManually)
+            let down = ShowerPageFlow(record: record, presented: false).pushedPhase
+            XCTAssertTrue(down == .unsure || down == .needsCheck, "\(record.phase) \(String(describing: record.failure?.reason))")
+        }
+    }
 }
