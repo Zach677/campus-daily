@@ -48,7 +48,7 @@ struct ClearRootView: View {
             .tag(ClearNavigator.Tab.settings)
         }
         .sensoryFeedback(.success, trigger:successTick)
-        .accountSwitchAlert { openHotWaterSetup() }
+        .accountSwitchAlert { openShowerSetup() }
         .sheet(isPresented:$navigator.relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
         .sheet(item:$navigator.setup, onDismiss:{ didSeeQuickSetup = true }) { request in
             // .id: a new request starts the checklist again, with its own row pushed.

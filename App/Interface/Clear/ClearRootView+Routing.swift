@@ -63,11 +63,11 @@ extension ClearRootView {
     }
 
     /// 「去设置热水」 after an account switch: the hot-water page on 日常, or 宿舍 on 设置 while there is
-    /// no binding; on the stack the user left (`PageStack.hotWaterSetup`): never a second shower
+    /// no binding; on the stack the user left (`PageStack.showerSetup`): never a second shower
     /// page, never closing a top-up page or 洗衣 while an order is being paid. While the shower page
     /// can't be left it stays selected.
-    func openHotWaterSetup() {
-        let target = PageStack.hotWaterSetup(configured:shower.configured, home:navigator.homePath,
+    func openShowerSetup() {
+        let target = PageStack.showerSetup(configured:shower.configured, home:navigator.homePath,
                                              settings:navigator.settingsPath, laundry:laundry.checkout?.phase)
         switch target {
         case .home(let routes):

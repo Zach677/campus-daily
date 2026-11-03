@@ -60,30 +60,30 @@ final class PageStackRulesTests: XCTestCase {
 
     // MARK: 去设置热水 (after an account switch)
 
-    func testHotWaterSetupOpensTheShowerPageOnce() {
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:true, home:[Page](), settings:[], laundry:nil), .home([.shower]))
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:true, home:[Page.shower], settings:[], laundry:nil), .home([.shower]),
+    func testShowerSetupOpensTheShowerPageOnce() {
+        XCTAssertEqual(PageStack.showerSetup(configured:true, home:[Page](), settings:[], laundry:nil), .home([.shower]))
+        XCTAssertEqual(PageStack.showerSetup(configured:true, home:[Page.shower], settings:[], laundry:nil), .home([.shower]),
                        "a shower page already up: no second one")
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:true, home:[Page.shower, .account], settings:[], laundry:nil),
+        XCTAssertEqual(PageStack.showerSetup(configured:true, home:[Page.shower, .account], settings:[], laundry:nil),
                        .home([.shower]))
     }
 
-    func testHotWaterSetupKeepsTopUpAndPayingPages() {
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:true, home:[Page.card], settings:[], laundry:nil),
+    func testShowerSetupKeepsTopUpAndPayingPages() {
+        XCTAssertEqual(PageStack.showerSetup(configured:true, home:[Page.card], settings:[], laundry:nil),
                        .home([.card, .shower]))
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:true, home:[Page.laundry], settings:[], laundry:.paying),
+        XCTAssertEqual(PageStack.showerSetup(configured:true, home:[Page.laundry], settings:[], laundry:.paying),
                        .home([.laundry, .shower]))
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:true, home:[Page.shower, .laundry], settings:[], laundry:.verifying),
+        XCTAssertEqual(PageStack.showerSetup(configured:true, home:[Page.shower, .laundry], settings:[], laundry:.verifying),
                        .home([.shower, .laundry]), "no second shower page over a page being paid: it is a back away")
     }
 
-    func testHotWaterSetupWithoutBindingOpensTheDormPageOnSettings() {
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:false, home:[Page.card], settings:[], laundry:nil), .settings([.dorm]))
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:false, home:[], settings:[Page.power], laundry:nil),
+    func testShowerSetupWithoutBindingOpensTheDormPageOnSettings() {
+        XCTAssertEqual(PageStack.showerSetup(configured:false, home:[Page.card], settings:[], laundry:nil), .settings([.dorm]))
+        XCTAssertEqual(PageStack.showerSetup(configured:false, home:[], settings:[Page.power], laundry:nil),
                        .settings([.power, .dorm]), "the top-up page stays under")
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:false, home:[], settings:[Page.dorm, .account], laundry:nil),
+        XCTAssertEqual(PageStack.showerSetup(configured:false, home:[], settings:[Page.dorm, .account], laundry:nil),
                        .settings([.dorm]))
-        XCTAssertEqual(PageStack.hotWaterSetup(configured:false, home:[], settings:[Page.dorm, .power], laundry:nil),
+        XCTAssertEqual(PageStack.showerSetup(configured:false, home:[], settings:[Page.dorm, .power], laundry:nil),
                        .settings([.dorm, .power]), "no second dorm page over a top-up page")
     }
 

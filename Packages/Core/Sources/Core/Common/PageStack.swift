@@ -50,7 +50,7 @@ public enum PageStack {
     }
 
     /// Where 「去设置热水」 (after an account switch) goes, and that tab's stack.
-    public enum HotWaterSetup<Page: StackPage>: Equatable {
+    public enum ShowerSetup<Page: StackPage>: Equatable {
         /// 日常 with the shower page.
         case home([Page])
         /// 设置 with the dorm page (no controller bound).
@@ -59,8 +59,8 @@ public enum PageStack {
 
     /// The shower page on 日常 when a controller is bound, else the dorm page on 设置; on the
     /// stack the user left (`revealing`): never a second copy, never closing a page that must stay.
-    public static func hotWaterSetup<Page: StackPage>(configured: Bool, home: [Page], settings: [Page],
-                                                      laundry: LaundryPhase?) -> HotWaterSetup<Page> {
+    public static func showerSetup<Page: StackPage>(configured: Bool, home: [Page], settings: [Page],
+                                                      laundry: LaundryPhase?) -> ShowerSetup<Page> {
         let closable: (Page) -> Bool = { PageStack.mayClose($0, laundry:laundry) }
         return configured ? .home(revealing(.showerPage, on:home, mayClose:closable))
                           : .settings(revealing(.dormPage, on:settings, mayClose:closable))
