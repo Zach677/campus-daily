@@ -40,6 +40,8 @@
 
 ### Fixed
 
+- Let 「扫描机身二维码」 and 「从照片识别」 on 常用洗衣机 answer a tap while signed out of U净: the U净 login opens first and, once it goes through, the scanner or the photo picker opens; cancelling the login stays on the page. They were greyed out without saying why.
+- Put the cursor in the code field of the U净 login once the code is sent, so iOS can offer the code from Messages there.
 - Say what a start waits for when the hot-water engine itself turns it down (the record changed in another process after the app's own check), as the app's own refusal does: for an unclear authorize 「水没开。学校提示：…打开校日常核对一下再开始。」 instead of 「上次结算还没确认」.
 - Leave out 最近 on home until its rows are measured, instead of drawing three rows first; a new record not measured yet no longer makes the whole section disappear for a moment.
 - Say 「这台手机现在存不了洗衣订单，重启 App 再登录 U净。」 when the U净 login can't read the laundry order record, instead of 「这台手机暂时存不了洗衣订单，重启 App 后再试。」.

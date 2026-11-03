@@ -7,6 +7,7 @@ import Core
 struct WasherSetupView: View {
     @EnvironmentObject private var laundry: LaundryModel
     @State private var camera = false
+    @State private var photoPicker = false
     @State private var photo: PhotosPickerItem?
     @State private var alias = ""
     @State private var issue: String?
@@ -14,6 +15,10 @@ struct WasherSetupView: View {
     /// The picked photo being read; cancelled when the page goes, so a late result is dropped.
     @State private var photoTask: Task<Void, Never>?
     @State private var login = false
+    /// What was tapped while signed out: opened once the U净 login goes through.
+    @State private var pending: WasherSetupFlow.Method?
+
+    private var addDisabled: Bool { WasherSetupFlow.addDisabled(mayImport:laundry.mayImport, busy:photoBusy) }
     var body: some View {
         Form {
             Section {
@@ -21,15 +26,12 @@ struct WasherSetupView: View {
                     .font(.headline)
                 Text(laundry.accountConnected ? "机器名称会自动填写，核对后点保存即可。" : "收到验证码后登录，再扫一次二维码，以后就能直接找到机器。")
                     .font(.footnote).foregroundStyle(.secondary)
-                Button(laundry.accountConnected ? "更新 U净 登录" : "登录 U净") { login = true }
+                Button(laundry.accountConnected ? "更新 U净 登录" : "登录 U净") { pending = nil; login = true }
                     .disabled(!laundry.mayLogin).accessibilityIdentifier("ujingLoginEntry")
             }
             Section("常用洗衣机") {
                 ForEach(laundry.savedMachines) { item in
-                    Button {
-                        do { try laundry.selectMachine(item); issue = nil; Task { await laundry.refresh(force:true) } }
-                        catch { issue = Self.text(error) }
-                    } label: {
+                    Button { choose(item) } label: {
                         HStack {
                             Label(item.name,systemImage:"washer")
                             Spacer()
@@ -41,11 +43,11 @@ struct WasherSetupView: View {
             }
             Section {
                 if DataScannerViewController.isSupported {
-                    Button { camera = true } label: { Label("扫描机身二维码",systemImage:"qrcode.viewfinder") }
-                        .disabled(!laundry.accountConnected || !laundry.mayImport || photoBusy).accessibilityIdentifier("scanWasherQR")
+                    Button { add(.scan) } label: { Label("扫描机身二维码",systemImage:"qrcode.viewfinder") }
+                        .disabled(addDisabled).accessibilityIdentifier("scanWasherQR")
                 }
-                PhotosPicker(selection:$photo,matching:.images) { Label("从照片识别",systemImage:"photo") }
-                    .disabled(!laundry.accountConnected || !laundry.mayImport || photoBusy).accessibilityIdentifier("washerQRPhoto")
+                Button { add(.photo) } label: { Label("从照片识别",systemImage:"photo") }
+                    .disabled(addDisabled).accessibilityIdentifier("washerQRPhoto")
             } header: { Text("添加机器") } footer: { Text("只读取机器信息，不下单或启动。已有未结束订单时不能切换机器。") }
             if laundry.loading || photoBusy { Section { HStack { ProgressView(); Text("正在识别机器…") } } }
             if let value = laundry.candidate {
@@ -63,7 +65,8 @@ struct WasherSetupView: View {
             if let text = issue ?? laundry.issue { Section { Text(text).font(.footnote).foregroundStyle(NativeTheme.notice) } }
         }.scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
             .navigationTitle("常用洗衣机").navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented:$login) { UjingLoginView() }
+            .sheet(isPresented:$login, onDismiss:continueAfterLogin) { UjingLoginView() }
+            .photosPicker(isPresented:$photoPicker, selection:$photo, matching:.images)
             .sheet(isPresented:$camera) {
                 NavigationStack {
                     WasherCamera { text in camera = false; resolve(text) } failed: { message in camera = false; issue = message }
@@ -91,6 +94,34 @@ struct WasherSetupView: View {
             }
             .onDisappear { photoTask?.cancel(); photoTask = nil }
     }
+
+    /// 扫描机身二维码 / 从照片识别. Signed out: the U净 login first, then straight on.
+    private func add(_ method: WasherSetupFlow.Method) {
+        switch WasherSetupFlow.tap(method, signedIn:laundry.accountConnected) {
+        case .open(let method): open(method)
+        case .signIn(let then): pending = then; login = true
+        }
+    }
+
+    private func open(_ method: WasherSetupFlow.Method) {
+        switch method {
+        case .scan: camera = true
+        case .photo: photoPicker = true
+        }
+    }
+
+    /// The login sheet has gone: on to what was tapped, or nothing when it was cancelled.
+    private func continueAfterLogin() {
+        let next = WasherSetupFlow.afterLogin(pending:pending, signedIn:laundry.accountConnected)
+        pending = nil
+        if let next { open(next) }
+    }
+
+    private func choose(_ item: SavedWasher) {
+        do { try laundry.selectMachine(item); issue = nil; Task { await laundry.refresh(force:true) } }
+        catch { issue = Self.text(error) }
+    }
+
     private static func text(_ error: Error) -> String {
         (error as? WasherSetupRefusal)?.message ?? AppErrorText.text(error)
     }
