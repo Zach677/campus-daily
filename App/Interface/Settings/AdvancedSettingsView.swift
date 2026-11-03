@@ -21,10 +21,6 @@ struct AdvancedSettingsView: View {
     @State private var importing = false
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
-    private var version: String {
-        (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + "（" +
-        (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + "）· 测试版"
-    }
     private func importRow(_ title: String) -> some View {
         Button { if preview == nil { importing = true } } label: { ChevronRow(title:title) }
     }
@@ -80,13 +76,9 @@ struct AdvancedSettingsView: View {
             #else
             ShowerTroubleshootingSections()
             #endif
+            ShortcutsSection()
             Section {
-                Link(destination:URL(string:"shortcuts://")!) { ChevronRow(title:"快捷指令") }
-            } footer: {
-                Text("在「快捷指令」App 里搜「校日常」，就能把「开始洗澡」和「结束并结算」加到主屏幕或操作按钮上。")
-            }.listRowBackground(Theme.group)
-            Section {
-                LabeledContent("版本", value:version)
+                VersionRow()
             }.listRowBackground(Theme.group)
             resetSection
         }
