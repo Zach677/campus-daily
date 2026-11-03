@@ -11,16 +11,18 @@ public enum RecentFit {
 
     /// `viewport`: the visible height; `above`: everything over the section; `header`: the
     /// section's header (its gap above included); `rowHeights`: each row as drawn (separator
-    /// included), in order. Screen not measured yet: three rows. Screen measured but a row not
-    /// yet (a zero): none, until every row is. Fewer than three when only fewer fit, and none
-    /// when none fits (a small phone at a large text size).
+    /// included), in order. Screen not measured yet: three rows. Screen measured but no row yet
+    /// (all zeros): none, until one is. A row not measured yet (a new record, a zero) counts as
+    /// tall as the tallest measured one, so the section doesn't vanish for a frame whenever a
+    /// record arrives. Fewer than three when only fewer fit, and none when none fits (a small
+    /// phone at a large text size).
     public static func count(viewport: Double, above: Double, header: Double = 0, rowHeights: [Double], bottomGap: Double = bottomGap) -> Int {
         guard viewport > 0 else { return min(minimumRows, rowHeights.count) }
-        guard rowHeights.allSatisfy({ $0 > 0 }) else { return 0 }
+        guard let tallest = rowHeights.max(), tallest > 0 else { return 0 }
         // Measured heights are fractions of a point: half a point either way still fits.
         var left = viewport - above - header - bottomGap + 0.5
         var count = 0
-        for height in rowHeights {
+        for height in rowHeights.map({ $0 > 0 ? $0 : tallest }) {
             guard height <= left else { break }
             left -= height
             count += 1

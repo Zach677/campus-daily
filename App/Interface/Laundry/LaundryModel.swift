@@ -179,9 +179,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     static func loginText(_ error: Error) -> String {
         if error is LaundryLoginRefusal { return "还有一笔洗衣订单没结束，要用下单的那个 U净 账号登录。" }
-        // The order record can't be read, so whose order is open is unknown.
-        if error as? LaundryEngineError == .storage { return "这台手机现在存不了洗衣订单，等一下再登录 U净。" }
-        if error is LaundryEngineError { return engineText(error) }
+        if let error = error as? LaundryEngineError { return error.loginMessage }
         return (error as? ServiceError)?.userMessage ?? "登录没完成，核对手机号和验证码再试。"
     }
 
@@ -439,13 +437,8 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     }
 
     static func engineText(_ error: Error) -> String {
-        switch error as? LaundryEngineError {
-        case .busy?: return "正在处理上一步，稍等一下。"
-        case .notAllowed?: return "现在不能这样操作，下拉刷新看看。"
-        case .washerChanged?: return "机器或价格变了，刷新一下再下单。"
-        case .storage?: return "这台手机暂时存不了洗衣订单，重启 App 后再试。"
-        case nil: return (error as? AppReset.InProgress)?.errorDescription ?? message(error) ?? uncertainText
-        }
+        if let error = error as? LaundryEngineError { return error.message }
+        return (error as? AppReset.InProgress)?.errorDescription ?? message(error) ?? uncertainText
     }
 
     private static func message(_ error: Error) -> String? {
