@@ -22,19 +22,24 @@ struct ClearLaundryConfirmSheet: View {
                     if let order { Text(order).font(.headline).foregroundStyle(Theme.ink) }
                     Text(message).font(.subheadline).foregroundStyle(Theme.ink2)
                         .fixedSize(horizontal:false, vertical:true)
-                    Button(role:.destructive) { submitted = true; confirm() } label: {
-                        Text(button).font(.body.weight(.semibold)).frame(maxWidth:.infinity, minHeight:52)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.roundedRectangle(radius:12))
-                    .tint(Theme.redLarge)
-                    .disabled(submitted)
-                    .accessibilityIdentifier(buttonID)
                 }
                 .padding(24)
                 .frame(maxWidth:.infinity, alignment:.leading)
             }
             .scrollBounceBehavior(.basedOnSize)
+            // The red button stays in view at any detent and text size; what is above it scrolls.
+            .safeAreaInset(edge:.bottom, spacing:0) {
+                Button(role:.destructive) { submitted = true; confirm() } label: {
+                    Text(button).font(.body.weight(.semibold)).frame(maxWidth:.infinity, minHeight:52)
+                }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.roundedRectangle(radius:12))
+                .tint(Theme.redLarge)
+                .disabled(submitted)
+                .accessibilityIdentifier(buttonID)
+                .padding(.horizontal,24).padding(.vertical,12)
+                .background(Theme.group)
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement:.cancellationAction) { Button("留着") { dismiss() } }
@@ -42,6 +47,8 @@ struct ClearLaundryConfirmSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        // Opaque, as the system sheet: the page under it must not show through.
+        .presentationBackground(Theme.group)
     }
 }
 
