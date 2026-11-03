@@ -6,6 +6,9 @@
 
 ### Added
 
+- Add Settings › 外观 › 主题 with two themes: 暖橙 (the current look, the default) and 清爽 (the system grouped look: grey page, white cards, one blue tint, rounded-rectangle buttons, the default number font and smaller home numbers). Only the look changes; pages, copy and behaviour are the same. A tap switches at once; the home-screen widget follows at its next reload and the Live Activities at their next update. While a shower runs (from the water starting until the settlement) or a laundry order is unfinished the options are greyed out with the reason above the footer, and they grey out as soon as one starts with the page open.
+- In 清爽, home's 双余额, 洗衣 and 最近, and the lists on the laundry page and in 校园卡记录, sit in white cards; 最近 counts the card's padding when it works out how many rows fit, so home still does not scroll.
+
 - Show 最近 on the home screen: the card's records from the last three school days merged with the app's own showers and laundry orders, newest first, as many whole rows as fit the screen, so home does not scroll.
 - Show the full location 「校区 · 公寓 · 楼栋 · 房间」 of the dorm and the electricity meter in Settings.
 - Add a 扫洗衣机 button to the laundry page's navigation bar.

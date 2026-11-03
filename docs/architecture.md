@@ -31,8 +31,10 @@ App/
 Shared/               compiled into App and Widget
   WidgetViews/        widget views (also used by the in-app preview)
   LiveActivityViews/  ActivityAttributes and Live Activity views
-  Theme/              formatting and the mascot shape the widget also draws (app colours and fonts
-                      are in App/Interface/Common: Theme, NativeTheme)
+  Theme/              formatting and the mascot shape the widget also draws, and the colours the
+                      widget and Live Activities need in both themes (ClearPalette, CampusWidgetPalette,
+                      LiveActivityAccent); the app's tokens and fonts are in App/Interface/Common
+                      (Theme, ThemeStore, ThemePalette, NativeTheme)
 Widget/               XiaoRiChangWidget, ShowerLiveActivity, LaundryLiveActivity, Info.plist, Widget.entitlements
 Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macOS 14, Swift 6 mode)
   Sources/Core/
@@ -47,8 +49,10 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     Storage/          generic Keychain and UserDefaults access only: SecureStore, StoreKey, SharedKeychain
                       (app-private and widget-shared access groups), PreferenceStorage, StorageError
     Common/           Money, ServiceError, JSONValue, DormAddress, ShowerHandoff (used by Campus and Shower)
+    Theme/            the chosen theme (AppTheme, ThemePreference in the App Group's preferences) and
+                      when the 主题 options are greyed out (ThemeLock, from the shower and laundry states)
   Tests/
-    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/
+    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport
     Fixtures/         synthetic/redacted API samples, one folder per service
 Scripts/              fetch-alipay-sdk, stage-water-profile, check-widget-signature, package-ipa, privacy-check
@@ -62,6 +66,7 @@ App ──→ Shared ──→ Core
 Widget ─→ Shared ──→ Core
 Core: Campus / Shower / Laundry ──→ Networking, Storage, Common
       Snapshot ──→ Campus (balances, electricity), Storage
+      Theme ──→ Shower, Laundry (their states, read only), Storage
 ```
 
 Campus never references Snapshot: `SchoolSession.refresh` returns a `SchoolReading` and the
