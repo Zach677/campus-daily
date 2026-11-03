@@ -44,7 +44,7 @@ struct LaundryDetail: View {
         ScrollView {
             VStack(alignment:.leading, spacing:0) {
                 hero(facts, phase:phase)
-                    .padding(.horizontal,24).padding(.top,20).padding(.bottom,6)
+                    .padding(.horizontal,Theme.headerInset).padding(.top,20).padding(.bottom,6)
                 below(facts, phase:phase, busy:busy)
             }
             .padding(.bottom,24)
@@ -239,6 +239,7 @@ struct LaundryDetail: View {
                                           date:record.createdAt ?? Date(), detail:facts.machine.map(LaundryFormat.machine),
                                           amount:nil, source:.app),
                           accentWord:"待核对")
+                    .sectionCard(vertical:0)
             }
         case .unpaid, .empty, .unknown:
             EmptyView()
@@ -268,6 +269,7 @@ struct LaundryDetail: View {
                         .opacity(dimmed ? 0.4 : 1)
                 }
             }
+            .sectionCard(vertical:0)
         }
     }
 
@@ -286,6 +288,7 @@ struct LaundryDetail: View {
                         .accessibilityLabel(["已付款", facts.amount.map(LaundryFormat.spokenYuan)].compactMap { $0 }.joined(separator:"，"))
                 }
             }
+            .sectionCard(vertical:0)
         }
     }
 
@@ -522,7 +525,7 @@ struct LaundryProgramRow: View {
                 }
             }
             .padding(.vertical,10).frame(minHeight:56)
-            .padding(.horizontal,24)
+            .padding(.horizontal,Theme.rowInset)
         }
         .buttonStyle(RowPressStyle())
         .accessibilityElement(children:.ignore)

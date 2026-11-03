@@ -47,7 +47,7 @@ struct StatusRow: View {
             }
         }
         .padding(.vertical,10).frame(minHeight:66)
-        .padding(.horizontal,24)
+        .padding(.horizontal,Theme.rowInset)
     }
     private var titles: some View {
         VStack(alignment:.leading, spacing:2) {
@@ -118,7 +118,7 @@ struct RecentRow: View {
             }
         }
         .padding(.vertical,8).frame(minHeight:56)
-        .padding(.horizontal,24)
+        .padding(.horizontal,Theme.rowInset)
         .accessibilityElement(children:.ignore)
         .accessibilityLabel([item.title, subtitle, accentWord ?? item.spokenAmount].compactMap { $0 }.joined(separator:"，"))
     }
@@ -146,15 +146,15 @@ struct HomeSectionHeader: View {
     let text: String
     var body: some View {
         Text(text).scaledFont(13, .semibold, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-            .padding(.horizontal,24).padding(.bottom,4)
+            .padding(.horizontal,Theme.headerInset).padding(.bottom,4)
             .frame(maxWidth:.infinity, alignment:.leading)
             .accessibilityAddTraits(.isHeader)
     }
 }
 
-/// Hairline between rows: starts at x = 24 and runs to the trailing edge.
+/// Hairline between rows: starts where the rows' content does (`Theme.rowInset`) and runs to the trailing edge.
 struct RowSeparator: View {
-    var body: some View { Hairline().padding(.leading,24) }
+    var body: some View { Hairline().padding(.leading,Theme.rowInset) }
 }
 
 /// 8pt accent dot that pulses 1 → 0.35 on a 1.6s loop (static under Reduce Motion).
