@@ -698,7 +698,7 @@ private struct LaundrySheetBody<Content: View>: View {
     var body: some View {
         ScrollView {
             VStack(alignment:.leading, spacing:0) { content }
-                .padding(.horizontal,24).padding(.top,30).padding(.bottom,12)
+                .padding(.horizontal,Theme.headerInset).padding(.top,30).padding(.bottom,12)
                 .frame(maxWidth:.infinity, alignment:.leading)
         }
         .scrollBounceBehavior(.basedOnSize)

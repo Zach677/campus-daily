@@ -5,6 +5,10 @@ import SwiftUI
 enum NativeTheme {
     static let background = Color(uiColor:.systemGroupedBackground)
     static let surface = Color(uiColor:.secondarySystemGroupedBackground)
+    // Computed, never cached in a `let`: a stored value would keep the theme of the first read.
     static var tint: Color { Theme.accentText }
     static var action: Color { Theme.pill }
+    /// Problems on these pages: the system orange in 暖橙 (what they always showed), the theme's
+    /// `notice` in 清爽.
+    static var notice: Color { Theme.current == .clear ? Theme.notice : .orange }
 }

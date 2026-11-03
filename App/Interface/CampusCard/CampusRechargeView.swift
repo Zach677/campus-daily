@@ -35,7 +35,7 @@ struct CampusRechargeView: View {
                     description:Text(issue?.text ?? "先登录学校账号。"))
             }
             if let issue, !pageBlocked {
-                Text(issue.text).font(.footnote).foregroundStyle(.orange).padding(.horizontal)
+                Text(issue.text).font(.footnote).foregroundStyle(NativeTheme.notice).padding(.horizontal)
                 if issue.offersSignIn {
                     Button("重新登录学校账号") { login = true }.buttonStyle(.borderedProminent).padding()
                 }

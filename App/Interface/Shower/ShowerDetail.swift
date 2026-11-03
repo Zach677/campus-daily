@@ -19,10 +19,10 @@ struct ShowerDetail: View {
                 VStack(alignment:.leading,spacing:13) {
                     HStack(spacing:9) {
                         if shower.busy { ProgressView().controlSize(.small) }
-                        else { Circle().fill(shower.problem ? Color.orange : NativeTheme.tint).frame(width:7,height:7).accessibilityHidden(true) }
+                        else { Circle().fill(shower.problem ? NativeTheme.notice : NativeTheme.tint).frame(width:7,height:7).accessibilityHidden(true) }
                         Text(headline).font(.title2.bold()).accessibilityIdentifier("waterHeadline")
                     }
-                    Text(shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? Color.orange : Color.secondary)
+                    Text(shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : Color.secondary)
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
                 }
                 }
