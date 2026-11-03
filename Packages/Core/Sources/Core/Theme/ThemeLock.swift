@@ -7,8 +7,8 @@ public enum ThemeLock: Sendable, Equatable {
     case laundry
     case showerAndLaundry
 
-    /// Shower: from the moment water may start (the authorization is being written) until the
-    /// settlement is done. A record waiting to be checked (结算待核对 and the like) does not
+    /// Shower: from 开始洗澡 (connecting to the controller and authorizing, before any water)
+    /// until the settlement is done. A record waiting to be checked (结算待核对 and the like) does not
     /// count: nothing is running then. Laundry: while an order is unfinished — being created or
     /// looked for, unpaid, being paid or verified, running, or being cancelled. An order the
     /// machine didn't start (kept for the user to acknowledge) is over and does not count.
@@ -23,8 +23,8 @@ public enum ThemeLock: Sendable, Equatable {
 
     public static func showerRuns(_ shower: ShowerState?) -> Bool {
         switch shower?.phase {
-        case .writePending?, .running?, .closing?, .settling?: return true
-        case .idle?, .authorizing?, .done?, .failed?, nil: return false
+        case .authorizing?, .writePending?, .running?, .closing?, .settling?: return true
+        case .idle?, .done?, .failed?, nil: return false
         }
     }
 

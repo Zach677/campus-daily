@@ -1,8 +1,8 @@
 import XCTest
 import Core
 
-/// The theme options grey out while a shower runs (from the water until the settlement) or a
-/// laundry order is unfinished.
+/// The theme options grey out while a shower is under way (from 开始洗澡, while connecting and
+/// authorizing, until the settlement) or a laundry order is unfinished.
 final class ThemeLockTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_700_000_000)
 
@@ -12,12 +12,13 @@ final class ThemeLockTests: XCTestCase {
         XCTAssertNil(ThemeLock.lock(shower: ShowerState(phase: .done, startedAt: start), laundry: LaundryPhase.none))
     }
 
-    func testShowerFromTheWaterUntilTheSettlement() {
+    func testShowerFromTheStartUntilTheSettlement() {
         for phase in [ShowerPhase.writePending, .running, .closing, .settling] {
             XCTAssertEqual(ThemeLock.lock(shower: ShowerState(phase: phase, startedAt: start), laundry: LaundryPhase.none), .shower, "\(phase)")
         }
-        // Connecting and authorizing: no water yet.
-        XCTAssertNil(ThemeLock.lock(shower: ShowerState(phase: .authorizing), laundry: nil))
+        // Connecting and authorizing, before any water: already under way.
+        XCTAssertEqual(ThemeLock.lock(shower: ShowerState(phase: .authorizing), laundry: nil), .shower)
+        XCTAssertEqual(ThemeLock.lock(shower: ShowerState(phase: .authorizing, machineID: "SYNTHETIC01", authorizeSent: true), laundry: LaundryPhase.none), .shower)
         // Water running while the controller contradicted the record still counts.
         XCTAssertEqual(ThemeLock.lock(shower: ShowerState(phase: .running, startedAt: start, stateReviewRequired: true), laundry: nil), .shower)
     }
