@@ -5,7 +5,7 @@ import Core
 /// reads one in its body is drawn again when the theme changes.
 enum Theme {
     /// The app's theme; the store the Settings › 外观 › 主题 page writes.
-    static let store = ThemeStore(preference:ThemePreference(storage:ThemePreference.sharedStorage()))
+    static let store = ThemeStore(preference:ThemePreference(storage:ThemePreference.sharedStorage()), lock:AppEnvironment.sharedLock)
     static var current: AppTheme { store.theme }
     private static var palette: ThemePalette { .of(store.theme) }
 

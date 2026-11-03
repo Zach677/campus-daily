@@ -88,11 +88,13 @@ import Core
 
     private static func clear() throws {
         try AppReset.clear(store:AppEnvironment.store, preferences:.standard,
-                           preferencesDomain:Bundle.main.bundleIdentifier ?? "", files:files)
+                           preferencesDomain:Bundle.main.bundleIdentifier ?? "",
+                           shared:AppEnvironment.sharedPreferences, files:files)
     }
 
     private static func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async {
         campus.reload()
+        Theme.store.reload()
         await shower.reloadAfterReset()
         laundry.reloadAfterReset()
         Reminders.shared.clearAfterReset()

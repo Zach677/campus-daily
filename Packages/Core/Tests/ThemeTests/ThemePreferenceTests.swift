@@ -7,6 +7,33 @@ private final class MemoryPreferences: PreferenceStorage {
     func set(_ value: Any?, forKey key: String) { values[key] = value }
 }
 
+/// Counts its steps; `insideLock` is true only while a step runs. `fails`: the lock can't be
+/// taken (the shared container before the first unlock).
+private final class SpyLock: SharedLock, @unchecked Sendable {
+    var steps = 0
+    var insideLock = false
+    var fails = false
+    func locked<T>(_ body: () throws -> T) throws -> T {
+        if fails { throw CocoaError(.fileLocking) }
+        steps += 1; insideLock = true
+        defer { insideLock = false }
+        return try body()
+    }
+}
+
+/// Records whether each write happened inside the lock.
+private final class LockCheckedPreferences: PreferenceStorage {
+    let lock: SpyLock
+    var values: [String: Any] = [:]
+    var writesOutsideLock = 0
+    init(lock: SpyLock) { self.lock = lock }
+    func object(forKey key: String) -> Any? { values[key] }
+    func set(_ value: Any?, forKey key: String) {
+        if !lock.insideLock { writesOutsideLock += 1 }
+        values[key] = value
+    }
+}
+
 /// Settings › 外观 › 主题: stored on this phone, 暖橙 until the user picks 清爽.
 final class ThemePreferenceTests: XCTestCase {
     func testDefaultIsWarm() {
@@ -14,14 +41,14 @@ final class ThemePreferenceTests: XCTestCase {
         XCTAssertEqual(AppTheme.standard, .warm)
     }
 
-    func testChoiceRoundTripsUnderItsOwnKey() {
+    func testChoiceRoundTripsUnderItsOwnKey() throws {
         let storage = MemoryPreferences()
         storage.values[PreferenceKey.schoolLaundry] = false
         let preference = ThemePreference(storage: storage)
-        preference.set(.clear)
+        try preference.set(.clear, under: UnsharedLock())
         XCTAssertEqual(preference.theme, .clear)
         XCTAssertEqual(ThemePreference(storage: storage).theme, .clear, "a new reader sees it")
-        preference.set(.warm)
+        try preference.set(.warm, under: UnsharedLock())
         XCTAssertEqual(preference.theme, .warm)
         XCTAssertEqual(storage.values[ThemePreference.key] as? String, "warm")
         XCTAssertEqual(storage.values[PreferenceKey.schoolLaundry] as? Bool, false, "other preferences kept")
@@ -44,8 +71,33 @@ final class ThemePreferenceTests: XCTestCase {
         let suite = "ThemePreferenceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        ThemePreference(storage: defaults).set(.clear)
+        try ThemePreference(storage: defaults).set(.clear, under: UnsharedLock())
         XCTAssertEqual(ThemePreference(storage: try XCTUnwrap(UserDefaults(suiteName: suite))).theme, .clear)
+    }
+
+    /// The choice is shared with the widget and the Live Activities: it is compared and written
+    /// in one step inside the shared lock, never by a read and a separate write.
+    func testWrittenInsideTheSharedLock() throws {
+        let lock = SpyLock()
+        let storage = LockCheckedPreferences(lock: lock)
+        let preference = ThemePreference(storage: storage)
+        try preference.set(.clear, under: lock)
+        XCTAssertEqual(preference.theme, .clear)
+        XCTAssertEqual(lock.steps, 1)
+        XCTAssertEqual(storage.writesOutsideLock, 0)
+        try preference.set(.clear, under: lock)
+        XCTAssertEqual(lock.steps, 2, "compared inside the lock too")
+        XCTAssertEqual(storage.writesOutsideLock, 0)
+    }
+
+    /// The lock can't be taken: nothing is written and the caller hears why.
+    func testNothingWrittenWithoutTheLock() {
+        let lock = SpyLock()
+        lock.fails = true
+        let storage = LockCheckedPreferences(lock: lock)
+        XCTAssertThrowsError(try ThemePreference(storage: storage).set(.clear, under: lock))
+        XCTAssertNil(storage.values[ThemePreference.key])
+        XCTAssertEqual(ThemePreference(storage: storage).theme, .warm)
     }
 
     /// No App Group (tests, a re-signed install without one): this process's own preferences.

@@ -1,8 +1,9 @@
 import Foundation
 
 /// The chosen theme, kept in the App Group's preferences so the widget and the Live Activities
-/// draw with it too. Only the app writes it, with one plain write; the extensions only read.
-/// Nothing stored, or a value this build doesn't know: 暖橙.
+/// draw with it too. Only the app writes it, compared and written in one step inside the shared
+/// lock (`set(_:under:)`); the extensions only read. Nothing stored, or a value this build
+/// doesn't know: 暖橙.
 public struct ThemePreference {
     public static let key = PreferenceKey.theme
     private let storage: any PreferenceStorage
@@ -11,7 +12,14 @@ public struct ThemePreference {
 
     public var theme: AppTheme { AppTheme(stored: storage.object(forKey: Self.key) as? String) }
 
-    public func set(_ theme: AppTheme) { storage.set(theme.rawValue, forKey: Self.key) }
+    /// Stores `theme` unless it is already stored, inside `lock`. A lock that can't be taken
+    /// throws and nothing is written.
+    public func set(_ theme: AppTheme, under lock: any SharedLock) throws {
+        try lock.locked {
+            guard storage.object(forKey: Self.key) as? String != theme.rawValue else { return }
+            storage.set(theme.rawValue, forKey: Self.key)
+        }
+    }
 
     /// The preferences the app and its extensions share: the App Group's, or this process's own
     /// when it has no group (tests, an install re-signed without one).
