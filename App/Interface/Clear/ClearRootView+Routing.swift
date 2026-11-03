@@ -8,11 +8,12 @@ extension ClearRootView {
     var showerLocked: Bool { shower.page.presented && !shower.page.mayCollapse }
 
     /// The shower model wants its page: 日常 selected, the page pushed there unless it is already
-    /// on top. Whatever sheet is over the tab bar (the sign-in, the first-run checklist) closes.
+    /// on top. Whatever sheet is over the tab bar (the sign-in, the first-run checklist, the
+    /// laundry-done sheet) closes.
     /// Called again on every start, reopen and page change.
     func followShowerPage(_ up: Bool) {
         guard up else { return }
-        navigator.relogin = false; navigator.setup = nil
+        navigator.relogin = false; navigator.setup = nil; navigator.panel = nil
         showShowerPage()
     }
 
