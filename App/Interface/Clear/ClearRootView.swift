@@ -76,7 +76,7 @@ struct ClearRootView: View {
             WidgetPreview(page:page.number).onTapGesture { widgetPreview = nil }.onOpenURL { handleDemo($0) }
         }
         #endif
-        .modifier(CampusRootHooks(demo:isDemo, firstRun:{ navigator.openSetup() }, afterReset:afterReset))
+        .modifier(CampusRootHooks(demo:isDemo, root:.clear, firstRun:{ navigator.openSetup() }, afterReset:afterReset))
         // 记录 shows one person's records: back to its root when they sign out or someone else signs in.
         .onChange(of:campus.personChanges) { _, _ in navigator.popToRoot(.records) }
         .onChange(of:shower.page.presented, initial:true) { _, up in followShowerPage(up) }

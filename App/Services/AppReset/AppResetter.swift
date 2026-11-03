@@ -9,16 +9,14 @@ import Core
     /// Bumped after each completed reset: the home screen closes settings and opens the guide.
     @Published private(set) var completed = 0
     @Published private(set) var running = false
-    /// A reset finished and the first-run setup is still to open: taken (`takeSetup`) by the root
-    /// on screen, once. A reset from 清爽 brings 暖橙's root up in the middle of it (the theme is
-    /// cleared), so the root that opens the setup may not be the one that saw the reset start.
-    @Published private(set) var setupDue = false
+    /// A reset finished and the first-run setup is still to open: taken (`takeSetup`) once, by the
+    /// root of the theme now shown. A reset from 清爽 brings 暖橙's root up in the middle of it
+    /// (the theme is cleared), so 清爽's root, about to go, leaves it to 暖橙's (`ResetSetupDue`).
+    @Published private(set) var setupDue = ResetSetupDue()
 
-    /// The setup is the caller's to open; false when no reset left one due.
-    func takeSetup() -> Bool {
-        guard setupDue else { return false }
-        setupDue = false
-        return true
+    /// The setup is `root`'s to open; false when none is due or `root` isn't the theme shown.
+    func takeSetup(root: AppTheme, current: AppTheme) -> Bool {
+        setupDue.take(root:root, current:current)
     }
 
     /// Not while a shower runs or its settlement still needs checking, with an unfinished
@@ -99,7 +97,7 @@ import Core
 
     private func finished() {
         completed += 1
-        setupDue = true
+        setupDue.resetFinished()
     }
 
     private static func clear() throws {

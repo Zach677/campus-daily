@@ -221,7 +221,7 @@ struct HomeView: View {
             WidgetPreview(page:page.number).onTapGesture { widgetPreview = nil }.onOpenURL { handleDemo($0) }
         }
         #endif
-        .modifier(CampusRootHooks(demo:isDemo, firstRun:openOnboarding, afterReset:afterReset))
+        .modifier(CampusRootHooks(demo:isDemo, root:.warm, firstRun:openOnboarding, afterReset:afterReset))
         // 校园卡记录 shows one person's records: it closes when they sign out or someone else signs in.
         .onChange(of:campus.personChanges) { _, _ in
             if let index = path.firstIndex(of:.records) { path.removeSubrange(index...) }

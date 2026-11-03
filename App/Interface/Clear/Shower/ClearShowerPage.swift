@@ -18,6 +18,8 @@ struct ClearShowerPage: View {
     @State private var successTick = 0
     @State private var errorTick = 0
     @State private var confirmClear = false
+    /// This copy is counted as on screen (`.pushedAppeared` sent, `.pushedDisappeared` not yet).
+    @State private var counted = false
 
     private var flow: ShowerPageFlow { shower.page }
     private var phase: ShowerPagePhase? { flow.pushedPhase }
@@ -63,6 +65,16 @@ struct ClearShowerPage: View {
             AccessibilityNotification.Announcement(ShowerPageText.endFailed(failure)).post()
         }
         .typesettingLanguage(Theme.typesetting)
+        // On screen, the page holds 再结算一次's first tap even while the flow is down (after
+        // 去核对, after a relaunch); going off screen takes it back (`ShowerPageFlow.pushedVisible`).
+        .onAppear {
+            guard !counted else { return }
+            counted = true; shower.pageEvent(.pushedAppeared)
+        }
+        .onDisappear {
+            guard counted else { return }
+            counted = false; shower.pageEvent(.pushedDisappeared)
+        }
     }
 
     // MARK: Sections
