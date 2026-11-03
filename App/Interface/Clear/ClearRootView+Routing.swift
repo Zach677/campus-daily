@@ -8,34 +8,27 @@ extension ClearRootView {
     var showerLocked: Bool { shower.page.presented && !shower.page.mayCollapse }
 
     /// The shower model wants its page: 日常 selected, the page pushed there unless it is already
-    /// on top. Whatever sheet is over the tab bar (the sign-in, the first-run checklist, the
-    /// laundry-done sheet) closes.
+    /// on top. The sign-in sheet and the first-run checklist close; the laundry-done sheet stays
+    /// (it is shown once per order), with the page under it.
     /// Called again on every start, reopen and page change.
     func followShowerPage(_ up: Bool) {
         guard up else { return }
-        navigator.relogin = false; navigator.setup = nil; navigator.panel = nil
+        navigator.relogin = false; navigator.setup = nil
         showShowerPage()
     }
 
-    func showShowerPage() {
-        navigator.tab = .home
-        var path = navigator.homePath
-        guard path.last != .shower else { return }
-        // Already lower on the stack: back to it rather than a second copy, unless that would
-        // close a page being paid on.
-        if let index = path.lastIndex(of:.shower), mayClosePages {
-            path.removeSubrange(path.index(after:index)...)
-        } else {
-            path.append(.shower)
-        }
-        navigator.homePath = path
-    }
+    /// Already lower on the stack: back to it rather than a second copy, unless that would close
+    /// a page that must stay (`PageStack.showingShower`).
+    func showShowerPage() { navigator.showShowerPage(laundry:laundry.checkout?.phase) }
 
     /// The shower page was popped (its back button, a link) while the model still has it up:
     /// while water runs that collapses it, as 暖橙's ⌄; otherwise it is put back.
     func showerPageLeft(old: [ClearRoute], new: [ClearRoute]) {
-        guard old.contains(.shower), !new.contains(.shower), shower.page.presented else { return }
-        if shower.page.mayCollapse { shower.pageEvent(.collapseTapped) } else { showShowerPage() }
+        switch PageStack.showerLeft(old:old, new:new, presented:shower.page.presented, mayCollapse:shower.page.mayCollapse) {
+        case .nothing: break
+        case .collapse: shower.pageEvent(.collapseTapped)
+        case .putBack: showShowerPage()
+        }
     }
 
     // MARK: Pages
@@ -69,9 +62,21 @@ extension ClearRootView {
         if !showerLocked { navigator.tab = tab }
     }
 
-    /// 「去设置热水」 after an account switch: the hot-water page, or 宿舍 while there is no binding.
+    /// 「去设置热水」 after an account switch: the hot-water page on 日常, or 宿舍 on 设置 while there is
+    /// no binding; on the stack the user left (`PageStack.hotWaterSetup`): never a second shower
+    /// page, never closing a top-up page or 洗衣 while an order is being paid. While the shower page
+    /// can't be left it stays selected.
     func openHotWaterSetup() {
-        if shower.configured { reveal([.shower]) } else { show([.dorm], in:.settings) }
+        let target = PageStack.hotWaterSetup(configured:shower.configured, home:navigator.homePath,
+                                             settings:navigator.settingsPath, laundry:laundry.checkout?.phase)
+        switch target {
+        case .home(let routes):
+            if routes != navigator.homePath { navigator.homePath = routes }
+            if !showerLocked { navigator.tab = .home }
+        case .settings(let routes):
+            if routes != navigator.settingsPath { navigator.settingsPath = routes }
+            if !showerLocked { navigator.tab = .settings }
+        }
     }
 
     /// A notification tap: the same guard as the widget's links; laundry opens its page.

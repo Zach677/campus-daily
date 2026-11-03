@@ -12,6 +12,7 @@ struct ClearRecordsList: View {
     let app: [AppActivity]
     @StateObject private var model: CardRecordsModel
     @Environment(ClearNavigator.self) private var navigator
+    @EnvironmentObject private var laundry: LaundryModel
 
     init(open: [ClearOpenItem], app: [AppActivity], source: CardRecordsSource) {
         self.open = open
@@ -70,7 +71,7 @@ struct ClearRecordsList: View {
     @ViewBuilder private func row(_ item: RecentItem) -> some View {
         if item.source == .app {
             Button {
-                navigator.open(item.kind == .laundry ? .laundry : .shower, in:.home)
+                navigator.openOnHome(item.kind == .laundry ? .laundry : .shower, laundry:laundry.checkout?.phase)
             } label: {
                 ClearLinkRow { ClearRecordRow(item:item) }
             }

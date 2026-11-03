@@ -10,7 +10,8 @@ import Core
 /// - push a page on the stack the page is on: `navigator.push(.laundry)` or
 ///   `NavigationLink(value:ClearRoute.laundry)` (every stack maps `ClearRoute` with `ClearDestination`);
 /// - switch tab: `navigator.select(.records)` (「全部 ›」 on home); open a page on a tab keeping what is
-///   open there: `navigator.open(.laundry, in:.home)` (记录's rows);
+///   open there: `navigator.open(.laundry, in:.home, laundry:)` (记录's rows); the shower page on
+///   日常: `navigator.showShowerPage(laundry:)`;
 /// - go back: `@Environment(\.dismiss)` or `navigator.pop()`; to a tab's root: `navigator.popToRoot()`;
 /// - the first-run checklist as a sheet: `navigator.openSetup()`; the sign-in sheet or
 ///   Settings › 学校账号 from the expired-login line: `navigator.signInAgain(_:)`;
@@ -91,18 +92,27 @@ import Core
         setPath(routes, tab)
     }
 
-    /// Selects a tab with this page showing, keeping the pages already open there (`PageStack`):
-    /// back to it when it is lower and only plain pages are over it, otherwise pushed on top.
-    /// 记录's rows open 洗衣 and 热水 on 日常 this way.
-    func open(_ route: ClearRoute, in tab: Tab) {
+    /// Selects a tab with this page showing, keeping the pages already open there
+    /// (`PageStack.opening`): back to it when it is lower and nothing over it must stay (a top-up
+    /// page, 洗衣 while an order is being paid), otherwise pushed on top.
+    /// 记录's rows open 洗衣 on 日常 this way.
+    func open(_ route: ClearRoute, in tab: Tab, laundry: LaundryPhase?) {
         self.tab = tab
-        setPath(PageStack.opening(route, on:path(tab), mayClose:Self.mayClose), tab)
+        setPath(PageStack.opening(route, on:path(tab)) { PageStack.mayClose($0, laundry:laundry) }, tab)
     }
 
-    /// A page `open` may close to go back under it: not a top-up page, nor 洗衣, which may be
-    /// waiting for its payment to come back.
-    nonisolated static func mayClose(_ route: ClearRoute) -> Bool {
-        route != .card && route != .power && route != .laundry
+    /// 日常 with the shower page on top (`PageStack.showingShower`): not pushed twice, back to it
+    /// when nothing over it must stay. The root's on the model's request; 记录's and 设置's rows too.
+    func showShowerPage(laundry: LaundryPhase?) {
+        tab = .home
+        let routes = PageStack.showingShower(on:homePath, laundry:laundry)
+        if routes != homePath { homePath = routes }
+    }
+
+    /// A page that lives on 日常 (记录's showers and laundry orders): the shower page as the root
+    /// shows it, any other with `open`.
+    func openOnHome(_ route: ClearRoute, laundry: LaundryPhase?) {
+        if route == .shower { showShowerPage(laundry:laundry) } else { open(route, in:.home, laundry:laundry) }
     }
 
     func openSetup(at row: ClearSetupRow? = nil) { setup = SetupRequest(start:row) }

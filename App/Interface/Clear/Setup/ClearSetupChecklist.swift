@@ -29,6 +29,10 @@ struct ClearSetupChecklist: View {
                 }
             }
             .tint(Theme.accentText)
+            // Over the tab bar the root's alert can't show: a login on the 学校账号 step that turned
+            // out to be someone else is told here, and 「去设置热水」 goes on to 宿舍 (as 暖橙's guide).
+            // On the stack, so the step pages pushed on it keep it.
+            .accountSwitchAlert { row = .dorm }
         } else {
             page
         }

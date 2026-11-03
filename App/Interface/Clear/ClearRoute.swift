@@ -1,4 +1,5 @@
 import Foundation
+import Core
 
 /// A page pushed on one of 清爽's tab stacks. Every stack maps it with `ClearDestination`.
 enum ClearRoute: Hashable {
@@ -24,4 +25,12 @@ enum ClearRoute: Hashable {
     case advanced
     /// 首次设置, pushed (from home's 继续设置 card and the settings tab's top row).
     case setupChecklist
+}
+
+/// What the stack rules (`PageStack`) need to know of a page.
+extension ClearRoute: StackPage {
+    static var showerPage: ClearRoute { .shower }
+    static var dormPage: ClearRoute { .dorm }
+    var isTopUp: Bool { self == .card || self == .power }
+    var isLaundry: Bool { self == .laundry }
 }

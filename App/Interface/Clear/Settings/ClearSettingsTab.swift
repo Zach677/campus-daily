@@ -70,10 +70,6 @@ struct ClearSettingsTab: View {
         }
     }
 
-    /// 日常 with the shower page on top; a copy already on its stack is kept, not pushed twice.
-    private func openShowerPage() {
-        let home = navigator.path(.home)
-        if !home.contains(.shower) { navigator.setPath(home + [.shower], .home) }
-        navigator.select(.home)
-    }
+    /// 日常 with the shower page on top, as the root shows it (`ClearNavigator.showShowerPage`).
+    private func openShowerPage() { navigator.showShowerPage(laundry:laundry.checkout?.phase) }
 }
