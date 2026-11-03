@@ -56,7 +56,7 @@ struct ClearSetupDormPage: View {
             if !choosingApartment, let dorm { dormCard(dorm) }
             if choosingApartment { apartmentList }
             if let issue = dormFlow.issue {
-                Label { Text(issue).fixedSize(horizontal:false, vertical:true) } icon: { Image(systemName:"exclamationmark.circle") }
+                Label { ClearNoticeText(issue).fixedSize(horizontal:false, vertical:true) } icon: { Image(systemName:"exclamationmark.circle") }
                     .font(.footnote).foregroundStyle(Theme.notice)
             }
         } buttons: {

@@ -26,11 +26,15 @@ struct ClearShowerHeadline: View {
                     .accessibilityAddTraits(.isHeader)
             }
             if !text.isEmpty {
-                Text(text).font(.subheadline).foregroundStyle(problem ? NativeTheme.notice : Color.secondary)
-                    .fixedSize(horizontal:false, vertical:true)
+                // A problem's sentence: `notice` only while it is one line; the dot stays `notice`.
+                Group {
+                    if problem { ClearNoticeText(text) } else { Text(text).foregroundStyle(Color.secondary) }
+                }
+                .font(.subheadline)
+                .fixedSize(horizontal:false, vertical:true)
             }
             if let warning {
-                Label(warning, systemImage:"exclamationmark.circle")
+                Label { ClearNoticeText(warning) } icon: { Image(systemName:"exclamationmark.circle") }
                     .font(.footnote).foregroundStyle(NativeTheme.notice)
                     .fixedSize(horizontal:false, vertical:true)
             }

@@ -33,7 +33,7 @@ struct ClearUpdateLine: View {
     private func problem(_ text: String) -> some View {
         HStack(alignment:.firstTextBaseline, spacing:5) {
             Image(systemName:"exclamationmark.circle").accessibilityHidden(true)
-            Text(text).fixedSize(horizontal:false, vertical:true)
+            ClearNoticeText(text).fixedSize(horizontal:false, vertical:true)
         }
         .font(.footnote).foregroundStyle(Theme.notice)
         .accessibilityElement(children:.combine)

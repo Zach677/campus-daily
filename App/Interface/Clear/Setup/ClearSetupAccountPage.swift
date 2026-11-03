@@ -49,7 +49,7 @@ struct ClearSetupAccountPage: View {
             SchoolLoginForm(account:$account, password:$password, savePassword:$savePassword,
                             state:loginState, focus:$focus, submit:submit)
             if let issue {
-                Label { Text(issue).fixedSize(horizontal:false, vertical:true) } icon: { Image(systemName:"exclamationmark.circle") }
+                Label { ClearNoticeText(issue).fixedSize(horizontal:false, vertical:true) } icon: { Image(systemName:"exclamationmark.circle") }
                     .font(.footnote).foregroundStyle(Theme.notice)
             }
         } buttons: {

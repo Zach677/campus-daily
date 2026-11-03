@@ -33,7 +33,7 @@ struct ClearOpenSection: View {
     @ViewBuilder private func status(_ status: ClearOpenItem.Status) -> some View {
         switch status {
         case .text(let text, let notice):
-            Text(text).foregroundStyle(notice ? Theme.notice : Color.secondary)
+            if notice { ClearNoticeText(text) } else { Text(text).foregroundStyle(Color.secondary) }
         case .countdown(let end):
             TimelineView(minuteSchedule(to:end)) { context in
                 Text("还剩 \(LaundryFormat.minutesLeft(until:end, now:context.date)) 分钟").monospacedDigit()

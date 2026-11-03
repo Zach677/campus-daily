@@ -21,9 +21,11 @@ struct ClearLaundryOrderCard: View {
                 .fixedSize(horizontal:false, vertical:true)
             bigLine
             if let caption = ClearLaundryCopy.orderCaption(facts, phase:phase, notify:notify) {
-                Text(caption.text).font(.caption)
-                    .foregroundStyle(caption.problem ? Theme.notice : Theme.ink2)
-                    .fixedSize(horizontal:false, vertical:true)
+                Group {
+                    if caption.problem { ClearNoticeText(caption.text) } else { Text(caption.text).foregroundStyle(Theme.ink2) }
+                }
+                .font(.caption)
+                .fixedSize(horizontal:false, vertical:true)
             }
             if facts.record?.order?.paid == true {
                 LabeledContent("已付款") {
