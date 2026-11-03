@@ -12,6 +12,7 @@ import Core
 struct ClearShowerPage: View {
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
+    @EnvironmentObject private var laundry: LaundryModel
     @Environment(ClearNavigator.self) private var navigator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var successTick = 0
@@ -79,9 +80,7 @@ struct ClearShowerPage: View {
     /// With no session: the last shower, the way out of an unreadable record, and the
     /// controller check (or the way to set up hot water).
     @ViewBuilder private var idleExtras: some View {
-        if live, let ended = shower.lastEnded {
-            ClearShowerLastCard(ended:ended, cost:shower.lastCost)
-        }
+        if let last = lastUse { ClearShowerLastCard(last:last) }
         if live, shower.recordUnreadable {
             // The record can't be read by this build: cleared only after the user checked the official record.
             Button(ShowerPageText.unreadableClear) { confirmClear = true }
@@ -110,6 +109,13 @@ struct ClearShowerPage: View {
         #else
         return true
         #endif
+    }
+
+    /// 2.4's shower: the one home's 热水 tile names (「上次 11 分钟 · ¥1.32」), demo or live.
+    private var lastUse: ShowerLastUse? {
+        let data = navigator.data(campus:campus, shower:shower, laundry:laundry)
+        return ShowerLastUse.of(minutes:data.lastShowerMinutes, cost:data.lastShowerCost,
+                                ended:live ? shower.lastEnded : nil)
     }
 
     private var configured: Bool {
