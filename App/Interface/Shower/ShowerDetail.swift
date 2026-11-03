@@ -127,7 +127,7 @@ struct ShowerDetail: View {
             Text(ShowerPageText.resolve).scaledFont(18, .semibold, relativeTo:.headline)
                 .foregroundStyle(enabled ? Theme.pillInk : Theme.ink3)
                 .frame(maxWidth:.infinity).frame(minHeight:60)
-                .background(enabled ? Theme.pill : Theme.fill, in:Capsule())
+                .background(enabled ? Theme.pill : Theme.fill, in:Theme.buttonShape.shape)
         }
         .buttonStyle(PressScaleStyle())
         .disabled(!enabled)

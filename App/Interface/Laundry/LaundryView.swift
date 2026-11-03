@@ -550,7 +550,7 @@ struct LaundryProgramRow: View {
         }.fixedSize(horizontal:false, vertical:true)
     }
     private var price: some View {
-        Text(Theme.yuan(program.price.yuan)).scaledFont(20, .semibold, design:.rounded, relativeTo:.title3)
+        Text(Theme.yuan(program.price.yuan)).scaledFont(20, .semibold, design:Theme.numberDesign, relativeTo:.title3)
             .monospacedDigit().foregroundStyle(Theme.ink).lineLimit(1)
     }
     /// Note for the spin-only program (the machine's own description text is not decoded).
@@ -576,7 +576,7 @@ struct LaundryRunHero: View {
                 }
                 HStack(alignment:.firstTextBaseline, spacing:6) {
                     Text("\(left)")
-                        .scaledFont(76, .semibold, design:.rounded, relativeTo:.largeTitle, cap:96)
+                        .scaledFont(76, .semibold, design:Theme.numberDesign, relativeTo:.largeTitle, cap:96)
                         .monospacedDigit().tracking(-2).foregroundStyle(Theme.ink)
                         .contentTransition(.numericText(countsDown:true))
                         .animation(.default, value:left)
@@ -624,7 +624,7 @@ private struct LaundryPaySheet: View {
                 .fixedSize(horizontal:false, vertical:true)
             Text(line).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,14)
             if let amount {
-                Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:.rounded, relativeTo:.largeTitle)
+                Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:Theme.numberDesign, relativeTo:.largeTitle)
                     .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,2)
             }
             Text("付完款机器可能马上开始洗，先把衣服放好。实际金额以支付宝里显示的为准。")

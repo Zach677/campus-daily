@@ -11,7 +11,7 @@ struct SettlementPanel: View {
                 Mascot(size:52)
                 Text("衣服洗好了").scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,10)
                 if let amount {
-                    Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:.rounded, relativeTo:.largeTitle)
+                    Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:Theme.numberDesign, relativeTo:.largeTitle)
                         .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,4)
                 }
                 if !detail.isEmpty {
@@ -21,7 +21,7 @@ struct SettlementPanel: View {
             Button(action:dismiss) {
                 Text("好").scaledFont(17, .semibold, relativeTo:.headline).foregroundStyle(Theme.ink)
                     .frame(maxWidth:.infinity).frame(minHeight:50)
-                    .background(Theme.fill, in:Capsule())
+                    .background(Theme.fill, in:Theme.buttonShape.shape)
             }
             .buttonStyle(PressScaleStyle())
             .accessibilityLabel("好，关闭")
@@ -30,7 +30,7 @@ struct SettlementPanel: View {
         .multilineTextAlignment(.center)
         .padding(.top,26).padding(.horizontal,24).padding(.bottom,24)
         .frame(maxWidth:.infinity)
-        .background(Theme.group, in:RoundedRectangle(cornerRadius:40, style:.continuous))
+        .background(Theme.group, in:RoundedRectangle(cornerRadius:Theme.cardRadius(40), style:.continuous))
         .accessibilityElement(children:.contain)
         .accessibilityAddTraits(.isModal)
     }

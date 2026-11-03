@@ -64,7 +64,7 @@ struct HomeShowerButton: View {
                 Image(systemName:"drop.fill").font(.system(size:17))
                 Text("正在洗澡")
                 Text(timerInterval:start...Date.distantFuture, countsDown:false)
-                    .fontDesign(.rounded).monospacedDigit()
+                    .fontDesign(Theme.numberDesign).monospacedDigit()
                 Image(systemName:"chevron.right").font(.system(size:14, weight:.semibold)).opacity(0.8)
             case .settling:
                 ProgressView().tint(Theme.ink2)
@@ -85,8 +85,8 @@ struct HomeShowerButton: View {
         .foregroundStyle(foreground)
         .padding(.horizontal,16)
         .frame(maxWidth:.infinity).frame(minHeight:64)
-        .background(background, in:Capsule())
-        .contentShape(Capsule())
+        .background(background, in:Theme.buttonShape.shape)
+        .contentShape(Theme.buttonShape.shape)
     }
 
     private var foreground: Color {

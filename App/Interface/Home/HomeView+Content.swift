@@ -40,7 +40,7 @@ extension HomeView {
 
     func dateBlock(_ data: HomeData) -> some View {
         VStack(spacing:2) {
-            Text(dateTitle).scaledFont(24, .semibold, design:.serif, relativeTo:.title2).foregroundStyle(Theme.ink)
+            Text(dateTitle).scaledFont(Theme.titleFont.size, Theme.titleFont.weight, design:Theme.titleFont.design, relativeTo:.title2).foregroundStyle(Theme.ink)
             Text([SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:" · "))
                 .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }

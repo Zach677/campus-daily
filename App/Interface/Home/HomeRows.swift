@@ -62,7 +62,7 @@ struct StatusRow: View {
         switch value {
         case .number(let number, let unit, let low)?:
             HStack(alignment:.firstTextBaseline, spacing:3) {
-                Text(number).scaledFont(24, .semibold, design:.rounded, relativeTo:.title2).monospacedDigit().tracking(-0.2)
+                Text(number).scaledFont(24, .semibold, design:Theme.numberDesign, relativeTo:.title2).monospacedDigit().tracking(-0.2)
                     .foregroundStyle(low ? Theme.redLarge : Theme.ink)
                     .contentTransition(.numericText())
                     .minimumScaleFactor(0.7)
@@ -77,7 +77,7 @@ struct StatusRow: View {
                 HStack(alignment:.firstTextBaseline, spacing:0) {
                     Text("还剩").scaledFont(17, .medium).foregroundStyle(Theme.ink2).padding(.trailing,4)
                     Text("\(LaundryFormat.minutesLeft(until:end, now:context.date))")
-                        .scaledFont(24, .semibold, design:.rounded, relativeTo:.title2).monospacedDigit().tracking(-0.2)
+                        .scaledFont(24, .semibold, design:Theme.numberDesign, relativeTo:.title2).monospacedDigit().tracking(-0.2)
                         .foregroundStyle(Theme.ink)
                         .contentTransition(.numericText(countsDown:true))
                         .padding(.trailing,3)
@@ -85,7 +85,7 @@ struct StatusRow: View {
                 }.lineLimit(1).minimumScaleFactor(0.7)
             }
         case .amount(let text)?:
-            Text(text).scaledFont(20, .semibold, design:.rounded, relativeTo:.title3).monospacedDigit()
+            Text(text).scaledFont(20, .semibold, design:Theme.numberDesign, relativeTo:.title3).monospacedDigit()
                 .foregroundStyle(Theme.ink).lineLimit(1).minimumScaleFactor(0.7)
         case .dash?:
             Text("—").scaledFont(17, .medium).foregroundStyle(Theme.ink3)
@@ -189,8 +189,8 @@ struct DockPillLabel: View {
         .foregroundStyle(foreground)
         .padding(.horizontal,16)
         .frame(maxWidth:.infinity).frame(minHeight:60)
-        .background(background, in:Capsule())
-        .contentShape(Capsule())
+        .background(background, in:Theme.buttonShape.shape)
+        .contentShape(Theme.buttonShape.shape)
     }
     private var foreground: Color {
         switch style {

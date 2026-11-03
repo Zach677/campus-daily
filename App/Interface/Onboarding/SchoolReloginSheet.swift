@@ -110,7 +110,7 @@ struct SchoolReloginSheet: View {
                 .lineLimit(2).minimumScaleFactor(0.8).multilineTextAlignment(.center)
                 .padding(.horizontal,20).padding(.vertical,8)
                 .frame(maxWidth:.infinity, minHeight:keyboardUp ? 52 : 60)
-                .background(dimmed ? Theme.fill : Theme.pill, in:Capsule())
+                .background(dimmed ? Theme.fill : Theme.pill, in:Theme.buttonShape.shape)
             }
             .buttonStyle(PressScaleStyle())
             .disabled(dimmed)

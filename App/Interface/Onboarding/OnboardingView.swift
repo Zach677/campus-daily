@@ -194,7 +194,7 @@ struct OnboardingView: View {
                     .padding(.top,10)
             }
             if step == .dorm, !choosingApartment, let dorm {
-                Text(dorm).font(.system(size:40, weight:.semibold, design:.rounded)).foregroundStyle(Theme.ink)
+                Text(dorm).font(.system(size:40, weight:.semibold, design:Theme.numberDesign)).foregroundStyle(Theme.ink)
                     .minimumScaleFactor(0.6).lineLimit(1)
                     .padding(.top,28)
                 // The full location only when the electricity directory gave one: it is what
@@ -454,7 +454,7 @@ struct OnboardingView: View {
                     .lineLimit(2).minimumScaleFactor(0.8).multilineTextAlignment(.center)
                     .padding(.horizontal,20).padding(.vertical,8)
                     .frame(maxWidth:.infinity, minHeight:keyboardUp ? 52 : 60)
-                    .background(primaryDimmed ? Theme.fill : Theme.pill, in:Capsule())
+                    .background(primaryDimmed ? Theme.fill : Theme.pill, in:Theme.buttonShape.shape)
                     .contentTransition(reduceMotion ? .opacity : .interpolate)
             }
             .buttonStyle(PressScaleStyle())

@@ -137,7 +137,7 @@ struct WebPageUnavailable: View {
             Button(action:retry) {
                 Text("再试一次").scaledFont(17, .semibold, relativeTo:.headline).foregroundStyle(Theme.pillInk)
                     .padding(.horizontal,32).frame(minHeight:52)
-                    .background(Theme.pill, in:Capsule())
+                    .background(Theme.pill, in:Theme.buttonShape.shape)
             }
             .buttonStyle(PressScaleStyle())
             .padding(.top,10)

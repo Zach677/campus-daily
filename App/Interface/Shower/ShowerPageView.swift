@@ -237,7 +237,7 @@ struct ShowerPageView: View {
                 Text(ShowerPageText.doneLabel).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,10)
                 if let amount = page?.amount {
                     // Only the platform's amount is ever shown.
-                    Text("¥" + amount.yuanText).scaledFont(64, .semibold, design:.rounded, relativeTo:.largeTitle, cap:96)
+                    Text("¥" + amount.yuanText).scaledFont(64, .semibold, design:Theme.numberDesign, relativeTo:.largeTitle, cap:96)
                         .monospacedDigit().tracking(-2).foregroundStyle(Theme.ink)
                         .lineLimit(1).minimumScaleFactor(0.6).padding(.top,4)
                         .accessibilityLabel("这次 \(amount.yuanText) 元")
@@ -295,7 +295,7 @@ struct ShowerPageView: View {
     @ViewBuilder private func timer(_ start: Date?) -> some View {
         let start = start ?? Date()
         Text(timerInterval:start...Date.distantFuture, countsDown:false)
-            .scaledFont(88, .semibold, design:.rounded, relativeTo:.largeTitle, cap:112)
+            .scaledFont(88, .semibold, design:Theme.numberDesign, relativeTo:.largeTitle, cap:112)
             .monospacedDigit().tracking(-3).foregroundStyle(Theme.ink)
             .lineLimit(1).minimumScaleFactor(0.5)
             .accessibilityHidden(true)
@@ -348,7 +348,9 @@ struct ShowerPageView: View {
                     .padding(.bottom,6)
                     .accessibilityElement(children:.combine)
                 }
-                capsule("结束并结算", background:Theme.accent, ink:scheme == .dark ? Color(white:0.07) : .white,
+                // 清爽's accent is the same blue in dark mode: white on it in both.
+                capsule("结束并结算", background:Theme.accent,
+                        ink:Theme.current == .clear ? Theme.accentInk : scheme == .dark ? Color(white:0.07) : .white,
                         enabled:flow.mayEnd && !shower.platformMissing) { shower.pageEvent(.endTapped) }
                 // The end-failed line takes its place while shown.
                 if flow.endFailed == nil && !shower.platformMissing {
@@ -361,7 +363,7 @@ struct ShowerPageView: View {
                     Text(ShowerPageText.settling).scaledFont(17, .semibold, relativeTo:.headline).foregroundStyle(Theme.ink2)
                 }
                 .frame(maxWidth:.infinity).frame(minHeight:60)
-                .background(Theme.fill, in:Capsule())
+                .background(Theme.fill, in:Theme.buttonShape.shape)
                 .accessibilityElement(children:.combine)
             case .done:
                 capsule("好", background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.closeTapped) }
@@ -391,7 +393,7 @@ struct ShowerPageView: View {
         Button(action:action) {
             Text(label).scaledFont(18, .semibold, relativeTo:.headline).foregroundStyle(enabled ? ink : Theme.ink3)
                 .frame(maxWidth:.infinity).frame(minHeight:60)
-                .background(enabled ? background : Theme.fill, in:Capsule())
+                .background(enabled ? background : Theme.fill, in:Theme.buttonShape.shape)
         }
         .buttonStyle(PressScaleStyle())
         .disabled(!enabled)

@@ -101,7 +101,7 @@ struct SchoolLoginForm: View {
                     .accessibilityLabel(reveal ? "隐藏密码" : "显示密码")
                 }
             }
-            .background(Theme.group, in:RoundedRectangle(cornerRadius:16, style:.continuous))
+            .background(Theme.group, in:RoundedRectangle(cornerRadius:Theme.cardRadius(16), style:.continuous))
             .opacity(state == .loading ? 0.5 : 1)
             .disabled(state == .loading)
             if let message = state.message {
