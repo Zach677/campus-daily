@@ -29,6 +29,43 @@ final class ShowerSettleRetryDisarmTests: XCTestCase {
         XCTAssertFalse(ShowerPageFlow.reduce(ShowerPageFlow(record: armed, presented: true), .recheckTapped).1.contains(.disarmSettleRetry))
     }
 
+    /// The page went away while the first tap was still on its way to the record: the armed
+    /// record that comes in afterwards is taken back, and coming back needs two taps again.
+    func testLeavingBeforeTheFirstTapLandsTakesItBack() async throws {
+        let vault = StoredShowerVault(store: InMemorySecureStore())
+        try vault.saveShowerState(unsure)
+        let gateway = FakeGateway()
+        let engine = try ShowerEngine(transport: FakeShowerTransport(), gateway: gateway, vault: vault,
+                                      configuration: .init(bleName: "fixture-ble"), now: { [t0] in t0 })
+        var flow = ShowerPageFlow(record: unsure, presented: true)
+        func send(_ event: ShowerPageEvent) -> [ShowerPageEffect] {
+            let (next, effects) = ShowerPageFlow.reduce(flow, event)
+            flow = next
+            return effects
+        }
+
+        XCTAssertEqual(send(.settleRetryTapped), [.requestSettleRetry])
+        XCTAssertEqual(send(.homeTapped), [], "nothing armed yet")
+        let armedRecord = try await engine.requestSettleRetry()
+        XCTAssertTrue(armedRecord.settleRetryArmed)
+        XCTAssertEqual(send(.record(armedRecord)), [.disarmSettleRetry], "armed while the page is down")
+        XCTAssertEqual(send(.record(armedRecord)), [], "taken back once")
+
+        _ = send(.record(try await engine.disarmSettleRetry()))
+        XCTAssertEqual(send(.reopen), [])
+        XCTAssertTrue(flow.presented)
+        XCTAssertFalse(flow.settleRetryArmed)
+        XCTAssertEqual(send(.settleRetryTapped), [.requestSettleRetry], "the first tap only arms")
+        XCTAssertTrue(gateway.settleFrames.isEmpty)
+
+        // Armed with the page up: the tap stays.
+        var shown = ShowerPageFlow(record: unsure, presented: true)
+        let (next, effects) = ShowerPageFlow.reduce(shown, .record(armed))
+        shown = next
+        XCTAssertEqual(effects, [])
+        XCTAssertTrue(shown.settleRetryArmed)
+    }
+
     func testTheRecordForgetsTheFirstTap() {
         let (s, fx) = ShowerReducer.reduce(armed, .disarmSettleRetry)
         XCTAssertFalse(s.settleRetryArmed)
