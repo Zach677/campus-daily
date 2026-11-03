@@ -18,6 +18,7 @@
 
 ### Changed
 
+- Move the iPhone app's bundle id to `org.zaxh.xiaorichang`. It installs as a new app: sign in once more, and the old 校日常 can be deleted. Android keeps `com.beamjason.xiaorichang`.
 - Draw the row icons on home, 校园卡记录, the laundry page, Settings and the home-screen widget (small and medium) as one set of grey line symbols instead of emoji; they stay grey when a number turns red.
 - Look for the dorm's electricity meter one level at a time (campus, apartment, building, floor, room) with small reads instead of one read of every meter on the campus; each read is retried twice on a timeout or a lost connection.
 - When a level does not match the dorm exactly once, open the meter page at that level: the matched levels with 「重选」, the level's list headed 「选校区」「选公寓」「选楼栋」「选楼层」「选房间」, and the dorm's likely rows first with 「可能是这个」.
