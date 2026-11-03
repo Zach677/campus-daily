@@ -14,15 +14,13 @@ extension HomeView {
             HomeDuo(card:data.cardFigure(now:now), power:data.powerFigure(now:now),
                     cardAction:{ data.signedIn ? path.append(.card) : openOnboarding() },
                     powerAction:{ data.signedIn ? path.append(data.powerBound ? .power : .powerSetup) : openOnboarding() })
-                .sectionCard()
                 .padding(.top,28)
             HomeUpdateLineView(line:data.updateLine, now:now) { signInAgain(data) }
-                .padding(.top,16).padding(.horizontal,Theme.headerInset)
+                .padding(.top,16).padding(.horizontal,24)
             showerSection(data).padding(.top,28)
             if data.laundryEnabled {
-                HomeSectionHeader(text:"洗衣").padding(.top,Theme.sectionGap)
+                HomeSectionHeader(text:"洗衣").padding(.top,30)
                 rowLink(data.laundryBound ? .laundry : .washerSetup, label:laundryLabel(data)) { laundryRow(data) }
-                    .sectionCard()
             }
             let recents = data.recents
             if !recents.isEmpty {
@@ -30,8 +28,8 @@ extension HomeView {
                 // move when it goes. No row fits under its header: no header and 全部 either.
                 recentsAnchor(recents, all:data.signedIn)
                 if recentCount(recents) > 0 {
-                    recentsHeader(all:data.signedIn).padding(.top,Theme.sectionGap)
-                    recentRows(recents).sectionCard()
+                    recentsHeader(all:data.signedIn).padding(.top,30)
+                    recentRows(recents)
                 }
             }
         }
@@ -64,14 +62,12 @@ extension HomeView {
             HomeShowerButton(kind:kind) { tap(kind) }
         } else {
             VStack(spacing:0) {
-                // In a card the card's edge does the hairlines' work.
-                if !Theme.sectionCards { Hairline() }
+                Hairline()
                 rowLink(.shower, label:"热水，" + showerUnavailableReason(data)) {
                     StatusRow(symbol:"shower", title:"热水", subtitle:showerUnavailableReason(data), dimmed:true)
                 }
-                if !Theme.sectionCards { Hairline() }
+                Hairline()
             }
-            .sectionCard()
         }
     }
 
@@ -159,15 +155,15 @@ extension HomeView {
                 .accessibilityIdentifier("allRecords")
             }
         }
-        .padding(.horizontal,Theme.headerInset).padding(.bottom,4)
+        .padding(.horizontal,24).padding(.bottom,4)
     }
 
-    /// The whole rows that fit the screen under everything else, the header and, in 清爽, the
-    /// card's padding (`RecentFit`); none, and no section, when not one does. The header and every row are measured, unseen,
+    /// The whole rows that fit the screen under everything else and the header (`RecentFit`);
+    /// none, and no section, when not one does. The header and every row are measured, unseen,
     /// at the current text size.
     func recentCount(_ items: [RecentItem]) -> Int {
         RecentFit.count(viewport:homeViewport, above:recentsTop, header:recentsHeaderHeight,
-                        chrome:Double(SectionCard.homeChrome), rowHeights:items.map { Double(recentHeights[$0.id] ?? 0) })
+                        rowHeights:items.map { Double(recentHeights[$0.id] ?? 0) })
     }
 
     /// No height of its own: the section's top, and the hidden header and rows measured there.
@@ -201,7 +197,7 @@ extension HomeView {
     /// The header and every row as they would be drawn, hidden, for their heights.
     func recentMeasure(_ items: [RecentItem], all: Bool) -> some View {
         VStack(spacing:0) {
-            recentsHeader(all:all).padding(.top,Theme.sectionGap)
+            recentsHeader(all:all).padding(.top,30)
                 .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { recentsHeaderHeight = $0 }
             ForEach(Array(items.enumerated()), id:\.element.id) { index, item in
                 VStack(spacing:0) {

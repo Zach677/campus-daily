@@ -30,17 +30,6 @@ enum Theme {
     /// Line icons at the start of rows and beside labels: ink2 in 暖橙, accentText in 清爽.
     static var icon: Color { store.theme == .clear ? palette.accentText : palette.ink2 }
 
-    /// Home's sections (双余额, 洗衣, 最近) and the lists under section headers sit in `group`
-    /// cards (清爽), or flat on `bg` (暖橙). See `SectionCard`.
-    static var sectionCards: Bool { store.theme == .clear }
-    /// Side inset of a row's content (and of the duo): 24 on the flat page, 16 inside a card.
-    static var rowInset: CGFloat { sectionCards ? 16 : 24 }
-    /// Side inset of section headers and of the lines between sections: 24, or 32 to line up
-    /// with what's inside the cards.
-    static var headerInset: CGFloat { sectionCards ? 32 : 24 }
-    /// Space above a home section's header: 30 on the flat page; 20 between 清爽's cards, so the
-    /// cards' padding doesn't cost 最近 its rows on a small phone.
-    static var sectionGap: CGFloat { sectionCards ? 20 : 30 }
     /// Corner radius of a custom `group` container (sign-in form, result panel): its 暖橙 value,
     /// 16 in 清爽.
     static func cardRadius(_ warm: CGFloat) -> CGFloat { store.theme == .clear ? 16 : warm }

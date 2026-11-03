@@ -70,7 +70,7 @@ struct CardRecordsView: View {
             }
         }
         .frame(maxWidth:.infinity, alignment:.leading)
-        .padding(.horizontal,Theme.headerInset).padding(.top,first ? 8 : 22).padding(.bottom,6)
+        .padding(.horizontal,24).padding(.top,first ? 8 : 22).padding(.bottom,6)
         .background(Theme.bg)
         .accessibilityElement(children:.ignore)
         .accessibilityLabel(day.spokenTitle)
@@ -103,7 +103,6 @@ struct CardRecordsView: View {
                 }
             }
         }
-        .sectionCard(vertical:0)
     }
 
     // MARK: States
@@ -115,7 +114,7 @@ struct CardRecordsView: View {
         }
         .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         .accessibilityElement(children:.combine)
-        .padding(.horizontal,Theme.headerInset).padding(.top,16)
+        .padding(.horizontal,24).padding(.top,16)
         .accessibilityIdentifier("recordsLoading")
     }
 
@@ -126,7 +125,7 @@ struct CardRecordsView: View {
         }
         .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.notice)
         .accessibilityElement(children:.combine)
-        .padding(.horizontal,Theme.headerInset).padding(.top,16)
+        .padding(.horizontal,24).padding(.top,16)
         .accessibilityIdentifier("recordsFailed")
     }
 

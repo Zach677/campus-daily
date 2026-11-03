@@ -17,7 +17,7 @@ struct HomeDuo: View {
                 Hairline()
                 powerColumn.padding(.top,14)
             }
-            .padding(.horizontal,Theme.rowInset)
+            .padding(.horizontal,24)
         } else {
             HStack(alignment:.top, spacing:0) {
                 cardColumn.padding(.trailing,14)
@@ -25,7 +25,7 @@ struct HomeDuo: View {
                 powerColumn.padding(.leading,18)
             }
             .fixedSize(horizontal:false, vertical:true)
-            .padding(.horizontal,Theme.rowInset)
+            .padding(.horizontal,24)
         }
     }
 
