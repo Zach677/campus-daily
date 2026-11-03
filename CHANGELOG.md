@@ -42,6 +42,7 @@
 - Hide the guide card on 常用洗衣机 once signed in to U净 with a machine saved, and take 「更新 U净 登录」 out of it.
 - Show Settings › 版本 as 「0.8.0 Beta（48）」 on TestFlight and development builds and 「0.8.0（48）」 from the App Store, instead of 「0.8.0（48）· 测试版」 everywhere.
 - Set the date on the 暖橙 home in the rounded face of the numbers under it, same size and weight; other page titles keep the serif.
+- Set the weekday and dorm line under the 暖橙 home date in the rounded face too.
 
 ### Fixed
 

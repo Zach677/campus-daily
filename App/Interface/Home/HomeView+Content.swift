@@ -43,7 +43,7 @@ extension HomeView {
             // Rounded like the numbers under it; other pages keep the theme's serif title.
             Text(dateTitle).scaledFont(appTheme.titleFont.size, appTheme.titleFont.weight, design:.rounded, relativeTo:.title2).foregroundStyle(Theme.ink)
             Text([SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:" · "))
-                .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                .scaledFont(13, design:.rounded, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }
         .frame(maxWidth:.infinity)
         // Pull the date up into the nav-bar row so 「10月28日」 is centred on the gear; at
