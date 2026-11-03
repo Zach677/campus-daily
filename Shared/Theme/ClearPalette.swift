@@ -27,7 +27,7 @@ enum ClearPalette {
     static let pill = dynamic(0x175EC9, dark:0x175EC9)
     static let pillInk = dynamic(0xFFFFFF, dark:0xFFFFFF)
     /// Errors, 「暂停」 and the school's refusals: orange, so they don't read as links.
-    static let notice = dynamic(0xC93400, dark:0xFF9F0A)
+    static let notice = dynamic(0xB25000, dark:0xFF9F0A)
     /// The Live Activities' accent on their dark card.
     static let liveAccent = Color(red:0x8A / 255, green:0xBA / 255, blue:1)
 }
