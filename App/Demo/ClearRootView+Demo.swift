@@ -29,7 +29,7 @@ extension ClearRootView {
         if let onboard = OnboardingDemo.handle(url) {
             // 清爽 has the checklist instead of the paged guide: the step's row pushed.
             popAll()
-            navigator.openSetup(at:setupRow(onboard.0))
+            navigator.setup = ClearNavigator.SetupRequest(start:setupRow(onboard.0), preview:onboard.1)
             return
         }
         if let laundryPage = LaundryDemo.handle(url) {

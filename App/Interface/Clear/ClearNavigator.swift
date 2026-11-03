@@ -26,6 +26,10 @@ import Core
         let id = UUID()
         /// The row pushed when it opens (campusdaily://login: 学校账号).
         var start: ClearSetupRow?
+        #if DEBUG
+        /// campusdaily://demo/onboard/...: the step pages show these values and send nothing.
+        var preview: OnboardingView.Preview?
+        #endif
     }
 
     var tab: Tab = .home
