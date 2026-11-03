@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Single-screen root (no tab bar); settings is a sheet from the home gear. Each theme has its
-/// own page tree: 暖橙's starts at `HomeView`, 清爽's at `ClearRootView`. A theme switch replaces
-/// the whole tree, so it lands on home with any sheet or pushed page closed.
+/// Each theme has its own page tree: 暖橙's is one home screen (`HomeView`, settings a sheet from
+/// its gear), 清爽's a tab bar (`ClearRootView`). A theme switch replaces the whole tree, so it
+/// lands on home with any sheet or pushed page closed.
 struct CampusRootView: View {
     var body: some View {
         Group {
