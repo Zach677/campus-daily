@@ -729,7 +729,7 @@ Session stores (water/laundry) write synchronously and fail closed: a failed wri
 next side effect (`storage` error), same as today.
 
 Widget sharing: App.entitlements lists two keychain access groups, in this order: the app's
-private group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER)` (`AppIdentity.keychainGroup`),
+private group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER)`,
 then the shared group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER).shared`
 Widget.entitlements lists only the shared group. Order matters:
 iOS puts an item written without a group into the first listed group, and the code takes the
@@ -773,9 +773,8 @@ become `xrc.reminder.*`, `xrc.water.needsResidenceReview`.
 
 The App Group, the keychain groups and the BG task id are not written into the code: both
 entitlements files and both Info.plists are filled from `APP_BUNDLE_IDENTIFIER` at build time
-(Info.plist keys `AppGroupIdentifier` = `group.$(APP_BUNDLE_IDENTIFIER)` and
-`KeychainGroupIdentifier` = `$(APP_BUNDLE_IDENTIFIER)`, read by `AppIdentity`; the widget carries
-the app's values, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
+(Info.plist key `AppGroupIdentifier` = `group.$(APP_BUNDLE_IDENTIFIER)`, read by `AppIdentity`;
+the widget carries the app's value, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
 `$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. iOS
 builds before it used `com.beamjason.xiaorichang` for all of these; nothing is migrated, so the
 new id installs as a separate app and the user signs in once. A build

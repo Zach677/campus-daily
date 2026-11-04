@@ -6,18 +6,15 @@ import Core
 /// into the code.
 final class AppIdentityTests: XCTestCase {
     func testIdentityComesFromTheInfoPlistKeys() {
-        let identity = AppIdentity(info: ["AppGroupIdentifier": "group.org.example.daily",
-                                          "KeychainGroupIdentifier": "org.example.daily"])
+        let identity = AppIdentity(info: ["AppGroupIdentifier": "group.org.example.daily"])
         XCTAssertEqual(identity.appGroup, "group.org.example.daily")
-        XCTAssertEqual(identity.keychainGroup, "org.example.daily")
     }
 
-    /// No keys (or empty ones): no App Group and no shared keychain group, never a guessed one.
+    /// No key (or an empty one): no App Group, never a guessed one.
     func testMissingKeysGiveNoGroups() {
-        for info in [nil, [:], ["AppGroupIdentifier": "", "KeychainGroupIdentifier": ""]] as [[String: Any]?] {
+        for info in [nil, [:], ["AppGroupIdentifier": ""]] as [[String: Any]?] {
             let identity = AppIdentity(info: info)
             XCTAssertNil(identity.appGroup)
-            XCTAssertNil(identity.keychainGroup)
         }
     }
 
@@ -48,8 +45,7 @@ final class AppIdentityTests: XCTestCase {
 
         let app = AppIdentity(info: appInfo)
         XCTAssertEqual(app.appGroup, "group.org.zaxh.xiaorichang")
-        XCTAssertEqual(app.keychainGroup, "org.zaxh.xiaorichang")
-        XCTAssertEqual(AppIdentity(info: widgetInfo), app, "the widget reads the app's groups, not its own bundle id")
+        XCTAssertEqual(AppIdentity(info: widgetInfo), app, "the widget reads the app's group, not its own bundle id")
         XCTAssertEqual(appInfo["BGTaskSchedulerPermittedIdentifiers"] as? [String], ["org.zaxh.xiaorichang.refresh"])
 
         for entitlements in [appEntitlements, widgetEntitlements] {
