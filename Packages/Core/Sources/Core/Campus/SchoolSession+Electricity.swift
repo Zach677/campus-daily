@@ -277,14 +277,6 @@ extension SchoolSession {
         }
     }
 
-    /// The profile without `seen`, a campus-node meter, if it is still the one stored; nil when
-    /// there is nothing to drop (another meter, or none, is stored now).
-    public static func withoutCampusWideMeter(_ profile: SchoolProfile?, seen: MeterBinding) -> SchoolProfile? {
-        guard !seen.nodeIsRoom, var profile, profile.meter == seen else { return nil }
-        profile.meter = nil
-        return profile
-    }
-
     /// The profile with `seen` moved to the meter that replaced it in the same room
     /// (`comAddress`), if `seen` is still the one stored; nil when there is nothing to move
     /// (another meter, or none, is stored now).
@@ -303,16 +295,6 @@ extension SchoolSession {
             guard let next = Self.withMeterMoved(try vault.profile(), seen: seen, to: comAddress) else { return }
             try vault.saveProfile(next)
         }
-    }
-
-    /// Launch: a meter bound to the campus node (older builds) is dropped. True when one was.
-    /// The dorm stays, so the launch lookup walks to the room's own meter. Compare-and-write in
-    /// this actor: only the campus-node meter just read is removed, with no wait in between.
-    public func dropCampusWideMeter() throws -> Bool {
-        guard let seen = try vault.profile()?.meter, !seen.nodeIsRoom else { return false }
-        guard let next = Self.withoutCampusWideMeter(try vault.profile(), seen: seen) else { return false }
-        try vault.saveProfile(next)
-        return true
     }
 
     /// Manual choice from the picker (`buildings(parent:)` walk in the UI, then a meter row).
@@ -354,8 +336,6 @@ extension SchoolSession {
 
     nonisolated func readMeter(_ session: EcyktSession, binding: MeterBinding?) async -> Result<Meter?, ServiceError>? {
         guard let binding else { return nil }
-        // Bound to the campus node by an older build: no meter until the app drops it and finds the room.
-        guard binding.nodeIsRoom else { return nil }
         return await capture {
             let rows = try await self.ecykt.meters(session, nodeID: binding.nodeID)
             return MeterMatcher.pick(rows, binding: binding)

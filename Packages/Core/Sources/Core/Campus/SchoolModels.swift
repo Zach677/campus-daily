@@ -201,8 +201,7 @@ public struct Meter: Sendable, Equatable, Codable {
 }
 
 /// The saved meter: the room's directory node plus the meter's `comAddress`.
-/// `nodeIsRoom` is always true for what the app binds now; false = bound to the campus node by
-/// an older build, which counts as no meter (dropped at launch, never read).
+/// `nodeIsRoom` is always true: only room nodes are bound.
 public struct MeterBinding: Sendable, Equatable, Codable {
     public var nodeID: String
     public var comAddress: String

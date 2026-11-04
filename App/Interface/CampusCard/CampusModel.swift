@@ -61,12 +61,6 @@ struct PowerChoice: Identifiable, Equatable {
 
     init() { reload() }
 
-    /// Launch, before the launch lookup: a meter an older build bound to the campus node counts
-    /// as none, so the lookup walks to the room's own (`SchoolSession.dropCampusWideMeter`).
-    func dropCampusWideMeter() async {
-        if (try? await session.dropCampusWideMeter()) == true { reload() }
-    }
-
     /// Re-read the Keychain (launch, back in the foreground, after sign-in/out). A read that
     /// fails (before the first unlock after a reboot, when the app is pre-warmed) changes nothing.
     func reload() {

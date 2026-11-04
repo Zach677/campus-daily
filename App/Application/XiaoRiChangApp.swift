@@ -27,7 +27,6 @@ import Core
             CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry).environment(theme)
                 .onChange(of:campus.room,initial:true) { ShowerActivityController.shared.dorm = Theme.dorm(campus.room) ?? "" }
                 .task {
-                    await campus.dropCampusWideMeter()
                     campus.matchPowerAutomatically(.launch)
                     await campus.refresh()
                     await laundry.refresh()

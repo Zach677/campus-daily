@@ -376,9 +376,7 @@ meter page opens there with the matched levels on one line, 「重选」, and th
 「选校区」/「选公寓」/「选楼栋」/「选楼层」/「选房间」, suggested rows first with 「可能是这个」
 (`MeterPageText`). Each read is retried twice with growing waits on a timeout or a lost
 connection.
-Only room nodes are bound. A campus-node binding saved by an older build counts as no meter: at
-launch it is removed from the profile (the dorm stays) and the launch lookup walks to the room;
-neither refresh nor the recharge check reads it meanwhile.
+Only room nodes are bound.
 The lookup starts at launch, after every sign-in and on 「再找一次电表」, only signed in with no
 meter (`MeterLookupGate`), never on return to the foreground or after a refresh. A sign-in
 during a running lookup is looked up once it ends; a same-name list or stopped level stays until

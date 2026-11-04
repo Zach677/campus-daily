@@ -162,7 +162,7 @@ public actor SchoolSession {
         }
         var reading = SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
                                     roomLabel: m == nil ? nil : binding?.label, readAt: now(),
-                                    noMeter: binding?.nodeIsRoom != true)
+                                    noMeter: binding == nil)
         await numbers(reading)
         let a = await withTaskCancellationHandler { await records.value } onCancel: { records.cancel() }
         guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }

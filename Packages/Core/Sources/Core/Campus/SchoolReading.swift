@@ -32,8 +32,7 @@ public struct SchoolReading: Sendable, Equatable {
     public var roomLabel: String?
     /// When balance and meter answered.
     public var readAt: Date?
-    /// No meter is bound (none saved, or one bound to the campus node by an older build): the
-    /// stored electricity reading belongs to no meter and is cleared.
+    /// No meter is saved: the stored electricity reading belongs to no meter and is cleared.
     public var noMeter: Bool
 
     public init(outcome: Outcome, checkedAt: Date, balance: Result<Money, ServiceError>? = nil,
