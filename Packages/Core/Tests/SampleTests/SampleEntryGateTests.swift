@@ -131,8 +131,11 @@ final class SampleEntryGateTests: XCTestCase {
         XCTAssertTrue(gate.claimStart())
         gate.startEnded()
         // The other ways out give it back too.
+        // A login link waits for the sample: still no start.
         XCTAssertEqual(sample.enter(), .entered)
-        _ = sample.open(URL(string: "campusdaily://login")!)
+        XCTAssertEqual(sample.open(URL(string: "campusdaily://login")!), .held)
+        XCTAssertFalse(gate.claimStart())
+        sample.leave()
         XCTAssertTrue(gate.claimStart())
         gate.startEnded()
         XCTAssertEqual(sample.enter(), .entered)

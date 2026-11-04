@@ -21,11 +21,10 @@ public enum SampleEntry: Equatable, Sendable {
 public enum SampleLinkOutcome: Equatable, Sendable {
     /// Outside the sample: the live app handles it as before.
     case live
-    /// campusdaily://login or ://settings/account: the sample is left first, then the live root
-    /// opens the link (`takePendingLink`).
-    case leftSample
     /// Another campusdaily link: the sample stays, nothing opens.
     case ignored
+    /// In the sample, the sample stays on screen. The widget's and the login links: the latest is
+    /// kept for the live root, which opens it after the sample is left (`takePendingLink`).
     /// Another app's answer (Alipay's, say): kept for the live app, handed over on leaving
     /// (`takeHeldLinks`).
     case held
@@ -44,7 +43,8 @@ public enum SampleLinkOutcome: Equatable, Sendable {
     public var blocked: SampleAction?
     /// Set by `leave`: the root shown next opens the login step, then calls `takeLogin`.
     public private(set) var loginDue = false
-    /// The widget's link for the live root to open (`takePendingLink`).
+    /// The widget's (or a login) link for the live root to open (`takePendingLink`); one that
+    /// came in during the sample waits for it to be left, the latest only.
     public private(set) var pendingLink: RootLink?
     /// Other apps' links that came in during the sample, for the live app (`takeHeldLinks`).
     @ObservationIgnored private var held: [URL] = []
@@ -100,27 +100,19 @@ public enum SampleLinkOutcome: Equatable, Sendable {
     }
 
     /// Every link the app is opened with comes here first, the one place links are dispatched.
-    /// The widget's links (`RootLink`) are left for the live root (`takePendingLink`), never
-    /// for a sample page: outside the sample at once (`.live`); in it, the login and 学校账号
-    /// links leave the sample first (`.leftSample`) and the others are dropped. Other apps'
-    /// answers are the live app's: at once outside the sample, after it otherwise (`.held`).
+    /// The widget's and the login links (`RootLink`) are left for the live root
+    /// (`takePendingLink`), never for a sample page: outside the sample at once (`.live`); in
+    /// it, nothing opens over or instead of the sample, and the latest waits until it is left
+    /// (`.held`). Other apps' answers are the live app's: at once outside the sample, after it
+    /// otherwise (`.held`).
     public func open(_ url: URL) -> SampleLinkOutcome {
         guard isActive else {
             if let link = RootLink(url) { pendingLink = link }
             return .live
         }
         if let link = RootLink(url) {
-            switch link {
-            case .login, .settings(account: true):
-                services = nil
-                blocked = nil
-                loginDue = false
-                pendingLink = link
-                gate.sampleLeft()
-                return .leftSample
-            case .home, .settings(account: false):
-                return .ignored
-            }
+            pendingLink = link
+            return .held
         }
         if url.scheme == "campusdaily" { return .ignored }
         held.append(url)

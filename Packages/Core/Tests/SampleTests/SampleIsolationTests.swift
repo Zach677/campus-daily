@@ -176,38 +176,45 @@ final class SampleIsolationTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: key))
     }
 
-    /// campusdaily://login and ://settings/account in the sample: it is left before any page
-    /// opens, and the live root gets the link once; nothing for the live root while it is on.
-    func testLoginLinksLeaveTheSampleBeforeTheLiveRootOpensThem() throws {
-        for (text, link) in [("campusdaily://login", RootLink.login), ("campusdaily://settings/account", .settings(account: true))] {
-            let sample = SampleMode.overIdleShower()
-            sample.enter()
-            XCTAssertEqual(sample.open(URL(string: text)!), .leftSample)
-            XCTAssertFalse(sample.isActive)
-            XCTAssertNil(sample.services)
-            // The link opens the page: no second login step from 去登录's path.
-            XCTAssertFalse(sample.takeLogin())
-            XCTAssertEqual(sample.takePendingLink(), link)
-            XCTAssertNil(sample.takePendingLink())
+    /// The widget's and the login links in the sample: it stays on screen and nothing opens; the
+    /// latest one is kept and the live root gets it once after the sample is left, by any way out.
+    func testLiveLinksWaitForTheSampleToBeLeft() throws {
+        let ways: [@MainActor (SampleMode) -> Void] = [{ $0.leave() }, { $0.leaveForLive() }]
+        for leave in ways {
+            for (text, link) in [("campusdaily://login", RootLink.login), ("campusdaily://settings/account", .settings(account: true)),
+                                 ("campusdaily://home", .home), ("campusdaily://settings", .settings(account: false))] {
+                let sample = SampleMode.overIdleShower()
+                sample.enter()
+                let services = sample.services
+                XCTAssertEqual(sample.open(URL(string: "campusdaily://home")!), .held)
+                XCTAssertEqual(sample.open(URL(string: text)!), .held, text)
+                XCTAssertTrue(sample.isActive, text)
+                XCTAssertTrue(sample.services === services, "the sample is not built again (\(text))")
+                XCTAssertNil(sample.takePendingLink(), text)
+                leave(sample)
+                XCTAssertEqual(sample.takePendingLink(), link, "the latest only (\(text))")
+                XCTAssertNil(sample.takePendingLink(), text)
+            }
         }
     }
 
-    /// Other campusdaily links leave the sample on screen and open nothing; another app's answer
-    /// (Alipay) waits for the live app; outside the sample every link is the live app's.
+    /// Other campusdaily links leave the sample on screen and open nothing, now or later;
+    /// another app's answer (Alipay) waits for the live app; outside the sample every link is the
+    /// live app's.
     func testOtherLinksInTheSample() throws {
         let sample = SampleMode.overIdleShower()
         XCTAssertEqual(sample.open(URL(string: "campusdaily://login")!), .live)
         XCTAssertEqual(sample.takePendingLink(), .login)
         sample.enter()
-        XCTAssertEqual(sample.open(URL(string: "campusdaily://home")!), .ignored)
-        XCTAssertEqual(sample.open(URL(string: "campusdaily://settings")!), .ignored)
         XCTAssertEqual(sample.open(URL(string: "campusdaily://demo/shower")!), .ignored)
+        XCTAssertEqual(sample.open(URL(string: "campusdaily://nothing")!), .ignored)
         let alipay = URL(string: "xiaorichang-alipay://safepay/?result=synthetic")!
         XCTAssertEqual(sample.open(alipay), .held)
         XCTAssertTrue(sample.isActive)
         XCTAssertNil(sample.takePendingLink())
         XCTAssertEqual(sample.takeHeldLinks(), [])
         sample.leave()
+        XCTAssertNil(sample.takePendingLink())
         XCTAssertEqual(sample.takeHeldLinks(), [alipay])
         XCTAssertEqual(sample.takeHeldLinks(), [])
     }

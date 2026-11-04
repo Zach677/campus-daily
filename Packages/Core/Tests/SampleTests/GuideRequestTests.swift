@@ -39,7 +39,8 @@ final class GuideRequestTests: XCTestCase {
         XCTAssertNotEqual(next.id, first.id)
     }
 
-    /// The two ways out of the sample onto a fresh install: 去登录, and a login link (a widget).
+    /// Out of the sample onto a fresh install by 去登录, with or without a login link (a widget)
+    /// that came in while it was shown and waited for it.
     /// Each time the live root is built again and asks twice (first-run as it appears, then the
     /// login a moment later), and presents once; no ask dismisses the guide, so 「seen」 is not
     /// written for it.
@@ -47,7 +48,7 @@ final class GuideRequestTests: XCTestCase {
         let login = try XCTUnwrap(URL(string: "campusdaily://login"))
         let ways: [@MainActor (SampleMode) -> Bool] = [
             { $0.leave(); return $0.takeLogin() },
-            { $0.open(login) == .leftSample && $0.takePendingLink() == .login },
+            { _ = $0.open(login); $0.leave(); return $0.takeLogin() && $0.takePendingLink() == .login },
         ]
         for leave in ways {
             let sample = SampleMode.overIdleShower()
