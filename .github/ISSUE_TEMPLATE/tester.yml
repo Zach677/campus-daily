@@ -15,11 +15,11 @@ body:
   - type: dropdown
     id: tools
     attributes:
-      label: Mac / Xcode 条件
+      label: 安装方式
       options:
-        - 有 Mac 和 Xcode，愿意自行签名
-        - 有 Mac，尚未准备 Xcode
-        - 暂时没有 Mac，仅关注后续进展
+        - 已装 TestFlight，等公开测试链接
+        - 还没装 TestFlight
+        - 有 Mac 和 Xcode，想从源码运行
     validations:
       required: true
   - type: checkboxes

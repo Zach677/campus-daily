@@ -781,9 +781,10 @@ new id installs as a separate app and the user signs in once. A build
 with another `APP_BUNDLE_IDENTIFIER` (Developer.xcconfig) gets its own groups; the Keychain service
 names stay `org.zaxh.xiaorichang.<name>.v1` in every build.
 
-Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
-Store/TestFlight record. Paid-team signers register `org.zaxh.xiaorichang` and
-`.balances`; free Personal Teams count them toward the 10 App IDs / 7 days limit.
+Distribution is TestFlight: the internal groups 「内部」 (every build from main, first) and
+「Beta」, and the external group 「公开测试」 (public link). There is no unsigned IPA. A build from
+source is signed with the builder's own team (`Configuration/Developer.xcconfig`); free Personal
+Teams count `org.zaxh.xiaorichang` and `.balances` toward the 10 App IDs / 7 days limit.
 
 **Alipay scheme notes.** (1) AlipaySDK `payOrder(_:fromScheme:)` (laundry signed order) returns
 to `<scheme>://safepay…`; Info.plist declares `$(PRODUCT_BUNDLE_IDENTIFIER).alipay`, so it
