@@ -13,7 +13,8 @@ import Foundation
 ///   giving back the lease (`SnapshotRefresher`'s `pause`);
 /// - other work (the background refresh, the refresh on coming to the front, reminders, the
 ///   widget redraw) is handed to `deferWhilePaused` and runs after the sample, the latest per key.
-/// Nothing is dropped. What draws the running shower's Live Activity is not held.
+/// Nothing is dropped. What draws the running shower's Live Activity is not held, and neither
+/// is that shower's own record (`PausableSecureStore`): a kill during the sample can't lose it.
 public final class LivePause: @unchecked Sendable {
     // Everything below is touched only under `lock`.
     private let lock = NSLock()
@@ -21,6 +22,7 @@ public final class LivePause: @unchecked Sendable {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var deferred: [(key: String, work: @Sendable () async -> Void)] = []
     private var flushes: [() -> Void] = []
+    private var pausing: [() -> Void] = []
     private var files: [(url: URL, write: () -> Void)] = []
     private var drain: Task<Void, Never>?
 
@@ -30,6 +32,8 @@ public final class LivePause: @unchecked Sendable {
 
     /// The sample opened: the live work waits from now on.
     public func pause() {
+        let hooks = lock.withLock { paused ? [] : pausing }
+        for hook in hooks { hook() }
         lock.withLock { paused = true }
     }
 
@@ -109,10 +113,24 @@ public final class LivePause: @unchecked Sendable {
     fileprivate func onResume(_ flush: @escaping () -> Void) {
         lock.withLock { flushes.append(flush) }
     }
+
+    /// Runs on `pause`, right before the live work starts to wait.
+    fileprivate func onPause(_ hook: @escaping () -> Void) {
+        lock.withLock { pausing.append(hook) }
+    }
 }
 
 /// The live Keychain, held while the sample is shown (`LivePause`): writes and deletes are kept
 /// in memory and read back from there; on leaving they are stored, the last per key.
+///
+/// One exception: the record of the real shower whose water may be flowing when the sample
+/// opens (`water.session`, `ShowerState.mayBeFlowing`) is written straight through, so a kill
+/// during the sample can't lose it (the frame to settle, the close already sent). Only that
+/// session's own record: same controller and authorization, and while its record is still
+/// under way. Its end (done, idle, removed) is written through once and ends the exception;
+/// a record of any other session, and every other key, is held as above. The session is
+/// taken from the Keychain when the sample opens, never from what runs during it; the sample
+/// itself has its own store and no handle to this one.
 public final class PausableSecureStore: SecureStore, @unchecked Sendable {
     private let inner: any SecureStore
     private let pause: LivePause
@@ -120,9 +138,12 @@ public final class PausableSecureStore: SecureStore, @unchecked Sendable {
     private let lock = NSLock()
     private var held: [StoreKey: Data?] = [:]
     private var order: [StoreKey] = []
+    /// The running shower's record when the sample opened; nil: none, or its end was written.
+    private var running: ShowerState?
 
     public init(_ inner: any SecureStore, pause: LivePause) {
         self.inner = inner; self.pause = pause
+        pause.onPause { [weak self] in self?.noteRunningShower() }
         pause.onResume { [weak self] in self?.flush() }
     }
 
@@ -132,11 +153,13 @@ public final class PausableSecureStore: SecureStore, @unchecked Sendable {
     }
 
     public func write(_ data: Data, for key: StoreKey) throws {
+        if writesThrough(data, for: key) { return try inner.write(data, for: key) }
         if hold(data, for: key) { return }
         try inner.write(data, for: key)
     }
 
     public func delete(_ key: StoreKey) throws {
+        if writesThrough(nil, for: key) { return try inner.delete(key) }
         if hold(nil, for: key) { return }
         try inner.delete(key)
     }
@@ -150,9 +173,43 @@ public final class PausableSecureStore: SecureStore, @unchecked Sendable {
         return true
     }
 
+    /// The sample is opening: the shower whose water may be flowing now, if any.
+    private func noteRunningShower() {
+        let record = ((try? inner.read(.showerSession)) ?? nil).flatMap { try? JSONDecoder().decode(ShowerState.self, from: $0) }
+        lock.withLock { running = record?.mayBeFlowing == true ? record : nil }
+    }
+
+    /// True for a write of the running shower's own record during the sample (`value` nil: the
+    /// record removed). Its end ends the exception. Whatever it replaces in memory goes, so the
+    /// record read back is the one stored.
+    private func writesThrough(_ value: Data?, for key: StoreKey) -> Bool {
+        guard key == .showerSession, pause.isPaused else { return false }
+        return lock.withLock {
+            guard let session = running else { return false }
+            let next = value.flatMap { try? JSONDecoder().decode(ShowerState.self, from: $0) }
+            if value != nil, next == nil { return false }
+            if let next {
+                guard Self.isSameSession(next, as: session) else { return false }
+                running = next.phase == .idle || next.phase == .done ? nil : next
+            } else {
+                running = nil
+            }
+            if held[key] != nil { held[key] = nil; order.removeAll { $0 == key } }
+            return true
+        }
+    }
+
+    /// The same session: the same controller, and its authorization (the platform's id for it)
+    /// unchanged once it had one. Its idle record after the end keeps the controller only.
+    private static func isSameSession(_ next: ShowerState, as session: ShowerState) -> Bool {
+        guard next.machineID == session.machineID else { return false }
+        if next.phase == .idle { return true }
+        return next.authorizationID == session.authorizationID && next.startedAt == session.startedAt
+    }
+
     private func flush() {
         let writes = lock.withLock { () -> [(StoreKey, Data?)] in
-            defer { held = [:]; order = [] }
+            defer { held = [:]; order = []; running = nil }
             return order.compactMap { key in held[key].map { (key, $0) } }
         }
         for (key, value) in writes {
