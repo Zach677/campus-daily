@@ -57,7 +57,7 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
                       their low rules (HomeFigures) and the 最近 merge (RecentFeed)
     Feedback/         Settings › 反馈问题: what a report may hold (FeedbackDraft), the request to
                       AirFeedback (FeedbackSender) and its fixed lines (FeedbackText)
-    Networking/       HTTPClient protocol + URLSession implementation, envelopes, redacting logger
+    Networking/       HTTPClient protocol + URLSession implementation, envelopes, request logger
     Storage/          generic Keychain and UserDefaults access only: SecureStore, StoreKey, SharedKeychain
                       (app-private and widget-shared access groups), PreferenceStorage, StorageError
     Common/           Money, ServiceError, JSONValue, DormAddress, ShowerHandoff (used by Campus and Shower)
@@ -123,8 +123,7 @@ targets all build in Swift 6 language mode.
   endpoint).
 - Logging: `os.Logger` with method, host, the request's `logName`, status, latency, decoded
   `code` only. Paths (U净 order paths carry the order id), query strings, bodies and headers
-  are never logged; a `Redactor` masks token/ticket/sign/sid/custid/
-  syscustid keys if a DEBUG body dump is needed.
+  are never logged.
 - Error classification (`ServiceError`, in Core/Common):
 
 ```swift

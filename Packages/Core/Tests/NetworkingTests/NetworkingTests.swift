@@ -34,35 +34,6 @@ final class FixtureLoaderTests: XCTestCase {
     }
 }
 
-final class RedactorTests: XCTestCase {
-    func testMasksSecretKeysRecursivelyAndInsideJSONStrings() throws {
-        let body: JSONValue = .object([
-            "acc_token": .string("T0KEN"), "syscustid": .string("SYS"), "custid": .string("CUST"),
-            "ticket": .string("TICKET"), "sign": .string("SIGN"), "sid": .string("SID"), "areacode": .string("450010"),
-            "data": .string(#"{"token":"INNER","name":"ok"}"#),
-            "list": .array([.object(["logintoken": .string("LT")])]),
-        ])
-        let text = String(decoding: try Redactor.redact(body).encoded(), as: UTF8.self)
-        for secret in ["T0KEN", "SYS", "CUST", "TICKET", "SIGN", "SID", "INNER", "LT"] {
-            XCTAssertFalse(text.contains(secret), secret)
-        }
-        XCTAssertTrue(text.contains("450010"))
-        XCTAssertEqual(Redactor.redactHeaders(["acc_token": "x", "X-Id-Token": "y", "Accept": "a"]),
-                       ["acc_token": Redactor.mask, "X-Id-Token": Redactor.mask, "Accept": "a"])
-        XCTAssertEqual(Redactor.redactURL(URL(string: "https://ecykt.gdbtu.edu.cn/a?ticket=T&custid=C")!), "https://ecykt.gdbtu.edu.cn/a")
-        XCTAssertEqual(Redactor.redactBody(Data()), "<empty>")
-    }
-
-    /// A card record's voucher number is kept out of logs like the other ids.
-    func testMasksACardRecordVoucher() throws {
-        let body: JSONValue = .object(["rows": .array([.object(["voucherno": .string("99000000000000000001"), "amount": .string("1.30")])])])
-        let text = String(decoding: try Redactor.redact(body).encoded(), as: UTF8.self)
-        XCTAssertFalse(text.contains("99000000000000000001"), text)
-        XCTAssertTrue(text.contains("1.30"))
-        XCTAssertTrue(Redactor.isSecret("voucherNo"))
-    }
-}
-
 final class URLSessionHTTPClientTests: XCTestCase {
     func testLogsCarryNoTokensQueriesOrBodies() async throws {
         let server = StubServer()
