@@ -11,8 +11,6 @@
 		C0DA001C0000000000000000 /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = C0DA00260000000000000000 /* Core */; };
 		C0DA001D0000000000000000 /* AlipaySDK.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0DA000F0000000000000000 /* AlipaySDK.xcframework */; };
 		C0DA001E0000000000000000 /* AlipaySDK.bundle in Resources */ = {isa = PBXBuildFile; fileRef = C0DA00100000000000000000 /* AlipaySDK.bundle */; };
-		C0DA001F0000000000000000 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = C0DA000E0000000000000000 /* Fonts */; };
-		C0DA00200000000000000000 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = C0DA000E0000000000000000 /* Fonts */; };
 		C0DA00210000000000000000 /* XiaoRiChangWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C0DA00070000000000000000 /* XiaoRiChangWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C0DA003A0000000000000000 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0DA00300000000000000000 /* UIKit.framework */; };
 		C0DA003B0000000000000000 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0DA00310000000000000000 /* Foundation.framework */; };
@@ -53,7 +51,6 @@
 /* Begin PBXFileReference section */
 		C0DA00060000000000000000 /* XiaoRiChang.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XiaoRiChang.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0DA00070000000000000000 /* XiaoRiChangWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = XiaoRiChangWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		C0DA000E0000000000000000 /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fonts; path = App/Resources/Fonts; sourceTree = SOURCE_ROOT; };
 		C0DA000F0000000000000000 /* AlipaySDK.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = AlipaySDK.xcframework; sourceTree = "<group>"; };
 		C0DA00100000000000000000 /* AlipaySDK.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = AlipaySDK.bundle; sourceTree = "<group>"; };
 		C0DA00300000000000000000 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
@@ -73,12 +70,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Resources/App.entitlements,
-				"Resources/Fonts/Doto[ROND,wght].ttf",
-				"Resources/Fonts/SpaceGrotesk[wght].ttf",
-				"Resources/Fonts/SpaceMono-Regular.ttf",
-				"Resources/Fonts/doto-OFL.txt",
-				"Resources/Fonts/spacegrotesk-OFL.txt",
-				"Resources/Fonts/spacemono-OFL.txt",
 				Resources/Info.plist,
 			);
 			target = C0DA00110000000000000000 /* App */;
@@ -160,7 +151,6 @@
 				C0DA00090000000000000000 /* Shared */,
 				C0DA000A0000000000000000 /* Widget */,
 				C0DA000B0000000000000000 /* Configuration */,
-				C0DA000E0000000000000000 /* Fonts */,
 				C0DA00040000000000000000 /* Frameworks */,
 				C0DA00030000000000000000 /* Products */,
 			);
@@ -297,7 +287,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				C0DA001E0000000000000000 /* AlipaySDK.bundle in Resources */,
-				C0DA001F0000000000000000 /* Fonts in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -305,7 +294,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C0DA00200000000000000000 /* Fonts in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

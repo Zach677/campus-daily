@@ -35,7 +35,7 @@ App/
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders,
                       Feedback (sends 反馈问题; endpoint and key from Info.plist)
-  Resources/          Assets, Fonts, Info.plist, App.entitlements
+  Resources/          Assets, Info.plist, App.entitlements
   Demo/               DEBUG-only demo screens and data behind campusdaily://demo/… (not in Release)
 Shared/               compiled into App and Widget
   WidgetViews/        widget views (also used by the in-app preview)

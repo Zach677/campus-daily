@@ -11,11 +11,5 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
-	<key>UIAppFonts</key>
-	<array>
-		<string>Fonts/Doto[ROND,wght].ttf</string>
-		<string>Fonts/SpaceGrotesk[wght].ttf</string>
-		<string>Fonts/SpaceMono-Regular.ttf</string>
-	</array>
 </dict>
 </plist>

@@ -31,12 +31,6 @@
 		<string>alipays</string>
 		<string>alipayqr</string>
 	</array>
-	<key>UIAppFonts</key>
-	<array>
-		<string>Fonts/Doto[ROND,wght].ttf</string>
-		<string>Fonts/SpaceGrotesk[wght].ttf</string>
-		<string>Fonts/SpaceMono-Regular.ttf</string>
-	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
