@@ -67,7 +67,7 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport
     Fixtures/         synthetic/redacted API samples, one folder per service
-Scripts/              fetch-alipay-sdk, stage-water-profile, check-widget-signature, package-ipa, privacy-check
+Scripts/              fetch-alipay-sdk, stage-water-profile, package-ipa, privacy-check
                       (run through mise.toml)
 ```
 
@@ -798,7 +798,6 @@ and the App Group falls back to `group.` plus the bundle id it runs under (the w
 Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
 Store/TestFlight record. Paid-team signers register `org.zaxh.xiaorichang` and
 `.balances`; free Personal Teams count them toward the 10 App IDs / 7 days limit.
-`Scripts/check-widget-signature.py` checks a signed build before installing.
 
 **Alipay scheme notes.** (1) AlipaySDK `payOrder(_:fromScheme:)` (laundry signed order) returns
 to `<scheme>://safepay…`; Info.plist declares `$(PRODUCT_BUNDLE_IDENTIFIER).alipay`, so it

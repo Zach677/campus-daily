@@ -105,10 +105,6 @@ else
 fi
 '''
 
-[tasks.check-widget-signature]
-description = "Check a signed app and its widget share one keychain group (APP=path/to/XiaoRiChang.app)"
-run = 'python3 Scripts/check-widget-signature.py --app "$APP"'
-
 [tasks.build-public]
 description = "Build the unsigned Release app for a device that package-ipa takes (needs the hot-water profile)"
 run = '''

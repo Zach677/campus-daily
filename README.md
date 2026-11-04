@@ -42,7 +42,7 @@ mise run check    # 提交前的全部检查，依次跑：构建、测试、模
 
 用自己的团队签名：新建 `Configuration/Developer.xcconfig`（不提交），写入 `DEVELOPMENT_TEAM = …`，需要时再写 `APP_BUNDLE_IDENTIFIER = …`。改了包名时，支付宝回跳 scheme 会跟着变。Debug 构建缺少热水平台参数时只给警告，热水连不上；直接用 Xcode 做 Release 构建缺少时会失败；`mise build` 的 Release 检查构建会放一份合成的平台参数，只用来编译，打包（`package-ipa`）仍然要真的那份。
 
-其他命令用 `mise tasks` 查看：`scan`（提交前的隐私扫描，值清单 `LEAKCHECK_FILE` 和标记清单 `MARKER_PATTERNS` 都放在仓库外）、`check-widget-signature`、`build-public`（`package-ipa` 要用的无签名真机 Release 构建）、`package-ipa`、`android`。
+其他命令用 `mise tasks` 查看：`scan`（提交前的隐私扫描，值清单 `LEAKCHECK_FILE` 和标记清单 `MARKER_PATTERNS` 都放在仓库外）、`build-public`（`package-ipa` 要用的无签名真机 Release 构建）、`package-ipa`、`android`。
 
 ## 仓库结构
 
