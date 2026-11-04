@@ -21,23 +21,12 @@ final class AppIdentityTests: XCTestCase {
         }
     }
 
-    /// The App Group named in Info.plist first; when it has no container (re-signed), `group.`
-    /// plus the bundle id the process runs under, the widget's without `.balances`.
-    func testReSignedBuildsTryTheAppGroupOfTheirBundleID() {
-        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.zaxh.xiaorichang", bundleID: "org.example.daily", inExtension: false),
-                       ["group.org.zaxh.xiaorichang", "group.org.example.daily"])
-        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.zaxh.xiaorichang", bundleID: "org.example.daily.balances", inExtension: true),
-                       ["group.org.zaxh.xiaorichang", "group.org.example.daily"])
-        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.example.daily", bundleID: "org.example.daily", inExtension: false),
-                       ["group.org.example.daily"], "the same group is tried once")
-        XCTAssertEqual(AppIdentity.appGroupCandidates(named: nil, bundleID: "org.example.daily", inExtension: false), ["group.org.example.daily"])
-        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.example.daily", bundleID: nil, inExtension: false), ["group.org.example.daily"])
-        XCTAssertEqual(AppIdentity.appGroupCandidates(named: nil, bundleID: nil, inExtension: true), [])
-
-        let candidates = ["group.org.zaxh.xiaorichang", "group.org.example.daily"]
-        XCTAssertEqual(AppIdentity.firstWithContainer(candidates) { _ in true }, "group.org.zaxh.xiaorichang")
-        XCTAssertEqual(AppIdentity.firstWithContainer(candidates) { $0 == "group.org.example.daily" }, "group.org.example.daily")
-        XCTAssertNil(AppIdentity.firstWithContainer(candidates) { _ in false })
+    /// The App Group is the one Info.plist names; without its container there is none, never
+    /// one derived from the bundle id the process runs under.
+    func testTheAppGroupIsOnlyTheNamedOne() {
+        XCTAssertEqual(AppIdentity.usable("group.org.zaxh.xiaorichang") { _ in true }, "group.org.zaxh.xiaorichang")
+        XCTAssertNil(AppIdentity.usable("group.org.zaxh.xiaorichang") { $0 != "group.org.zaxh.xiaorichang" })
+        XCTAssertNil(AppIdentity.usable(nil) { _ in true })
     }
 
     /// With the bundle id in Base.xcconfig, every identifier is the one architecture §4.2 lists

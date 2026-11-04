@@ -2,7 +2,7 @@ import XCTest
 @testable import Core
 import CoreTestSupport
 
-/// A build signed without the App Group (re-signed under another group) has no shared lease
+/// A build signed without the App Group has no shared lease
 /// file. The app then keeps its lease in its own container, so its reads, logins, recharge and
 /// hand-off still take turns inside the app instead of reporting "busy" forever or running side
 /// by side; the widget has no lease file at all and leaves every school read to the app, so the

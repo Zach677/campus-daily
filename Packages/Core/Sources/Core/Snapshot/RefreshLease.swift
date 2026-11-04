@@ -20,8 +20,8 @@ public struct RefreshLease: Sendable {
         var expiresAt: Date
     }
 
-    /// The lease file in the shared container, or nil when this build has no App Group (none it
-    /// is entitled to, under the Info.plist name or its own bundle id: `AppIdentity.usableAppGroup`).
+    /// The lease file in the shared container, or nil when this build has no App Group it is
+    /// entitled to (`AppIdentity.usableAppGroup`).
     public static func sharedFile(appGroup: String? = AppIdentity.usableAppGroup) -> LeaseFile? {
         appGroup.flatMap { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
             .map { LeaseFile(url: $0.appendingPathComponent("refresh.lease")) }

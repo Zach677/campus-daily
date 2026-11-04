@@ -32,7 +32,7 @@ public struct ThemePreference {
     }
 
     /// The preferences the app and its extensions share: the App Group's, or this process's own
-    /// when it has no group (tests, an install re-signed without one).
+    /// when it has no group (tests, a build signed without one).
     public static func sharedStorage(appGroup: String? = AppIdentity.usableAppGroup) -> any PreferenceStorage {
         appGroup.flatMap { UserDefaults(suiteName: $0) } ?? UserDefaults.standard
     }

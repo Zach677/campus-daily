@@ -126,7 +126,7 @@ final class ThemePreferenceTests: XCTestCase {
         XCTAssertEqual(preference.theme, .warm)
     }
 
-    /// No App Group (tests, a re-signed install without one): this process's own preferences.
+    /// No App Group (tests, a build signed without one): this process's own preferences.
     func testSharedStorageWithoutAGroupIsTheProcessOwn() {
         XCTAssertTrue(ThemePreference.sharedStorage(appGroup: nil) === UserDefaults.standard)
     }

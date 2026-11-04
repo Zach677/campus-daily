@@ -282,8 +282,8 @@ records the failure and its time per tile.
 **One writer across two processes.** The app and the widget extension each have one
 `SnapshotRefresher` over one Keychain. They take turns
 through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the App Group container
-(`group.$(APP_BUNDLE_IDENTIFIER)`, read from Info.plist `AppGroupIdentifier`, else `group.` plus
-the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
+(`group.$(APP_BUNDLE_IDENTIFIER)`, read from Info.plist `AppGroupIdentifier`:
+`AppIdentity.usableAppGroup`, see 4.2):
 - every step (take, renew, check, give back, clear) is one read-compare-write done while holding
   an exclusive `flock` on that file, so two processes never both find the same lease free and a
   holder whose lease ran out never writes over the next one's; the lock is held only for that
@@ -743,8 +743,8 @@ registration. The widget reads the school items above for its own refresh, and `
 and `shared.reminderLines`, and shares the lease file in the App
 Group container. The App
 Group (`group.$(APP_BUNDLE_IDENTIFIER)`, both targets) holds the lease file and the theme
-choice (its UserDefaults, `xrc.theme`); a re-signed
-build without it keeps working: the app keeps its lease file in its own container
+choice (its UserDefaults, `xrc.theme`); a
+build signed without it keeps working: the app keeps its lease file in its own container
 (`RefreshLease.appFile`, Application Support, excluded from backup), so its reads, logins,
 recharge and hot-water hand-off still take turns, and the widget, which can't open that file,
 leaves every refresh to the app, so the two never read at once. Live Activities get data via ActivityKit content
@@ -780,10 +780,7 @@ the app's values, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
 builds before it used `com.beamjason.xiaorichang` for all of these; nothing is migrated, so the
 new id installs as a separate app and the user signs in once. A build
 with another `APP_BUNDLE_IDENTIFIER` (Developer.xcconfig) gets its own groups; the Keychain service
-names stay `org.zaxh.xiaorichang.<name>.v1` in every build. An IPA re-signed under another
-bundle id keeps the old Info.plist values: the keychain groups still follow its signature (above),
-and the App Group falls back to `group.` plus the bundle id it runs under (the widget's without
-`.balances`) when the Info.plist one has no container.
+names stay `org.zaxh.xiaorichang.<name>.v1` in every build.
 
 Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
 Store/TestFlight record. Paid-team signers register `org.zaxh.xiaorichang` and
