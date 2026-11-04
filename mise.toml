@@ -1,6 +1,6 @@
 # Routine commands for 校日常. Run `mise tasks` to list them.
-# Xcode, git and python3 come from the Xcode command line tools;
-# `mise test-scripts` also needs node, `mise android` needs JDK 21.
+# Xcode 26, git and python3 come from Xcode and its command line tools; mise
+# installs node (for `mise test-scripts`) from [tools]. `mise android` needs JDK 21.
 #
 # Override defaults with environment variables, for example
 # `SIMULATOR="iPhone 17" mise test-app`. `mise run check` runs every check a
@@ -8,6 +8,9 @@
 # TEST_APP_CMD replace the xcodebuild build, swift test and xcodebuild test
 # commands (to run them on another machine); BUILD_CMD gets the configuration
 # as its last argument. They run through `eval`, like a line typed in the shell.
+
+[tools]
+node = "lts"
 
 [task_config]
 dir = "{{config_root}}"
@@ -80,9 +83,27 @@ description = "Privacy checks on staged files: patterns, values in $LEAKCHECK_FI
 run = "sh Scripts/privacy-check.sh"
 
 [tasks.check]
-description = "Every check before a commit: Debug and Release builds, all tests, the App.xctestplan on a simulator, privacy scans"
-depends = ["build", "test", "test-app", "scan"]
-run = "echo 'all checks passed'"
+description = "Every check before a commit, one after another: builds, all tests, the App.xctestplan, privacy scans (lists outside the repo are skipped when absent)"
+run = [
+    { task = "build" },
+    { task = "test" },
+    { task = "test-app" },
+    { task = "scan-check" },
+    "echo 'all checks passed'",
+]
+
+[tasks.scan-check]
+description = "The privacy scan of `check`: strict when a private list is set up, otherwise the public scan (--allow-missing)"
+hide = true
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -n "${MARKER_PATTERNS:-}" ] || [ -f "${LEAKCHECK_FILE:-private/capture/secrets/leakcheck.txt}" ]; then
+  sh Scripts/privacy-check.sh
+else
+  sh Scripts/privacy-check.sh --allow-missing
+fi
+'''
 
 [tasks.check-widget-signature]
 description = "Check a signed app and its widget share one keychain group (APP=path/to/XiaoRiChang.app)"
