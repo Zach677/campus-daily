@@ -234,6 +234,20 @@ enum ShowerProfileFiles {
         }
     }
 
+    #if DEBUG
+    /// campusdaily://demo/seed/shower-running: a synthetic running record (no binding, so no
+    /// engine and nothing sent), saved in this model's own vault, to check that a sample started
+    /// over it never shows or reaches it. Cleared by 重置校日常.
+    func demoSeedRunningRecord() {
+        let record = ShowerState(phase:.running, machineID:"AABBCC", peripheralID:"SYNTHETIC",
+                                 startedAt:Date().addingTimeInterval(-6 * 60))
+        guard (try? services.showerVault.saveShowerState(record)) != nil else { return }
+        let restored = ShowerReducer.restore(record)
+        page = ShowerPageFlow(record:restored)
+        apply(restored)
+    }
+    #endif
+
     /// After a reset cleared the stores: no binding, no record, bundled profile only.
     func reloadAfterReset() async {
         binding = (try? services.showerVault.binding()) ?? nil

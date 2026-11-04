@@ -11,6 +11,8 @@ extension ClearRootView {
     func handleDemo(_ url: URL) {
         // No sample page opens a link.
         guard !sample.isActive else { return }
+        // A synthetic running record in this root's own (live) hot-water vault.
+        if url.host == "demo", url.path == "/seed/shower-running" { shower.demoSeedRunningRecord(); return }
         if let kind = notifyDemo(url) { Task { await reminders.demoNotify(kind) }; return }
         // campusdaily://demo/theme/<warm|clear>: what 主题 would pick.
         if url.host == "demo", url.pathComponents.dropFirst().first == "theme",
