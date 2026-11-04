@@ -66,7 +66,8 @@ struct HomeView: View {
     #endif
 
     func openOnboarding() {
-        onboarding = OnboardingRequest(step:.login)
+        // Already up (first-run, then 去登录 or a login link just after the sample): kept.
+        onboarding = OnboardingRequest.asking(.login, over:onboarding)
     }
 
     /// Shows these pages over home. With the settings sheet up, it is closed first and the pages
@@ -198,13 +199,13 @@ struct HomeView: View {
         }
         // Closed into the sample: not seen, so the next launch opens on the login step again (`QuickSetupSeen`).
         .fullScreenCover(item:$onboarding, onDismiss:{ QuickSetupSeen.closed(in:services.defaults, coveredBySample:sample.isActive) }) { request in
-            // .id: a new request must reset the cover's @State (step), not reuse it.
+            // .id: a new request (or a new step on this one) must reset the cover's @State, not reuse it.
             // Own device chooser: a sheet from the home root can't show above this cover.
             #if DEBUG
-            OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id)
+            OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.guide.contentID)
                 .onOpenURL { handleDemo($0) }
             #else
-            OnboardingView(start:request.step) { onboarding = nil }.id(request.id)
+            OnboardingView(start:request.step) { onboarding = nil }.id(request.guide.contentID)
             #endif
         }
         #if DEBUG
