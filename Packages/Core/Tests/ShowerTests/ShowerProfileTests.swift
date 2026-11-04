@@ -9,9 +9,8 @@ final class ShowerProfileTests: XCTestCase {
     let valid = #"{"secret":"fixture-secret ~/+","sid":"fixture-sid=1","bleName":"fixture-ble","typeID":1,"version":3}"#
 
     func testWaterConfigFileIsExactlyFiveKeys() throws {
-        let p = try ShowerConfigFile.parse(Data(valid.utf8), source: .bundled)
+        let p = try ShowerConfigFile.parse(Data(valid.utf8))
         XCTAssertEqual(p, ShowerPlatformProfile(secret: "fixture-secret ~/+", sid: "fixture-sid=1", bleName: "fixture-ble", typeId: "1", version: "3"))
-        let src = ShowerProfileSource.imported(fileName: "a.waterconfig")
         let unreadable = [
             #"{"secret":"s","sid":"x","bleName":"b","typeID":1,"version":3,"studentID":"S1"}"#,
             #"{"secret":"s","sid":"x","bleName":"b","typeID":"1","version":3}"#,
@@ -19,24 +18,24 @@ final class ShowerProfileTests: XCTestCase {
             "[]", "not json",
         ]
         for text in unreadable {
-            XCTAssertThrowsError(try ShowerConfigFile.parse(Data(text.utf8), source: src), text) {
-                XCTAssertEqual($0 as? ShowerProfileError, .unreadable(src))
+            XCTAssertThrowsError(try ShowerConfigFile.parse(Data(text.utf8)), text) {
+                XCTAssertEqual($0 as? ShowerProfileError, .unreadable)
             }
         }
         for text in [#"{"secret":" ","sid":"x","bleName":"b","typeID":1,"version":3}"#,
                      #"{"secret":"s","sid":"x","bleName":"b","typeID":1,"version":0}"#,
                      #"{"secret":"s","sid":"x\n","bleName":"b","typeID":1,"version":3}"#] {
-            XCTAssertThrowsError(try ShowerConfigFile.parse(Data(text.utf8), source: src), text) {
-                XCTAssertEqual($0 as? ShowerProfileError, .incomplete(src))
+            XCTAssertThrowsError(try ShowerConfigFile.parse(Data(text.utf8)), text) {
+                XCTAssertEqual($0 as? ShowerProfileError, .incomplete)
             }
         }
-        XCTAssertThrowsError(try ShowerConfigFile.parse(Data(count: ShowerConfigFile.maxBytes + 1), source: src))
+        XCTAssertThrowsError(try ShowerConfigFile.parse(Data(count: ShowerConfigFile.maxBytes + 1)))
         XCTAssertFalse("\(p)".contains("fixture-secret"), "the secret is never printed")
     }
 
     /// The imported file when it reads as a profile, else the bundled one; nil when neither does.
     func testTheImportedProfileComesFirstThenTheBundledOne() throws {
-        let bundled = try ShowerConfigFile.parse(Data(valid.utf8), source: .bundled)
+        let bundled = try ShowerConfigFile.parse(Data(valid.utf8))
         let mine = #"{"secret":"fixture-mine","sid":"fixture-sid=2","bleName":"fixture-ble","typeID":1,"version":4}"#
         struct Boom: Error {}
         XCTAssertEqual(ShowerProfileLoader.localProfile(imported: { Data(mine.utf8) }, bundled: { Data(self.valid.utf8) })?.version, "4")

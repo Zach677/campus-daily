@@ -272,7 +272,7 @@ enum ShowerProfileFiles {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf:url)
-        _ = try ShowerConfigFile.parse(data, source:.imported(fileName:ShowerProfileLoader.importedFileName))
+        _ = try ShowerConfigFile.parse(data)
         let target = ShowerProfileFiles.importedURL
         // The copy holds the platform secret: its folder is kept out of backups before it is written.
         try ShowerImportFolder.prepare(for:target)

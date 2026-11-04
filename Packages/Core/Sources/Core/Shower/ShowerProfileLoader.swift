@@ -7,14 +7,14 @@ public enum ShowerConfigFile {
     public static let maxBytes = 8192
     public static let keys: Set<String> = ["secret", "sid", "bleName", "typeID", "version"]
 
-    public static func parse(_ data: Data, source: ShowerProfileSource) throws -> ShowerPlatformProfile {
+    public static func parse(_ data: Data) throws -> ShowerPlatformProfile {
         guard data.count <= maxBytes, let root = try? JSONValue.parse(data), let o = root.object else {
-            throw ShowerProfileError.unreadable(source)
+            throw ShowerProfileError.unreadable
         }
-        guard Set(o.keys) == keys else { throw ShowerProfileError.unreadable(source) }
+        guard Set(o.keys) == keys else { throw ShowerProfileError.unreadable }
         guard case .string(let secret)? = o["secret"], case .string(let sid)? = o["sid"], case .string(let ble)? = o["bleName"],
               case .int(let typeID)? = o["typeID"], case .int(let version)? = o["version"] else {
-            throw ShowerProfileError.unreadable(source)
+            throw ShowerProfileError.unreadable
         }
         func ok(_ s: String, _ max: Int) -> Bool {
             !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && s.utf8.count <= max
@@ -22,7 +22,7 @@ public enum ShowerConfigFile {
         }
         guard ok(secret, 256), ok(sid, 128), ok(ble, 64),
               (0...Int64(Int32.max)).contains(typeID), (1...Int64(Int32.max)).contains(version) else {
-            throw ShowerProfileError.incomplete(source)
+            throw ShowerProfileError.incomplete
         }
         return ShowerPlatformProfile(secret: secret, sid: sid, bleName: ble, typeId: String(typeID), version: String(version))
     }
@@ -33,10 +33,10 @@ public enum ShowerConfigFile {
 /// the imported-file container / `Bundle.main`).
 public enum ShowerProfileLoader {
     public static func localProfile(imported: () throws -> Data?, bundled: () throws -> Data?) -> ShowerPlatformProfile? {
-        if let data = try? imported(), let profile = try? ShowerConfigFile.parse(data, source: .imported(fileName: importedFileName)) {
+        if let data = try? imported(), let profile = try? ShowerConfigFile.parse(data) {
             return profile
         }
-        if let data = try? bundled(), let profile = try? ShowerConfigFile.parse(data, source: .bundled) { return profile }
+        if let data = try? bundled(), let profile = try? ShowerConfigFile.parse(data) { return profile }
         return nil
     }
 

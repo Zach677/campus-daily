@@ -14,15 +14,8 @@ public struct ShowerPlatformProfile: Sendable, Equatable, Codable, CustomStringC
     public var debugDescription: String { description }
 }
 
-/// Where the platform profile comes from:
-/// - `bundled`: staged into the app bundle at build time (`Scripts/stage-water-profile.py`);
-/// - `imported`: a `.waterconfig` file the user imported.
-public enum ShowerProfileSource: Sendable, Equatable, Codable {
-    case bundled
-    case imported(fileName: String)
-}
-
+/// Why a `.waterconfig` (or the bundled profile) was refused.
 public enum ShowerProfileError: Error, Equatable, Sendable {
-    case incomplete(ShowerProfileSource)
-    case unreadable(ShowerProfileSource)
+    case incomplete
+    case unreadable
 }
