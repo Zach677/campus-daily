@@ -4,10 +4,12 @@
 #
 # Override defaults with environment variables, for example
 # `SIMULATOR="iPhone 17" mise test-app`. `mise run check` runs every check a
-# commit must pass (build, test, test-app, scan). BUILD_CMD, TEST_CMD and
-# TEST_APP_CMD replace the xcodebuild build, swift test and xcodebuild test
-# commands (to run them on another machine); BUILD_CMD gets the configuration
-# as its last argument. They run through `eval`, like a line typed in the shell.
+# commit must pass (build, test, test-app, scan) and fails without the private
+# scan lists; `mise run check-public` runs the same steps without them and says
+# which scans it skipped. BUILD_CMD, TEST_CMD and TEST_APP_CMD replace the
+# xcodebuild build, swift test and xcodebuild test commands (to run them on
+# another machine); BUILD_CMD gets the configuration as its last argument.
+# They run through `eval`, like a line typed in the shell.
 
 [tools]
 node = "lts"
@@ -83,25 +85,38 @@ description = "Privacy checks on staged files: patterns, values in $LEAKCHECK_FI
 run = "sh Scripts/privacy-check.sh"
 
 [tasks.check]
-description = "Every check before a commit, one after another: builds, all tests, the App.xctestplan, privacy scans (lists outside the repo are skipped when absent)"
+description = "Every check before a commit, one after another: builds, all tests, the App.xctestplan, the full privacy scan (fails without the private lists)"
 run = [
     { task = "build" },
     { task = "test" },
     { task = "test-app" },
-    { task = "scan-check" },
+    { task = "scan" },
     "echo 'all checks passed'",
 ]
 
-[tasks.scan-check]
-description = "The privacy scan of `check`: strict when a private list is set up, otherwise the public scan (--allow-missing)"
+[tasks.check-public]
+description = "check for a checkout without the private lists: the same steps, scans whose list is missing are skipped and said so"
+run = [
+    { task = "build" },
+    { task = "test" },
+    { task = "test-app" },
+    { task = "scan-public" },
+]
+
+[tasks.scan-public]
+description = "The privacy scan of `check-public` (--allow-missing); prints what it skipped"
 hide = true
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-if [ -n "${MARKER_PATTERNS:-}" ] || [ -f "${LEAKCHECK_FILE:-private/capture/secrets/leakcheck.txt}" ]; then
-  sh Scripts/privacy-check.sh
+out=$(mktemp)
+trap 'rm -f "$out"' EXIT
+sh Scripts/privacy-check.sh --allow-missing | tee "$out"
+skipped=$(sed -n 's/^skipped: \([a-z]* scan\).*/\1/p' "$out" | paste -sd, - | sed 's/,/, /g')
+if [ -n "$skipped" ]; then
+  echo "public checks passed (skipped: $skipped)"
 else
-  sh Scripts/privacy-check.sh --allow-missing
+  echo "public checks passed"
 fi
 '''
 

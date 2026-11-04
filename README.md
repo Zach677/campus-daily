@@ -37,7 +37,8 @@ mise setup        # 拉取支付宝 SDK（校验哈希）和通用热水平台�
 open XiaoRiChang.xcworkspace
 mise test         # Core 包测试和脚本测试，不联网、不碰蓝牙
 mise build        # 模拟器构建 App 和小组件，Debug 和 Release
-mise run check    # 提交前的全部检查，依次跑：构建、测试、模拟器上跑 App.xctestplan、隐私扫描（仓库外的清单不在时跳过）
+mise run check-public  # 外部贡献者提交前跑：依次构建、测试、模拟器上跑 App.xctestplan、隐私扫描；仓库外的清单不在时跳过那一项，并写明跳过了什么
+mise run check         # 维护者提交前跑：同样的步骤，隐私扫描缺清单就失败
 ```
 
 用自己的团队签名：新建 `Configuration/Developer.xcconfig`（不提交），写入 `DEVELOPMENT_TEAM = …`，需要时再写 `APP_BUNDLE_IDENTIFIER = …`。改了包名时，支付宝回跳 scheme 会跟着变。Debug 构建缺少热水平台参数时只给警告，热水连不上；直接用 Xcode 做 Release 构建缺少时会失败；`mise build` 的 Release 检查构建会放一份合成的平台参数，只用来编译，打包（`package-ipa`）仍然要真的那份。
