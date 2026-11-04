@@ -112,7 +112,6 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// the 开始洗澡 tap: connecting and authorizing are not shower time. The one origin of the
     /// in-app timer, the Live Activity, the 「还没结束洗澡？」 reminder and the shown duration.
     /// Never used for billing (the controller's consumption frame is). Nil before the water.
-    /// Records saved before this rule hold the tap time here (see `ShowerReducer.restore`).
     public var startedAt: Date?
     /// Persisted right before the authorize request leaves.
     public var authorizeSent: Bool
@@ -614,12 +613,6 @@ public enum ShowerReducer {
     /// Relaunch: what a persisted record means now. Nothing is re-sent automatically.
     public static func restore(_ persisted: ShowerState?) -> ShowerState {
         guard var s = persisted else { return .idle }
-        // Records saved before the timer counted from the water hold the tap time in
-        // `startedAt`. A record that never reached the water drops it (no timer); one past it
-        // keeps it, so a running timer and its reminder don't jump back after the update.
-        if s.phase == .authorizing || (s.phase == .failed && s.failure?.reason.isBeforeWater == true) {
-            s.startedAt = nil
-        }
         s.notice = nil
         s.reviewing = false
         s.settleRetryArmed = false

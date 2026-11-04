@@ -45,6 +45,22 @@ final class ShowerStoredFormatTests: XCTestCase {
         XCTAssertEqual(store.touches, 0)
     }
 
+    /// A failure after the water keeps its start across a relaunch (the lock screen's 「不确定」 line).
+    func testAFailedSessionAfterTheWaterKeepsItsStart() throws {
+        let water = Date(timeIntervalSince1970: 1_800_000_000)
+        var failed = ShowerState.idle
+        failed.phase = .failed; failed.machineID = "11223344"; failed.startedAt = water
+        failed.authorizeSent = true; failed.authorizationID = "001122FF"
+        failed.failure = ShowerFailure(reason: .closeUnconfirmed, needsReview: true)
+        let store = TouchCountingStore()
+        try store.inner.write(try JSONEncoder().encode(failed), for: .showerSession)
+        let restored = ShowerReducer.restore(try XCTUnwrap(try StoredShowerVault(store: store).showerState()))
+        XCTAssertEqual(restored.failure?.reason, .closeUnconfirmed)
+        XCTAssertEqual(restored.startedAt, water)
+        XCTAssertEqual(ShowerActivityAction(restored, now: water), .unconfirmed(startedAt: water, dismissAfter: 15 * 60))
+        XCTAssertEqual(store.touches, 0)
+    }
+
     /// An imported config's folder is kept out of backups when it is made.
     func testTheFolderOfAnImportIsKeptOutOfBackups() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("import-\(UUID().uuidString)", isDirectory: true)

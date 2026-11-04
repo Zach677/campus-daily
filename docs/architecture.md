@@ -582,10 +582,7 @@ Rules:
   开始洗澡 tap: the ~15 s of connecting and authorizing are not shower time. The in-app timer,
   the Live Activity, the unsettled reminder and the shown duration (done page, settled lock
   screen, 「上次 11 分钟」 and 最近) all count from it; billing uses the controller's consumption
-  frame, never a time. Nothing reads the tap time, so it is not kept. A record saved before
-  this rule holds the tap time there: past the water it is kept (the timer does not jump back),
-  before the water (`authorizing`, or a failure before the authorization reached the controller)
-  it is dropped.
+  frame, never a time. Nothing reads the tap time, so it is not kept.
 - Unsettled reminder after the configured minutes in `writePending/running`. The Live Activity
   mirrors `{phase, startedAt, writeUnconfirmed, amountYuan?}`; its "结束并结算" intent calls
   `ShowerEngine.finish()` in the app process.
