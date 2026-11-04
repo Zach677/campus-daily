@@ -9,11 +9,17 @@ import Core
     /// Activities read it; injected, so nothing global holds it. It won't change while a shower
     /// or laundry run is going on.
     @State private var theme: ThemeStore
+    /// 「先看看示例」: in memory only, so every launch starts outside it.
+    @State private var sample: SampleMode
+    /// Which page shows the sample's blocked message (`SampleChrome`).
+    @State private var sampleAlerts = SampleAlertStack()
     init() {
         let laundry = LaundryModel()
         _laundry = StateObject(wrappedValue:laundry)
+        let sample = SampleMode()
+        _sample = State(initialValue:sample)
         _theme = State(initialValue:ThemeStore(preference:ThemePreference(storage:ThemePreference.sharedStorage()),
-                                               lock:AppEnvironment.sharedLock) { [weak laundry] in
+                                               lock:AppEnvironment.sharedLock, sample:sample) { [weak laundry] in
             ThemeLock.lock(shower:ShowerModel.shared.state, laundry:laundry?.checkout?.phase)
         })
         // Before any model reads: older builds kept items in the other keychain group.
@@ -27,6 +33,7 @@ import Core
     var body: some Scene {
         WindowGroup {
             CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry).environment(theme)
+                .environment(sample).environment(sampleAlerts)
                 .onChange(of:campus.room,initial:true) { ShowerActivityController.shared.dorm = Theme.dorm(campus.room) ?? "" }
                 .task {
                     await campus.dropCampusWideMeter()
@@ -37,8 +44,9 @@ import Core
                 .onOpenURL { if $0.scheme != "campusdaily" { AlipayBridge.shared.handle($0); Task { await laundry.refreshOrder() } } }
         }
         .onChange(of:phase) { _, value in
-            if value == .background { BackgroundRefresh.scheduleRefresh() }
-            if value == .active {
+            if value == .background, !sample.isActive { BackgroundRefresh.scheduleRefresh() }
+            // The sample sends nothing: no read, no order check when it comes to the front.
+            if value == .active, !sample.isActive {
                 // Launched before the first unlock (pre-warmed), the Keychain could not be read:
                 // read it again now, before the home's foreground refresh runs.
                 campus.reload()

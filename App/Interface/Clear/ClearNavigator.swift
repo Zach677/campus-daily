@@ -45,14 +45,12 @@ import Core
     /// The laundry-done sheet (`ClearLaundryDonePanel` reads it).
     var panel: SettlementResult?
 
-    #if DEBUG
     /// DEBUG demo data (campusdaily://demo/...); nil = live models.
     var demo: HomeData?
     var laundryDemo: LaundryDemo?
     var recordsDemo: RecordsDemo?
     /// campusdaily://demo/recharge-blocked.
     var rechargeBlockedDemo = false
-    #endif
 
     func path(_ tab: Tab) -> [ClearRoute] {
         switch tab {
@@ -128,9 +126,7 @@ import Core
 
     /// What home shows: the DEBUG demo when one is up, otherwise the live models.
     func data(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) -> HomeData {
-        #if DEBUG
         if let demo { return demo }
-        #endif
         return HomeData(campus:campus, shower:shower, laundry:laundry)
     }
 }

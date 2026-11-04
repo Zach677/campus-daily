@@ -10,6 +10,7 @@ import Core
 struct ClearLaundryPage: View {
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(ClearNavigator.self) private var navigator
+    @Environment(SampleMode.self) private var sample
     @ObservedObject private var reminders = Reminders.shared
     @State private var selectedID: Int?
     @State private var sheet: LaundrySheet?
@@ -21,25 +22,17 @@ struct ClearLaundryPage: View {
     @State private var preparing = false
 
     private var isDemo: Bool {
-        #if DEBUG
         return navigator.laundryDemo != nil
-        #else
-        return false
-        #endif
     }
 
     private var facts: LaundryFacts {
-        #if DEBUG
         if let demo = navigator.laundryDemo { return demo.facts }
-        #endif
         return LaundryFacts(model:laundry)
     }
 
     /// Only promise 洗好了会通知你 when the reminder is on and notifications are allowed.
     private var notifiesWhenDone: Bool {
-        #if DEBUG
         if let demo = navigator.laundryDemo { return demo.notify }
-        #endif
         return reminders.laundryDoneWillNotify
     }
 
@@ -71,13 +64,11 @@ struct ClearLaundryPage: View {
         // starting does): the read runs on its own and the pull waits for it.
         .refreshable { await Task { await reload() }.value }
         .task {
-            #if DEBUG
             if let initial = navigator.laundryDemo?.sheet {
                 try? await Task.sleep(for:.milliseconds(450))
                 sheet = initial == .cancel ? .cancel : confirmSheet(self.facts, newOrder:true)
                 return
             }
-            #endif
             guard !isDemo else { return }
             await laundry.refresh(); await laundry.refreshOrder()
         }
@@ -177,9 +168,11 @@ struct ClearLaundryPage: View {
             }
         } else if phase != .empty, phase != .unknown {
             ToolbarItem(placement:.topBarTrailing) {
-                NavigationLink(value:ClearRoute.washerSetup) {
-                    Image(systemName:"qrcode.viewfinder").frame(width:44, height:44)
-                }
+                SampleGatedRow(action:.bindWasher) {
+                    NavigationLink(value:ClearRoute.washerSetup) {
+                        Image(systemName:"qrcode.viewfinder").frame(width:44, height:44)
+                    }
+                } label: { Image(systemName:"qrcode.viewfinder").frame(width:44, height:44) }
                 .accessibilityLabel(ClearLaundryCopy.isProblem(phase) ? "扫另一台洗衣机" : "扫洗衣机")
                 .accessibilityIdentifier("laundryScan")
             }
@@ -260,17 +253,15 @@ struct ClearLaundryPage: View {
     // MARK: Actions
 
     private func reload() async {
-        #if DEBUG
         if isDemo { try? await Task.sleep(for:.milliseconds(700)); return }
-        #endif
         await laundry.refresh(force:true); await laundry.refreshOrder()
     }
 
     /// Same sequence as 暖橙: re-read the machine, then ask for one explicit confirmation.
     private func order() {
-        #if DEBUG
+        // The sample's 下单: the message only, no confirmation, nothing paid.
+        guard !sample.isActive else { sample.perform(.startWash) {}; return }
         if isDemo { sheet = confirmSheet(facts, newOrder:true); return }
-        #endif
         preparing = true
         Task {
             await laundry.refresh(force:true)
@@ -290,9 +281,7 @@ struct ClearLaundryPage: View {
     }
 
     private func submit(_ program: WasherProgram) {
-        #if DEBUG
         if isDemo { runDemoBusy(); return }
-        #endif
         if let device = laundry.snapshot?.deviceID {
             UserDefaults.standard.set(program.id, forKey:LaundryDetail.lastProgramKey(device))
         }
@@ -301,28 +290,24 @@ struct ClearLaundryPage: View {
     }
 
     private func payExisting() {
-        #if DEBUG
+        guard !sample.isActive else { sample.perform(.payLaundry) {}; return }
         if isDemo { runDemoBusy(); return }
-        #endif
         submitting = true
         Task { await laundry.pay(); submitting = false }
     }
 
     private func cancel() {
-        #if DEBUG
+        guard !sample.isActive else { sample.perform(.cancelLaundry) {}; return }
         if isDemo { withAnimation(Theme.spring) { navigator.laundryDemo = LaundryDemo.make(.idle) }; return }
-        #endif
         Task { await laundry.cancelOrder() }
     }
 
     private func resolve() {
-        #if DEBUG
+        guard !sample.isActive else { sample.perform(.cancelLaundry) {}; return }
         if isDemo { withAnimation(Theme.spring) { navigator.laundryDemo = LaundryDemo.make(.idle) }; return }
-        #endif
         Task { await laundry.resolveManually() }
     }
 
-    #if DEBUG
     /// Fake progress only — never places an order.
     private func runDemoBusy() {
         let previous = navigator.laundryDemo
@@ -337,5 +322,4 @@ struct ClearLaundryPage: View {
             navigator.laundryDemo = previous
         }
     }
-    #endif
 }

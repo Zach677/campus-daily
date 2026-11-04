@@ -45,6 +45,8 @@ struct OnboardingView: View {
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
     @EnvironmentObject private var water: ShowerModel
+    /// 「先看看示例」: the root closes this guide over the sample.
+    @Environment(SampleMode.self) private var sample
     /// Binds the dorm's hot-water controller when 「就是这间」 confirms the dorm.
     @StateObject private var dormFlow = DormSetupFlow()
     @State private var bindingWater = false
@@ -366,10 +368,18 @@ struct OnboardingView: View {
                     secondary("以后再核对") { advance() }
                         .accessibilityIdentifier("waterLater")
                 }
-                if step == .login && !keyboardUp && loginState != .cannotDirect {
-                    secondary(SchoolLoginText.webLogin) { openWebLogin() }
-                        .disabled(loggingIn)
-                        .accessibilityIdentifier("webLogin")
+                if step == .login && !keyboardUp {
+                    VStack(spacing:0) {
+                        if loginState != .cannotDirect {
+                            secondary(SchoolLoginText.webLogin) { openWebLogin() }
+                                .disabled(loggingIn)
+                                .accessibilityIdentifier("webLogin")
+                        }
+                        // For a look without an account (App Review): synthetic data, nothing stored or sent.
+                        secondary(SampleCopy.entry) { sample.enter() }
+                            .disabled(loggingIn)
+                            .accessibilityIdentifier("sampleEntry")
+                    }
                 }
             }
             .frame(minHeight:keyboardUp ? 0 : 46, alignment:.top)

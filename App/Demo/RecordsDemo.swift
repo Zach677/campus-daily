@@ -1,9 +1,8 @@
-#if DEBUG
 import Foundation
 import Core
 
 /// campusdaily://demo/records/<state> — 校园卡记录 over the home demo, on synthetic pages (nothing
-/// is read from the school):
+/// is read from the school). `list` is also the sample mode's (「先看看示例」), in Release too:
 /// - `list`: four weeks of meals, showers, laundry and top-ups (the last three days the home
 ///   demo's, with its lunch paid with WeChat), then the end;
 /// - `loading`: the first read never answers;
@@ -20,16 +19,18 @@ enum RecordsDemo: String {
     case empty, open
     case signedOut = "signed-out"
 
+    #if DEBUG
     static func handle(_ url: URL) -> RecordsDemo? {
         guard url.scheme == "campusdaily", url.host == "demo" else { return nil }
         let parts = Array(url.pathComponents.dropFirst())
         guard parts.first == "records" else { return nil }
         return RecordsDemo(rawValue:parts.count > 1 ? parts[1] : "list")
     }
+    #endif
 
     /// The app's own records: those of the home demo, none for `empty`.
     func app(now: Date = Date()) -> [AppActivity] {
-        self == .empty ? [] : HomeDemo.normal.content(now:now).0.appActivities
+        self == .empty ? [] : HomeData.sample(now:now).appActivities
     }
 
     var source: CardRecordsSource {
@@ -59,4 +60,3 @@ enum RecordsDemo: String {
         }
     }
 }
-#endif

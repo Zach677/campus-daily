@@ -5,7 +5,8 @@ import Core
 /// in (and say why it stopped), open the first-run setup on a fresh install, read again when the
 /// app comes to the front and after a shower is settled, and start over after a reset.
 struct CampusRootHooks: ViewModifier {
-    /// DEBUG demo data is shown: no reset is resumed and no first-run setup opens.
+    /// Synthetic data is shown (a DEBUG demo, the sample): no reset is resumed, no first-run
+    /// setup opens and nothing is read when the app comes to the front.
     var demo = false
     /// The theme this root draws: after a reset only the root of the theme shown opens the setup.
     let root: AppTheme
@@ -43,7 +44,8 @@ struct CampusRootHooks: ViewModifier {
             }
             .onChange(of:phase) { _, value in
                 // The order is read by the app scene on the same event (back from Alipay).
-                if value == .active { Task { await campus.refresh(); await laundry.refresh() } }
+                // Not under synthetic data: the sample sends nothing.
+                if value == .active, !demo { Task { await campus.refresh(); await laundry.refresh() } }
             }
             .onChange(of:shower.state.phase) { old, value in
                 // The result is on the shower page; the balance it was taken from is read again.

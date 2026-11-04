@@ -11,6 +11,7 @@ struct ClearRootView: View {
     @EnvironmentObject var laundry: LaundryModel
     @Environment(\.scenePhase) var phase
     @Environment(ThemeStore.self) var themeStore
+    @Environment(SampleMode.self) var sample
     @State var navigator = ClearNavigator()
     @State var successTick = 0
     @ObservedObject var reminders = Reminders.shared
@@ -77,6 +78,9 @@ struct ClearRootView: View {
         }
         #endif
         .modifier(CampusRootHooks(demo:isDemo, root:.clear, firstRun:{ navigator.openSetup() }, afterReset:afterReset))
+        .sampleChrome()
+        .onChange(of:sample.isActive, initial:true) { _, active in followSample(active) }
+        .onChange(of:sample.loginDue, initial:true) { _, due in openLoginAfterSample(due) }
         // 记录 shows one person's records: back to its root when they sign out or someone else signs in.
         .onChange(of:campus.personChanges) { _, _ in navigator.popToRoot(.records) }
         .onChange(of:shower.page.presented, initial:true) { _, up in followShowerPage(up) }
@@ -105,12 +109,6 @@ struct ClearRootView: View {
         #endif
     }
 
-    /// DEBUG demo data is on screen (never in Release).
-    var isDemo: Bool {
-        #if DEBUG
-        navigator.demo != nil
-        #else
-        false
-        #endif
-    }
+    /// Synthetic data is on screen (a DEBUG demo, or the sample in Release too).
+    var isDemo: Bool { navigator.demo != nil || sample.isActive }
 }

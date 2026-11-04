@@ -36,7 +36,9 @@ App/
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders,
                       Feedback (sends 反馈问题; endpoint and key from Info.plist)
   Resources/          Assets, Fonts, Info.plist, App.entitlements
-  Demo/               DEBUG-only demo screens and data behind campusdaily://demo/… (not in Release)
+  Demo/               demo screens and data behind campusdaily://demo/… (DEBUG only); LaundryDemo and
+                      RecordsDemo are also the Release sample mode's washer and 校园卡记录
+  Interface/Sample/   the sample mode's bar, blocked-action alert and its 余额 and 电量 pages
 Shared/               compiled into App and Widget
   WidgetViews/        widget views (also used by the in-app preview)
   LiveActivityViews/  ActivityAttributes and Live Activity views
@@ -63,7 +65,10 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     Common/           Money, ServiceError, JSONValue, DormAddress, ShowerHandoff (used by Campus and Shower)
     Theme/            the chosen theme (AppTheme, ThemePreference in the App Group's preferences) and
                       when the 主题 options are greyed out (ThemeLock, from the shower and laundry states)
-    Sample/           the synthetic data the DEBUG demos and the Release sample mode show (SampleData)
+    Sample/           the synthetic data the DEBUG demos and the Release sample mode show (SampleData),
+                      and the sample mode itself (SampleMode: in memory only; while on, actions that pay,
+                      open water, bind, send or store are refused with SampleCopy.blocked, the theme
+                      picked in it is held there and nothing is written)
   Tests/
     CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/ SampleTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport

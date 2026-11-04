@@ -7,6 +7,7 @@ struct ClearSetupAccountPage: View {
     /// Back to the checklist.
     let done: () -> Void
     @EnvironmentObject private var campus: CampusModel
+    @Environment(SampleMode.self) private var sample
     @State private var account: String
     @State private var password: String
     /// 「保存密码，让小组件自动刷新」: on by default only while the account is the saved one.
@@ -62,6 +63,10 @@ struct ClearSetupAccountPage: View {
                     .disabled(loggingIn)
                     .accessibilityIdentifier("webLogin")
             }
+            // As on 暖橙's login step: synthetic data, nothing stored or sent; the root closes this.
+            ClearSetupTextButton(title:SampleCopy.entry) { sample.enter() }
+                .disabled(loggingIn)
+                .accessibilityIdentifier("sampleEntry")
         }
         .sheet(isPresented:$webLogin) {
             CampusLoginSheet { value in

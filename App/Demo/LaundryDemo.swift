@@ -1,8 +1,8 @@
-#if DEBUG
 import SwiftUI
 import Core
 
-// MARK: - DEBUG demo (campusdaily://demo/laundry/<state>); fake data, never places an order.
+// MARK: - Demo (campusdaily://demo/laundry/<state>, DEBUG) and the sample mode's washer (`idle`);
+// fake data, never places an order.
 
 struct LaundryDemo {
     enum Kind: String {
@@ -14,11 +14,13 @@ struct LaundryDemo {
     var panel: SettlementResult?
     var notify = true
 
+    #if DEBUG
     static func handle(_ url: URL) -> LaundryDemo? {
         let parts = Array(url.pathComponents.dropFirst())
         guard url.scheme == "campusdaily", url.host == "demo", parts.first == "laundry" else { return nil }
         return make(Kind(rawValue:parts.count > 1 ? parts[1] : "idle") ?? .idle)
     }
+    #endif
 
     static func make(_ kind: Kind, now: Date = Date()) -> LaundryDemo {
         var facts = LaundryFacts()
@@ -66,4 +68,3 @@ struct LaundryDemo {
         SampleData.laundryCheckout(stage:stage, status:status, paid:paid, remain:remain, created:created, now:now)
     }
 }
-#endif

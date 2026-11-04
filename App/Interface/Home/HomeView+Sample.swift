@@ -1,0 +1,27 @@
+import SwiftUI
+import Core
+
+extension HomeView {
+    /// The sample on (「先看看示例」 on the login step): the guide closes, home and its pages on the sample's data (`HomeData.sample`), the washer
+    /// idle, 校园卡记录 on its four weeks. Off (去登录): the live models again.
+    func followSample(_ active: Bool) {
+        if active {
+            onboarding = nil; settings = false; path = []; pathAfterSettings = nil; panel = nil
+            demo = HomeData.sample()
+            laundryDemo = LaundryDemo.make(.idle)
+            recordsDemo = .list
+            return
+        }
+        // Launched outside the sample: nothing to undo.
+        guard demo != nil || laundryDemo != nil || recordsDemo != nil else { return }
+        settings = false; path = []; pathAfterSettings = nil; panel = nil
+        demo = nil; laundryDemo = nil; recordsDemo = nil
+    }
+
+    /// 去登录: the login step, on this root or on the one shown after the sample's theme went.
+    func openLoginAfterSample(_ due: Bool) {
+        guard due, sample.takeLogin() else { return }
+        // As after a reset: let a sheet go first, or the cover is not presented.
+        Task { try? await Task.sleep(for:.milliseconds(600)); openOnboarding() }
+    }
+}

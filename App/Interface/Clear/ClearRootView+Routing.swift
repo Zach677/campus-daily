@@ -99,9 +99,7 @@ extension ClearRootView {
     /// Reset finished: back to the first-run checklist as on a fresh install, no toast.
     func afterReset() {
         navigator.setup = nil; navigator.relogin = false; navigator.panel = nil
-        #if DEBUG
         navigator.demo = nil; navigator.laundryDemo = nil; navigator.recordsDemo = nil
-        #endif
         popAll()
         successTick += 1
         // Let a closing sheet go first, otherwise the new one is not presented.
@@ -109,9 +107,7 @@ extension ClearRootView {
     }
 
     func presentLaundryDone(_ done: HomeData.LaundryDone?) {
-        #if DEBUG
         if navigator.demo != nil { return }
-        #endif
         guard let done, done.id != laundryDoneShown, navigator.panel == nil else { return }
         laundryDoneShown = done.id
         successTick += 1
