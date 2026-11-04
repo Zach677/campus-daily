@@ -63,8 +63,9 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     Common/           Money, ServiceError, JSONValue, DormAddress, ShowerHandoff (used by Campus and Shower)
     Theme/            the chosen theme (AppTheme, ThemePreference in the App Group's preferences) and
                       when the 主题 options are greyed out (ThemeLock, from the shower and laundry states)
+    Sample/           the synthetic data the DEBUG demos and the Release sample mode show (SampleData)
   Tests/
-    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/
+    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/ SampleTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport
     Fixtures/         synthetic/redacted API samples, one folder per service
 Scripts/              fetch-alipay-sdk, stage-water-profile, package-ipa, privacy-check
