@@ -46,16 +46,6 @@ fi
 eval "$cmd Release"
 '''
 
-[tasks.build-device]
-description = "Build App and Widget for a generic iOS device"
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-xcodebuild build -workspace XiaoRiChang.xcworkspace -scheme App \
-  -configuration "${CONFIGURATION:-Debug}" -destination "generic/platform=iOS" \
-  -derivedDataPath .DerivedData
-'''
-
 [tasks.test]
 description = "Run every test: Core package and scripts"
 run = [{ task = "test-core" }, { task = "test-scripts" }]
