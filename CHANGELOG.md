@@ -25,7 +25,7 @@
 - Draw the row icons on home, 校园卡记录, the laundry page, Settings and the home-screen widget (small and medium) as one set of grey line symbols instead of emoji; they stay grey when a number turns red.
 - Look for the dorm's electricity meter one level at a time (campus, apartment, building, floor, room) with small reads instead of one read of every meter on the campus; each read is retried twice on a timeout or a lost connection.
 - When a level does not match the dorm exactly once, open the meter page at that level: the matched levels with 「重选」, the level's list headed 「选校区」「选公寓」「选楼栋」「选楼层」「选房间」, and the dorm's likely rows first with 「可能是这个」.
-- Bind meters to their room only; a meter bound to the whole campus by an earlier build is removed at launch, keeping the dorm, and looked up again.
+- Bind meters to their room only.
 - The first-run guide no longer says 「没自动找到电表，去「电表」里选一下。」 under the dorm when the lookup stops; home still says the meter is not found.
 - Look for the meter at launch, after a sign-in and on 「再找一次电表」 only, no longer on return to the app or after a refresh.
 - When several apartments (or campuses) hold a building of the dorm's name, walk each down to the rooms: the one with the dorm's room is bound without asking; when several have it, the lookup stops with those rooms to choose from, each with its full location.
@@ -118,7 +118,7 @@
 
 ### Removed
 
-- Remove 「导出热水诊断」 (Settings › 高级 › 热水排查) and every diagnostic record behind it: the hot-water event file, the school credential-lifetime lines in the shared Keychain and the Bluetooth scan note. The app deletes what older builds left at launch.
+- Remove 「导出热水诊断」 (Settings › 高级 › 热水排查) and every diagnostic record behind it: the hot-water event file, the school credential-lifetime lines in the shared Keychain and the Bluetooth scan note.
 - Remove 「导出热水诊断」 from the Android app too, with its event file and file provider; a file an older build left is deleted at launch.
 - Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `Android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
 - Remove the process documents and the old project generator; their history stays in Git.
