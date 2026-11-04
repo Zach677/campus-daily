@@ -13,6 +13,14 @@ struct OnboardingView: View {
     var preview: Preview?
     #endif
     var close: () -> Void
+    /// Told each step the guide moves to, so a link asking for another one can send it there
+    /// (`GuideRequest.moved(to:)`).
+    private var moved: (Step) -> Void = { _ in }
+
+    /// `moved` is told each step the guide moves to.
+    func onStep(_ moved: @escaping (Step) -> Void) -> Self {
+        var copy = self; copy.moved = moved; return copy
+    }
 
     #if DEBUG
     init(start: Step = .login, preview: Preview? = nil, close: @escaping () -> Void) {
@@ -117,6 +125,10 @@ struct OnboardingView: View {
     static let dormSource = "学校账号里登记的"
 
     var body: some View {
+        guide.onChange(of:step) { _, value in moved(value) }
+    }
+
+    private var guide: some View {
         NavigationStack {
             ZStack {
                 Theme.bg.ignoresSafeArea()

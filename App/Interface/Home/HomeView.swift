@@ -202,10 +202,12 @@ struct HomeView: View {
             // .id: a new request (or a new step on this one) must reset the cover's @State, not reuse it.
             // Own device chooser: a sheet from the home root can't show above this cover.
             #if DEBUG
-            OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.guide.contentID)
+            OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }
+                .onStep { onboarding?.guide.moved(to:$0) }.id(request.guide.contentID)
                 .onOpenURL { handleDemo($0) }
             #else
-            OnboardingView(start:request.step) { onboarding = nil }.id(request.guide.contentID)
+            OnboardingView(start:request.step) { onboarding = nil }
+                .onStep { onboarding?.guide.moved(to:$0) }.id(request.guide.contentID)
             #endif
         }
         #if DEBUG

@@ -68,6 +68,40 @@ final class GuideRequestTests: XCTestCase {
             XCTAssertEqual(seen.writes, 0)
         }
     }
+
+    /// The guide moved on past the page a link asks for (暖橙: from 登录 to 洗衣机; 清爽: from
+    /// 学校账号 to 宿舍): the link takes it back there, on the same presentation (no new cover or
+    /// sheet, so nothing marks the setup seen). Asked for the page it is on, or for its first
+    /// page (first-run), it stays.
+    func testAskForAPageTheGuideMovedOffGoesBackToIt() {
+        let seen = SeenCounter()
+        var shown = GuideRequest<Step>.ask(.login, over: nil)
+        let opened = shown
+        shown.moved(to: .washer)
+        XCTAssertEqual(shown.id, opened.id)
+        XCTAssertEqual(shown.contentID, opened.contentID, "moving inside the guide does not restart it")
+        let back = GuideRequest<Step>.ask(.login, over: shown)
+        XCTAssertEqual(back.id, opened.id)
+        XCTAssertNotEqual(back.contentID, shown.contentID)
+        XCTAssertEqual(back.start, .login)
+        if back.id != shown.id { QuickSetupSeen.closed(in: seen, coveredBySample: false) }
+        XCTAssertEqual(seen.writes, 0)
+        // On the login page already: nothing changes.
+        XCTAssertEqual(GuideRequest<Step>.ask(.login, over: back), back)
+
+        var sheet = GuideRequest<SetupChecklist.Row>.ask(.account, over: nil)
+        sheet.moved(to: .dorm)
+        let account = GuideRequest<SetupChecklist.Row>.ask(.account, over: sheet)
+        XCTAssertEqual(account.id, sheet.id)
+        XCTAssertNotEqual(account.contentID, sheet.contentID)
+        XCTAssertEqual(account.start, .account)
+        // First-run asking while the checklist is on 宿舍: it stays there.
+        XCTAssertEqual(GuideRequest<SetupChecklist.Row>.ask(nil, over: sheet), sheet)
+        // Back on the checklist itself, a link to 学校账号 pushes it again.
+        var list = account
+        list.moved(to: nil)
+        XCTAssertNotEqual(GuideRequest<SetupChecklist.Row>.ask(.account, over: list).contentID, list.contentID)
+    }
 }
 
 private final class SeenCounter: PreferenceStorage {

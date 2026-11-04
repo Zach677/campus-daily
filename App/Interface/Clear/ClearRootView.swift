@@ -56,10 +56,10 @@ struct ClearRootView: View {
         .sheet(item:$navigator.setup, onDismiss:{ QuickSetupSeen.closed(in:services.defaults, coveredBySample:sample.isActive) }) { request in
             // .id: a new request (or a new row on this one) starts the checklist again, with its row pushed.
             #if DEBUG
-            ClearSetupChecklist(start:request.start).id(request.guide.contentID).typesettingLanguage(Theme.typesetting)
+            ClearSetupChecklist(start:request.start).onRow { navigator.setup?.guide.moved(to:$0) }.id(request.guide.contentID).typesettingLanguage(Theme.typesetting)
                 .onOpenURL { handleDemo($0) }
             #else
-            ClearSetupChecklist(start:request.start).id(request.guide.contentID).typesettingLanguage(Theme.typesetting)
+            ClearSetupChecklist(start:request.start).onRow { navigator.setup?.guide.moved(to:$0) }.id(request.guide.contentID).typesettingLanguage(Theme.typesetting)
             #endif
         }
         .sheet(isPresented:Binding(get:{ navigator.panel != nil }, set:{ if !$0 { navigator.panel = nil } })) {
