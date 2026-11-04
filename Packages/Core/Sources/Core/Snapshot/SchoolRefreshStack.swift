@@ -16,8 +16,9 @@ public struct SchoolRefreshStack: Sendable {
     /// widget. Signed without the App Group, the app's is in its own container, so the app's
     /// reads and logins still take turns, and the widget has none and never reads, so the two
     /// never read at the same time. An app with no file at all refreshes without the lease.
+    /// `pause`: the app's `LivePause` (the widget has none).
     public init(store: SecureStore, http: HTTPClient, role: String, leaseWait: TimeInterval, leaseFile: LeaseFile?,
-                didWriteSnapshot: @escaping @Sendable () -> Void = {},
+                pause: LivePause? = nil, didWriteSnapshot: @escaping @Sendable () -> Void = {},
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
         session = SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http),
                                 vault: StoredSchoolVault(store: store), passwordLogin: CASLoginClient(http: http),
@@ -26,7 +27,7 @@ public struct SchoolRefreshStack: Sendable {
         let lease: RefreshLease? = leaseFile == nil && role != "widget" ? nil : RefreshLease(file: leaseFile, owner: RefreshLease.owner(role))
         refresher = SnapshotRefresher(school: session, store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot),
                                       lease: lease,
-                                      leaseWait: leaseWait, diagnostic: diagnostic)
+                                      leaseWait: leaseWait, pause: pause, diagnostic: diagnostic)
     }
 
     /// The URLSession client for the school hosts only.

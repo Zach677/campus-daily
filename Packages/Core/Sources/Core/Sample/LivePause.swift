@@ -4,8 +4,13 @@ import Foundation
 /// entering and resumes it on leaving). Held at the point where work has an effect, not where it
 /// starts, so a read already under way when the sample opens waits too:
 /// - requests (`PausableHTTPClient`) are sent only after the sample;
+/// - a request already sent hands its answer (or its failure) over only after the sample, so
+///   nothing that follows a reply (a write-back under the refresh lease, a store) runs during it;
 /// - writes to the Keychain (`PausableSecureStore`) and the preferences (`PausableDefaults`) are
-///   kept in memory, read back from there, and written after the sample;
+///   kept in memory, read back from there, and written after the sample; so is a live file
+///   (`writeFile`: the imported hot-water profile);
+/// - the refresh lease file is not touched: the live refresh waits before taking, renewing or
+///   giving back the lease (`SnapshotRefresher`'s `pause`);
 /// - other work (the background refresh, the refresh on coming to the front, reminders, the
 ///   widget redraw) is handed to `deferWhilePaused` and runs after the sample, the latest per key.
 /// Nothing is dropped. What draws the running shower's Live Activity is not held.
@@ -16,6 +21,7 @@ public final class LivePause: @unchecked Sendable {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var deferred: [(key: String, work: @Sendable () async -> Void)] = []
     private var flushes: [() -> Void] = []
+    private var files: [(url: URL, write: () -> Void)] = []
     private var drain: Task<Void, Never>?
 
     public init() {}
@@ -33,8 +39,8 @@ public final class LivePause: @unchecked Sendable {
         let (flush, release, work) = lock.withLock { () -> ([() -> Void], [CheckedContinuation<Void, Never>], [@Sendable () async -> Void]) in
             guard paused else { return ([], [], []) }
             paused = false
-            defer { waiters = []; deferred = [] }
-            return (flushes, waiters, deferred.map(\.work))
+            defer { waiters = []; deferred = []; files = [] }
+            return (flushes + files.map(\.write), waiters, deferred.map(\.work))
         }
         for store in flush { store() }
         for waiter in release { waiter.resume() }
@@ -78,6 +84,25 @@ public final class LivePause: @unchecked Sendable {
             }
             return true
         }
+    }
+
+    /// A live file write (the imported hot-water profile): written now outside the sample;
+    /// while it is shown, kept (the last per file) and written on leaving, with the held store
+    /// writes. True when it was kept.
+    @discardableResult
+    public func writeFile(_ data: Data, to url: URL, options: Data.WritingOptions = [],
+                          prepare: @escaping @Sendable () throws -> Void = {}) throws -> Bool {
+        let held = lock.withLock { () -> Bool in
+            guard paused else { return false }
+            let write = { try? prepare(); try? data.write(to: url, options: options) }
+            if let index = files.firstIndex(where: { $0.url == url }) { files[index].write = write }
+            else { files.append((url, write)) }
+            return true
+        }
+        if held { return true }
+        try prepare()
+        try data.write(to: url, options: options)
+        return false
     }
 
     /// A held store's writes, stored on `resume` before anything else runs.
@@ -137,7 +162,8 @@ public final class PausableSecureStore: SecureStore, @unchecked Sendable {
 }
 
 /// The live network, held while the sample is shown (`LivePause`): a request is sent once it
-/// is left.
+/// is left, and one already sent hands over its answer (or failure) once it is left, so what
+/// the live app does with a reply never runs during the sample.
 public struct PausableHTTPClient: HTTPClient {
     private let inner: any HTTPClient
     private let pause: LivePause
@@ -145,7 +171,10 @@ public struct PausableHTTPClient: HTTPClient {
 
     public func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         await pause.waitWhilePaused()
-        return try await inner.send(request)
+        let answer: Result<HTTPResponse, Error>
+        do { answer = .success(try await inner.send(request)) } catch { answer = .failure(error) }
+        await pause.waitWhilePaused()
+        return try answer.get()
     }
 }
 

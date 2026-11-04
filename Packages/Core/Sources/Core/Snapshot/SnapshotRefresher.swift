@@ -69,6 +69,11 @@ public actor SnapshotRefresher {
     let sleep: @Sendable (TimeInterval) async -> Void
     /// How often the lease is renewed while a read runs.
     let renewInterval: TimeInterval
+    /// The live app's `LivePause` (nil in the widget and the tests of the plain rules): while
+    /// 「先看看示例」 is shown the lease file is left alone. The lease is taken, renewed (by the
+    /// heartbeat, before minting) and given back only after the sample, and nothing is written
+    /// under it meanwhile. A lease that runs out meanwhile is lost like after a suspension.
+    let pause: LivePause?
 
     private struct Run {
         let id: Int
@@ -95,10 +100,10 @@ public actor SnapshotRefresher {
     /// Times come from the school reading (`checkedAt`, `readAt`), so the refresher needs no clock.
     public init(school: SchoolReader, store: SnapshotStoring, lease: RefreshLease? = nil, leaseWait: TimeInterval = 15,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
-                renewInterval: TimeInterval = RefreshLease.renewInterval,
+                renewInterval: TimeInterval = RefreshLease.renewInterval, pause: LivePause? = nil,
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
         self.school = school; self.store = store; self.lease = lease; self.leaseWait = leaseWait; self.sleep = sleep
-        self.renewInterval = renewInterval
+        self.renewInterval = renewInterval; self.pause = pause
         self.diagnostic = diagnostic
     }
 
@@ -205,20 +210,22 @@ public actor SnapshotRefresher {
         // for the first, and the first giving its lease back never releases the second's.
         let lease = shared.with(owner: shared.owner + "-login-" + UUID().uuidString)
         var waited: TimeInterval = 0
-        while !lease.acquire() {
+        while await holdingOff(), !lease.acquire() {
             guard waited < leaseWait else { throw SchoolLoginFailure.busy }
             try Task.checkCancellation()
             await sleep(1)
             waited += 1
         }
-        let heartbeat = Self.keepAlive(lease, every: renewInterval)
+        let heartbeat = Self.keepAlive(lease, every: renewInterval, pause: pause)
         do {
             let value = try await body(LeaseOwnership(lease))
             heartbeat.cancel(); await heartbeat.value
+            await holdingOff()
             lease.release()
             return value
         } catch {
             heartbeat.cancel(); await heartbeat.value
+            await holdingOff()
             lease.release()
             throw error
         }
@@ -227,7 +234,7 @@ public actor SnapshotRefresher {
     /// Takes the lease, waiting up to `leaseWait` while the other process holds it.
     private func acquireLease(_ lease: RefreshLease) async -> Bool {
         var waited: TimeInterval = 0
-        while !lease.acquire() {
+        while await holdingOff(), !lease.acquire() {
             guard lease.isAvailable, waited < leaseWait, !Task.isCancelled else { return false }
             await sleep(1)
             waited += 1
@@ -251,10 +258,12 @@ public actor SnapshotRefresher {
         }
         // Kept alive for the whole read: a slow chain must not let the other process take over
         // halfway and mint or log in a second time.
-        let heartbeat = lease.map { Self.keepAlive($0, every: renewInterval) }
+        let heartbeat = lease.map { Self.keepAlive($0, every: renewInterval, pause: pause) }
         // The balance and the meter are stored as soon as they are in (a widget that runs out of
         // time while the card records load keeps them); the full reading is stored at the end.
-        let reading = await school.refresh(inBackground: inBackground, mayMint: { lease?.renew() ?? true },
+        let pause = pause
+        let reading = await school.refresh(inBackground: inBackground,
+                                           mayMint: { await pause?.waitWhilePaused(); return lease?.renew() ?? true },
                                            owning: LeaseOwnership(lease),
                                            numbers: { [weak self] partial in
                                                _ = await self?.write(partial, started: started, lease: lease)
@@ -264,6 +273,7 @@ public actor SnapshotRefresher {
         // would otherwise bring it back and hold the other process off for a whole lease.
         heartbeat?.cancel()
         await heartbeat?.value
+        await holdingOff()
         lease?.release()
         return report
     }
@@ -280,6 +290,7 @@ public actor SnapshotRefresher {
     /// once more: nobody signed in any more and the lease gone, the snapshot is cleared again;
     /// still signed in with the lease only taken over, the save stays.
     private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) async -> RefreshReport {
+        await holdingOff()
         guard started == generation, !Task.isCancelled else {
             let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
             return RefreshReport(outcome: outcome, snapshot: latest(), snapshotSaved: false)
@@ -315,11 +326,19 @@ public actor SnapshotRefresher {
         return RefreshReport(outcome: reading.outcome, snapshot: snapshot, snapshotSaved: saved)
     }
 
-    /// Renews `lease` every `interval` until cancelled or lost.
-    private static func keepAlive(_ lease: RefreshLease, every interval: TimeInterval) -> Task<Void, Never> {
+    /// Waits while the sample is shown (`pause`); true, for the `while` conditions.
+    @discardableResult
+    private nonisolated func holdingOff() async -> Bool {
+        await pause?.waitWhilePaused()
+        return true
+    }
+
+    /// Renews `lease` every `interval` until cancelled or lost; not while the sample is shown.
+    private static func keepAlive(_ lease: RefreshLease, every interval: TimeInterval, pause: LivePause?) -> Task<Void, Never> {
         Task.detached {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(max(0.01, interval) * 1_000_000_000))
+                await pause?.waitWhilePaused()
                 guard !Task.isCancelled, lease.renew() else { return }
             }
         }

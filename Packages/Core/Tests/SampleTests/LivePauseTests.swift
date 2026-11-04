@@ -216,15 +216,17 @@ final class LivePauseTests: XCTestCase {
         while !slow.started { await Task.yield() }
         sample.enter()
         slow.release()
-        try await refresh.value
+        // The answer is in; what follows it waits for the sample to be left.
+        try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(counter["store write"], 0, "the answer was stored during the sample")
         XCTAssertNil(disk.object(forKey: "lastRead"))
         XCTAssertEqual(counter["widget"], 0)
         XCTAssertEqual(counter["notification"], 0, "a reminder was posted during the sample")
-        // The live models read their own write back in the meantime.
-        XCTAssertEqual(try store.read(.sharedSnapshot), Data("answer".utf8))
         sample.leave()
+        try await refresh.value
         await pause.drained()
+        // The live models read their own write back.
+        XCTAssertEqual(try store.read(.sharedSnapshot), Data("answer".utf8))
         XCTAssertEqual(try inner.inner.read(.sharedSnapshot), Data("answer".utf8))
         XCTAssertNotNil(disk.object(forKey: "lastRead"))
         XCTAssertEqual(counter["store write"], 1)

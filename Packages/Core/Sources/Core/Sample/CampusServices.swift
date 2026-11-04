@@ -31,15 +31,28 @@ public final class CampusServices: @unchecked Sendable {
     public let applicationSupport: URL?
     /// Something shared with the widget changed (the theme, the snapshot): it draws again.
     public let sharedDidChange: @Sendable () -> Void
+    /// The live app's `LivePause` (holds its files while the sample is shown); nil in a sample.
+    public let livePause: LivePause?
 
     public init(kind: Kind, secureStore: any SecureStore, defaults: UserDefaults, sharedPreferences: (any PreferenceStorage)?,
                 schoolHTTP: any HTTPClient, showerHTTP: any HTTPClient, laundryHTTP: any HTTPClient, feedbackHTTP: (any HTTPClient)?,
                 showerTransport: any ShowerTransport, leaseFile: LeaseFile?, applicationSupport: URL?,
-                sharedDidChange: @escaping @Sendable () -> Void) {
+                sharedDidChange: @escaping @Sendable () -> Void, livePause: LivePause? = nil) {
         self.kind = kind; self.secureStore = secureStore; self.defaults = defaults; self.sharedPreferences = sharedPreferences
         self.schoolHTTP = schoolHTTP; self.showerHTTP = showerHTTP; self.laundryHTTP = laundryHTTP; self.feedbackHTTP = feedbackHTTP
         self.showerTransport = showerTransport; self.leaseFile = leaseFile; self.applicationSupport = applicationSupport
-        self.sharedDidChange = sharedDidChange
+        self.sharedDidChange = sharedDidChange; self.livePause = livePause
+    }
+
+    /// Writes one of the app's files (`prepare` first, e.g. its folder), after the sample while
+    /// it is shown (`LivePause.writeFile`). True when it was kept for then.
+    @discardableResult
+    public func writeFile(_ data: Data, to url: URL, options: Data.WritingOptions,
+                          prepare: @escaping @Sendable () throws -> Void = {}) throws -> Bool {
+        if let livePause { return try livePause.writeFile(data, to: url, options: options, prepare: prepare) }
+        try prepare()
+        try data.write(to: url, options: options)
+        return false
     }
 
     public var schoolVault: StoredSchoolVault { StoredSchoolVault(store: secureStore) }

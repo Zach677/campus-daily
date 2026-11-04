@@ -34,7 +34,7 @@ enum AppEnvironment {
     /// The same stack the widget builds for its own reads; the two take turns through the lease.
     private static let schoolStack = SchoolRefreshStack(store:store, http:schoolHTTP, role:"app",
                                                         leaseWait:SchoolRefreshStack.appLeaseWait, leaseFile:RefreshLease.appFile(),
-                                                        didWriteSnapshot:{ reloadWidgets(SharedSnapshotStore.widgetKind) })
+                                                        pause:livePause, didWriteSnapshot:{ reloadWidgets(SharedSnapshotStore.widgetKind) })
 
     /// The live app's stores and services. The school stack on them is `schoolStack` (one per process).
     @MainActor static let live = CampusServices(
@@ -43,7 +43,7 @@ enum AppEnvironment {
         schoolHTTP:schoolHTTP, showerHTTP:showerHTTP, laundryHTTP:laundryHTTP, feedbackHTTP:feedbackHTTP,
         showerTransport:BluetoothTransport(), leaseFile:RefreshLease.appFile(),
         applicationSupport:FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask).first,
-        sharedDidChange:{ reloadWidgets() })
+        sharedDidChange:{ reloadWidgets() }, livePause:livePause)
 
     /// The live school stack, for the live `CampusModel` and the background refresh.
     static var liveSchoolStack: SchoolRefreshStack { schoolStack }

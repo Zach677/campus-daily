@@ -305,8 +305,10 @@ enum ShowerProfileFiles {
         guard let support = services.applicationSupport else { throw ShowerEngineError.blocked }
         let target = ShowerProfileFiles.importedURL(in:support)
         // The copy holds the platform secret: its folder is kept out of backups before it is written.
-        try ShowerImportFolder.prepare(for:target)
-        try data.write(to:target, options:[.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        // While the sample is shown both wait for it to be left, and so does the reload.
+        let held = try services.writeFile(data, to:target, options:[.atomic, .completeFileProtectionUntilFirstUserAuthentication],
+                                          prepare:{ try ShowerImportFolder.prepare(for:target) })
+        if held, services.livePause?.deferWhilePaused("shower.profile", { [weak self] in await self?.reloadProfile() }) == true { return }
         Task { await reloadProfile() }
     }
 
