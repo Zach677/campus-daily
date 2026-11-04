@@ -243,7 +243,7 @@ final class ShowerReducerTests: XCTestCase {
         XCTAssertEqual(i.notice, .notActive)
         let (gone, fxR) = reduce(i, .resolveManually)
         XCTAssertEqual(gone.phase, .idle)
-        XCTAssertTrue(fxR.contains(.releaseDevice))
+        XCTAssertEqual(fxR, [.releaseDevice, .diagnostic("resolvedManually.\(i.phase.rawValue)")])
 
         let (f, _) = reduce(rv, .probeFailed(.timedOut))
         XCTAssertEqual(f.notice, .device(.timedOut))

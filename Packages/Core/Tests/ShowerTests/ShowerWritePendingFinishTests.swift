@@ -16,7 +16,6 @@ final class ShowerWritePendingFinishTests: XCTestCase {
     var vault: StoredShowerVault!
     var transport: FakeShowerTransport!
     var gateway: FakeGateway!
-    var hooks: RecordingHooks!
 
     override func setUp() { reset() }
 
@@ -24,12 +23,11 @@ final class ShowerWritePendingFinishTests: XCTestCase {
         vault = StoredShowerVault(store: InMemorySecureStore())
         transport = FakeShowerTransport()
         gateway = FakeGateway()
-        hooks = RecordingHooks()
     }
 
     func engine() throws -> ShowerEngine {
         try ShowerEngine(transport: transport, gateway: gateway, vault: vault,
-                         configuration: .init(bleName: "fixture-ble"), hooks: hooks, now: { [t0] in t0 })
+                         configuration: .init(bleName: "fixture-ble"), now: { [t0] in t0 })
     }
 
     func testAnUnconfirmedWriteThatReadsIdleNeedsACheck() async throws {
@@ -51,7 +49,6 @@ final class ShowerWritePendingFinishTests: XCTestCase {
             XCTAssertEqual(try vault.showerState()?.stateReviewRequired, true, "persisted")
             XCTAssertFalse(transport.writes.contains(close))
             XCTAssertTrue(gateway.settleFrames.isEmpty)
-            XCTAssertFalse(hooks.events.contains("finish.writeNeverApplied"))
         }
     }
 
@@ -73,7 +70,6 @@ final class ShowerWritePendingFinishTests: XCTestCase {
             XCTAssertEqual(s.phase, .idle, "\(cause)")
             XCTAssertFalse(s.stateReviewRequired)
             XCTAssertTrue(gateway.settleFrames.isEmpty)
-            XCTAssertTrue(hooks.events.contains("finish.writeNeverApplied"))
         }
     }
 
@@ -96,6 +92,6 @@ final class ShowerWritePendingFinishTests: XCTestCase {
         XCTAssertEqual(unsent.notice, .device(.interrupted))
         let (gone, fxGone) = ShowerReducer.reduce(ShowerReducer.reduce(unsent, .finish).0, .probeReplied(identity))
         XCTAssertEqual(gone.phase, .idle)
-        XCTAssertTrue(fxGone.contains(.releaseDevice))
+        XCTAssertEqual(fxGone, [.releaseDevice, .diagnostic("finish.writeNeverApplied")])
     }
 }

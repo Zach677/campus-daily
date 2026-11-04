@@ -66,12 +66,6 @@ public enum ShowerTargetSelection {
     }
 }
 
-/// Diagnostics hook. Optional. (Reminders follow the published state in the app.)
-public protocol ShowerHooks: Sendable {
-    /// Event names only (no ids, frames or tokens). The app records nothing; tests observe them.
-    func diagnostic(_ event: String) async
-}
-
 public enum ShowerEngineError: Error, Equatable, Sendable {
     /// Another operation is running.
     case busy
@@ -103,7 +97,6 @@ public actor ShowerEngine {
     let transport: ShowerTransport
     let gateway: ShowerGateway
     let vault: ShowerVault
-    let hooks: ShowerHooks?
     let configuration: Configuration
     let now: @Sendable () -> Date
 
@@ -122,8 +115,8 @@ public actor ShowerEngine {
     /// Restores the persisted session (relaunch rules in `ShowerReducer.restore`).
     /// `resetMarker`: while a reset runs, `start` is refused (`AppReset.InProgress`).
     public init(transport: ShowerTransport, gateway: ShowerGateway, vault: ShowerVault, configuration: Configuration,
-                hooks: ShowerHooks? = nil, resetMarker: ResetMarker? = nil, now: @escaping @Sendable () -> Date = Date.init) throws {
-        self.transport = transport; self.gateway = gateway; self.vault = vault; self.hooks = hooks
+                resetMarker: ResetMarker? = nil, now: @escaping @Sendable () -> Date = Date.init) throws {
+        self.transport = transport; self.gateway = gateway; self.vault = vault
         self.configuration = configuration; self.now = now; self.resetMarker = resetMarker
         let persisted: ShowerState?
         do { persisted = try vault.showerState() }
@@ -351,8 +344,7 @@ public actor ShowerEngine {
             }
             return nil
 
-        case .diagnostic(let name):
-            await hooks?.diagnostic(name)
+        case .diagnostic:
             return nil
         }
     }

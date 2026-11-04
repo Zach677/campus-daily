@@ -66,13 +66,6 @@ final class FlakyVault: ShowerVault, @unchecked Sendable {
     }
 }
 
-final class RecordingHooks: ShowerHooks, @unchecked Sendable {
-    private let lock = NSLock()
-    private var _events: [String] = []
-    var events: [String] { lock.withLock { _events } }
-    func diagnostic(_ event: String) async { lock.withLock { _events.append(event) } }
-}
-
 /// Holds a task so a fake can cancel it mid-flow.
 final class TaskBox: @unchecked Sendable {
     private let lock = NSLock()
@@ -94,19 +87,17 @@ final class ShowerEngineTests: XCTestCase {
     var vault: StoredShowerVault!
     var transport: FakeShowerTransport!
     var gateway: FakeGateway!
-    var hooks: RecordingHooks!
 
     override func setUp() {
         store = InMemorySecureStore()
         vault = StoredShowerVault(store: store)
         transport = FakeShowerTransport()
         gateway = FakeGateway()
-        hooks = RecordingHooks()
     }
 
     func engine(_ v: ShowerVault? = nil) throws -> ShowerEngine {
         try ShowerEngine(transport: transport, gateway: gateway, vault: v ?? vault,
-                         configuration: .init(bleName: "fixture-ble"), hooks: hooks,
+                         configuration: .init(bleName: "fixture-ble"),
                          now: { Date(timeIntervalSince1970: 1_800_000_000) })
     }
 
@@ -147,7 +138,6 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(transport.connects.last, FakeShowerTransport.Connect(required: "PERIPHERAL-A", preferred: nil),
                        "finish talks to the session's controller only")
         XCTAssertEqual(gateway.settleFrames, [consumption])
-        XCTAssertEqual(hooks.events, [], "nothing to note on a plain start and finish")
         XCTAssertEqual(try vault.showerState()?.phase, .done)
 
         let idle = try await e.dismiss()
@@ -250,7 +240,7 @@ final class ShowerEngineTests: XCTestCase {
         let t = Date(timeIntervalSince1970: 1_800_000_000)
         try marker.begin(at: t)
         let e = try ShowerEngine(transport: transport, gateway: gateway, vault: vault,
-                                 configuration: .init(bleName: "fixture-ble"), hooks: hooks,
+                                 configuration: .init(bleName: "fixture-ble"),
                                  resetMarker: marker, now: { t })
         do { _ = try await e.start(binding); XCTFail("expected the refusal") }
         catch { XCTAssertEqual(error as? AppReset.InProgress, AppReset.InProgress()); XCTAssertEqual(error.localizedDescription, "正在重置") }
@@ -258,7 +248,7 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertNil(try vault.showerState(), "nothing recorded")
 
         let stale = try ShowerEngine(transport: transport, gateway: gateway, vault: vault,
-                                     configuration: .init(bleName: "fixture-ble"), hooks: hooks,
+                                     configuration: .init(bleName: "fixture-ble"),
                                      resetMarker: marker, now: { t.addingTimeInterval(ResetMarker.staleAfter + 1) })
         try await startRunning(stale)
     }
@@ -294,7 +284,6 @@ final class ShowerEngineTests: XCTestCase {
 
         let idle = try await relaunched.resolveManually()
         XCTAssertEqual(idle.phase, .idle)
-        XCTAssertTrue(hooks.events.contains("resolvedManually.failed"))
         try await startRunning(relaunched)
     }
 
@@ -341,7 +330,6 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertTrue(s.stateReviewRequired)
         XCTAssertTrue(gateway.settleFrames.isEmpty)
         XCTAssertFalse(transport.writes.contains(close))
-        XCTAssertFalse(hooks.events.contains("finish.writeNeverApplied"))
     }
 
     func testFinishWithControllerUnreachableKeepsSession() async throws {
@@ -375,7 +363,6 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(done.phase, .done)
         XCTAssertEqual(done.manualSettleAttempts, 1)
         XCTAssertEqual(gateway.settleFrames, [consumption, consumption])
-        XCTAssertTrue(hooks.events.contains("settle.manualRetry#1"))
     }
 
     func testSettleCancelledMidRequestIsUncertain() async throws {
@@ -540,7 +527,6 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(s.notice, .notActive)
         let resolved = try await e.resolveManually()
         XCTAssertEqual(resolved.phase, .idle)
-        XCTAssertTrue(hooks.events.contains { $0.hasPrefix("resolvedManually.") })
     }
 
     /// A probe that never went out because the task was cancelled stops the search like any

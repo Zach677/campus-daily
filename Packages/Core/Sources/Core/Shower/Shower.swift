@@ -315,6 +315,7 @@ public enum ShowerEffect: Sendable, Equatable {
     case releaseDevice
     /// Drop `peripheralID` from the saved binding: it answered with another machine's identity.
     case forgetPeripheral(String)
+    /// An event name (no ids, frames or tokens) for the reducer tests; the engine records nothing.
     case diagnostic(String)
 }
 
