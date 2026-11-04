@@ -7,10 +7,10 @@ public enum Service: String, Sendable, Codable, CaseIterable {
     /// A refusal without the server's own words, naming who refused.
     var refusal: String {
         switch self {
-        case .cas, .portal, .ecykt: return "学校系统拒绝了请求。"
-        case .lxt6: return "热水平台拒绝了请求。"
-        case .ujing: return "U净 拒绝了请求。"
-        case .feedback: return "反馈没被接收。"
+        case .cas, .portal, .ecykt: return "学校系统这次没通过，再试一次。"
+        case .lxt6: return "热水平台这次没通过，再试一次。"
+        case .ujing: return "U净 这次没通过，再试一次。"
+        case .feedback: return "反馈没发出去，再试一次。"
         }
     }
 }
@@ -66,13 +66,13 @@ public enum ServiceError: Error, Equatable, Sendable, Codable {
     /// Short, user-facing Chinese text. The UI may override per screen.
     public var userMessage: String {
         switch self {
-        case .offline: return "网络连不上，稍后再试。"
-        case .timedOut: return "服务器响应太慢，稍后再试。"
-        case .tls: return "安全连接失败，检查网络后再试。"
-        case .sessionExpired: return "登录已过期，请重新登录。"
+        case .offline: return "网络连不上，检查一下网络再试。"
+        case .timedOut: return "等了半天没回应，再试一次。"
+        case .tls: return "连接不安全，换个网络再试。"
+        case .sessionExpired: return "登录过期了，重新登录一下。"
         case .rejected(let service, _, let message): return message.isEmpty ? service.refusal : message
-        case .badRequest: return "请求参数不对，重新登录或重新选择后再试。"
-        case .malformed: return "返回的内容看不懂，稍后再试。"
+        case .badRequest: return "信息对不上了，重新登录或重新选一下再试。"
+        case .malformed: return "返回的内容不对，过一会儿再试。"
         case .uncertain: return "结果未确认，请先查看官方记录，不要重复操作。"
         }
     }
