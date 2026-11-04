@@ -77,12 +77,4 @@ public enum JSONValue: Sendable, Equatable, Hashable, Codable {
         default: return nil
         }
     }
-
-    public var doubleValue: Double? {
-        switch self {
-        case .int(let i): return Double(i)
-        case .double(let d): return d
-        default: return nil
-        }
-    }
 }
