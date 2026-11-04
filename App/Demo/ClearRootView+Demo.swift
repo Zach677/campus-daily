@@ -9,6 +9,8 @@ extension ClearRootView {
     /// Also called from inside the sheets and covers: while one is up, the URL is delivered to
     /// its hierarchy instead of the root.
     func handleDemo(_ url: URL) {
+        // No sample page opens a link.
+        guard !sample.isActive else { return }
         if let kind = notifyDemo(url) { Task { await reminders.demoNotify(kind) }; return }
         // campusdaily://demo/theme/<warm|clear>: what 主题 would pick.
         if url.host == "demo", url.pathComponents.dropFirst().first == "theme",

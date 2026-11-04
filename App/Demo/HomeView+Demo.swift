@@ -7,6 +7,8 @@ extension HomeView {
     /// Also called from inside the onboarding cover: while a full-screen cover is up,
     /// the URL is delivered to the cover's hierarchy instead of the home view.
     func handleDemo(_ url: URL) {
+            // No sample page opens a link.
+            guard !sample.isActive else { return }
             if let kind = notifyDemo(url) { Task { await reminders.demoNotify(kind) }; return }
             // campusdaily://demo/theme/<warm|clear>: what 主题 would pick, keeping the screen shown.
             if url.host == "demo", url.pathComponents.dropFirst().first == "theme",

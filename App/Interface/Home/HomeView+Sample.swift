@@ -2,8 +2,9 @@ import SwiftUI
 import Core
 
 extension HomeView {
-    /// The sample on (「先看看示例」 on the login step): the guide closes, home and its pages on the sample's data (`HomeData.sample`), the washer
-    /// idle, 校园卡记录 on its four weeks. Off (去登录): the live models again.
+    /// On the sample's root (its own graph, `SampleScene`): home and its pages on the sample's
+    /// data (`HomeData.sample`), the washer idle, 校园卡记录 on its four weeks. The live root is
+    /// not shown while the sample is on; leaving (去登录) shows it again.
     func followSample(_ active: Bool) {
         if active {
             onboarding = nil; settings = false; path = []; pathAfterSettings = nil; panel = nil

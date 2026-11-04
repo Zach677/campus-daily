@@ -12,7 +12,7 @@ struct AdvancedSettingsView: View {
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
-    @ObservedObject private var resetter = AppResetter.shared
+    @EnvironmentObject private var resetter: AppResetter
     @State private var confirmReset = false
     @State private var resetIssue: String?
     /// Set when a lock stopped the reset (nothing was cleared).

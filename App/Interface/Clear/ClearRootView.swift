@@ -12,10 +12,11 @@ struct ClearRootView: View {
     @Environment(\.scenePhase) var phase
     @Environment(ThemeStore.self) var themeStore
     @Environment(SampleMode.self) var sample
+    /// The graph's services (`CampusScene`): `@AppStorage` here is on their preferences.
+    @Environment(\.campusServices) var services
     @State var navigator = ClearNavigator()
     @State var successTick = 0
-    @ObservedObject var reminders = Reminders.shared
-    @AppStorage("didSeeQuickSetup") var didSeeQuickSetup = false
+    @EnvironmentObject var reminders: Reminders
     /// Last laundry order whose done panel was shown (once per order, shared with 暖橙).
     @AppStorage("laundryDoneShownOrder") var laundryDoneShown = ""
     #if DEBUG
@@ -51,7 +52,8 @@ struct ClearRootView: View {
         .sensoryFeedback(.success, trigger:successTick)
         .accountSwitchAlert { openShowerSetup() }
         .sheet(isPresented:$navigator.relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
-        .sheet(item:$navigator.setup, onDismiss:{ didSeeQuickSetup = true }) { request in
+        // Closed because the sample opened over it: not seen (`QuickSetupSeen`).
+        .sheet(item:$navigator.setup, onDismiss:{ QuickSetupSeen.closed(in:services.defaults, coveredBySample:sample.isActive) }) { request in
             // .id: a new request starts the checklist again, with its own row pushed.
             #if DEBUG
             ClearSetupChecklist(start:request.start).id(request.id).typesettingLanguage(Theme.typesetting)
@@ -97,7 +99,12 @@ struct ClearRootView: View {
         // A done panel that arrived while another was up is shown once that one closes.
         .onChange(of:navigator.panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
         .modifier(ReminderHooks(open:follow, homeClear:homeClear))
-        .onOpenURL { open($0) }
+        // The widget's links, dispatched by the app (`SampleMode.open`): this root opens them
+        // only when it is the live one.
+        .onChange(of:sample.pendingLink, initial:true) { _, _ in takePendingLink() }
+        #if DEBUG
+        .onOpenURL { if RootLink($0) == nil { handleDemo($0) } }
+        #endif
         .environment(navigator)
     }
 

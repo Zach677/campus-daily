@@ -16,8 +16,10 @@ struct ClearRecordsTab: View {
         let open = ClearOpenItem.items(data)
         Group {
             if data.signedIn {
+                // A new list (and records model) for each person and each graph: a sample's
+                // never takes over the live list, nor the live one a sample's.
                 ClearRecordsList(open:open, app:app(data), source:source)
-                    .id(campus.personChanges)
+                    .id(ListIdentity(services:campus.services.id, person:campus.personChanges))
             } else {
                 ClearRecordsSignedOut(open:open)
             }
@@ -39,6 +41,8 @@ struct ClearRecordsTab: View {
 
     private var source: CardRecordsSource {
         if let demo = navigator.recordsDemo { return demo.source }
-        return .live
+        return .school(campus)
     }
+
+    private struct ListIdentity: Hashable { let services: UUID; let person: Int }
 }

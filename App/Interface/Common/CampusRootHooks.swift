@@ -19,7 +19,7 @@ struct CampusRootHooks: ViewModifier {
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(ThemeStore.self) private var themeStore
     @Environment(\.scenePhase) private var phase
-    @ObservedObject private var resetter = AppResetter.shared
+    @EnvironmentObject private var resetter: AppResetter
     @AppStorage("didSeeQuickSetup") private var didSeeQuickSetup = false
 
     func body(content: Content) -> some View {

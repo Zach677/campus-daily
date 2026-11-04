@@ -11,7 +11,7 @@ struct ClearLaundryPage: View {
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(ClearNavigator.self) private var navigator
     @Environment(SampleMode.self) private var sample
-    @ObservedObject private var reminders = Reminders.shared
+    @EnvironmentObject private var reminders: Reminders
     @State private var selectedID: Int?
     @State private var sheet: LaundrySheet?
     /// 重新登录 U净, from an expired login.
@@ -153,7 +153,7 @@ struct ClearLaundryPage: View {
         guard let programs = facts.snapshot?.programs else { return nil }
         if let selectedID, let match = programs.first(where:{ $0.id == selectedID }) { return match }
         if let device = facts.snapshot?.deviceID {
-            let last = UserDefaults.standard.integer(forKey:LaundryDetail.lastProgramKey(device))
+            let last = laundry.services.defaults.integer(forKey:LaundryDetail.lastProgramKey(device))
             if let match = programs.first(where:{ $0.id == last }) { return match }
         }
         return programs.first
@@ -283,7 +283,7 @@ struct ClearLaundryPage: View {
     private func submit(_ program: WasherProgram) {
         if isDemo { runDemoBusy(); return }
         if let device = laundry.snapshot?.deviceID {
-            UserDefaults.standard.set(program.id, forKey:LaundryDetail.lastProgramKey(device))
+            laundry.services.defaults.set(program.id, forKey:LaundryDetail.lastProgramKey(device))
         }
         submitting = true
         Task { await laundry.createAndPay(program); submitting = false }

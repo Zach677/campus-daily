@@ -116,23 +116,27 @@ extension ClearRootView {
 
     // MARK: Links
 
-    /// The widget's links (`RootLink`); anything else is a DEBUG demo.
-    func open(_ url: URL) {
-        if let link = RootLink(url) {
-            guard mayClosePages else { return }
-            switch link {
-            case .home: popAll(); return
-            // A paused automatic login (widget): 设置 › 学校账号, where the pause is explained.
-            case .settings(account:true): show([.account], in:.settings); return
-            case .login:
-                popAll()
-                navigator.openSetup(at:.account)
-                return
-            case .settings(account:false): break
-            }
+    /// The widget's link (`SampleMode.takePendingLink`: never while the sample is on, so never
+    /// on a sample's root), once. Just after the sample left, its sheets go first.
+    func takePendingLink() {
+        guard let link = sample.takePendingLink() else { return }
+        Task {
+            if link == .login { try? await Task.sleep(for:.milliseconds(600)) }
+            open(link)
         }
-        #if DEBUG
-        handleDemo(url)
-        #endif
+    }
+
+    /// The widget's links (`RootLink`).
+    func open(_ link: RootLink) {
+        guard mayClosePages else { return }
+        switch link {
+        case .home: popAll()
+        // A paused automatic login (widget): 设置 › 学校账号, where the pause is explained.
+        case .settings(account:true): show([.account], in:.settings)
+        case .login:
+            popAll()
+            navigator.openSetup(at:.account)
+        case .settings(account:false): break
+        }
     }
 }

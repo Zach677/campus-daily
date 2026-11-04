@@ -60,15 +60,18 @@ final class SampleModeTests: XCTestCase {
     }
 
     /// Everything a reviewer can do in the sample: pick 清爽 and back, try every blocked action,
-    /// close the first-run guide, leave. Nothing real is called and nothing is written.
+    /// close the first-run guide, leave. Nothing real is called and nothing live is written: the
+    /// theme and the 「seen」 flag land in the sample's own preferences.
     func testEnteringAndLeavingWritesNothing() async throws {
         let sample = SampleMode()
-        let theme = ThemePreference(storage: shared)
+        let liveTheme = ThemePreference(storage: shared)
         sample.enter()
+        let services = try XCTUnwrap(sample.services)
         // The first-run guide closes as the sample opens: its 「seen」 flag is not stored.
-        sample.persist { preferences.set(true, forKey: "didSeeQuickSetup") }
-        XCTAssertTrue(try sample.selectTheme(.clear, current: .warm, preference: theme, lock: nil, under: PlainLock()))
-        XCTAssertEqual(sample.theme, .clear)
+        QuickSetupSeen.closed(in: preferences, coveredBySample: sample.isActive)
+        let theme = ThemePreference(storage: try XCTUnwrap(services.sharedPreferences))
+        XCTAssertTrue(try theme.select(.clear, current: .warm, lock: nil, under: PlainLock()))
+        XCTAssertEqual(theme.theme, .clear)
         for action in SampleAction.allCases {
             XCTAssertFalse(sample.perform(action) { service.run(action) })
             XCTAssertEqual(sample.blocked, action)
@@ -76,30 +79,33 @@ final class SampleModeTests: XCTestCase {
             let ran = await sample.perform(action) { await service.runAsync(action) }
             XCTAssertFalse(ran)
         }
-        XCTAssertTrue(try sample.selectTheme(.warm, current: .clear, preference: theme, lock: nil, under: PlainLock()))
+        XCTAssertTrue(try theme.select(.warm, current: .clear, lock: nil, under: PlainLock()))
         sample.leave()
 
         XCTAssertFalse(sample.isActive)
-        XCTAssertNil(sample.theme)
+        XCTAssertNil(sample.services)
         XCTAssertNil(sample.blocked)
         XCTAssertEqual(service.calls, [])
         XCTAssertEqual(preferences.writes, 0)
         XCTAssertEqual(shared.writes, 0)
         XCTAssertEqual(keychain.writes, 0)
         XCTAssertEqual(keychain.deletes, 0)
-        XCTAssertEqual(theme.theme, .warm)
+        XCTAssertEqual(liveTheme.theme, .warm)
     }
 
-    /// The theme picked in the sample is gone with it: the stored one shows again.
+    /// The theme picked in the sample is gone with it: the stored one shows again, and the next
+    /// sample starts on the default.
     func testThemeIsHeldOnlyWhileInTheSample() throws {
         let sample = SampleMode()
-        let theme = ThemePreference(storage: shared)
+        let live = ThemePreference(storage: shared)
         sample.enter()
-        _ = try sample.selectTheme(.clear, current: .warm, preference: theme, lock: nil, under: PlainLock())
-        XCTAssertEqual(sample.theme, .clear)
+        let theme = ThemePreference(storage: try XCTUnwrap(sample.services?.sharedPreferences))
+        _ = try theme.select(.clear, current: .warm, lock: nil, under: PlainLock())
+        XCTAssertEqual(theme.theme, .clear)
         sample.leave()
-        XCTAssertNil(sample.theme)
-        XCTAssertEqual(theme.theme, .warm)
+        sample.enter()
+        XCTAssertEqual(ThemePreference(storage: try XCTUnwrap(sample.services?.sharedPreferences)).theme, .warm)
+        XCTAssertEqual(live.theme, .warm)
         XCTAssertEqual(shared.writes, 0)
     }
 
@@ -129,11 +135,11 @@ final class SampleModeTests: XCTestCase {
     func testOutsideTheSampleEverythingIsStored() throws {
         let sample = SampleMode()
         let theme = ThemePreference(storage: shared)
-        sample.persist { preferences.set(true, forKey: "didSeeQuickSetup") }
+        QuickSetupSeen.closed(in: preferences, coveredBySample: sample.isActive)
         XCTAssertEqual(preferences.writes, 1)
-        XCTAssertTrue(try sample.selectTheme(.clear, current: .warm, preference: theme, lock: nil, under: PlainLock()))
+        XCTAssertTrue(try theme.select(.clear, current: .warm, lock: nil, under: PlainLock()))
         XCTAssertEqual(theme.theme, .clear)
-        XCTAssertNil(sample.theme)
+        XCTAssertNil(sample.services)
     }
 
     /// The sample is not kept: a new launch (a new instance) starts outside it, and entering
@@ -145,18 +151,17 @@ final class SampleModeTests: XCTestCase {
         XCTAssertEqual(preferences.writes + shared.writes + keychain.writes, 0)
         let relaunched = SampleMode()
         XCTAssertFalse(relaunched.isActive)
-        XCTAssertNil(relaunched.theme)
+        XCTAssertNil(relaunched.services)
     }
 
     /// A theme lock (a run going on) still holds in the sample.
     func testLockedThemeDoesNotChangeInTheSample() throws {
         let sample = SampleMode()
         sample.enter()
-        XCTAssertFalse(try sample.selectTheme(.clear, current: .warm, preference: ThemePreference(storage: shared),
-                                              lock: .shower, under: PlainLock()))
-        XCTAssertNil(sample.theme)
-        XCTAssertFalse(try sample.selectTheme(.warm, current: .warm, preference: ThemePreference(storage: shared),
-                                              lock: nil, under: PlainLock()))
+        let theme = ThemePreference(storage: try XCTUnwrap(sample.services?.sharedPreferences))
+        XCTAssertFalse(try theme.select(.clear, current: .warm, lock: .shower, under: PlainLock()))
+        XCTAssertEqual(theme.theme, .warm)
+        XCTAssertFalse(try theme.select(.warm, current: .warm, lock: nil, under: PlainLock()))
     }
 
     /// 去登录 opens the login step once, on whichever root shows next; a launch has none due.

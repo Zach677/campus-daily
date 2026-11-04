@@ -249,7 +249,7 @@ extension HomeView {
             WasherSetupView(onDone:washerSetupDone)
             #endif
         case .records:
-            CardRecordsView(app:recordsDemo?.app() ?? data.recentActivities, source:recordsDemo?.source ?? .live)
+            CardRecordsView(app:recordsDemo?.app() ?? data.recentActivities, source:recordsDemo?.source ?? .school(campus))
         }
     }
 

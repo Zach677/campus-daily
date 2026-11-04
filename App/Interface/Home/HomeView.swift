@@ -13,6 +13,8 @@ struct HomeView: View {
     @Environment(\.scenePhase) var phase
     @Environment(ThemeStore.self) var themeStore
     @Environment(SampleMode.self) var sample
+    /// The graph's services (`CampusScene`): `@AppStorage` here is on their preferences.
+    @Environment(\.campusServices) var services
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @Environment(\.dynamicTypeSize) var typeSize
     @State var path: [HomeRoute] = []
@@ -41,8 +43,7 @@ struct HomeView: View {
     @State var pageCoverAsked = Date.distantPast
     @State var successTick = 0
     @State var errorTick = 0
-    @ObservedObject var reminders = Reminders.shared
-    @AppStorage("didSeeQuickSetup") var didSeeQuickSetup = false
+    @EnvironmentObject var reminders: Reminders
     /// Last laundry order whose done panel was shown (once per order).
     @AppStorage("laundryDoneShownOrder") var laundryDoneShown = ""
     /// Negative top inset that lifts the date block into the navigation-bar row.
@@ -195,8 +196,8 @@ struct HomeView: View {
                 .onAppear { pageShown = true }.onDisappear { pageShown = false }
             #endif
         }
-        // Closed into the sample: not seen, so the next launch opens on the login step again.
-        .fullScreenCover(item:$onboarding, onDismiss:{ sample.persist { didSeeQuickSetup = true } }) { request in
+        // Closed into the sample: not seen, so the next launch opens on the login step again (`QuickSetupSeen`).
+        .fullScreenCover(item:$onboarding, onDismiss:{ QuickSetupSeen.closed(in:services.defaults, coveredBySample:sample.isActive) }) { request in
             // .id: a new request must reset the cover's @State (step), not reuse it.
             // Own device chooser: a sheet from the home root can't show above this cover.
             #if DEBUG
@@ -237,30 +238,35 @@ struct HomeView: View {
         // A done panel that arrived while another panel was up is shown once that one closes.
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
         .modifier(ReminderHooks(open:{ follow($0 == .laundry ? [.laundry] : []) }, homeClear:homeClear))
-        .onOpenURL { url in
-            if let link = RootLink(url) {
-                // Never closes a top-up page or a laundry order being paid.
-                guard mayClosePages else { return }
-                // Newer than pages still waiting for the settings sheet to close: those are dropped.
-                pathAfterSettings = nil
-                switch link {
-                case .home: settings = false; path = []; return
-                // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
-                case .settings(account:true):
-                    path = []; campus.accountPageRequested = true; settings = true
-                    return
-                case .login:
-                    let sheetUp = settings
-                    settings = false; path = []
-                    // As after a reset: let the settings sheet go first, or the cover is not presented.
-                    Task { if sheetUp { try? await Task.sleep(for:.milliseconds(600)) }; openOnboarding() }
-                    return
-                case .settings(account:false): break
-                }
-            }
-            #if DEBUG
-            handleDemo(url)
-            #endif
+        // The widget's links, dispatched by the app (`SampleMode.open`): this root opens them
+        // only when it is the live one.
+        .onChange(of:sample.pendingLink, initial:true) { _, _ in
+            guard let link = sample.takePendingLink() else { return }
+            open(link)
+        }
+        #if DEBUG
+        .onOpenURL { if RootLink($0) == nil { handleDemo($0) } }
+        #endif
+    }
+
+    /// The widget's link (`SampleMode.takePendingLink`: never while the sample is on, so never
+    /// on a sample's root).
+    func open(_ link: RootLink) {
+        // Never closes a top-up page or a laundry order being paid.
+        guard mayClosePages else { return }
+        // Newer than pages still waiting for the settings sheet to close: those are dropped.
+        pathAfterSettings = nil
+        switch link {
+        case .home: settings = false; path = []
+        // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
+        case .settings(account:true):
+            path = []; campus.accountPageRequested = true; settings = true
+        case .login:
+            let sheetUp = settings
+            settings = false; path = []
+            // As after a reset or the sample: let a sheet go first, or the cover is not presented.
+            Task { try? await Task.sleep(for:.milliseconds(sheetUp ? 600 : 300)); openOnboarding() }
+        case .settings(account:false): break
         }
     }
 

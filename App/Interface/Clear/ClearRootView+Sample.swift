@@ -2,9 +2,9 @@ import SwiftUI
 import Core
 
 extension ClearRootView {
-    /// The sample on (「先看看示例」 on 学校账号, or 主题 picked in it): the checklist closes and
-    /// every tab is on the sample's data (`HomeData.sample`), the washer idle, 记录 on its four
-    /// weeks. Off (去登录): the live models again.
+    /// On the sample's root (its own graph, `SampleScene`): every tab on the sample's data
+    /// (`HomeData.sample`), the washer idle, 记录 on its four weeks. The live root is not shown
+    /// while the sample is on; leaving (去登录) shows it again, as it was launched.
     func followSample(_ active: Bool) {
         if active {
             navigator.setup = nil; navigator.relogin = false; navigator.panel = nil
