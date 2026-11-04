@@ -6,15 +6,22 @@ import Core
 /// 取消 and 发送. A failed send shows one fixed line, never the service's words.
 struct FeedbackView: View {
     let endpoint: FeedbackEndpoint
+    let http: HTTPClient
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.appTheme) private var appTheme
     @State private var message = ""
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var images: [UIImage] = []
+    /// Picked photos still loading (an iCloud download, say): 发送 waits for them.
+    @State private var loadingImages = false
     @State private var sending = false
     @State private var failure: String?
     @State private var sent = false
 
     private var issue: FeedbackDraft.Issue? { FeedbackDraft.issue(message:message, imageCount:images.count) }
+    private var canSend: Bool {
+        !sending && FeedbackDraft.canSend(message:message, imageCount:images.count, loadingImages:loadingImages)
+    }
 
     var body: some View {
         NavigationStack {
@@ -33,18 +40,22 @@ struct FeedbackView: View {
                     PhotosPicker(selection:$pickerItems,
                                  maxSelectionCount:max(1, FeedbackDraft.maximumImages - images.count),
                                  matching:.images) {
-                        Label("添加截图", systemImage:"photo.on.rectangle")
+                        HStack {
+                            Label("添加截图", systemImage:"photo.on.rectangle")
+                            Spacer()
+                            if loadingImages {
+                                ProgressView().accessibilityIdentifier("feedbackLoadingImages")
+                            }
+                        }
                     }
-                    .disabled(sending || images.count >= FeedbackDraft.maximumImages)
+                    .disabled(sending || loadingImages || images.count >= FeedbackDraft.maximumImages)
                     .accessibilityIdentifier("feedbackAddScreenshot")
                 } footer: {
                     Text("最多 4 张。会附上 App 版本、手机型号和系统版本，不带账号和余额。")
                 }
                 if let failure {
                     Section {
-                        Label(failure, systemImage:"exclamationmark.circle.fill")
-                            .foregroundStyle(Theme.redText)
-                            .accessibilityIdentifier("feedbackFailure")
+                        failureLine(failure).accessibilityIdentifier("feedbackFailure")
                     }
                 }
             }
@@ -58,11 +69,13 @@ struct FeedbackView: View {
                 ToolbarItem(placement:.confirmationAction) {
                     Button(sending ? "正在发送…" : "发送") { send() }
                         .fontWeight(.semibold)
-                        .disabled(sending || issue != nil)
+                        .disabled(!canSend)
                         .accessibilityIdentifier("feedbackSend")
                 }
             }
             .onChange(of:pickerItems) { _, items in
+                // Set before the task starts, so 发送 is off from the moment the picker closes.
+                if !items.isEmpty { loadingImages = true }
                 Task { await load(items) }
             }
             .alert("发出去了", isPresented:$sent) {
@@ -74,6 +87,16 @@ struct FeedbackView: View {
         .tint(NativeTheme.tint)
         .typesettingLanguage(Theme.typesetting)
         .interactiveDismissDisabled(sending)
+    }
+
+    /// The failed-send line in `notice`, as each theme shows problems: 清爽's issue line (icon,
+    /// one-line words in `notice`), 暖橙's footnote like 电费's.
+    @ViewBuilder private func failureLine(_ line: String) -> some View {
+        if appTheme == .clear {
+            ClearLaundryIssueLines(lines:[line])
+        } else {
+            Text(line).font(.footnote).foregroundStyle(NativeTheme.notice)
+        }
     }
 
     private var thumbnails: some View {
@@ -105,6 +128,7 @@ struct FeedbackView: View {
 
     private func load(_ items: [PhotosPickerItem]) async {
         guard !items.isEmpty else { return }
+        defer { loadingImages = false }
         for item in items {
             guard images.count < FeedbackDraft.maximumImages,
                   let data = try? await item.loadTransferable(type:Data.self),
@@ -116,11 +140,12 @@ struct FeedbackView: View {
     }
 
     private func send() {
+        guard canSend else { return }
         sending = true
         failure = nil
         Task {
             do {
-                try await FeedbackReporter.send(message:message, images:images, to:endpoint)
+                try await FeedbackReporter.send(message:message, images:images, to:endpoint, http:http)
                 sent = true
             } catch {
                 failure = FeedbackText.failure(error)

@@ -40,6 +40,20 @@ final class FeedbackSenderTests: XCTestCase {
         XCTAssertEqual(body["images"]?.array, [])
     }
 
+    func testTheInjectedClientIsTheOneUsed() async throws {
+        // The app hands FeedbackSender its client (AppEnvironment.feedbackHTTP); it builds none.
+        let http = RecordingHTTP(reply: .success(HTTPResponse(status: 202)))
+        try await FeedbackSender(endpoint: endpoint, http: http).send(message: "反馈", images: [], metadata: metadata)
+        XCTAssertEqual(http.requests.map(\.url), [endpoint.url])
+    }
+
+    func testTheClientMayReachOnlyTheFeedbackHost() {
+        XCTAssertEqual(endpoint.allowedHosts, ["feedback.example.test"])
+        let upper = FeedbackEndpoint(url: URL(string: "https://Feedback.Example.TEST/v1/ingest/feedback")!, appKey: "ak_synthetic")
+        XCTAssertEqual(upper.allowedHosts, ["feedback.example.test"])
+        XCTAssertEqual(FeedbackSender.resourceTimeout, 60, "four screenshots outlast the usual 20 s")
+    }
+
     func testServerTextIsNeverShown() async {
         let reason = Data(#"{"reason":"internal ingest quota exceeded for tenant"}"#.utf8)
         let http = RecordingHTTP(reply: .success(HTTPResponse(status: 429, body: reason)))

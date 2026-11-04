@@ -15,19 +15,15 @@ enum FeedbackReporter {
         return FeedbackEndpoint(url:url, appKey:key)
     }()
 
-    /// Throws `FeedbackFailure`.
+    /// Throws `FeedbackFailure`. `http` is the injected client (`AppEnvironment.feedbackHTTP`).
     @MainActor
-    static func send(message: String, images: [UIImage], to endpoint: FeedbackEndpoint) async throws {
+    static func send(message: String, images: [UIImage], to endpoint: FeedbackEndpoint, http: HTTPClient) async throws {
         let info = Bundle.main.infoDictionary ?? [:]
         let metadata = FeedbackMetadata(appVersion:info["CFBundleShortVersionString"] as? String ?? "",
                                         appBuild:info["CFBundleVersion"] as? String ?? "",
                                         deviceModel:deviceModel,
                                         osVersion:"\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)",
                                         locale:Locale.current.identifier)
-        // Four screenshots take longer than the clients' usual 20 s on a slow connection.
-        let configuration = URLSessionHTTPClient.makeConfiguration()
-        configuration.timeoutIntervalForResource = 60
-        let http = URLSessionHTTPClient(allowedHosts:[endpoint.url.host?.lowercased() ?? ""], configuration:configuration)
         try await FeedbackSender(endpoint:endpoint, http:http)
             .send(message:message, images:images.compactMap(jpeg), metadata:metadata)
     }

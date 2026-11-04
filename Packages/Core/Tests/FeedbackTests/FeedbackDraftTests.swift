@@ -24,6 +24,21 @@ final class FeedbackDraftTests: XCTestCase {
         XCTAssertEqual(FeedbackDraft.maximumImages, 4)
     }
 
+    func testNotSendableWhilePhotosLoad() {
+        // A picked photo still downloading (iCloud) would go out missing and still read 发出去了.
+        XCTAssertFalse(FeedbackDraft.canSend(message: "看图", imageCount: 1, loadingImages: true))
+        XCTAssertFalse(FeedbackDraft.canSend(message: "看图", imageCount: 0, loadingImages: true),
+                       "the text alone waits for the photo too")
+        XCTAssertTrue(FeedbackDraft.canSend(message: "看图", imageCount: 1, loadingImages: false))
+        XCTAssertTrue(FeedbackDraft.canSend(message: "", imageCount: 1, loadingImages: false))
+    }
+
+    func testCanSendFollowsTheDraftRules() {
+        XCTAssertFalse(FeedbackDraft.canSend(message: "", imageCount: 0, loadingImages: false))
+        XCTAssertFalse(FeedbackDraft.canSend(message: String(repeating: "字", count: 4001), imageCount: 0, loadingImages: false))
+        XCTAssertFalse(FeedbackDraft.canSend(message: "看图", imageCount: 5, loadingImages: false))
+    }
+
     func testOnlyTooLongHasALine() {
         XCTAssertEqual(FeedbackText.issue(.tooLong), "最多 4000 字。")
         XCTAssertNil(FeedbackText.issue(.empty), "an empty form only disables 发送")

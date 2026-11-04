@@ -5,6 +5,9 @@ public struct FeedbackEndpoint: Sendable, Equatable {
     public var url: URL
     public var appKey: String
     public init(url: URL, appKey: String) { self.url = url; self.appKey = appKey }
+
+    /// The only host the feedback client may reach.
+    public var allowedHosts: Set<String> { url.host.map { [$0.lowercased()] } ?? [] }
 }
 
 /// The device line sent with each report. Nothing about the person or their accounts.
@@ -27,7 +30,12 @@ public struct FeedbackFailure: LocalizedError, Equatable, Sendable {
 }
 
 /// Sends one report: the typed text, the chosen screenshots (JPEG) and the device line.
+/// The client is passed in (the app's `AppEnvironment.feedbackHTTP`); it builds none of its own.
 public struct FeedbackSender: Sendable {
+    /// The feedback client's resource timeout: four screenshots take longer than the clients'
+    /// usual 20 s on a slow connection.
+    public static let resourceTimeout: TimeInterval = 60
+
     private let endpoint: FeedbackEndpoint
     private let http: HTTPClient
 
