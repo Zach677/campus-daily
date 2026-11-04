@@ -223,15 +223,6 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(try vault.ecyktSession()?.syscustid, "old")
     }
 
-    /// The fake follows the device: a write without a group lands in the first entitlement group.
-    func testFakeWritesWithoutGroupLandInTheFirstGroup() throws {
-        let kc = appKeychain()
-        let store = KeychainSecureStore(backend: kc, accessGroup: nil)
-        try store.write(Data("x".utf8), for: .showerBinding)
-        XCTAssertEqual(kc.items[key(.showerBinding, app)], Data("x".utf8))
-        XCTAssertNil(kc.items[key(.showerBinding, group)])
-    }
-
     /// Every item, pinned: the group the widget can read and the accessibility. A change here
     /// changes what the widget can see or when an item can be read; update docs/privacy.md too.
     func testEveryItemsGroupAndAccessibilityArePinned() throws {

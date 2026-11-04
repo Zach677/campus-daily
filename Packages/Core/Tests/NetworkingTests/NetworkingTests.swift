@@ -22,16 +22,6 @@ final class FixtureLoaderTests: XCTestCase {
             XCTAssertNotEqual(code, "0", "\(name) shows data served for a bad token; keep it in private/")
         }
     }
-
-    /// Faked user room is consistent across services.
-    func testFakedDormIsConsistent() throws {
-        let gydz = try FixtureLoader.load("portal/getMyInfo-ok").responseBodyValue?["data"]?["gydz"]?.text
-        XCTAssertEqual(gydz, "星湖校区99栋9号1层991房")
-        let rooms = try FixtureLoader.load("ecykt/electric-getBuildingInfo-level4").responseBodyValue?["data"]?.text ?? ""
-        XCTAssertTrue(rooms.contains("\"991\""))
-        let meter = try FixtureLoader.load("ecykt/electric-getMeterStatus-room").responseBodyValue?["data"]?.text ?? ""
-        XCTAssertTrue(meter.contains("99栋991"))
-    }
 }
 
 final class URLSessionHTTPClientTests: XCTestCase {

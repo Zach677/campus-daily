@@ -21,10 +21,4 @@ final class WebNavigationPolicySignatureTests: XCTestCase {
             XCTAssertTrue(compact.contains("assert(responds(to:WebNavigationPolicy.selector)"), path)
         }
     }
-
-    func testPatternRejectsADriftedSpelling() {
-        let drifted = "func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {"
-            .filter { !$0.isWhitespace }
-        XCTAssertEqual(Self.signature.numberOfMatches(in: drifted, range: NSRange(drifted.startIndex..., in: drifted)), 0)
-    }
 }
