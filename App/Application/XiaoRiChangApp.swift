@@ -12,8 +12,7 @@ import Core
     init() {
         // Before any model reads: older builds kept items in the other keychain group.
         SharedKeychain.migrateItemGroups()
-        // Entering pauses the live app's background work, leaving resumes it (`LivePause`).
-        let sample = SampleMode(livePause:AppEnvironment.livePause)
+        let sample = SampleMode()
         _sample = State(initialValue:sample)
         live = CampusGraph.live()
         // A reminder prompt queued on the live home waits while the sample covers it.
@@ -74,21 +73,16 @@ private struct LiveAppHooks: ViewModifier {
                 for url in sample.takeHeldLinks() { answer(url) }
             }
             .onChange(of:phase) { _, value in
-                // While the sample is shown the live app's work waits for it to be left (`LivePause`).
-                let pause = AppEnvironment.livePause
-                if value == .background, !pause.deferWhilePaused("schedule refresh", { BackgroundRefresh.scheduleRefresh() }) {
-                    BackgroundRefresh.scheduleRefresh()
-                }
+                // The live app's own work runs as usual while the sample is shown: it reaches no
+                // sample page (the sample runs on its own services and draws its own graph).
+                if value == .background { BackgroundRefresh.scheduleRefresh() }
                 if value == .active {
-                    let foreground: @MainActor @Sendable () -> Void = { [campus, laundry, reminders] in
-                        // Launched before the first unlock (pre-warmed), the Keychain could not be read:
-                        // read it again now, before the home's foreground refresh runs.
-                        campus.reload()
-                        Task { await reminders.refreshAuthorization() }
-                        // Back from Alipay without a callback URL (checkout links): read the order.
-                        Task { await laundry.refreshOrder() }
-                    }
-                    if !pause.deferWhilePaused("foreground", { await foreground() }) { foreground() }
+                    // Launched before the first unlock (pre-warmed), the Keychain could not be read:
+                    // read it again now, before the home's foreground refresh runs.
+                    campus.reload()
+                    Task { await reminders.refreshAuthorization() }
+                    // Back from Alipay without a callback URL (checkout links): read the order.
+                    Task { await laundry.refreshOrder() }
                 }
             }
     }

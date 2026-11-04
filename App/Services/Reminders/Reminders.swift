@@ -38,7 +38,7 @@ enum ReminderKey {
 /// center and the app's preferences; a sample's (`sample(defaults:)`) has neither: it schedules,
 /// asks and shows nothing, and keeps its settings in the sample's preferences.
 @MainActor final class Reminders: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
-    static let shared = Reminders(defaults:AppEnvironment.live.defaults, center:.current(), livePause:AppEnvironment.livePause)
+    static let shared = Reminders(defaults:.standard, center:.current())
     static func sample(defaults: UserDefaults) -> Reminders { Reminders(defaults:defaults, center:nil) }
 
     enum PromptOrigin: String, Identifiable { case settings, app; var id: String { rawValue } }
@@ -61,9 +61,6 @@ enum ReminderKey {
 
     /// The notification center; nil for a sample's, which reaches no notification at all.
     private let center: UNUserNotificationCenter?
-    /// The live app's: while the sample is shown nothing is scheduled, removed or posted; what was
-    /// asked for then is done after it (the latest per kind). nil for a sample's.
-    private let livePause: LivePause?
     let defaults: UserDefaults
     private let queue: ReminderPromptQueue
     private var laundryPlan: LaundryPlan?
@@ -76,10 +73,9 @@ enum ReminderKey {
         set { queue.held = newValue }
     }
 
-    private init(defaults: UserDefaults, center: UNUserNotificationCenter?, livePause: LivePause? = nil) {
+    private init(defaults: UserDefaults, center: UNUserNotificationCenter?) {
         self.defaults = defaults
         self.center = center
-        self.livePause = livePause
         queue = ReminderPromptQueue(storage:defaults, promptedKey:ReminderKey.prompted)
         super.init()
         ReminderKey.registerDefaults(in:defaults)
@@ -90,13 +86,6 @@ enum ReminderKey {
     }
 
     /// After a reset: nothing scheduled or shown is about this install's old data any more.
-    /// While the sample is shown: `work` is kept for after it (replacing what was kept for `kind`)
-    /// and this is true. Called where the reminders take effect, so a read answered during the
-    /// sample waits too, not only one started then.
-    private func heldForSample(_ kind: String, _ work: @escaping @MainActor @Sendable () -> Void) -> Bool {
-        livePause?.deferWhilePaused("reminders." + kind) { await work() } ?? false
-    }
-
     func clearAfterReset() {
         center?.removeAllPendingNotificationRequests()
         center?.removeAllDeliveredNotifications()
@@ -125,7 +114,6 @@ enum ReminderKey {
         authorization = await center.notificationSettings().authorizationStatus
         // Just allowed (here or in system Settings): requests added while not allowed were dropped, add them again.
         if old != authorization, authorization == .authorized {
-            if heldForSample("authorized", { [weak self] in self?.cancelLaundry(); self?.resync(); self?.reevaluateCampus() }) { return }
             cancelLaundry()
             resync()
             reevaluateCampus()
@@ -206,7 +194,6 @@ enum ReminderKey {
     }
     /// Re-apply scheduled reminders after a setting or the authorization changed.
     func resync() {
-        if heldForSample("resync", { [weak self] in self?.resync() }) { return }
         if let laundryPlan { applyLaundry(laundryPlan) } else { cancelLaundry() }
         syncShower(started:showerStart)
     }
@@ -217,7 +204,6 @@ enum ReminderKey {
 
     /// Called whenever the order or machine reading changes (LaundryModel.syncActivity).
     func syncLaundry(facts: LaundryFacts, now: Date = Date()) {
-        if heldForSample("laundry", { [weak self] in self?.syncLaundry(facts:facts) }) { return }
         switch facts.phase(now:now) {
         // Paid: the moment to explain reminders.
         case .running, .starting: requestAppPrompt()
@@ -265,7 +251,6 @@ enum ReminderKey {
 
     /// Called on every session change (ShowerModel). `started` = start of a session that can still be closed.
     func syncShower(started: Date?) {
-        if heldForSample("shower", { [weak self] in self?.syncShower(started:started) }) { return }
         showerStart = started
         guard let center else { return }
         let minutes = defaults.integer(forKey:ReminderKey.unsettledMinutes)
@@ -274,14 +259,11 @@ enum ReminderKey {
         }
         Task {
             let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("shower-") }
-            // Asked for before the sample opened: nothing changes while it is shown.
-            await livePause?.waitWhilePaused()
             let stale = pending.filter { $0 != wanted }
             if !stale.isEmpty { center.removePendingNotificationRequests(withIdentifiers:stale) }
             if started == nil {
                 // Settled: take an old 「还在计时」 off Notification Center.
                 let delivered = await center.deliveredNotifications().map(\.request.identifier).filter { $0.hasPrefix("shower-") }
-                await livePause?.waitWhilePaused()
                 center.removeDeliveredNotifications(withIdentifiers:delivered)
             }
             guard let start = started, let wanted, !pending.contains(wanted) else { return }
@@ -298,7 +280,6 @@ enum ReminderKey {
     /// After each campus read (foreground, pull to refresh, background refresh). Only fresh, successful values count.
     func evaluateCampus(_ snapshot: HomeSnapshot, now: Date = Date()) {
         guard center != nil else { return }
-        if heldForSample("campus", { [weak self] in self?.evaluateCampus(snapshot) }) { return }
         let lines = ReminderKey.lines(in:defaults)
         if snapshot.power.error == nil, let meter = snapshot.power.value, let left = meter.remainingKWh {
             evaluate(kind:"power", low:left < lines.power, enabled:ReminderKey.powerLow,

@@ -8,42 +8,29 @@ import Core
 /// the services the live models run on (a sample runs on `CampusServices.sample()` instead).
 /// The hot-water and laundry engines are built by their models (they depend on the binding / login).
 enum AppEnvironment {
-    /// The live app's background work, held while 「先看看示例」 is shown (`SampleMode` pauses
-    /// and resumes it): the stores, the network, the widget redraw, the refreshes and reminders.
-    static let livePause = LivePause()
+    private static let store: SecureStore = SharedKeychain.store
 
-    private static let store: SecureStore = PausableSecureStore(SharedKeychain.store, pause:livePause)
-
-    private static let schoolHTTP: HTTPClient = PausableHTTPClient(SchoolRefreshStack.schoolHTTP(), pause:livePause)
-    private static let showerHTTP: HTTPClient = PausableHTTPClient(URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWater), pause:livePause)
-    private static let laundryHTTP: HTTPClient = PausableHTTPClient(URLSessionHTTPClient(allowedHosts:AllowedHosts.laundry), pause:livePause)
+    private static let schoolHTTP: HTTPClient = SchoolRefreshStack.schoolHTTP()
+    private static let showerHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWater)
+    private static let laundryHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.laundry)
     /// Settings › 反馈问题: only the feedback host, with a longer resource timeout for screenshots.
     /// nil in a build without the feedback key.
     private static let feedbackHTTP: HTTPClient? = FeedbackReporter.endpoint.map { endpoint in
-        PausableHTTPClient(URLSessionHTTPClient(allowedHosts:endpoint.allowedHosts, configuration:FeedbackSender.configuration()), pause:livePause)
-    }
-
-    /// Redraws the widget, after the sample if it is shown.
-    private static func reloadWidgets(_ kind: String? = nil) {
-        let reload: @Sendable () -> Void = {
-            if let kind { WidgetCenter.shared.reloadTimelines(ofKind:kind) } else { WidgetCenter.shared.reloadAllTimelines() }
-        }
-        if !livePause.deferWhilePaused("widgets." + (kind ?? "all"), { reload() }) { reload() }
+        URLSessionHTTPClient(allowedHosts:endpoint.allowedHosts, configuration:FeedbackSender.configuration())
     }
 
     /// The same stack the widget builds for its own reads; the two take turns through the lease.
     private static let schoolStack = SchoolRefreshStack(store:store, http:schoolHTTP, role:"app",
                                                         leaseWait:SchoolRefreshStack.appLeaseWait, leaseFile:RefreshLease.appFile(),
-                                                        pause:livePause, didWriteSnapshot:{ reloadWidgets(SharedSnapshotStore.widgetKind) })
+                                                        didWriteSnapshot:{ WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind) })
 
     /// The live app's stores and services. The school stack on them is `schoolStack` (one per process).
     @MainActor static let live = CampusServices(
-        kind:.live, secureStore:store, defaults:PausableDefaults(suiteName:nil, pause:livePause) ?? .standard,
-        sharedPreferences:AppIdentity.usableAppGroup.flatMap { PausableDefaults(suiteName:$0, pause:livePause) },
+        kind:.live, secureStore:store, defaults:.standard, sharedPreferences:AppIdentity.usableAppGroup.flatMap { UserDefaults(suiteName:$0) },
         schoolHTTP:schoolHTTP, showerHTTP:showerHTTP, laundryHTTP:laundryHTTP, feedbackHTTP:feedbackHTTP,
         showerTransport:BluetoothTransport(), leaseFile:RefreshLease.appFile(),
         applicationSupport:FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask).first,
-        sharedDidChange:{ reloadWidgets() }, livePause:livePause)
+        sharedDidChange:{ WidgetCenter.shared.reloadAllTimelines() })
 
     /// The live school stack, for the live `CampusModel` and the background refresh.
     static var liveSchoolStack: SchoolRefreshStack { schoolStack }
