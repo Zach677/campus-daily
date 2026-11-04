@@ -26,16 +26,6 @@ public enum SharedKeychain {
         return (out as? [String:Any])?[kSecAttrAccessGroup as String] as? String
     }
 
-    public static var defaultGroup: String? { groups.defaultGroup }
-
-    /// `<TeamPrefix>.<bundle id>.shared`, from the default group (`sharedGroup(defaultGroup:)`).
-    /// Nil while the default group can't be read. A build whose signature lacks the shared group
-    /// falls back to the default group, and the widget simply has no data.
-    public static var accessGroup: String? { groups.sharedGroup }
-
-    /// The app's private group, or nil in the widget (its default group is the shared one).
-    public static var privateGroup: String? { groups.privateGroup }
-
     /// The shared group, from the group a write without one lands in: the entitlements list the
     /// app's private group first, so the app's shared group is that plus `.shared`; the widget's
     /// only group is the shared one. Taken from the signature, not Info.plist, so an IPA
@@ -58,8 +48,7 @@ public enum SharedKeychain {
         inExtension ? nil : group
     }
 
-    public static let keychainStore = KeychainSecureStore(backend:SecItemKeychainBackend(), groups:groups)
-    public static var store: SecureStore { keychainStore }
+    public static let store: SecureStore = KeychainSecureStore(backend:SecItemKeychainBackend(), groups:groups)
 }
 
 /// The default access group, probed until a probe succeeds and then kept for the process.
