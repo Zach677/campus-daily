@@ -48,6 +48,7 @@
 
 ### Fixed
 
+- Slide the rows of 常用洗衣机 (both themes) when a scanned or picked code is read: 「正在识别机器…」 and then 「核对并保存」 came in at once as the scanner went down, so the page jumped.
 - Draw the line under the code row of the U净 login (both themes) across the whole row; it only ran under 「获取验证码」 / 「53秒后重试」 and left the code field without one.
 - Draw problem lines in 暖橙 (电费, 充值, U净 登录, first-run setup, the shower status, 反馈问题) in a darker orange, #B25000, in light mode, so they read on white; dark mode keeps the system orange.
 - Say 「有 1 张截图没加上，再选一次试试。」 (with the number) under 「添加截图」 in 反馈问题 when a picked photo can't be downloaded or read, instead of leaving it out silently and still sending the text; the line goes once a pick adds photos or every screenshot is removed.
