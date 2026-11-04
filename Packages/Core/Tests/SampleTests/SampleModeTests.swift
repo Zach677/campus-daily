@@ -1,0 +1,185 @@
+import XCTest
+import Core
+
+/// Counts every write; reads see what was written.
+private final class SpyPreferences: PreferenceStorage {
+    var values: [String: Any] = [:]
+    var writes = 0
+    func object(forKey key: String) -> Any? { values[key] }
+    func set(_ value: Any?, forKey key: String) { writes += 1; values[key] = value }
+}
+
+/// A Keychain that counts writes and deletes.
+private final class SpyKeychain: SecureStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [StoreKey: Data] = [:]
+    private(set) var writes = 0
+    private(set) var deletes = 0
+    func read(_ key: StoreKey) throws -> Data? { lock.withLock { items[key] } }
+    func write(_ data: Data, for key: StoreKey) throws { lock.withLock { writes += 1; items[key] = data } }
+    func delete(_ key: StoreKey) throws { lock.withLock { deletes += 1; items[key] = nil } }
+}
+
+private struct PlainLock: SharedLock {
+    func locked<T>(_ body: () throws -> T) throws -> T { try body() }
+}
+
+/// Stands in for the real services an action would call: the school's top-up, the shower
+/// engine, U净, the feedback sender, the reset. Each call would send a request.
+@MainActor private final class SpyService {
+    var calls: [SampleAction] = []
+    let store: SpyKeychain
+    let preferences: SpyPreferences
+    init(store: SpyKeychain, preferences: SpyPreferences) { self.store = store; self.preferences = preferences }
+
+    /// What the real action does: a request, then what it stores.
+    func run(_ action: SampleAction) {
+        calls.append(action)
+        try? store.write(Data(action.rawValue.utf8), for: .laundryCheckout)
+        preferences.set(action.rawValue, forKey: "last-" + action.rawValue)
+    }
+
+    func runAsync(_ action: SampleAction) async {
+        await Task.yield()
+        run(action)
+    }
+}
+
+@MainActor
+final class SampleModeTests: XCTestCase {
+    private var preferences: SpyPreferences!
+    private var shared: SpyPreferences!
+    private var keychain: SpyKeychain!
+    private var service: SpyService!
+
+    override func setUp() async throws {
+        preferences = SpyPreferences()
+        shared = SpyPreferences()
+        keychain = SpyKeychain()
+        service = SpyService(store: keychain, preferences: preferences)
+    }
+
+    /// Everything a reviewer can do in the sample: pick 清爽 and back, try every blocked action,
+    /// close the first-run guide, leave. Nothing real is called and nothing is written.
+    func testEnteringAndLeavingWritesNothing() async throws {
+        let sample = SampleMode()
+        let theme = ThemePreference(storage: shared)
+        sample.enter()
+        // The first-run guide closes as the sample opens: its 「seen」 flag is not stored.
+        sample.persist { preferences.set(true, forKey: "didSeeQuickSetup") }
+        XCTAssertTrue(try sample.selectTheme(.clear, current: .warm, preference: theme, lock: nil, under: PlainLock()))
+        XCTAssertEqual(sample.theme, .clear)
+        for action in SampleAction.allCases {
+            XCTAssertFalse(sample.perform(action) { service.run(action) })
+            XCTAssertEqual(sample.blocked, action)
+            sample.blocked = nil
+            let ran = await sample.perform(action) { await service.runAsync(action) }
+            XCTAssertFalse(ran)
+        }
+        XCTAssertTrue(try sample.selectTheme(.warm, current: .clear, preference: theme, lock: nil, under: PlainLock()))
+        sample.leave()
+
+        XCTAssertFalse(sample.isActive)
+        XCTAssertNil(sample.theme)
+        XCTAssertNil(sample.blocked)
+        XCTAssertEqual(service.calls, [])
+        XCTAssertEqual(preferences.writes, 0)
+        XCTAssertEqual(shared.writes, 0)
+        XCTAssertEqual(keychain.writes, 0)
+        XCTAssertEqual(keychain.deletes, 0)
+        XCTAssertEqual(theme.theme, .warm)
+    }
+
+    /// The theme picked in the sample is gone with it: the stored one shows again.
+    func testThemeIsHeldOnlyWhileInTheSample() throws {
+        let sample = SampleMode()
+        let theme = ThemePreference(storage: shared)
+        sample.enter()
+        _ = try sample.selectTheme(.clear, current: .warm, preference: theme, lock: nil, under: PlainLock())
+        XCTAssertEqual(sample.theme, .clear)
+        sample.leave()
+        XCTAssertNil(sample.theme)
+        XCTAssertEqual(theme.theme, .warm)
+        XCTAssertEqual(shared.writes, 0)
+    }
+
+    /// Money paths in the sample never reach the service; outside it they do (control).
+    func testMoneyActionsReachTheServiceOnlyOutsideTheSample() async {
+        let money: [SampleAction] = [.cardRecharge, .powerRecharge, .startShower, .startWash, .payLaundry]
+        let sample = SampleMode()
+        sample.enter()
+        for action in money {
+            sample.perform(action) { service.run(action) }
+            await sample.perform(action) { await service.runAsync(action) }
+        }
+        XCTAssertEqual(service.calls, [])
+        sample.leave()
+
+        for action in money {
+            XCTAssertTrue(sample.perform(action) { service.run(action) })
+        }
+        XCTAssertEqual(service.calls, money)
+        XCTAssertNil(sample.blocked)
+        let ran = await sample.perform(.startWash) { await service.runAsync(.startWash) }
+        XCTAssertTrue(ran)
+        XCTAssertEqual(service.calls.count, money.count + 1)
+    }
+
+    /// Outside the sample, writes and the theme choice go through as before.
+    func testOutsideTheSampleEverythingIsStored() throws {
+        let sample = SampleMode()
+        let theme = ThemePreference(storage: shared)
+        sample.persist { preferences.set(true, forKey: "didSeeQuickSetup") }
+        XCTAssertEqual(preferences.writes, 1)
+        XCTAssertTrue(try sample.selectTheme(.clear, current: .warm, preference: theme, lock: nil, under: PlainLock()))
+        XCTAssertEqual(theme.theme, .clear)
+        XCTAssertNil(sample.theme)
+    }
+
+    /// The sample is not kept: a new launch (a new instance) starts outside it, and entering
+    /// it stores nowhere a later launch could read it from.
+    func testSampleIsNotPersisted() {
+        let first = SampleMode()
+        first.enter()
+        XCTAssertTrue(first.isActive)
+        XCTAssertEqual(preferences.writes + shared.writes + keychain.writes, 0)
+        let relaunched = SampleMode()
+        XCTAssertFalse(relaunched.isActive)
+        XCTAssertNil(relaunched.theme)
+    }
+
+    /// A theme lock (a run going on) still holds in the sample.
+    func testLockedThemeDoesNotChangeInTheSample() throws {
+        let sample = SampleMode()
+        sample.enter()
+        XCTAssertFalse(try sample.selectTheme(.clear, current: .warm, preference: ThemePreference(storage: shared),
+                                              lock: .shower, under: PlainLock()))
+        XCTAssertNil(sample.theme)
+        XCTAssertFalse(try sample.selectTheme(.warm, current: .warm, preference: ThemePreference(storage: shared),
+                                              lock: nil, under: PlainLock()))
+    }
+
+    /// 去登录 opens the login step once, on whichever root shows next; a launch has none due.
+    func testLeavingOpensTheLoginOnce() {
+        let sample = SampleMode()
+        XCTAssertFalse(sample.takeLogin())
+        sample.enter()
+        XCTAssertFalse(sample.loginDue)
+        sample.leave()
+        XCTAssertTrue(sample.loginDue)
+        XCTAssertTrue(sample.takeLogin())
+        XCTAssertFalse(sample.takeLogin())
+        sample.enter()
+        sample.leave()
+        sample.enter()
+        XCTAssertFalse(sample.takeLogin())
+    }
+
+    func testCopy() {
+        XCTAssertEqual(SampleCopy.entry, "先看看示例")
+        XCTAssertEqual(SampleCopy.barText, "示例数据，不是你的账号")
+        XCTAssertEqual(SampleCopy.barAction, "去登录")
+        XCTAssertEqual(SampleCopy.barSpoken, "示例数据，不是你的账号。去登录")
+        XCTAssertEqual(SampleCopy.blocked, "示例里不能操作，登录学校账号后就能用。")
+    }
+}
