@@ -54,4 +54,10 @@ final class ShowerStoredFormatTests: XCTestCase {
         var fresh = water; fresh.removeAllCachedResourceValues()
         XCTAssertEqual(try fresh.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
     }
+
+    func testAnUnreadableBindingThrows() throws {
+        let store = InMemorySecureStore()
+        try store.write(Data("{".utf8), for: .showerBinding)
+        XCTAssertThrowsError(try StoredShowerVault(store: store).binding()) { XCTAssertTrue($0 is StorageError) }
+    }
 }
