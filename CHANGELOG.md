@@ -114,7 +114,7 @@
 - Show only the 最近 rows that fit on home, and leave out 最近 when not even one fits under its header, instead of three rows that made home scroll.
 - Draw the tick of a chosen location in the label colour on the accent, so it stays readable in dark mode.
 - Show the last shower's amount on the hot-water screen as 「¥1.32」, as everywhere else, instead of 「CN¥1.32」 on some region settings.
-- The reset confirmation no longer lists 「选的主题」: the app has no theme setting.
+- The reset confirmation says the theme goes back to 暖橙: 「…小组件上的数字，还有导入的热水配置，主题也会回到暖橙。」.
 - The sign-in sheet's close button takes taps in a 44 pt square around its circle.
 - Read the laundry order once when the app comes back, not twice.
 
