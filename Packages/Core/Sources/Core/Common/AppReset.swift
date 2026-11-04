@@ -59,8 +59,6 @@ public enum AppReset {
         public var showerReminderStart: Date?
         /// What the shower Live Activity does: the same as for any record change.
         public var showerActivity: ShowerActivityAction
-        /// Laundry reminders and its Live Activity are left as they are.
-        public let leavesLaundry = true
 
         public init(shower: ShowerState, now: Date) {
             showerReminderStart = shower.reminderStart

@@ -289,7 +289,6 @@ final class AppResetTests: XCTestCase {
         XCTAssertNil(idle.showerReminderStart)
         XCTAssertEqual(idle.showerActivity, .end)
         XCTAssertFalse(idle.showerActivity.keepsActivity)
-        XCTAssertTrue(idle.leavesLaundry && running.leavesLaundry)
     }
 
     /// A settled shower shows its minutes and the receipt's amount only, then goes.
