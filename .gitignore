@@ -1,9 +1,7 @@
 # Local configuration, diagnostics and signing products
 private/
-artifacts/
 .build/
 .swiftpm/
-output/
 build/
 /.DerivedData/
 .build-tests/
@@ -15,10 +13,6 @@ __pycache__/
 xcuserdata/
 *.xcuserstate
 *.waterconfig
-*.campusconfig
-*.campuscache
-*.laundryconfig
-*.laundryrecovery
 *.har
 *.pklg
 *.pcap*
