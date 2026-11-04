@@ -67,7 +67,7 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport
     Fixtures/         synthetic/redacted API samples, one folder per service
-Scripts/              fetch-alipay-sdk, stage-water-profile, package-ipa, privacy-check
+Scripts/              fetch-alipay-sdk, stage-water-profile, privacy-check
                       (run through mise.toml)
 ```
 
