@@ -1,12 +1,22 @@
 import AppIntents
 import Core
 
+/// The intents run on the live session (`ShowerModel.shared`), never on a sample's. While
+/// 「先看看示例」 is on (`sampleActive`, set by the app) the app opens on the sample, where the live
+/// session is not shown: no shower is started from there. 结束并结算 still ends the live one
+/// (water may be running), as the Live Activity's button does.
+enum ShowerIntentGate {
+    @MainActor static var sampleActive: () -> Bool = { false }
+    static let sampleText = "先点「去登录」退出示例，再开始洗澡。"
+}
+
 struct StartShowerIntent: AppIntent {
     static let title: LocalizedStringResource = "开始洗澡"
     static let description = IntentDescription("连接你的水控并申请本次授权，然后按水控上的出水键。")
     static let openAppWhenRun = true
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard !ShowerIntentGate.sampleActive() else { throw ShowerActionFailure(ShowerIntentGate.sampleText) }
         // Throws `ShowerActionFailure`: the system shows its real reason.
         switch try await ShowerModel.shared.run(start: true) {
         case .startUnconfirmed: return .result(dialog: "\(ShowerActionOutcome.startUnconfirmedText)")
