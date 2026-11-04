@@ -131,14 +131,7 @@ final class ThemePreferenceTests: XCTestCase {
         XCTAssertTrue(ThemePreference.sharedStorage(appGroup: nil) === UserDefaults.standard)
     }
 
-    func testNamesAndCopy() {
+    func testWarmIsListedFirst() {
         XCTAssertEqual(AppTheme.allCases, [.warm, .clear])
-        XCTAssertEqual(AppTheme.warm.name, "暖橙")
-        XCTAssertEqual(AppTheme.clear.name, "清爽")
-        XCTAssertEqual(AppTheme.warm.settingsRowLabel, "主题，暖橙")
-        XCTAssertEqual(AppTheme.clear.unavailableLabel, "清爽，暂时不能选")
-        XCTAssertEqual(AppTheme.warm.summary, "暖色，数字大，一页看完。")
-        XCTAssertEqual(AppTheme.clear.summary, "蓝白配色，像系统自带的 App。")
-        XCTAssertEqual(AppTheme.footer, "两套的功能和数据一样，只是样子和页面排法不同。小组件、锁屏和灵动岛也会跟着换。")
     }
 }

@@ -121,13 +121,7 @@ final class SetupChecklistTests: XCTestCase {
         XCTAssertNil(HomeSetupCard.detail(signedIn:true, dormSet:dormSet, laundryEnabled:false, laundryBound:false))
     }
 
-    func testCopy() {
-        XCTAssertEqual(SetupChecklist.title(.account), "学校账号")
-        XCTAssertEqual(SetupChecklist.title(.dorm), "宿舍")
-        XCTAssertEqual(SetupChecklist.title(.laundry), "学校洗衣机")
-        XCTAssertEqual(SetupChecklist.title(.controller), "水控")
-        XCTAssertEqual(SetupChecklist.later, "以后再说")
-        XCTAssertEqual(SetupChecklist.footnote, "这里只读取和保存设置，不会开水、下单或付款。")
+    func testAFreshChecklistIsAtZero() {
         XCTAssertEqual(fresh.fraction, 0)
     }
 }

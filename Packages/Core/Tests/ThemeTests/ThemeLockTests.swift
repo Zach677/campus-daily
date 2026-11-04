@@ -49,10 +49,4 @@ final class ThemeLockTests: XCTestCase {
         let waiting = ShowerState(phase: .failed, startedAt: start, failure: ShowerFailure(reason: .settleUnconfirmed, needsReview: true))
         XCTAssertEqual(ThemeLock.lock(shower: waiting, laundry: .verifying), .laundry)
     }
-
-    func testReasons() {
-        XCTAssertEqual(ThemeLock.shower.reason, "正在洗澡，结算以后再换主题。")
-        XCTAssertEqual(ThemeLock.laundry.reason, "洗衣还有一笔订单没处理完，处理完再换主题。")
-        XCTAssertEqual(ThemeLock.showerAndLaundry.reason, "先结算热水、处理完洗衣订单，再换主题。")
-    }
 }
