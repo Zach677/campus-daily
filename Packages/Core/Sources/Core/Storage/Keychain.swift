@@ -1,7 +1,5 @@
 import Foundation
-#if canImport(Security)
 import Security
-#endif
 
 /// The SecItem calls, behind a protocol so the access-group fallback is testable without
 /// touching the host Keychain. Status codes are `OSStatus` values.
@@ -111,7 +109,6 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
     }
 }
 
-#if canImport(Security)
 /// The real SecItem backend (generic passwords). Not used by `swift test`.
 public struct SecItemKeychainBackend: KeychainBackend {
     public init() {}
@@ -160,7 +157,6 @@ public struct SecItemKeychainBackend: KeychainBackend {
         SecItemDelete(base(service, account, accessGroup) as CFDictionary)
     }
 }
-#endif
 
 /// In-memory store for tests and previews, with injectable write and read failures.
 public final class InMemorySecureStore: SecureStore, @unchecked Sendable {

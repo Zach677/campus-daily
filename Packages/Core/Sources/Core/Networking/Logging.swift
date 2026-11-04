@@ -1,7 +1,5 @@
 import Foundation
-#if canImport(os)
 import os
-#endif
 
 /// One log line per request: method, host, the request's log name, status, latency, decoded
 /// `code`. Never the path (it can hold ids), query strings, bodies or headers.
@@ -34,9 +32,7 @@ public protocol HTTPLogSink: Sendable {
 public struct OSLogSink: HTTPLogSink {
     public init() {}
     public func record(_ entry: HTTPLogEntry) {
-        #if canImport(os)
         let logger = Logger(subsystem: "org.zaxh.xiaorichang", category: "http")
         logger.info("\(entry.line, privacy: .public)")
-        #endif
     }
 }

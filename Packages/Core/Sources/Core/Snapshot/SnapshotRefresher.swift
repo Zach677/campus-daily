@@ -1,7 +1,5 @@
 import Foundation
-#if canImport(os)
 import os
-#endif
 
 /// The school read the refresher drives (`SchoolSession` in the app and the widget, fakes in
 /// tests). `mayMint` is asked before every step that mints a card session, sends the saved
@@ -103,9 +101,7 @@ public actor SnapshotRefresher {
     }
 
     public static let osLog: @Sendable (String) -> Void = { event in
-        #if canImport(os)
         Logger(subsystem: "org.zaxh.xiaorichang", category: "snapshot").error("\(event, privacy: .public)")
-        #endif
     }
 
     /// The diagnostic line for a failed save: the storage status only.

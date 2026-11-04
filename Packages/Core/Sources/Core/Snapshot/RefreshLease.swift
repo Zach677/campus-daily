@@ -1,9 +1,5 @@
 import Foundation
-#if canImport(Darwin)
 import Darwin
-#elseif canImport(Glibc)
-import Glibc
-#endif
 
 /// The cross-process lock around a school refresh. The app and the widget are two processes
 /// sharing one stored card session; only the holder of this lease refreshes (and so mints or
