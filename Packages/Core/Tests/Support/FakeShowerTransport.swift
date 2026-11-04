@@ -46,7 +46,6 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
     public var writes: [Data] { lock.withLock { _writes } }
     public var connects: [Connect] { lock.withLock { _connects } }
     public var disconnects: Int { lock.withLock { _disconnects } }
-    public var pendingReplies: Int { lock.withLock { _replies.count } }
 
     public func connect(bleName: String, machineID: String, required: String?, preferred: String?) async throws -> String {
         let result: Result<String, ShowerDeviceError> = lock.withLock {
