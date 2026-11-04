@@ -16,8 +16,12 @@ enum BackgroundRefresh {
     }
 
     /// The `.appRefresh` task body: book the next run, then read.
+    /// While 「先看看示例」 is shown the read waits for it to be left (`LivePause`) and the task
+    /// ends at once.
     @MainActor static func run() async {
         scheduleRefresh()
-        await CampusModel.shared.refresh(force:true, inBackground:true)
+        let read: @MainActor @Sendable () async -> Void = { await CampusModel.shared.refresh(force:true, inBackground:true) }
+        if AppEnvironment.livePause.deferWhilePaused("background refresh", { await read() }) { return }
+        await read()
     }
 }

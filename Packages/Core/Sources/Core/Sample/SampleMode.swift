@@ -42,10 +42,23 @@ public enum SampleLinkOutcome: Equatable, Sendable {
     /// Other apps' links that came in during the sample, for the live app (`takeHeldLinks`).
     @ObservationIgnored private var held: [URL] = []
 
-    public init() {}
+    /// The live app's background work, held while the sample is on (`LivePause`).
+    @ObservationIgnored private let livePause: LivePause?
+
+    public init(livePause: LivePause? = nil) { self.livePause = livePause }
+
+    /// The real shower is ended from the Live Activity or Siri (`LiveShowerFinish`): back to the
+    /// live app as it was, not the login step. The sample's services go.
+    public func leaveForLive() {
+        services = nil
+        blocked = nil
+        loginDue = false
+        livePause?.resume()
+    }
 
     /// From the login step: a new sample on new services, nothing chosen in it yet.
     public func enter() {
+        livePause?.pause()
         services = .sample()
         blocked = nil
         loginDue = false
@@ -58,6 +71,7 @@ public enum SampleLinkOutcome: Equatable, Sendable {
         services = nil
         blocked = nil
         loginDue = true
+        livePause?.resume()
     }
 
     /// The login step is opening: once per `leave`. True when it was due.
@@ -89,6 +103,7 @@ public enum SampleLinkOutcome: Equatable, Sendable {
                 blocked = nil
                 loginDue = false
                 pendingLink = link
+                livePause?.resume()
                 return .leftSample
             case .home, .settings(account: false):
                 return .ignored

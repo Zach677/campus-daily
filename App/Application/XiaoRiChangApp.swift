@@ -12,14 +12,18 @@ import Core
     init() {
         // Before any model reads: older builds kept items in the other keychain group.
         SharedKeychain.migrateItemGroups()
-        let sample = SampleMode()
+        // Entering pauses the live app's background work, leaving resumes it (`LivePause`).
+        let sample = SampleMode(livePause:AppEnvironment.livePause)
         _sample = State(initialValue:sample)
         live = CampusGraph.live()
         // A reminder prompt queued on the live home waits while the sample covers it.
         live.reminders.held = { [weak sample] in sample?.isActive ?? false }
-        ShowerIntentGate.sampleActive = { [weak sample] in sample?.isActive ?? false }
-        // FinishShowerLiveIntent (Live Activity button) runs in this process, on the live session.
-        ShowerActivityBridge.finish = { _ = try await ShowerModel.shared.run(start:false) }
+        ShowerIntentGate.sample = sample
+        // FinishShowerLiveIntent (Live Activity button) runs in this process, on the live session:
+        // shown over the sample, it leaves it first and the live app stays up (`LiveShowerFinish`).
+        ShowerActivityBridge.finish = { [weak sample] in
+            _ = try await LiveShowerFinish.run(sample:sample) { try await ShowerModel.shared.run(start:false) }
+        }
         // Notification delegate must be set before launch finishes, so a tapped banner is routed
         // (`Reminders.shared`, set up by `live`).
     }
@@ -70,15 +74,21 @@ private struct LiveAppHooks: ViewModifier {
                 for url in sample.takeHeldLinks() { answer(url) }
             }
             .onChange(of:phase) { _, value in
-                if value == .background, !sample.isActive { BackgroundRefresh.scheduleRefresh() }
-                // The sample sends nothing: no read, no order check when it comes to the front.
-                if value == .active, !sample.isActive {
-                    // Launched before the first unlock (pre-warmed), the Keychain could not be read:
-                    // read it again now, before the home's foreground refresh runs.
-                    campus.reload()
-                    Task { await reminders.refreshAuthorization() }
-                    // Back from Alipay without a callback URL (checkout links): read the order.
-                    Task { await laundry.refreshOrder() }
+                // While the sample is shown the live app's work waits for it to be left (`LivePause`).
+                let pause = AppEnvironment.livePause
+                if value == .background, !pause.deferWhilePaused("schedule refresh", { BackgroundRefresh.scheduleRefresh() }) {
+                    BackgroundRefresh.scheduleRefresh()
+                }
+                if value == .active {
+                    let foreground: @MainActor @Sendable () -> Void = { [campus, laundry, reminders] in
+                        // Launched before the first unlock (pre-warmed), the Keychain could not be read:
+                        // read it again now, before the home's foreground refresh runs.
+                        campus.reload()
+                        Task { await reminders.refreshAuthorization() }
+                        // Back from Alipay without a callback URL (checkout links): read the order.
+                        Task { await laundry.refreshOrder() }
+                    }
+                    if !pause.deferWhilePaused("foreground", { await foreground() }) { foreground() }
                 }
             }
     }
