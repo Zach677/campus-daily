@@ -1,5 +1,6 @@
 import XCTest
 import Core
+import CoreTestSupport
 
 /// While 「先看看示例」 is shown the live app keeps working as usual: what it writes lands in the
 /// live Keychain and preferences at once (nothing is held for later), and the sample, on its
@@ -13,7 +14,7 @@ final class LiveWorkDuringSampleTests: XCTestCase {
         // As the app builds its live stores: the Keychain and preferences themselves.
         let store: SecureStore = keychain
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         sample.enter()
 
         try store.write(Data("live".utf8), for: .schoolPassword)

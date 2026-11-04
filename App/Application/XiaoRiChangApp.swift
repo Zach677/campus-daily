@@ -12,7 +12,7 @@ import Core
     init() {
         // Before any model reads: older builds kept items in the other keychain group.
         SharedKeychain.migrateItemGroups()
-        let sample = SampleMode()
+        let sample = SampleMode(gate:ShowerModel.liveGate)
         _sample = State(initialValue:sample)
         live = CampusGraph.live()
         // A reminder prompt queued on the live home waits while the sample covers it.

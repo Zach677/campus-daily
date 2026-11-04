@@ -10,6 +10,13 @@ public enum SampleAction: String, Sendable, CaseIterable {
     case reminders, sendFeedback, resetApp, schoolAccount
 }
 
+/// What became of 「先看看示例」 (`SampleMode.enter`).
+public enum SampleEntry: Equatable, Sendable {
+    case entered
+    /// A real shower is not over, or its record is not known (`LiveShowerGate`): nothing opens.
+    case refused
+}
+
 /// What became of a link that came in (`SampleMode.open`).
 public enum SampleLinkOutcome: Equatable, Sendable {
     /// Outside the sample: the live app handles it as before.
@@ -42,7 +49,10 @@ public enum SampleLinkOutcome: Equatable, Sendable {
     /// Other apps' links that came in during the sample, for the live app (`takeHeldLinks`).
     @ObservationIgnored private var held: [URL] = []
 
-    public init() {}
+    /// Decides between the sample and a real shower start (`LiveShowerGate`).
+    @ObservationIgnored public let gate: LiveShowerGate
+
+    public init(gate: LiveShowerGate) { self.gate = gate }
 
     /// The real shower is ended from the Live Activity or Siri (`LiveShowerFinish`): back to the
     /// live app as it was, not the login step. The sample's services go.
@@ -50,14 +60,22 @@ public enum SampleLinkOutcome: Equatable, Sendable {
         services = nil
         blocked = nil
         loginDue = false
+        gate.sampleLeft()
     }
 
-    /// From the login step: a new sample on new services, nothing chosen in it yet.
-    public func enter() {
+    /// From the login step: a new sample on new services, nothing chosen in it yet. Refused
+    /// unless the real shower record is known to be at rest and no real start is under way
+    /// (`LiveShowerGate.claimSample`); from then on no real start begins until it is left.
+    /// The only way in: no link opens the sample.
+    @discardableResult
+    public func enter() -> SampleEntry {
+        // Shown already: the gate is held, a new sample starts over.
+        if !isActive, !gate.claimSample() { return .refused }
         services = .sample()
         blocked = nil
         loginDue = false
         pendingLink = nil
+        return .entered
     }
 
     /// 去登录: back to the live app, on the login step. The sample's services, and everything
@@ -66,6 +84,7 @@ public enum SampleLinkOutcome: Equatable, Sendable {
         services = nil
         blocked = nil
         loginDue = true
+        gate.sampleLeft()
     }
 
     /// The login step is opening: once per `leave`. True when it was due.
@@ -97,6 +116,7 @@ public enum SampleLinkOutcome: Equatable, Sendable {
                 blocked = nil
                 loginDue = false
                 pendingLink = link
+                gate.sampleLeft()
                 return .leftSample
             case .home, .settings(account: false):
                 return .ignored

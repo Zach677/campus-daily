@@ -45,7 +45,15 @@ enum ShowerProfileFiles {
 /// mirrors its state (home, detail page, Live Activity, reminder). Runs on the `CampusServices`
 /// it is given: the live app's (`shared`), or a sample's, which hold no real session.
 @MainActor final class ShowerModel: ObservableObject {
-    static let shared = ShowerModel(services:AppEnvironment.live, reminders:.shared, activities:.shared)
+    static let shared = ShowerModel(services:AppEnvironment.live, reminders:.shared, activities:.shared, gate:liveGate)
+    /// Between the live hot water and 「先看看示例」 (`LiveShowerGate`): the sample opens only over
+    /// this model's record at rest, and no start begins while it is shown.
+    static let liveGate = LiveShowerGate()
+    /// The live model's gate; nil for a sample's, which holds no real session.
+    private let gate: LiveShowerGate?
+    /// How far the saved shower record has been read.
+    enum RecordLoad: Equatable { case notLoaded, loaded, failed }
+    private(set) var recordLoad = RecordLoad.notLoaded
     private let services: CampusServices
     private let reminders: Reminders
     /// The lock screen's 洗澡中; nil for a sample's.
@@ -104,10 +112,11 @@ enum ShowerProfileFiles {
     /// What the 「还在计时」 reminder counts from (`ShowerReminderStart`).
     private var reminderStart: Date?
 
-    init(services: CampusServices, reminders: Reminders, activities: ShowerActivityController?) {
+    init(services: CampusServices, reminders: Reminders, activities: ShowerActivityController?, gate: LiveShowerGate? = nil) {
         self.services = services
         self.reminders = reminders
         self.activities = activities
+        self.gate = gate
         residenceReviewRequired = services.defaults.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
         // What older builds' 导出热水诊断 kept on the phone; nothing writes it any more.
         if let support = services.applicationSupport {
@@ -115,9 +124,30 @@ enum ShowerProfileFiles {
                                                temporary:FileManager.default.temporaryDirectory)
         }
         binding = (try? services.showerVault.binding()) ?? nil
-        if let persisted = (try? services.showerVault.showerState()) ?? nil { state = ShowerReducer.restore(persisted) }
+        loadRecord()
         page = ShowerPageFlow(record:state)
+        gate?.record = { [weak self] in self?.gateRecord ?? .notLoaded }
         Task { await reloadProfile() }
+    }
+
+    /// Reads the saved record into `state`. A read that fails is kept as such (`recordLoad`),
+    /// not taken for "no shower": the sample stays shut over it.
+    private func loadRecord() {
+        do {
+            if let persisted = try services.showerVault.showerState() { state = ShowerReducer.restore(persisted) }
+            recordLoad = .loaded
+        } catch {
+            recordLoad = .failed
+        }
+    }
+
+    /// The record as `LiveShowerGate` sees it.
+    var gateRecord: LiveShowerGate.Record {
+        switch recordLoad {
+        case .notLoaded: return .notLoaded
+        case .failed: return .unreadable
+        case .loaded: return recordUnreadable ? .unreadable : .known(state)
+        }
     }
 
     // MARK: Derived state (what the views read)
@@ -189,7 +219,13 @@ enum ShowerProfileFiles {
         guard binding != nil else {
             // No engine to report it: the restored state is this run's first, and the lock
             // screen and the reminder follow it like an engine's first report.
-            apply(((try? services.showerVault.showerState()) ?? nil).map(ShowerReducer.restore) ?? .idle)
+            do {
+                apply((try services.showerVault.showerState()).map(ShowerReducer.restore) ?? .idle)
+                recordLoad = .loaded
+            } catch {
+                apply(.idle)
+                recordLoad = .failed
+            }
             return
         }
         let bleName: String
@@ -203,6 +239,8 @@ enum ShowerProfileFiles {
         do {
             let engine = try services.showerEngine(gateway:gateway, bleName:bleName)
             self.engine = engine
+            // The engine read the record: the one it reports is the one to go by.
+            if recordLoad == .failed { recordLoad = .loaded }
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
                 self?.storageBlocked = blocked
@@ -324,8 +362,15 @@ enum ShowerProfileFiles {
             guard !platformMissing else { message = Self.platformMissingText; throw ShowerActionFailure(.platformMissing) }
             activities?.settling()
         }
+        // The sample is not shown, and from here until this start's record is mirrored it
+        // doesn't open (`LiveShowerGate`): nothing is awaited between the checks and the claim.
+        let claimed = start && gate != nil
+        if claimed, gate?.claimStart() == false { throw ShowerActionFailure(SampleCopy.blocked) }
         busy = true; message = nil
-        defer { busy = false }
+        defer {
+            busy = false
+            if claimed { gate?.startEnded() }
+        }
         do {
             let result = start ? try await engine.start(binding) : try await engine.finish(binding)
             apply(result)
@@ -341,6 +386,9 @@ enum ShowerProfileFiles {
         } catch let failure as ShowerActionFailure {
             throw failure
         } catch {
+            // What the engine holds now (a start that got as far as the controller, say), mirrored
+            // before the start's claim goes.
+            apply(await engine.state)
             storageBlocked = await engine.storageBlocked
             // A start the engine turned down says what waits, from the record it holds now.
             throw ShowerActionFailure.thrown(error, failure:await engine.state.failure, other:AppErrorText.text)

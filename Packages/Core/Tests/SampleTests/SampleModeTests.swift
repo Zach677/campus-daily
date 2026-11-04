@@ -1,5 +1,6 @@
 import XCTest
 import Core
+import CoreTestSupport
 
 /// Counts every write; reads see what was written.
 private final class SpyPreferences: PreferenceStorage {
@@ -63,7 +64,7 @@ final class SampleModeTests: XCTestCase {
     /// close the first-run guide, leave. Nothing real is called and nothing live is written: the
     /// theme and the 「seen」 flag land in the sample's own preferences.
     func testEnteringAndLeavingWritesNothing() async throws {
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         let liveTheme = ThemePreference(storage: shared)
         sample.enter()
         let services = try XCTUnwrap(sample.services)
@@ -96,7 +97,7 @@ final class SampleModeTests: XCTestCase {
     /// The theme picked in the sample is gone with it: the stored one shows again, and the next
     /// sample starts on the default.
     func testThemeIsHeldOnlyWhileInTheSample() throws {
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         let live = ThemePreference(storage: shared)
         sample.enter()
         let theme = ThemePreference(storage: try XCTUnwrap(sample.services?.sharedPreferences))
@@ -112,7 +113,7 @@ final class SampleModeTests: XCTestCase {
     /// Money paths in the sample never reach the service; outside it they do (control).
     func testMoneyActionsReachTheServiceOnlyOutsideTheSample() async {
         let money: [SampleAction] = [.cardRecharge, .powerRecharge, .startShower, .startWash, .payLaundry]
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         sample.enter()
         for action in money {
             sample.perform(action) { service.run(action) }
@@ -133,7 +134,7 @@ final class SampleModeTests: XCTestCase {
 
     /// Outside the sample, writes and the theme choice go through as before.
     func testOutsideTheSampleEverythingIsStored() throws {
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         let theme = ThemePreference(storage: shared)
         QuickSetupSeen.closed(in: preferences, coveredBySample: sample.isActive)
         XCTAssertEqual(preferences.writes, 1)
@@ -145,18 +146,18 @@ final class SampleModeTests: XCTestCase {
     /// The sample is not kept: a new launch (a new instance) starts outside it, and entering
     /// it stores nowhere a later launch could read it from.
     func testSampleIsNotPersisted() {
-        let first = SampleMode()
+        let first = SampleMode.overIdleShower()
         first.enter()
         XCTAssertTrue(first.isActive)
         XCTAssertEqual(preferences.writes + shared.writes + keychain.writes, 0)
-        let relaunched = SampleMode()
+        let relaunched = SampleMode.overIdleShower()
         XCTAssertFalse(relaunched.isActive)
         XCTAssertNil(relaunched.services)
     }
 
     /// A theme lock (a run going on) still holds in the sample.
     func testLockedThemeDoesNotChangeInTheSample() throws {
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         sample.enter()
         let theme = ThemePreference(storage: try XCTUnwrap(sample.services?.sharedPreferences))
         XCTAssertFalse(try theme.select(.clear, current: .warm, lock: .shower, under: PlainLock()))
@@ -166,7 +167,7 @@ final class SampleModeTests: XCTestCase {
 
     /// 去登录 opens the login step once, on whichever root shows next; a launch has none due.
     func testLeavingOpensTheLoginOnce() {
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         XCTAssertFalse(sample.takeLogin())
         sample.enter()
         XCTAssertFalse(sample.loginDue)

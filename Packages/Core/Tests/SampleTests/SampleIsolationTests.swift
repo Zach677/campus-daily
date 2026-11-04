@@ -1,5 +1,6 @@
 import XCTest
 import Core
+import CoreTestSupport
 
 /// The live app's stores and services, every touch counted. `trap`: any touch also fails the test.
 private final class LiveSpies: @unchecked Sendable {
@@ -82,7 +83,7 @@ final class SampleIsolationTests: XCTestCase {
         try live.showerVault.saveShowerState(running)
         store.counting = true
 
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         sample.enter()
         let services = sample.services(live: live)
         XCTAssertNil(try services.showerVault.showerState(), "the real session shows in the sample")
@@ -114,7 +115,7 @@ final class SampleIsolationTests: XCTestCase {
     func testTheSampleHoldsNoLiveStoreOrService() async throws {
         let spies = LiveSpies(trap: true)
         let live = liveServices(spies, store: SpyStore(spies))
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         sample.enter()
         let services = sample.services(live: live)
         XCTAssertFalse(services === live)
@@ -143,7 +144,7 @@ final class SampleIsolationTests: XCTestCase {
 
     /// Each sample starts empty: what one stored (a theme, a seen flag) is gone with it.
     func testEachSampleStartsOnNewServices() throws {
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         sample.enter()
         let first = try XCTUnwrap(sample.services)
         first.defaults.set(true, forKey: QuickSetupSeen.key)
@@ -179,7 +180,7 @@ final class SampleIsolationTests: XCTestCase {
     /// opens, and the live root gets the link once; nothing for the live root while it is on.
     func testLoginLinksLeaveTheSampleBeforeTheLiveRootOpensThem() throws {
         for (text, link) in [("campusdaily://login", RootLink.login), ("campusdaily://settings/account", .settings(account: true))] {
-            let sample = SampleMode()
+            let sample = SampleMode.overIdleShower()
             sample.enter()
             XCTAssertEqual(sample.open(URL(string: text)!), .leftSample)
             XCTAssertFalse(sample.isActive)
@@ -194,7 +195,7 @@ final class SampleIsolationTests: XCTestCase {
     /// Other campusdaily links leave the sample on screen and open nothing; another app's answer
     /// (Alipay) waits for the live app; outside the sample every link is the live app's.
     func testOtherLinksInTheSample() throws {
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         XCTAssertEqual(sample.open(URL(string: "campusdaily://login")!), .live)
         XCTAssertEqual(sample.takePendingLink(), .login)
         sample.enter()
@@ -217,7 +218,7 @@ final class SampleIsolationTests: XCTestCase {
     func testSetupClosedByTheSampleIsNotSeen() {
         let spies = LiveSpies()
         let live = SpyPreferences(spies)
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         sample.enter()
         QuickSetupSeen.closed(in: live, coveredBySample: sample.isActive)
         XCTAssertEqual(spies.count, 0)
@@ -230,7 +231,7 @@ final class SampleIsolationTests: XCTestCase {
     /// in the sample it is neither shown nor taken nor marked shown; after it, it shows once.
     func testQueuedReminderPromptWaitsForTheLiveApp() {
         let spies = LiveSpies()
-        let sample = SampleMode()
+        let sample = SampleMode.overIdleShower()
         let queue = ReminderPromptQueue(storage: SpyPreferences(spies), promptedKey: "xrc.reminder.prompted",
                                         held: { [weak sample] in sample?.isActive ?? false })
         queue.request(notDetermined: true)

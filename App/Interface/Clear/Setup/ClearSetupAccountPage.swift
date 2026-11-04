@@ -8,6 +8,8 @@ struct ClearSetupAccountPage: View {
     let done: () -> Void
     @EnvironmentObject private var campus: CampusModel
     @Environment(SampleMode.self) private var sample
+    /// Observed so the sample entry follows the live shower record (`LiveShowerGate`).
+    @EnvironmentObject private var water: ShowerModel
     @State private var account: String
     @State private var password: String
     /// 「保存密码，让小组件自动刷新」: on by default only while the account is the saved one.
@@ -43,6 +45,7 @@ struct ClearSetupAccountPage: View {
 
     private var ready: Bool { !account.trimmingCharacters(in:.whitespaces).isEmpty && !password.isEmpty }
     private var loggingIn: Bool { loginState == .loading }
+    private var sampleAllowed: Bool { sample.gate.sampleAllowed }
 
     var body: some View {
         ClearSetupStep(navTitle:SetupChecklist.title(.account), heading:"登录学校账号",
@@ -64,9 +67,19 @@ struct ClearSetupAccountPage: View {
                     .accessibilityIdentifier("webLogin")
             }
             // As on 暖橙's login step: synthetic data, nothing stored or sent; the root closes this.
+            // Shut while the real shower is not over or its record not read (`LiveShowerGate`).
             ClearSetupTextButton(title:SampleCopy.entry) { sample.enter() }
-                .disabled(loggingIn)
+                .disabled(loggingIn || !sampleAllowed)
                 .accessibilityIdentifier("sampleEntry")
+                .accessibilityHint(sampleAllowed ? "" : SampleCopy.entryRefused)
+            if !sampleAllowed {
+                ClearNoticeText(SampleCopy.entryRefused)
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
+                    .frame(maxWidth:.infinity)
+                    .accessibilityIdentifier("sampleEntryRefused")
+                    .accessibilityHidden(true)
+            }
         }
         .sheet(isPresented:$webLogin) {
             CampusLoginSheet { value in

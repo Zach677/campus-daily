@@ -1,5 +1,6 @@
 import XCTest
 import Core
+import CoreTestSupport
 
 /// Leaving the sample shows the live root again: on a fresh install its first-run check asks for
 /// the guide at once, and 去登录 or a login link asks again a moment later. The second ask must
@@ -49,7 +50,7 @@ final class GuideRequestTests: XCTestCase {
             { $0.open(login) == .leftSample && $0.takePendingLink() == .login },
         ]
         for leave in ways {
-            let sample = SampleMode()
+            let sample = SampleMode.overIdleShower()
             let seen = SeenCounter()
             var shown: GuideRequest<Step>?   // the live root's, new after the sample
             var presentations = 0

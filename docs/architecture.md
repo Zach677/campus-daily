@@ -68,7 +68,9 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     Sample/           the synthetic data the DEBUG demos and the Release sample mode show (SampleData),
                       and the sample mode itself (SampleMode: in memory only; while on, actions that pay,
                       open water, bind, send or store are refused with SampleCopy.blocked, the theme
-                      picked in it is held there and nothing is written)
+                      picked in it is held there and nothing is written), and LiveShowerGate: it opens
+                      only while the live shower record is known to be at rest with no start under
+                      way, and no real start begins while it is shown
   Tests/
     CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/ SampleTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport

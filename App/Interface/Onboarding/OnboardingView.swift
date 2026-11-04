@@ -388,9 +388,20 @@ struct OnboardingView: View {
                                 .accessibilityIdentifier("webLogin")
                         }
                         // For a look without an account (App Review): synthetic data, nothing stored or sent.
+                        // Shut while the real shower is not over or its record not read (`LiveShowerGate`);
+                        // `water` is observed, so the line follows its record.
+                        let sampleAllowed = sample.gate.sampleAllowed
                         secondary(SampleCopy.entry) { sample.enter() }
-                            .disabled(loggingIn)
+                            .disabled(loggingIn || !sampleAllowed)
                             .accessibilityIdentifier("sampleEntry")
+                            .accessibilityHint(sampleAllowed ? "" : SampleCopy.entryRefused)
+                        if !sampleAllowed {
+                            Text(SampleCopy.entryRefused)
+                                .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                                .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
+                                .accessibilityIdentifier("sampleEntryRefused")
+                                .accessibilityHidden(true)
+                        }
                     }
                 }
             }
