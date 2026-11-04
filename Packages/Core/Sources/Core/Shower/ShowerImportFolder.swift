@@ -14,7 +14,7 @@ public enum ShowerImportFolder {
         try excludeFromBackup(folder)
     }
 
-    static func excludeFromBackup(_ folder: URL) throws {
+    private static func excludeFromBackup(_ folder: URL) throws {
         var url = folder
         var values = URLResourceValues()
         values.isExcludedFromBackup = true

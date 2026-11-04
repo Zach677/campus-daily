@@ -28,13 +28,11 @@ import Core
                              checkingController:shower.inspecting)
     }
 
-    /// Files the app wrote (the imported hot-water file, the laundry cache, what older builds left:
-    /// the hot-water diagnostics and their export, the Bluetooth scan note). The bundled hot-water
-    /// parameters are app resources and stay.
+    /// Files the app wrote (the imported hot-water file, the laundry cache). The bundled
+    /// hot-water parameters are app resources and stay.
     static var files: [URL] {
         let support = FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask)[0]
-        return ["Water", "LaundryCache", "WaterSession"].map { support.appendingPathComponent($0, isDirectory:true) }
-            + [RetiredDiagnostics.exportFolder(in:FileManager.default.temporaryDirectory)]
+        return ["Water", "LaundryCache"].map { support.appendingPathComponent($0, isDirectory:true) }
     }
 
     /// A reset left unfinished by the last run of the app was found at launch and stopped by a

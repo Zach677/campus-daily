@@ -98,10 +98,6 @@ enum ShowerProfileFiles {
     private var reminderStart: Date?
 
     init() {
-        // What older builds' 导出热水诊断 kept on the phone; nothing writes it any more.
-        RetiredDiagnostics.removeLeftovers(store:AppEnvironment.store,
-                                           applicationSupport:FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask)[0],
-                                           temporary:FileManager.default.temporaryDirectory)
         binding = (try? AppEnvironment.showerVault.binding()) ?? nil
         if let persisted = (try? AppEnvironment.showerVault.showerState()) ?? nil { state = ShowerReducer.restore(persisted) }
         page = ShowerPageFlow(record:state)

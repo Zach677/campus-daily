@@ -264,8 +264,7 @@ liveness OK); `school.portal` carries `obtainedAt` (first saved). When the liven
 portal says one is dead, one diagnostic line records only the kind and measured minutes:
 `school.credentialExpired kind=card ageMinutes=152 aliveMinutes=92` / `kind=portal ageMinutes=481`
 (once per credential per process). Both processes write it to the system log only (subsystem
-`org.zaxh.xiaorichang`, category `snapshot`). The `shared.credentialLog` Keychain item
-older builds wrote is deleted at launch (`RetiredDiagnostics`) and by reset.
+`org.zaxh.xiaorichang`, category `snapshot`).
 
 **One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
 the background task, the refreshes after a state change (sign-in, meter choice, recharge), and
@@ -712,7 +711,6 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
-| credential-lifetime lines from older builds (deleted at launch, never written) | Keychain `shared.credentialLog` | same | **yes** |
 | refresh lease (`{owner, expiresAt}`, one school read at a time across processes) | file `refresh.lease` in the App Group container | until first unlock | **yes** (the widget takes it for its own read) |
 | reset-in-progress marker (start time) | Keychain `shared.resetMarker` | same | **yes** (any process that can start a shower or a laundry order checks it) |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard); most keys prefixed `xrc.`, not `didSeeQuickSetup`, `laundryDoneShownOrder`, `laundryLastProgram.*` | – | no |
