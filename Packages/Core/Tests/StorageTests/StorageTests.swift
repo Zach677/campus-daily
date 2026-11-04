@@ -170,12 +170,12 @@ final class KeychainStoreTests: XCTestCase {
         for k in never { XCTAssertNil(try widget.read(k), k.rawValue) }
     }
 
-    /// Re-signed IPA without the keychain-access-groups entitlement: fall back to no group.
+    /// A build signed without the keychain-access-groups entitlement: fall back to no group.
     func testFallsBackWhenGroupWriteFails() throws {
-        let kc = FakeKeychain(entitlements: ["TEAMID1234.com.example.resigned"])
+        let kc = FakeKeychain(entitlements: ["TEAMID1234.com.example.other"])
         let store = appStore(kc)
         try store.write(Data("s".utf8), for: .sharedSnapshot)
-        XCTAssertEqual(kc.items[key(.sharedSnapshot, "TEAMID1234.com.example.resigned")], Data("s".utf8))
+        XCTAssertEqual(kc.items[key(.sharedSnapshot, "TEAMID1234.com.example.other")], Data("s".utf8))
         XCTAssertEqual(try store.read(.sharedSnapshot), Data("s".utf8))
         try store.write(Data("w".utf8), for: .showerBinding)
         XCTAssertEqual(try store.read(.showerBinding), Data("w".utf8))
@@ -217,8 +217,8 @@ final class KeychainStoreTests: XCTestCase {
 
     /// An item the app wrote before it was pinned to the group (default group) is still read.
     func testSchoolSessionWrittenWithoutGroupStillReads() throws {
-        let kc = FakeKeychain(entitlements: ["TEAMID1234.com.example.resigned"])
-        kc.items[key(.schoolEcykt, "TEAMID1234.com.example.resigned")] = try JSONEncoder().encode(EcyktSession(token: "t", syscustid: "old"))
+        let kc = FakeKeychain(entitlements: ["TEAMID1234.com.example.other"])
+        kc.items[key(.schoolEcykt, "TEAMID1234.com.example.other")] = try JSONEncoder().encode(EcyktSession(token: "t", syscustid: "old"))
         let vault = StoredSchoolVault(store: appStore(kc))
         XCTAssertEqual(try vault.ecyktSession()?.syscustid, "old")
     }

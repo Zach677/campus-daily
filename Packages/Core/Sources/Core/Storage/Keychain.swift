@@ -20,7 +20,7 @@ public enum KeychainStatus {
 /// Keychain store with two access groups: the shared group the widget can read, for keys whose
 /// `isShared` is true, and the app's private group for everything else.
 ///
-/// Re-signed IPAs may lose the `keychain-access-groups` entitlement. When a write with a group
+/// A build signed without the `keychain-access-groups` entitlement can't use the groups. When a write with a group
 /// fails with `errSecMissingEntitlement`, the store falls back to **no access group** (the
 /// default group) for that group and remembers it for later reads/writes; the widget then simply
 /// has no data, and the app keeps working. Any other write failure (a locked device, say) is
