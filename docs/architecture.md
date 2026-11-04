@@ -118,8 +118,9 @@ targets all build in Swift 6 language mode.
   client's request wait comes from its configuration), body cap 64 KiB (1 MiB for campus-wide
   `getMeterStatus`). HTTPS only, default TLS, per-client host allow-list (school hosts,
   `isv.lxt6.cn`, `phoenix.ujing.online`).
-- Logging: `os.Logger` with method, host, path, status, latency, decoded `code` only. Query
-  strings, bodies and headers are never logged; a `Redactor` masks token/ticket/sign/sid/custid/
+- Logging: `os.Logger` with method, host, the request's `logName`, status, latency, decoded
+  `code` only. Paths (U净 order paths carry the order id), query strings, bodies and headers
+  are never logged; a `Redactor` masks token/ticket/sign/sid/custid/
   syscustid keys if a DEBUG body dump is needed.
 - Error classification (`ServiceError`, in Core/Common):
 

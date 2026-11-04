@@ -72,7 +72,7 @@ public protocol SchoolPasswordLogin: Sendable {
 /// 3. `POST /cas/login?service=…` with `"__RSA__" + base64(PKCS#1 v1.5(password))`, redirects
 ///    not followed → `Location` carries `ticket`, a JWT whose payload holds the portal `idToken`.
 /// Cookies live only for one login. The password, ticket, idToken and `execution` are never
-/// logged (the HTTP log records host, path and status only).
+/// logged (the HTTP log records host, request name and status only).
 public struct CASLoginClient: SchoolPasswordLogin {
     let http: HTTPClient
     let now: @Sendable () -> Date
