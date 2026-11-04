@@ -733,11 +733,8 @@ private group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER)` (`AppIdentity.key
 then the shared group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER).shared`
 Widget.entitlements lists only the shared group. Order matters:
 iOS puts an item written without a group into the first listed group, and the code takes the
-groups from that default group (`SharedKeychain.sharedGroup(defaultGroup:inExtension:bundleID:)`): the
-app's shared group is its default plus `.shared`, the widget's is its default itself. A re-signer
-that grants a wildcard (`TEAM.*`) makes each default group the process's own bundle id; the
-widget's default then doesn't end in `.shared`, and it uses `TEAM.<bundle id without
-.balances>.shared`, the app's (a signature that doesn't allow it falls back to no group). The
+groups from that default group (`SharedKeychain.sharedGroup(defaultGroup:inExtension:)`): the
+app's shared group is its default plus `.shared`, the widget's is its default itself. The
 first probe of the default group (a throwaway item deleted and added again) is serialised, so two
 first uses at once can't make one of them fail. Items marked "yes" are
 written to the shared group; all others are written to the private group, which the widget is

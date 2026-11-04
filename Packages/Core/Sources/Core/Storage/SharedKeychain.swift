@@ -26,21 +26,11 @@ public enum SharedKeychain {
         return (out as? [String:Any])?[kSecAttrAccessGroup as String] as? String
     }
 
-    /// The shared group, from the group a write without one lands in: the entitlements list the
-    /// app's private group first, so the app's shared group is that plus `.shared`; the widget's
-    /// only group is the shared one. Taken from the signature, not Info.plist, so an IPA
-    /// re-signed under another bundle id still has the app and the widget meet in one group.
-    /// A re-signer that grants a wildcard (`TEAM.*`) makes each default group the process's own
-    /// bundle id, `TEAM.<app id>.balances` in the widget: a widget default group that isn't a
-    /// `.shared` one then gives way to `TEAM.<bundle id without .balances>.shared`, the app's
-    /// (as `AppIdentity.appGroupCandidates` does for the App Group). A signature that doesn't
-    /// allow that group answers missing-entitlement, and the store falls back to no group.
-    public static func sharedGroup(defaultGroup group: String, inExtension: Bool, bundleID: String? = nil) -> String {
-        guard inExtension else { return group + ".shared" }
-        guard !group.hasSuffix(".shared"), var app = bundleID, !app.isEmpty,
-              let team = group.split(separator: ".", maxSplits: 1).first, team.count < group.count else { return group }
-        if app.hasSuffix(".balances") { app = String(app.dropLast(".balances".count)) }
-        return String(team) + "." + app + ".shared"
+    /// The shared group, from the group a write without one lands in (it carries the team
+    /// prefix): the entitlements list the app's private group first, so the app's shared group is
+    /// that plus `.shared`; the widget's only group is the shared one.
+    public static func sharedGroup(defaultGroup group: String, inExtension: Bool) -> String {
+        inExtension ? group : group + ".shared"
     }
 
     /// The app's default group is its private one; the widget has none.
@@ -60,12 +50,9 @@ public final class KeychainGroupProbe: Sendable {
     private let probing = NSLock()
     /// The widget (`AppIdentity.inExtension`): its default group is the shared one.
     private let inExtension: Bool
-    /// The bundle id this process runs under (the widget's ends in `.balances`).
-    private let bundleID: String?
 
-    public init(inExtension: Bool = AppIdentity.inExtension, bundleID: String? = Bundle.main.bundleIdentifier,
-                _ probe: @escaping @Sendable () -> String?) {
-        self.inExtension = inExtension; self.bundleID = bundleID; self.probe = probe
+    public init(inExtension: Bool = AppIdentity.inExtension, _ probe: @escaping @Sendable () -> String?) {
+        self.inExtension = inExtension; self.probe = probe
     }
 
     /// One probe at a time: two first uses at once would interleave their delete and add, and
@@ -81,7 +68,7 @@ public final class KeychainGroupProbe: Sendable {
     }
 
     public var sharedGroup: String? {
-        defaultGroup.map { SharedKeychain.sharedGroup(defaultGroup:$0, inExtension:inExtension, bundleID:bundleID) }
+        defaultGroup.map { SharedKeychain.sharedGroup(defaultGroup:$0, inExtension:inExtension) }
     }
     public var privateGroup: String? { defaultGroup.flatMap { SharedKeychain.privateGroup(defaultGroup:$0, inExtension:inExtension) } }
 }

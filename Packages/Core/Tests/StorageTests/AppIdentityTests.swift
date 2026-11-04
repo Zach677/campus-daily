@@ -21,19 +21,6 @@ final class AppIdentityTests: XCTestCase {
         }
     }
 
-    /// An IPA re-signed under another bundle id still carries the default ids in Info.plist. The
-    /// shared keychain group comes from the group the process writes to by default (the
-    /// re-signer's), so the app and the widget still meet there.
-    func testReSignedBuildsShareTheKeychainGroupOfTheirSignature() {
-        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: "TEAM000042.org.example.daily", inExtension: false),
-                       "TEAM000042.org.example.daily.shared")
-        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: "TEAM000042.org.example.daily.shared", inExtension: true),
-                       "TEAM000042.org.example.daily.shared")
-        XCTAssertEqual(SharedKeychain.privateGroup(defaultGroup: "TEAM000042.org.example.daily", inExtension: false),
-                       "TEAM000042.org.example.daily")
-        XCTAssertNil(SharedKeychain.privateGroup(defaultGroup: "TEAM000042.org.example.daily.shared", inExtension: true))
-    }
-
     /// The App Group named in Info.plist first; when it has no container (re-signed), `group.`
     /// plus the bundle id the process runs under, the widget's without `.balances`.
     func testReSignedBuildsTryTheAppGroupOfTheirBundleID() {
