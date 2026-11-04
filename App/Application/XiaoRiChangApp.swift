@@ -16,8 +16,6 @@ import Core
                                                lock:AppEnvironment.sharedLock) { [weak laundry] in
             ThemeLock.lock(shower:ShowerModel.shared.state, laundry:laundry?.checkout?.phase)
         })
-        // Before any model reads: older builds kept items in the other keychain group.
-        SharedKeychain.migrateItemGroups()
         // FinishShowerLiveIntent (Live Activity button) runs in this process.
         ShowerActivityBridge.finish = { _ = try await ShowerModel.shared.run(start:false) }
         // Notification delegate must be set before launch finishes, so a tapped banner is routed.

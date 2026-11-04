@@ -27,13 +27,6 @@ public enum KeychainStatus {
 /// default group) for that group and remembers it for later reads/writes; the widget then simply
 /// has no data, and the app keeps working. Any other write failure (a locked device, say) is
 /// thrown and changes nothing for later writes.
-///
-/// An item can sit in the other group from where its key now belongs: builds before the private
-/// group existed wrote everything into the shared group, and builds before the widget refreshed
-/// by itself kept the portal token and login device id in the private group. Such an item is
-/// moved: written to its group, read back, and only then deleted from the old one. Any failed
-/// step leaves the old copy as it was, so nobody is signed out; the move is retried on the next
-/// read or `migrateItemGroups()`.
 public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
     // @unchecked: mutable state guarded by `lock`.
     private let backend: KeychainBackend
@@ -72,25 +65,10 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
         usable(key.isShared ? sharedGroup : privateGroup)
     }
 
-    /// The other group, where an older build may have left this key: the shared group for a
-    /// private key, the private group for a shared one. Nil without both groups (the widget has
-    /// no private group, so it never moves anything).
-    private func legacyGroup(for key: StoreKey) -> String? {
-        guard let privateGroup, let sharedGroup, usable(privateGroup) != nil, usable(sharedGroup) != nil else { return nil }
-        return key.isShared ? privateGroup : sharedGroup
-    }
-
     public func read(_ key: StoreKey) throws -> Data? {
         let group = group(for: key)
         var r = backend.copy(service: key.service, account: StoreKey.account, accessGroup: group)
         if group != nil, r.status == KeychainStatus.itemNotFound || r.status == KeychainStatus.missingEntitlement {
-            if let legacy = legacyGroup(for: key) {
-                let old = backend.copy(service: key.service, account: StoreKey.account, accessGroup: legacy)
-                if old.status == KeychainStatus.success, let data = old.data {
-                    _ = move(key, data)
-                    return data
-                }
-            }
             // An earlier fallback write may have stored it without the group.
             r = backend.copy(service: key.service, account: StoreKey.account, accessGroup: nil)
         }
@@ -122,45 +100,6 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
         if let bad = statuses.first(where: { $0 != KeychainStatus.success && $0 != KeychainStatus.itemNotFound && $0 != KeychainStatus.missingEntitlement }) {
             throw StorageError(operation: "delete \(key.rawValue)", status: bad)
         }
-    }
-
-    /// Moves every item still in its old group into the group its key belongs to. Returns the
-    /// keys still in their old group (a step failed; retried next time).
-    @discardableResult
-    public func migrateItemGroups() -> [StoreKey] {
-        StoreKey.allCases.filter { key in
-            guard let legacy = legacyGroup(for: key) else { return false }
-            let old = backend.copy(service: key.service, account: StoreKey.account, accessGroup: legacy)
-            if old.status == KeychainStatus.itemNotFound { return false }
-            guard old.status == KeychainStatus.success, let data = old.data else { return true }
-            return !move(key, data)
-        }
-    }
-
-    /// New copy first; the old copy goes only once the new one reads back the same. A copy
-    /// already in the new group is newer (this build writes nowhere else), so it is kept.
-    /// A failed read-back deletes nothing: the new copy may already be a newer value written
-    /// meanwhile, and a leftover copy of the old value is harmless (the next run compares
-    /// against it and finishes the move). The new copy gets the key's accessibility today.
-    private func move(_ key: StoreKey, _ legacyData: Data) -> Bool {
-        guard let target = group(for: key), let source = legacyGroup(for: key) else { return false }
-        let existing = backend.copy(service: key.service, account: StoreKey.account, accessGroup: target)
-        let expected: Data
-        switch existing.status {
-        case KeychainStatus.success:
-            guard let data = existing.data else { return false }
-            expected = data
-        case KeychainStatus.itemNotFound:
-            let added = backend.add(service: key.service, account: StoreKey.account, accessGroup: target,
-                                    accessibility: key.accessibility, data: legacyData)
-            guard added == KeychainStatus.success else { return false }
-            expected = legacyData
-        default:
-            return false
-        }
-        let back = backend.copy(service: key.service, account: StoreKey.account, accessGroup: target)
-        guard back.status == KeychainStatus.success, back.data == expected else { return false }
-        return backend.delete(service: key.service, account: StoreKey.account, accessGroup: source) == KeychainStatus.success
     }
 
     private func upsert(_ key: StoreKey, _ data: Data, _ group: String?) -> Int32 {

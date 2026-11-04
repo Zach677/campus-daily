@@ -750,12 +750,7 @@ written to the shared group; all others are written to the private group, which 
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
 registration. The widget reads the school items above for its own refresh, and `shared.snapshot`,
 and `shared.reminderLines`, and shares the lease file in the App
-Group container. An item can still sit in its old group: builds before the private group existed kept
-every item in the shared group, and builds before the widget refreshed by itself kept the portal
-token (then WhenUnlocked) and the login device id in the private group. At launch
-(`migrateItemGroups()`) and on any read that finds one there, the item is written to its group
-with today's accessibility, read back, and only then deleted from the old group; a failed step
-keeps the original and retries next launch, so nobody is signed out or loses a binding. The App
+Group container. The App
 Group (`group.$(APP_BUNDLE_IDENTIFIER)`, both targets) holds the lease file and the theme
 choice (its UserDefaults, `xrc.theme`); a re-signed
 build without it keeps working: the app keeps its lease file in its own container

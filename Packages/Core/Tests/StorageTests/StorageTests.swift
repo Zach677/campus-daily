@@ -231,30 +231,6 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertNil(kc.items[key(.showerBinding, group)])
     }
 
-    /// Items an older build wrote into the shared group (then the only one) move to the private
-    /// group; the binding and sessions stay readable throughout.
-    func testMigrationMovesPrivateItemsOutOfTheSharedGroup() throws {
-        let kc = appKeychain()
-        let moved: [StoreKey] = [.showerBinding, .showerSession, .laundryAccount, .laundryCheckout]
-        for k in moved + [.schoolEcykt, .sharedSnapshot] { kc.items[key(k, group)] = Data(k.rawValue.utf8) }
-        let store = appStore(kc)
-        XCTAssertEqual(store.migrateItemGroups(), [])
-        for k in moved {
-            XCTAssertNil(kc.items[key(k, group)], k.rawValue)
-            XCTAssertEqual(kc.items[key(k, app)], Data(k.rawValue.utf8), k.rawValue)
-            XCTAssertEqual(kc.accessibility[key(k, app)], k.accessibility, k.rawValue)
-            XCTAssertEqual(try store.read(k), Data(k.rawValue.utf8), k.rawValue)
-        }
-        // Shared items stay where the widget reads them.
-        XCTAssertEqual(kc.items[key(.schoolEcykt, group)], Data("school.ecykt".utf8))
-        XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("shared.snapshot".utf8))
-        XCTAssertNil(kc.items[key(.schoolEcykt, app)])
-        // Nothing left: a second run touches nothing.
-        kc.calls = []
-        XCTAssertEqual(store.migrateItemGroups(), [])
-        XCTAssertFalse(kc.calls.contains { $0.hasPrefix("add") || $0.hasPrefix("delete") })
-    }
-
     /// Every item, pinned: the group the widget can read and the accessibility. A change here
     /// changes what the widget can see or when an item can be read; update docs/privacy.md too.
     func testEveryItemsGroupAndAccessibilityArePinned() throws {
@@ -269,135 +245,6 @@ final class KeychainStoreTests: XCTestCase {
             XCTAssertNil(kc.items[key(k, other)], k.rawValue)
             XCTAssertEqual(kc.accessibility[key(k, home)], .afterFirstUnlockThisDeviceOnly, k.rawValue)
         }
-    }
-
-    /// Builds before the widget refreshed by itself kept the portal token (WhenUnlocked) and the
-    /// login device id in the private group: they move to the shared group with the new
-    /// accessibility, and the widget then reads them.
-    func testPortalTokenAndDeviceMoveIntoTheSharedGroup() throws {
-        let kc = appKeychain()
-        let portal = key(.schoolPortal, app), device = key(.schoolDevice, app)
-        kc.items[portal] = Data("portal".utf8); kc.accessibility[portal] = .whenUnlockedThisDeviceOnly
-        kc.items[device] = Data("device".utf8)
-        let store = appStore(kc)
-        XCTAssertEqual(store.migrateItemGroups(), [])
-        XCTAssertNil(kc.items[portal]); XCTAssertNil(kc.items[device])
-        XCTAssertEqual(kc.items[key(.schoolPortal, group)], Data("portal".utf8))
-        XCTAssertEqual(kc.accessibility[key(.schoolPortal, group)], .afterFirstUnlockThisDeviceOnly)
-        XCTAssertEqual(kc.items[key(.schoolDevice, group)], Data("device".utf8))
-        let widget = KeychainSecureStore(backend: FakeKeychainView(kc, entitlements: [group]), accessGroup: group)
-        XCTAssertEqual(try widget.read(.schoolPortal), Data("portal".utf8))
-    }
-
-    /// The move into the shared group keeps the old copy when a step fails (a locked phone can't
-    /// read a WhenUnlocked item), so the user stays signed in; the next launch finishes it.
-    func testPortalTokenMoveFailureKeepsTheOldCopy() throws {
-        let kc = appKeychain()
-        let portal = key(.schoolPortal, app)
-        kc.items[portal] = Data("portal".utf8)
-        kc.failing["copy \(app)"] = -25308
-        let store = appStore(kc)
-        // The private group can't be read: every shared key may still have a copy there, so all are pending.
-        XCTAssertEqual(store.migrateItemGroups(), StoreKey.allCases.filter(\.isShared))
-        XCTAssertEqual(kc.items[portal], Data("portal".utf8))
-        XCTAssertNil(kc.items[key(.schoolPortal, group)])
-        kc.failing = ["add \(group)": -25308]
-        XCTAssertEqual(store.migrateItemGroups(), [.schoolPortal])
-        XCTAssertEqual(kc.items[portal], Data("portal".utf8))
-        kc.failing = [:]
-        XCTAssertEqual(store.migrateItemGroups(), [])
-        XCTAssertNil(kc.items[portal])
-        XCTAssertEqual(try store.read(.schoolPortal), Data("portal".utf8))
-    }
-
-    /// The widget has no private group: it never tries to move anything.
-    func testWidgetNeverMoves() throws {
-        let kc = appKeychain()
-        kc.items[key(.schoolPortal, app)] = Data("portal".utf8)
-        let widget = KeychainSecureStore(backend: FakeKeychainView(kc, entitlements: [group]), accessGroup: group)
-        XCTAssertEqual(widget.migrateItemGroups(), [])
-        XCTAssertNil(try widget.read(.schoolPortal))
-        XCTAssertEqual(kc.items[key(.schoolPortal, app)], Data("portal".utf8))
-    }
-
-    /// A read finds the old copy and moves it on the way.
-    func testReadMovesAnOldSharedCopy() throws {
-        let kc = appKeychain()
-        let binding = Data("binding".utf8)
-        kc.items[key(.showerBinding, group)] = binding
-        let store = appStore(kc)
-        XCTAssertEqual(try store.read(.showerBinding), binding)
-        XCTAssertEqual(kc.items[key(.showerBinding, app)], binding)
-        XCTAssertNil(kc.items[key(.showerBinding, group)])
-    }
-
-    /// Any failed step keeps the shared copy, so the user stays signed in and bound; the next
-    /// launch finishes the move.
-    func testMigrationFailureKeepsTheOriginalAndRetries() throws {
-        let binding = Data("binding".utf8), account = Data("account".utf8)
-        // Write to the private group fails.
-        do {
-            let kc = appKeychain()
-            kc.items[key(.showerBinding, group)] = binding
-            kc.failing["add \(app)"] = -25308
-            let store = appStore(kc)
-            XCTAssertEqual(store.migrateItemGroups(), [.showerBinding])
-            XCTAssertEqual(kc.items[key(.showerBinding, group)], binding)
-            XCTAssertNil(kc.items[key(.showerBinding, app)])
-            XCTAssertEqual(try store.read(.showerBinding), binding)
-            kc.failing = [:]
-            XCTAssertEqual(store.migrateItemGroups(), [])
-            XCTAssertEqual(kc.items[key(.showerBinding, app)], binding)
-            XCTAssertNil(kc.items[key(.showerBinding, group)])
-        }
-        // Read-back fails: the shared copy is kept and nothing is deleted from the private group
-        // (it may hold a newer value by then); the next run finishes the move.
-        do {
-            let kc = appKeychain()
-            kc.items[key(.laundryAccount, group)] = account
-            let store = appStore(kc)
-            kc.afterCall = { [unowned kc] call in if call == "add \(FakeKeychain.app)" { kc.failing["copy \(FakeKeychain.app)"] = -25308 } }
-            // Once the private group can't be read, the shared keys' old copies are unknown too: pending.
-            XCTAssertEqual(store.migrateItemGroups().filter { !$0.isShared }, [.laundryAccount])
-            XCTAssertEqual(kc.items[key(.laundryAccount, group)], account)
-            XCTAssertFalse(kc.calls.contains("delete \(FakeKeychain.app)"))
-            kc.afterCall = nil
-            kc.failing = [:]
-            XCTAssertEqual(store.migrateItemGroups(), [])
-            XCTAssertEqual(try store.read(.laundryAccount), account)
-        }
-        // Delete of the shared copy fails mid-way: both copies remain, the private one is read,
-        // and the next run deletes the leftover without touching the private copy.
-        do {
-            let kc = appKeychain()
-            kc.items[key(.showerSession, group)] = binding
-            kc.failing["delete \(group)"] = -25308
-            let store = appStore(kc)
-            XCTAssertEqual(store.migrateItemGroups(), [.showerSession])
-            XCTAssertEqual(kc.items[key(.showerSession, group)], binding)
-            XCTAssertEqual(kc.items[key(.showerSession, app)], binding)
-            try store.write(Data("newer".utf8), for: .showerSession)
-            XCTAssertEqual(try store.read(.showerSession), Data("newer".utf8))
-            kc.failing = [:]
-            XCTAssertEqual(store.migrateItemGroups(), [])
-            XCTAssertNil(kc.items[key(.showerSession, group)])
-            XCTAssertEqual(kc.items[key(.showerSession, app)], Data("newer".utf8))
-        }
-    }
-
-    /// A value written while the move was reading back is never deleted by the move.
-    func testMoveNeverDeletesANewerPrivateValue() throws {
-        let kc = appKeychain()
-        kc.items[key(.laundryAccount, group)] = Data("old".utf8)
-        let store = appStore(kc)
-        let newer = key(.laundryAccount, app)
-        kc.afterCall = { [unowned kc] call in
-            if call == "add \(FakeKeychain.app)" { kc.items[newer] = Data("newer".utf8) }
-        }
-        XCTAssertEqual(store.migrateItemGroups(), [.laundryAccount])
-        kc.afterCall = nil
-        XCTAssertEqual(kc.items[key(.laundryAccount, app)], Data("newer".utf8))
-        XCTAssertEqual(try store.read(.laundryAccount), Data("newer".utf8))
     }
 
     /// Only a missing entitlement turns a group off; a locked device (or any other failure)
@@ -440,7 +287,7 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("s".utf8))
     }
 
-    /// Sign-out and unbinding remove every copy, old or new.
+    /// Sign-out and unbinding remove the item from every group.
     func testDeleteRemovesBothCopies() throws {
         let kc = appKeychain()
         kc.items[key(.showerBinding, group)] = Data("old".utf8)
