@@ -72,6 +72,13 @@
         "identifier": "FeedbackTests",
         "name": "FeedbackTests"
       }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "SampleTests",
+        "name": "SampleTests"
+      }
     }
   ],
   "version": 1
