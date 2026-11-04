@@ -1,5 +1,6 @@
 import XCTest
 @testable import Core
+import CoreTestSupport
 
 /// The reset marker: starts refused while a reset runs, never for good, and a reset the app was
 /// killed in finished (or stopped by the same locks) at the next launch.

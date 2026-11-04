@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 @testable import Core
+import CoreTestSupport
 
 /// Scripted U净 API. Every call is recorded; results are consumed in order. `onCreate` etc.
 /// see the vault at the moment the request would leave.

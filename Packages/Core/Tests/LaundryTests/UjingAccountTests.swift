@@ -1,5 +1,6 @@
 import XCTest
 import Core
+import CoreTestSupport
 
 private final class MemoryPreferences: PreferenceStorage {
     var values: [String: Any] = [:]

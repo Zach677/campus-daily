@@ -1,5 +1,6 @@
 import XCTest
 @testable import Core
+import CoreTestSupport
 
 /// Before the first unlock the Keychain can't be read: that is "unknown", not "signed out".
 final class WidgetStoredDataTests: XCTestCase {

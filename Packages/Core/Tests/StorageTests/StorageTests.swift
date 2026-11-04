@@ -1,5 +1,6 @@
 import XCTest
 import Core
+import CoreTestSupport
 import os
 
 /// SecItem backend with the device's access-group rules (no host Keychain):

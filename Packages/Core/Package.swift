@@ -17,7 +17,7 @@ let package = Package(
         .testTarget(name: "LaundryTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "SnapshotTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "NetworkingTests", dependencies: ["Core", "CoreTestSupport"]),
-        .testTarget(name: "StorageTests", dependencies: ["Core"]),
+        .testTarget(name: "StorageTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "CommonTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "ThemeTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "FeedbackTests", dependencies: ["Core", "CoreTestSupport"]),
