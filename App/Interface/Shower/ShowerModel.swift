@@ -360,16 +360,16 @@ enum ShowerProfileFiles {
         } else {
             guard state.canFinish else { throw ShowerActionFailure(.notAllowed) }
             guard !platformMissing else { message = Self.platformMissingText; throw ShowerActionFailure(.platformMissing) }
-            activities?.settling()
         }
-        // The sample is not shown, and from here until this start's record is mirrored it
-        // doesn't open (`LiveShowerGate`): nothing is awaited between the checks and the claim.
-        let claimed = start && gate != nil
-        if claimed, gate?.claimStart() == false { throw ShowerActionFailure(SampleCopy.blocked) }
+        // The sample is not shown, and from here until this step's record is mirrored it doesn't
+        // open (`LiveShowerGate`): nothing is awaited between the checks and the claim. 结束 from
+        // the Live Activity or Siri leaves the sample first (`LiveShowerFinish`).
+        guard claimLiveStep() else { throw ShowerActionFailure(SampleCopy.blocked) }
+        if !start { activities?.settling() }
         busy = true; message = nil
         defer {
             busy = false
-            if claimed { gate?.startEnded() }
+            liveStepEnded()
         }
         do {
             let result = start ? try await engine.start(binding) : try await engine.finish(binding)
@@ -387,13 +387,18 @@ enum ShowerProfileFiles {
             throw failure
         } catch {
             // What the engine holds now (a start that got as far as the controller, say), mirrored
-            // before the start's claim goes.
+            // before the step's claim goes.
             apply(await engine.state)
             storageBlocked = await engine.storageBlocked
             // A start the engine turned down says what waits, from the record it holds now.
             throw ShowerActionFailure.thrown(error, failure:await engine.state.failure, other:AppErrorText.text)
         }
     }
+
+    /// A live step that may reach the controller or the platform begins (`LiveShowerGate`):
+    /// false while the sample is shown. The live model only; a sample's has no gate.
+    private func claimLiveStep() -> Bool { gate?.claimLiveStep() ?? true }
+    private func liveStepEnded() { gate?.liveStepEnded() }
 
     /// Why there is no engine to run on, for the callers that can't see the page.
     private var unavailableText: String {
@@ -416,8 +421,8 @@ enum ShowerProfileFiles {
 
     /// Read-only state probe of the session's controller (Settings › 高级 › 检查水控状态).
     func reviewCurrentSession() async {
-        guard let engine, let binding, !busy, state.canReview else { return }
-        busy = true; defer { busy = false }
+        guard let engine, let binding, !busy, state.canReview, claimLiveStep() else { return }
+        busy = true; defer { busy = false; liveStepEnded() }
         if let result = try? await engine.review(binding) {
             apply(result)
             message = Self.noticeText(result.notice) ?? (result.phase == .running ? "水控显示正在用水。" : nil)
@@ -430,7 +435,8 @@ enum ShowerProfileFiles {
     func recheckSession() async -> ShowerRecheckResult? {
         guard let engine, let binding, state.canReview else { return .unavailable }
         guard !busy else { return .busy }
-        busy = true; defer { busy = false }
+        guard claimLiveStep() else { return .unavailable }
+        busy = true; defer { busy = false; liveStepEnded() }
         do {
             let result = try await engine.review(binding)
             apply(result)
@@ -461,15 +467,20 @@ enum ShowerProfileFiles {
     }
 
     func requestSettleRetry() async {
-        guard let engine, !busy else { return }
-        busy = true; defer { busy = false }
+        guard let engine, !busy, claimLiveStep() else { return }
+        busy = true; defer { busy = false; liveStepEnded() }
         if let result = try? await engine.requestSettleRetry() { apply(result) }
     }
 
     func confirmSettleRetry() async {
-        guard let engine, let binding, !busy else { return }
-        busy = true; defer { busy = false }
-        if let result = try? await engine.confirmSettleRetry(binding) { apply(result) }
+        guard let engine, let binding, !busy, claimLiveStep() else { return }
+        busy = true; defer { busy = false; liveStepEnded() }
+        do {
+            apply(try await engine.confirmSettleRetry(binding))
+        } catch {
+            // Mirrored before the claim goes, as for a start.
+            apply(await engine.state)
+        }
     }
 
     func disarmSettleRetry() async {
