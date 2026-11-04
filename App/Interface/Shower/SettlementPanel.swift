@@ -12,7 +12,7 @@ struct SettlementPanel: View {
                 Mascot(size:52)
                 Text("衣服洗好了").scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,10)
                 if let amount {
-                    Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle)
+                    Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:.rounded, relativeTo:.largeTitle)
                         .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,4)
                 }
                 if !detail.isEmpty {

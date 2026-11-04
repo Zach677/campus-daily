@@ -65,7 +65,7 @@ struct HomeShowerButton: View {
                 Image(systemName:"drop.fill").font(.system(size:17))
                 Text("正在洗澡")
                 Text(timerInterval:start...Date.distantFuture, countsDown:false)
-                    .fontDesign(appTheme.numberDesign).monospacedDigit()
+                    .fontDesign(.rounded).monospacedDigit()
                 Image(systemName:"chevron.right").font(.system(size:14, weight:.semibold)).opacity(0.8)
             case .settling:
                 ProgressView().tint(Theme.ink2)

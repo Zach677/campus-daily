@@ -238,7 +238,7 @@ struct ShowerPageView: View {
                 Text(ShowerPageText.doneLabel).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,10)
                 if let amount = page?.amount {
                     // Only the platform's amount is ever shown.
-                    Text("¥" + amount.yuanText).scaledFont(64, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle, cap:96)
+                    Text("¥" + amount.yuanText).scaledFont(64, .semibold, design:.rounded, relativeTo:.largeTitle, cap:96)
                         .monospacedDigit().tracking(-2).foregroundStyle(Theme.ink)
                         .lineLimit(1).minimumScaleFactor(0.6).padding(.top,4)
                         .accessibilityLabel("这次 \(amount.yuanText) 元")
@@ -296,7 +296,7 @@ struct ShowerPageView: View {
     @ViewBuilder private func timer(_ start: Date?) -> some View {
         let start = start ?? Date()
         Text(timerInterval:start...Date.distantFuture, countsDown:false)
-            .scaledFont(88, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle, cap:112)
+            .scaledFont(88, .semibold, design:.rounded, relativeTo:.largeTitle, cap:112)
             .monospacedDigit().tracking(-3).foregroundStyle(Theme.ink)
             .lineLimit(1).minimumScaleFactor(0.5)
             .accessibilityHidden(true)

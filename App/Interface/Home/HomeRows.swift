@@ -24,7 +24,6 @@ enum RowMetrics { static let iconColumn: CGFloat = 28 }
 
 /// Home status row: icon · title/subtitle · value. Min height 66.
 struct StatusRow: View {
-    @Environment(\.appTheme) private var appTheme
     /// SF Symbol name (`RowIcon`).
     let symbol: String
     let title: String
@@ -63,7 +62,7 @@ struct StatusRow: View {
         switch value {
         case .number(let number, let unit, let low)?:
             HStack(alignment:.firstTextBaseline, spacing:3) {
-                Text(number).scaledFont(24, .semibold, design:appTheme.numberDesign, relativeTo:.title2).monospacedDigit().tracking(-0.2)
+                Text(number).scaledFont(24, .semibold, design:.rounded, relativeTo:.title2).monospacedDigit().tracking(-0.2)
                     .foregroundStyle(low ? Theme.redLarge : Theme.ink)
                     .contentTransition(.numericText())
                     .minimumScaleFactor(0.7)
@@ -78,7 +77,7 @@ struct StatusRow: View {
                 HStack(alignment:.firstTextBaseline, spacing:0) {
                     Text("还剩").scaledFont(17, .medium).foregroundStyle(Theme.ink2).padding(.trailing,4)
                     Text("\(LaundryFormat.minutesLeft(until:end, now:context.date))")
-                        .scaledFont(24, .semibold, design:appTheme.numberDesign, relativeTo:.title2).monospacedDigit().tracking(-0.2)
+                        .scaledFont(24, .semibold, design:.rounded, relativeTo:.title2).monospacedDigit().tracking(-0.2)
                         .foregroundStyle(Theme.ink)
                         .contentTransition(.numericText(countsDown:true))
                         .padding(.trailing,3)
@@ -86,7 +85,7 @@ struct StatusRow: View {
                 }.lineLimit(1).minimumScaleFactor(0.7)
             }
         case .amount(let text)?:
-            Text(text).scaledFont(20, .semibold, design:appTheme.numberDesign, relativeTo:.title3).monospacedDigit()
+            Text(text).scaledFont(20, .semibold, design:.rounded, relativeTo:.title3).monospacedDigit()
                 .foregroundStyle(Theme.ink).lineLimit(1).minimumScaleFactor(0.7)
         case .dash?:
             Text("—").scaledFont(17, .medium).foregroundStyle(Theme.ink3)

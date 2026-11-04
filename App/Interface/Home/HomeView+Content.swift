@@ -41,7 +41,7 @@ extension HomeView {
     func dateBlock(_ data: HomeData) -> some View {
         VStack(spacing:2) {
             // Rounded like the numbers under it; other pages keep the theme's serif title.
-            Text(dateTitle).scaledFont(appTheme.titleFont.size, appTheme.titleFont.weight, design:.rounded, relativeTo:.title2).foregroundStyle(Theme.ink)
+            Text(dateTitle).scaledFont(24, .semibold, design:.rounded, relativeTo:.title2).foregroundStyle(Theme.ink)
             Text([SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:" · "))
                 .scaledFont(13, design:.rounded, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }

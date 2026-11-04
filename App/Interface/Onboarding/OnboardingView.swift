@@ -192,7 +192,7 @@ struct OnboardingView: View {
                     .padding(.top,10)
             }
             if step == .dorm, !choosingApartment, let dorm {
-                Text(dorm).font(.system(size:40, weight:.semibold, design:appTheme.numberDesign)).foregroundStyle(Theme.ink)
+                Text(dorm).font(.system(size:40, weight:.semibold, design:.rounded)).foregroundStyle(Theme.ink)
                     .minimumScaleFactor(0.6).lineLimit(1)
                     .padding(.top,28)
                 // The full location only when the electricity directory gave one: it is what
