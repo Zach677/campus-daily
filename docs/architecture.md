@@ -29,7 +29,7 @@ App/
                       ClearRoute and ClearDestination, tab/path/sheet state in ClearNavigator (an environment
                       object). Pages: Home/, Shower/, Laundry/, Records/, Settings/, Setup/ (the first-run
                       checklist). Pages only lay out and call the same models as 暖橙; the shared root
-                      handling (reset, first run, refresh, links) is in Common/CampusRootHooks and RootLink.
+                      handling (reset, first run, refresh, links) is in Common/CampusRootHooks and Core's RootLink.
                       Shared pages (meter, top-ups, 常用洗衣机, 学校账号, 高级, 主题) are 暖橙's views drawn in
                       清爽's tokens.
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
