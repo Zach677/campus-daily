@@ -13,6 +13,9 @@ struct AdvancedSettingsView: View {
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
     @EnvironmentObject private var resetter: AppResetter
+    @Environment(\.campusServices) private var services
+    /// 「清空调试记录」 done: its footer says so.
+    @State private var debugLogCleared = false
     @State private var confirmReset = false
     @State private var resetIssue: String?
     /// Set when a lock stopped the reset (nothing was cleared).
@@ -53,6 +56,19 @@ struct AdvancedSettingsView: View {
         }.listRowBackground(Theme.group)
     }
 
+    /// TestFlight only (the sample's and an App Store install's log is `NoDebugLog`).
+    private var debugLogSection: some View {
+        Section {
+            Button("清空调试记录") {
+                services.debugLog.clear()
+                debugLogCleared = true
+            }
+                .accessibilityIdentifier("clearDebugLog")
+        } footer: {
+            Text(debugLogCleared ? "清空了。" : "测试版在手机上记最近 7 天的操作步骤，只在反馈时勾选「附上调试记录」才会发出。")
+        }.listRowBackground(Theme.group)
+    }
+
     private func runReset() {
         #if DEBUG
         if preview != nil { resetter.finishDemo(); return }
@@ -85,6 +101,7 @@ struct AdvancedSettingsView: View {
                     VersionRow()
                 }.listRowBackground(Theme.group)
             }
+            if services.debugLog.isEnabled { debugLogSection }
             resetSection
         }
         .listStyle(.insetGrouped)
