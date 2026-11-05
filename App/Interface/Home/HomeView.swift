@@ -149,7 +149,7 @@ struct HomeView: View {
     var body: some View {
         let data = data
         ZStack {
-            NavigationStack(path:$path) {
+            NavigationStack(path:Binding(get:{ path }, set:{ push($0) })) {
                 ScrollViewReader { proxy in
                     // 「最近」 takes the rows that fit (none when none fits), so home fits the screen
                     // and only bounces, for the pull. When the rest alone is taller than the screen
@@ -294,7 +294,7 @@ struct HomeView: View {
         switch kind {
         case .signIn: openOnboarding()
         case .review: path.append(.shower)
-        case .showering, .settling, .starting, .check:
+        case .showering, .settling, .starting, .stopped:
             shower.pageEvent(.reopen)
             followShowerPage(shower.page.presented)
         case .start:
@@ -304,6 +304,14 @@ struct HomeView: View {
             shower.pageEvent(.startTapped)
             followShowerPage(shower.page.presented)
         }
+    }
+
+    /// The stack's own pushes and pops (a NavigationLink, the back button). While a shower is on,
+    /// 热水 opens its timer page instead (`HomeRoute.opened`).
+    func push(_ routes: [HomeRoute]) {
+        let opened = HomeRoute.opened(routes, over:path, page:shower.page)
+        path = opened.routes
+        if opened.showsPage, !sample.isActive { shower.pageEventShowingPage(.reopen) }
     }
 
     /// Pull to refresh: joins a running refresh. Only a pull the user made buzzes on failure.

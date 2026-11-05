@@ -22,9 +22,9 @@ final class ShowerPushedPageTests: XCTestCase {
          ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)]
     }
 
-    /// Up and not running: no back button, no tab bar. Running (it collapses) or down: both show.
+    /// Up and not running or stopped: no back button, no tab bar. Running or stopped (it collapses) or down: both show.
     func testOnlyRunningOrADownPageMayBeLeft() {
-        let locked: Set<ShowerPagePhase> = [.connecting, .settling, .done, .connectFailed, .denied, .unsure, .stopped]
+        let locked: Set<ShowerPagePhase> = [.connecting, .settling, .done, .connectFailed, .denied, .unsure]
         for record in records {
             let phase = ShowerPage(record)!.phase
             XCTAssertEqual(ShowerPageFlow(record: record, presented: true).mayLeave, !locked.contains(phase), phase.rawValue)
@@ -51,11 +51,12 @@ final class ShowerPushedPageTests: XCTestCase {
         XCTAssertNil(ShowerPageFlow(record: .idle, presented: false).pushedPhase)
     }
 
-    /// 去核对 leaves the check on the same page, which may now be left.
-    func testReviewKeepsTheCheckButFreesThePage() {
-        let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)
-        let (flow, effects) = ShowerPageFlow.reduce(ShowerPageFlow(record: check, presented: true), .reviewTapped)
-        XCTAssertEqual(effects, [.openReview])
+    /// The stopped page may be left; down, it still shows.
+    func testTheStoppedPageMayBeLeftAndStillShows() {
+        let stopped = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)
+        XCTAssertTrue(ShowerPageFlow(record: stopped, presented: true).mayLeave)
+        let (flow, effects) = ShowerPageFlow.reduce(ShowerPageFlow(record: stopped, presented: true), .collapseTapped)
+        XCTAssertEqual(effects, [])
         XCTAssertEqual(flow.pushedPhase, .stopped)
         XCTAssertTrue(flow.mayLeave)
     }

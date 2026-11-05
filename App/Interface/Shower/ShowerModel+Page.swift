@@ -45,11 +45,13 @@ extension ShowerModel {
                 await dismiss(only:record)
             }
         case .startNext:
-            break  // stub
+            startTask = Task {
+                let went = await startNext()
+                startTask = nil
+                pageEvent(.startNextReturned(failed:!went))
+            }
         case .openReview:
             reviewRequested = true
-        case .resolveManually:
-            Task { await resolveManually() }
         case .recheck:
             Task {
                 let result = await recheckSession()
@@ -74,7 +76,6 @@ extension ShowerModel {
     /// Demo: the page over a synthetic record, no engine involved.
     func showDemoPage(_ record: ShowerState?) {
         page = ShowerPageFlow(record:record ?? .idle, presented:record != nil)
-        demoStartNext = record?.canStartNext ?? false
     }
     #endif
 }

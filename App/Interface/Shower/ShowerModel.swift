@@ -86,10 +86,10 @@ enum ShowerProfileFiles {
     private var rebuildPending = false
     /// Last action's message (nil = nothing to say).
     @Published private(set) var message: String?
-    #if DEBUG
-    /// Demo: 再洗一次 drawn over a synthetic record that waits for its check (the tap does nothing).
-    @Published var demoStartNext = false
-    #endif
+    /// Showers kept by a next start, not settled in the app (`ShowerVault.retainedShowers`).
+    @Published private(set) var retained: [ShowerState] = []
+    /// Showers not settled in the app, the stopped one on screen included (`ShowerKept`).
+    var keptCount: Int { ShowerKept.count(retained:retained, current:page.record) }
     @Published private(set) var storageBlocked = false
     /// The saved shower record is there but can't be decoded (another build wrote it): a
     /// relaunch doesn't help, the school's record says what happened.
@@ -129,6 +129,7 @@ enum ShowerProfileFiles {
         }
         binding = (try? services.showerVault.binding()) ?? nil
         loadRecord()
+        retained = (try? services.showerVault.retainedShowers()) ?? []
         page = ShowerPageFlow(record:state)
         gate?.record = { [weak self] in self?.gateRecord ?? .notLoaded }
         Task { await reloadProfile() }
@@ -168,17 +169,14 @@ enum ShowerProfileFiles {
     /// 检查水控状态: while water may run, and after a close that may not have taken.
     var mayReview: Bool { configured && engine != nil && !busy && !storageBlocked && state.canReview }
     var mayResolveManually: Bool { engine != nil && !busy && state.canResolveManually }
-    /// The next shower over a record that waits for its check: the record is kept, unsettled.
+    /// 开始下一次洗澡 over a shower stopped on the controller: the record is kept, unsettled.
     var mayStartNext: Bool {
-        configured && !platformMissing && !residenceReviewRequired && engine != nil && !busy && !storageBlocked && !inspecting
-            && state.canStartNext
-    }
-    /// 再洗一次 is on the check face.
-    var showsStartNext: Bool {
         #if DEBUG
-        if demoStartNext { return true }
+        // Demo records have no engine behind them: the button is drawn as it would be.
+        if engine == nil, binding == nil, page.record.canStartNext, page.record.stateReviewRequired { return true }
         #endif
-        return mayStartNext
+        return configured && !platformMissing && !residenceReviewRequired && engine != nil && !busy && !storageBlocked && !inspecting
+            && state.canStartNext
     }
     var mayRetrySettle: Bool { !platformMissing && engine != nil && !busy && state.canRetrySettle }
     /// Binding / profile may change only with no session that could still be open or charged.
@@ -193,10 +191,12 @@ enum ShowerProfileFiles {
     var inspectionBlockedText: String? {
         if mayImport { return nil }
         if storageBlocked { return status }
-        if state.stateReviewRequired || state.failure?.needsReview == true { return Self.inspectionAwaitingCheckText }
+        if state.stateReviewRequired { return ShowerPageText.stoppedNote }
+        if state.failure?.needsReview == true { return Self.inspectionAwaitingCheckText }
         return Self.inspectionShoweringText
     }
-    var problem: Bool { state.failure?.needsReview == true || state.stateReviewRequired || storageBlocked }
+    /// Stopped on the controller is not one: the school settles that shower.
+    var problem: Bool { state.failure?.needsReview == true || storageBlocked }
     var sessionStarted: Date? { state.startedAt }
     var lastEnded: Date? { state.phase == .done ? state.endedAt : nil }
     var lastCost: Decimal? { (state.phase == .done ? state.receipt : state.lastReceipt)?.amount?.yuan }
@@ -205,7 +205,7 @@ enum ShowerProfileFiles {
         if recordUnreadable { return Self.recordUnreadableText }
         if storageBlocked { return "这台手机暂时存不了热水记录，重启 App 后再试。" }
         if let message { return message }
-        if state.stateReviewRequired { return "水控没显示在用水，校日常就没发结束。去学校的热水记录里核对一下这次洗澡。" }
+        if state.stateReviewRequired { return ShowerPageText.stoppedNote }
         switch state.phase {
         case .failed: return ShowerDisplay.failureTitle(state.failure)
         case .writePending: return ShowerDisplay.writeUnconfirmedHint
@@ -284,6 +284,9 @@ enum ShowerProfileFiles {
 
     private func apply(_ next: ShowerState) {
         let old = state
+        if next.stateReviewRequired != old.stateReviewRequired || next.phase != old.phase || next.authorizationID != old.authorizationID {
+            retained = (try? services.showerVault.retainedShowers()) ?? []
+        }
         state = next
         reminderStart = ShowerReminderStart.next(next, after:old, current:reminderStart, now:Date())
         if syncGate.shouldSync(next, after:old) {
@@ -480,24 +483,29 @@ enum ShowerProfileFiles {
         // nil: the Keychain refused; the record and the clear button stay.
     }
 
-    /// 下一次洗澡 over a record that waits for its check (`ShowerEngine.startNext`): the record is
-    /// kept as it is, the controller is checked again and a new authorization is asked for. A
-    /// controller still in use is let go, with a line saying so.
-    func startNext() async {
-        guard let engine, let binding, mayStartNext else { return }
+    /// 开始下一次洗澡 over a shower stopped on the controller (`ShowerEngine.startNext`): the
+    /// record is kept as it is, the controller is checked again and a new authorization is asked
+    /// for. A controller still in use is let go (the page says 水控有人在用). False when it didn't
+    /// go and the page should say why (`message`).
+    @discardableResult
+    func startNext() async -> Bool {
+        guard let engine, let binding, mayStartNext, claimLiveStep() else { return false }
         busy = true; message = nil
-        defer { busy = false }
+        defer { busy = false; liveStepEnded() }
         do {
             let result = try await engine.startNext(binding)
             apply(result)
             if let stored = (try? services.showerVault.binding()) ?? nil, stored.machineId == binding.machineId {
                 self.binding = stored
             }
-            // In use: the check face says 水控有人在用 itself (`ShowerPageFlow.checkInUse`).
+            // In use: the page says 水控有人在用 itself (`ShowerPageFlow.foundInUse`).
             message = result.notice == .device(.busy) ? nil : Self.noticeText(result.notice)
+            return message == nil
         } catch {
             storageBlocked = await engine.storageBlocked
             message = ShowerActionFailure.thrown(error, failure:await engine.state.failure, other:AppErrorText.text).message
+            apply(await engine.state)
+            return false
         }
     }
 
@@ -602,14 +610,14 @@ enum ShowerProfileFiles {
 
     static let inspectionVerifiedText = "找到了，是这间的水控。"
     nonisolated static let inspectionShoweringText = "正在洗澡，洗完再核对水控。"
-    nonisolated static let inspectionAwaitingCheckText = "上次洗澡还没核对。先确认水控已经停水，就能再洗一次。"
+    nonisolated static let inspectionAwaitingCheckText = "上次洗澡还没核对，核对完再查水控。"
     static let inspectionBusyText = "附近的水控有人在用，现在核对不了是不是这间的。等它空了再试。"
 
     static func noticeText(_ notice: ShowerNotice?) -> String? {
         switch notice {
         case nil: return nil
         case .device(let e)?: return deviceText(e)
-        case .notActive?: return "水控没显示在用水，校日常就没发结束。去学校的热水记录里核对一下这次洗澡。"
+        case .notActive?: return ShowerPageText.stoppedNote
         case .wrongDevice?: return "附近的水控不是你宿舍的那台。"
         case .writeUnconfirmed?: return ShowerDisplay.writeUnconfirmedHint
         case .inUseByOther?: return ShowerPageText.endInUseByOther

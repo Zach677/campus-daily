@@ -29,8 +29,14 @@ struct ClearShowerPage: View {
             VStack(alignment:.leading, spacing:24) {
                 roomLine
                 ClearShowerHeadline(phase:phase, configured:configured, live:live)
-                if phase == .unsure || phase == .stopped {
+                if phase == .unsure {
                     ClearShowerCheckCard()
+                } else if phase == .stopped {
+                    // Stopped on the controller: back to the start layout (in use: its own words only).
+                    if !flow.foundInUse {
+                        ClearShowerCostCard(phase:nil, live:live)
+                        idleExtras
+                    }
                 } else {
                     ClearShowerCostCard(phase:phase, live:live)
                 }
@@ -49,8 +55,9 @@ struct ClearShowerPage: View {
         .sensoryFeedback(.error, trigger:errorTick)
         .onChange(of:flow.page?.phase) { _, phase in
             switch phase {
-            case .done?: successTick += 1
-            case .connectFailed?, .denied?, .unsure?, .stopped?: errorTick += 1
+            // Stopped on the controller: this shower is over, not a failure.
+            case .done?, .stopped?: successTick += 1
+            case .connectFailed?, .denied?, .unsure?: errorTick += 1
             default: break
             }
             if let phase { AccessibilityNotification.Announcement(announcement(phase)).post() }
@@ -59,8 +66,8 @@ struct ClearShowerPage: View {
             guard let result else { return }
             AccessibilityNotification.Announcement(ShowerPageText.recheckResult(result)).post()
         }
-        .onChange(of:flow.checkInUse) { _, inUse in
-            // 再查一次水控 says it with its result.
+        .onChange(of:flow.foundInUse) { _, inUse in
+            // 再查一次 says it with its result.
             guard inUse, flow.recheckResult != .inUse else { return }
             errorTick += 1
             AccessibilityNotification.Announcement(ShowerPageText.inUse + "。" + ShowerPageText.checkInUseBody).post()
@@ -151,7 +158,7 @@ struct ClearShowerPage: View {
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
         case .unsure: return flow.page?.authorizeUnclear?.title ?? ShowerPageText.unsure
-        case .stopped: return ShowerPageText.check
+        case .stopped: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedNote
         }
     }
 }

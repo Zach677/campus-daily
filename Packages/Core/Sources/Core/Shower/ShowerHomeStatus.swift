@@ -11,7 +11,7 @@ public enum ShowerHomeStatus: Equatable, Sendable {
     case settling(Date)
     /// A record that needs checking before another start.
     case unresolved(ShowerHomeReview)
-    /// The controller showed itself stopped while the record says water runs (「核对上次洗澡」).
+    /// The controller showed itself stopped while the record says water runs (「开始下一次洗澡」).
     case stopped
     public var showering: Date? {
         switch self { case .showering(let date), .settling(let date): return date; default: return nil }

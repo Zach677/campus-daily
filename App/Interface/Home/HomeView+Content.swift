@@ -104,7 +104,7 @@ extension HomeView {
             return .showering(start, caption:data.showerUnconfirmed ? ShowerDisplay.writeUnconfirmedHint : "点一下回到洗澡页")
         case .settling: return .settling
         case .unresolved(let review): return .review(review)
-        case .stopped: return .check
+        case .stopped: return .stopped
         }
     }
 

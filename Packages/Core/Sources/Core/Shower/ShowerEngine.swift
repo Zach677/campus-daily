@@ -233,8 +233,17 @@ public actor ShowerEngine {
         await hooks?.diagnostic("nextUse.recordKept")
         startCancelled = false; authorizeLeft = false
         binding = b
-        try await commit(ShowerState(phase: .authorizing, machineID: machine, peripheralID: previous.peripheralID,
-                                     lastReceipt: previous.lastReceipt))
+        do {
+            try await commit(ShowerState(phase: .authorizing, machineID: machine, peripheralID: previous.peripheralID,
+                                         lastReceipt: previous.lastReceipt))
+        } catch {
+            // The new record could not be saved: nothing went out, and the one in place (the
+            // stopped shower, still on disk) is what the page shows again.
+            binding = nil
+            state = previous
+            publish()
+            throw error
+        }
         return try await loop(.connected(peripheralID: peripheral, probe: probe))
     }
 

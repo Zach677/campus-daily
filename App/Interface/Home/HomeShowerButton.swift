@@ -15,8 +15,9 @@ struct HomeShowerButton: View {
         case settling
         /// 「核对上次结算」 (or 「去核对」 under 「水没开」) with the accent caption.
         case review(ShowerHomeReview)
-        /// 「核对上次洗澡」: the controller showed itself stopped, nothing settled. Opens the page.
-        case check
+        /// 「开始下一次洗澡」: the last shower was stopped on the controller (the school settles
+        /// it). Opens the page, whose button starts it.
+        case stopped
         /// 「登录学校账号」
         case signIn
 
@@ -72,8 +73,9 @@ struct HomeShowerButton: View {
                 Text("正在结算…")
             case .review(let review):
                 Text(review.button)
-            case .check:
-                Text(ShowerPageText.checkButton)
+            case .stopped:
+                Image(systemName:"drop.fill").font(.system(size:17))
+                Text(ShowerPageText.startNext)
             case .signIn:
                 Text("登录学校账号")
             }
@@ -113,7 +115,7 @@ struct HomeShowerButton: View {
         case .settling: return ("点一下回到洗澡页", false)
         case .review(let review): return (review.caption, true)
         case .signIn: return ("登录后就能看校园卡和电量，也能洗澡。", false)
-        case .start(nil), .starting, .check: return nil
+        case .start(nil), .starting, .stopped: return nil
         }
     }
 
@@ -131,7 +133,7 @@ struct HomeShowerButton: View {
         case .showering: return "正在洗澡，回到洗澡页"
         case .settling: return "正在结算，回到洗澡页"
         case .review(let review): return review.button
-        case .check: return ShowerPageText.checkButton
+        case .stopped: return ShowerPageText.startNext
         case .signIn: return "登录学校账号"
         }
     }

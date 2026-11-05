@@ -211,7 +211,7 @@ extension HomeView {
             }
         case .signIn: openOnboarding()
         case .review, .settling: path.append(.shower)
-        case .check: shower.pageEvent(.reopen)
+        case .stopped: shower.pageEvent(.reopen)
         case .starting: break
         }
     }

@@ -153,7 +153,9 @@ public struct ShowerPage: Sendable, Equatable {
         case .authorizing:
             phase = .connecting; steps = [.current, .future, .future]
         case .writePending where s.stateReviewRequired, .running where s.stateReviewRequired:
-            phase = .stopped; steps = [.done, .done, .failed]
+            // Stopped on the controller (or its authorization gone): this shower is over and the
+            // school settles it. The page is back to its start layout, the bar not started.
+            phase = .stopped; steps = [.future, .future, .future]
         case .writePending, .running:
             phase = .running; steps = [.done, .current, .future]
         case .closing, .settling:
@@ -211,15 +213,13 @@ public enum ShowerPageEvent: Sendable, Equatable {
     case endReturned
     /// The engine's end came back to the timer without sending the close, with its notice.
     case endNotSent(ShowerNotice?)
-    /// 我在学校记录里核对过了 (needs-check face, after its confirmation).
-    case resolveTapped
     /// 再试一次 after a connect failure.
     case retryTapped
     /// 收起 while running.
     case collapseTapped
     /// 好 (done, denied), 取消 or × (connect failed).
     case closeTapped
-    /// 去核对 (unsure, needs check).
+    /// 去核对 (unsure).
     case reviewTapped
     /// 先回首页 (unsure): the record stays for 核对.
     case homeTapped
@@ -250,8 +250,6 @@ public enum ShowerPageEffect: Sendable, Equatable {
     case dismissRecord
     /// The 核对 screen.
     case openReview
-    /// Mark the record checked (`ShowerEngine.resolveManually`).
-    case resolveManually
     /// Read-only probe of the session's controller (`ShowerEngine.review`).
     case recheck
     /// First tap of 再结算一次 (`ShowerEngine.requestSettleRetry`).
@@ -286,16 +284,29 @@ public struct ShowerPageFlow: Sendable, Equatable {
     /// while the flow is down (after 去核对, after a relaunch); while it is visible 再结算一次's
     /// first tap is held as on a page that is up.
     public private(set) var pushedShown: Int
-    /// Stub: 开始下一次洗澡 was tapped and the engine has not returned yet.
+    /// 开始下一次洗澡 was tapped and the engine has not returned yet.
     public var startingNext = false
-    /// Stub: the last 开始下一次洗澡 threw before anything went out.
+    /// The last 开始下一次洗澡 threw before anything went out (the record could not be kept):
+    /// the stopped page says it didn't go.
     public var nextFailed = false
-    /// Stub: not offered yet.
-    public var mayStartNext: Bool { false }
-    /// Stub: the check face's in-use flag.
-    public var foundInUse: Bool { checkInUse }
-    /// Stub: no route opens the page yet.
-    public var opensPageOnRoute: Bool { false }
+
+    /// 开始下一次洗澡, the stopped page's one button (not while the controller is found in use).
+    public var mayStartNext: Bool {
+        page?.phase == .stopped && record.canStartNext && !foundInUse && !startingNext && !rechecking
+    }
+
+    /// The stopped page found the controller in use before the next shower (开始下一次洗澡 or
+    /// 再查一次 saw water running and let it go): it says 水控有人在用, its one button 再查一次.
+    /// Kept across a relaunch (`ShowerState.waitingForRelease`).
+    public var foundInUse: Bool {
+        page?.phase == .stopped && (record.waitingForRelease || recheckResult == .inUse)
+    }
+
+    /// While a shower is on (connecting, water, stopped on the controller, settling), every
+    /// way to 热水 opens this page instead of the 热水洗澡 screen.
+    public var opensPageOnRoute: Bool {
+        [ShowerPhase.authorizing, .writePending, .running, .closing, .settling].contains(record.phase)
+    }
 
     /// A pushed copy of the page is on screen.
     public var pushedVisible: Bool { pushedShown > 0 }
@@ -311,34 +322,26 @@ public struct ShowerPageFlow: Sendable, Equatable {
     /// off the previous shower's result.
     public var page: ShowerPage? {
         let shown = ShowerPage(record)
-        if starting, record.canStart {
+        if starting && record.canStart || startingNext && record.canStartNext {
             return ShowerPage(ShowerState(phase: .authorizing))
         }
         return shown
     }
 
-    /// Only the running page goes down (the timer keeps going on home); a check is answered
-    /// with 去核对 or 我在学校记录里核对过了.
-    public var mayCollapse: Bool { page?.phase == .running }
-    /// 我在学校记录里核对过了 on the needs-check face.
-    public var mayResolve: Bool { page?.phase == .stopped && record.canResolveManually && !rechecking }
-    /// 再查一次水控 on the needs-check face, and on the unsure face of a close that may not have
-    /// taken (water still running there goes back to the timer).
+    /// The running page goes down (the timer keeps going on home), and so does the stopped one:
+    /// nothing there waits for an answer.
+    public var mayCollapse: Bool { (page?.phase == .running || page?.phase == .stopped) && !startingNext }
+    /// 再查一次 on the stopped page that found the controller in use, and 再查一次水控 on the
+    /// unsure face of a close that may not have taken (water still running there goes back to
+    /// the timer).
     public var mayRecheck: Bool { showsRecheck && record.canReview && !rechecking }
-    /// The face has 再查一次水控.
+    /// The face has 再查一次 / 再查一次水控.
     public var showsRecheck: Bool {
         switch page?.phase {
-        case .stopped?: return true
+        case .stopped?: return foundInUse
         case .unsure?: return record.phase == .failed && record.failure?.reason == .closeUnconfirmed
         default: return false
         }
-    }
-    /// The face that waits for the check found the controller in use: 再洗一次 found it so
-    /// (and let it go), or 再查一次水控 found water running after the session showed stopped.
-    /// The face says 水控有人在用 until the next look or try.
-    public var checkInUse: Bool {
-        guard page?.phase == .stopped || page?.phase == .unsure else { return false }
-        return (showsRecheck && recheckResult == .inUse) || (record.waitingForRelease && record.notice == .device(.busy))
     }
     public var mayCancel: Bool { page?.phase == .connecting && !cancelling && !cancelRefused }
     public var mayEnd: Bool { page?.phase == .running && record.canFinish && !ending }
@@ -425,7 +428,8 @@ public struct ShowerPageFlow: Sendable, Equatable {
             // An end from there found the controller stopped: the check comes up the same way.
             // Only an end does that; a probe from Settings leaves the page where it is.
             if !flow.presented, flow.record.phase == .closing, next.mayBeFlowing, next.stateReviewRequired { f.presented = true }
-            if !f.showsRecheck { f.recheckResult = nil }
+            if !f.showsRecheck, f.page?.phase != .stopped { f.recheckResult = nil }
+            if f.page?.phase != .stopped { f.nextFailed = false }
             // Nothing left to show (resolved elsewhere, an authorization that never applied).
             if f.presented, !f.starting, f.page == nil { f.presented = false }
             return (f, [])
@@ -450,10 +454,6 @@ public struct ShowerPageFlow: Sendable, Equatable {
             guard flow.page?.phase == .running else { return (flow, []) }
             f.endFailed = notice == .notActive ? nil : (ShowerEndFailure(notice) ?? .other)
             return (f, [])
-
-        case .resolveTapped:
-            guard flow.mayResolve else { return (flow, []) }
-            return (f, [.resolveManually])
 
         case .endReturned:
             f.ending = false
@@ -494,7 +494,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
             return (f, [])
 
         case .reviewTapped:
-            guard !flow.rechecking, flow.page?.phase == .unsure || flow.page?.phase == .stopped else { return (flow, []) }
+            guard !flow.rechecking, flow.page?.phase == .unsure else { return (flow, []) }
             f.presented = false
             return (f, [.openReview])
 
@@ -502,8 +502,17 @@ public struct ShowerPageFlow: Sendable, Equatable {
             guard flow.mayRetrySettle, !flow.rechecking else { return (flow, []) }
             return (f, [flow.settleRetryArmed ? .confirmSettleRetry : .requestSettleRetry])
 
-        case .startNextTapped, .startNextReturned:
-            return (flow, [])
+        case .startNextTapped:
+            guard flow.mayStartNext else { return (flow, []) }
+            f.presented = true; f.startingNext = true; f.nextFailed = false; f.recheckResult = nil
+            f.ending = false; f.endFailed = nil; f.cancelRefused = false
+            return (f, [.startNext])
+
+        case .startNextReturned(let failed):
+            f.startingNext = false
+            f.nextFailed = failed && f.page?.phase == .stopped
+            if f.presented, f.page == nil { f.presented = false }
+            return (f, [])
 
         case .pushedAppeared:
             f.pushedShown += 1

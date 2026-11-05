@@ -462,15 +462,15 @@ public enum ShowerReducer {
             guard state.reviewing else { return (state, []) }
             s.reviewing = false
             switch ShowerFrames.classify(frame) {
+            case .active where state.stateReviewRequired || state.waitingForRelease:
+                // The controller already showed this session stopped: that shower is over, and
+                // water running now is someone else's (or a new one). It never resumes the old
+                // session; the link is let go.
+                s.notice = .inUseByOther
+                return (s, [.releaseDevice])
             case .active where state.authorizationNotWritten:
                 // Our authorization provably never reached it: the water is someone else's, and
                 // the probe says so instead of showing the timer as if it were ours.
-                s.stateReviewRequired = false
-                s.notice = .inUseByOther
-                return (s, [.releaseDevice])
-            case .active where state.stateReviewRequired || state.waitingForRelease:
-                // The controller already showed this session stopped: water running now may be
-                // anyone's. The check stands and the link is let go.
                 s.notice = .inUseByOther
                 return (s, [.releaseDevice])
             case .active:
@@ -486,7 +486,9 @@ public enum ShowerReducer {
                 return (state.idleAfter(receipt: state.lastReceipt),
                         [.releaseDevice, .diagnostic("review.writeNeverApplied")])
             case .idle(let id) where id == state.machineID:
+                // Stopped, and free again for the next shower.
                 s.stateReviewRequired = true
+                s.waitingForRelease = false
                 s.notice = .notActive
             case .idle:
                 s.notice = .wrongDevice

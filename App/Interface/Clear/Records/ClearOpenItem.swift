@@ -28,7 +28,7 @@ struct ClearOpenItem: Identifiable, Equatable {
         case .showering: line = .text(ShowerPageText.runningLabel, notice:false)
         case .settling: line = .text(ShowerPageText.settling, notice:false)
         case .unresolved(let review): line = .text(review.caption, notice:true)
-        case .stopped: line = .text(ShowerPageText.check, notice:true)
+        case .stopped: line = .text(ShowerPageText.startNext, notice:false)
         case .unconfigured, .unavailable, .idle: return nil
         }
         return ClearOpenItem(route:.shower, title:"热水洗澡", status:line)
