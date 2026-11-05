@@ -235,9 +235,6 @@ final class LaundryStartTests: XCTestCase {
             ("40", L.check("40", remain: 1800)),
             ("50", L.check("50")),
             ("52", L.check("52")),
-            ("price above the confirmed one", L.check(price: 401)),
-            ("no price", L.check(price: nil)),
-            ("zero price", L.check(price: 0)),
         ]
         for (name, check) in checks {
             reset()
@@ -250,7 +247,31 @@ final class LaundryStartTests: XCTestCase {
         }
     }
 
-    /// The price is compared in fen; a price that can't be read is no match.
+    /// The price is compared in fen. Above the confirmed one, missing or zero: never started,
+    /// and never looked at again (stored, kept over a relaunch).
+    func testAPriceThatDoesNotMatchIsBlockedForGood() async throws {
+        for (name, check) in [("above", L.check(price: 401)), ("missing", L.check(price: nil)), ("zero", L.check(price: 0))] {
+            reset()
+            try storePaid()
+            api.startChecks = [.ok(check)]
+            api.starts = [.ok(true)]
+            let s = try await engine().refresh()
+            XCTAssertEqual(s.start, .blocked(.price), name)
+            XCTAssertEqual(try storedStart(), .blocked(.price), name)
+            XCTAssertEqual(LaundryDisplay(s).startLine?.text, "这单的价格对不上，没帮你启动。", name)
+            XCTAssertEqual(LaundryDisplay(s).startLine?.detail, "去 U净 App 里启动。", name)
+
+            api.orders = [.ok(L.order("20")), .ok(L.order("20"))]
+            let again = try engine()
+            _ = try await again.refresh()
+            let last = try await again.refresh()
+            XCTAssertEqual(api.count("startCheck"), 1, "\(name): never looked at again")
+            XCTAssertEqual(api.count("start"), 0, name)
+            XCTAssertEqual(last.start, .blocked(.price), name)
+        }
+    }
+
+    /// A read that fails to decode is a failed read: nothing changes, read again later.
     func testUnreadablePriceNeverStarts() async throws {
         try storePaid()
         api.startChecks = [.fail(.malformed(.ujing, "data.payPrice"))]
@@ -408,6 +429,8 @@ final class LaundryStartTests: XCTestCase {
             XCTAssertEqual(api.count("startCheck"), 0)
             XCTAssertEqual(api.count("start"), 0)
             XCTAssertEqual(s.start, .blocked(.account))
+            XCTAssertEqual(LaundryDisplay(s).startLine?.text, "这单是另一个 U净 账号下的，没帮你启动。")
+            XCTAssertEqual(LaundryDisplay(s).startLine?.detail, "去那个账号的 U净 App 里启动。")
         }
     }
 

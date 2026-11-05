@@ -25,6 +25,18 @@ final class LaundryStartModeTests: XCTestCase {
         XCTAssertEqual(ImmediateStartLine.spoken(sent), "启动指令发出去了，等机器响应。")
     }
 
+    /// Another U净 account and a price that does not match: their own card lines, spoken with 「注意，」.
+    func testAccountAndPriceCardsSayWhy() {
+        let account = try! XCTUnwrap(LaundryDemo.make(.nowAccount).facts.startLine)
+        XCTAssertEqual(account.text, "这单是另一个 U净 账号下的，没帮你启动。")
+        XCTAssertEqual(account.detail, "去那个账号的 U净 App 里启动。")
+        XCTAssertEqual(ImmediateStartLine.spoken(account), "注意，这单是另一个 U净 账号下的，没帮你启动。，去那个账号的 U净 App 里启动。")
+        let price = try! XCTUnwrap(LaundryDemo.make(.nowPrice).facts.startLine)
+        XCTAssertEqual(price.text, "这单的价格对不上，没帮你启动。")
+        XCTAssertEqual(price.detail, "去 U净 App 里启动。")
+        XCTAssertEqual(ImmediateStartLine.spoken(price), "注意，这单的价格对不上，没帮你启动。，去 U净 App 里启动。")
+    }
+
     func testIcons() {
         XCTAssertEqual(ImmediateStartLine.symbol(.armed), "bolt")
         XCTAssertEqual(ImmediateStartLine.symbol(.ready), "bolt")
@@ -38,6 +50,7 @@ final class LaundryStartModeTests: XCTestCase {
         let cases: [(LaundryDemo.Kind, LaundryStartLine.Kind)] = [
             (.nowUnpaid, .armed), (.nowReady, .ready), (.nowChecking, .checking), (.nowSent, .sent),
             (.nowUncertain, .uncertain), (.nowUnsupported, .blocked), (.nowExpired, .blocked), (.nowRefused, .refused),
+            (.nowAccount, .blocked), (.nowPrice, .blocked),
         ]
         for (kind, line) in cases {
             let demo = LaundryDemo.make(kind)

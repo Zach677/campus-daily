@@ -181,6 +181,7 @@ final class LaundryStartDebugLogTests: XCTestCase {
             api.startChecks = [.ok(check)]
             _ = try await e.returnedFromPayment()
             assertInOrder(want, log.lines())
+            XCTAssertEqual(log.lines().filter { $0.hasPrefix("laundry.start skipped") }.count, 1, log.lines().joined(separator: "\n"))
             XCTAssertFalse(log.lines().contains("laundry.start handed"))
             XCTAssertEqual(DebugLogTesting.leaks(secrets + ["OTHERORDER0002"], in: log.lines().joined()), [])
         }

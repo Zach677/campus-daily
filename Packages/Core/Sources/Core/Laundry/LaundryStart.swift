@@ -17,6 +17,8 @@ public enum LaundryStartBlock: String, Sendable, Codable, Equatable {
     case expired
     /// The signed-in U净 account is not the one that placed the order.
     case account
+    /// The pre-start read's price is above the confirmed one, missing or zero (in fen).
+    case price
 }
 
 /// The order's start attempt. Once anything but nil is stored, `control/start` is never sent
@@ -118,7 +120,8 @@ extension LaundryReducer {
         }
         guard let price = check.order.price?.fen, let confirmed = n.draft?.program.price.fen,
               price > 0, price <= confirmed else {
-            // Not started; read again next time (no notice: `.priceChanged` speaks of payment).
+            // Never started, never looked at again (no notice: `.priceChanged` speaks of payment).
+            n.start = .blocked(.price)
             return (n, effects)
         }
         if let block = check.block {
@@ -184,8 +187,9 @@ extension LaundryStartLine {
         case .blocked(.expired)?:
             return LaundryStartLine(kind: .blocked, text: "下单超过 10 分钟，没帮你启动。", detail: "去 U净 App 里启动。")
         case .blocked(.account)?:
-            // No line of its own in the copy yet (open question): the copy's own instruction.
-            return LaundryStartLine(kind: .blocked, text: "去 U净 App 里启动。")
+            return LaundryStartLine(kind: .blocked, text: "这单是另一个 U净 账号下的，没帮你启动。", detail: "去那个账号的 U净 App 里启动。")
+        case .blocked(.price)?:
+            return LaundryStartLine(kind: .blocked, text: "这单的价格对不上，没帮你启动。", detail: "去 U净 App 里启动。")
         case .blocked?:
             return LaundryStartLine(kind: .blocked, text: "这台机器要在 U净 App 里启动。")
         case .started?:

@@ -273,6 +273,7 @@ public enum DebugStartSkip: String, Sendable {
         case .dispenser: self = .dispenser
         case .expired: self = .expired
         case .account: self = .account
+        case .price: self = .price
         }
     }
 }

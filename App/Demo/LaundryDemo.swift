@@ -11,6 +11,7 @@ struct LaundryDemo {
         case confirmNow = "confirm-now", nowUnpaid = "now-unpaid", nowReady = "now-ready", nowChecking = "now-checking"
         case nowSent = "now-sent", nowUncertain = "now-uncertain", nowUnsupported = "now-unsupported"
         case nowExpired = "now-expired", nowRefused = "now-refused"
+        case nowAccount = "now-account", nowPrice = "now-price"
     }
     enum InitialSheet { case confirm, cancel }
     var facts: LaundryFacts
@@ -68,7 +69,7 @@ struct LaundryDemo {
             r.immediate = true
             demo.facts.record = r
             demo.facts.mayCreate = false; demo.facts.mayCancel = true
-        case .nowReady, .nowChecking, .nowSent, .nowUncertain, .nowUnsupported, .nowExpired, .nowRefused:
+        case .nowReady, .nowChecking, .nowSent, .nowUncertain, .nowUnsupported, .nowExpired, .nowRefused, .nowAccount, .nowPrice:
             demo.facts.snapshot = snapshot(status:11, active:"demo1")
             var r = record(stage:.active, status:"20", paid:true, remain:nil, created:now.addingTimeInterval(-2 * 60), now:now)
             r.immediate = true
@@ -78,6 +79,8 @@ struct LaundryDemo {
             case .nowSent: r.start = .accepted(at:at)
             case .nowUncertain: r.start = .pending(at:at)
             case .nowUnsupported: r.start = .blocked(.unsupported)
+            case .nowAccount: r.start = .blocked(.account)
+            case .nowPrice: r.start = .blocked(.price)
             case .nowExpired:
                 r = record(stage:.active, status:"20", paid:true, remain:nil, created:now.addingTimeInterval(-14 * 60), now:now)
                 r.immediate = true; r.start = .blocked(.expired)

@@ -121,6 +121,11 @@ final class LaundryStartReducerTests: XCTestCase {
         }
         s.start = .blocked(.expired)
         XCTAssertEqual(line(s), LaundryStartLine(kind: .blocked, text: "下单超过 10 分钟，没帮你启动。", detail: "去 U净 App 里启动。"))
+        s.start = .blocked(.account)
+        XCTAssertEqual(line(s), LaundryStartLine(kind: .blocked, text: "这单是另一个 U净 账号下的，没帮你启动。",
+                                                 detail: "去那个账号的 U净 App 里启动。"))
+        s.start = .blocked(.price)
+        XCTAssertEqual(line(s), LaundryStartLine(kind: .blocked, text: "这单的价格对不上，没帮你启动。", detail: "去 U净 App 里启动。"))
         s.start = .refused(message: "设备未关门", at: t0)
         XCTAssertEqual(line(s), LaundryStartLine(kind: .refused, text: "U净 没让启动：设备未关门", detail: "去 U净 App 里启动。"))
         s.start = .refused(message: "", at: t0)
