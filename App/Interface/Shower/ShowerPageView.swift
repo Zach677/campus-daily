@@ -166,7 +166,7 @@ struct ShowerPageView: View {
         .onChange(of:page?.phase) { _, phase in
             switch phase {
             case .done?: successTick += 1
-            case .connectFailed?, .denied?, .unsure?, .needsCheck?: errorTick += 1
+            case .connectFailed?, .denied?, .unsure?, .stopped?: errorTick += 1
             default: break
             }
             if let phase { AccessibilityNotification.Announcement(announcement(phase)).post() }
@@ -291,7 +291,7 @@ struct ShowerPageView: View {
                 // A close that may not have taken: water still running goes back to the timer.
                 if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
                 if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }
-            case .needsCheck:
+            case .stopped:
                 icon("questionmark.circle", Theme.notice)
                 title(ShowerPageText.checkTitle(flow))
                 bodyText(ShowerPageText.checkBody(flow))
@@ -400,7 +400,7 @@ struct ShowerPageView: View {
                 }
                 textButton("先回首页") { shower.pageEvent(.homeTapped) }
                 startNextButton
-            case .needsCheck:
+            case .stopped:
                 capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk, enabled:!flow.rechecking) {
                     shower.pageEvent(.reviewTapped)
                 }
@@ -451,7 +451,7 @@ struct ShowerPageView: View {
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
         case .unsure: return flow.page?.authorizeUnclear?.title ?? ShowerPageText.unsure
-        case .needsCheck: return ShowerPageText.check
+        case .stopped: return ShowerPageText.check
         }
     }
 }

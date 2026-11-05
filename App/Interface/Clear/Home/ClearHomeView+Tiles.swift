@@ -46,7 +46,7 @@ extension ClearHomeView {
         // Demo states have no shower behind them: the page as it is.
         if navigator.demo != nil { navigator.push(.shower); return }
         switch data.shower {
-        case .starting, .showering, .settling, .needsCheck:
+        case .starting, .showering, .settling, .stopped:
             shower.pageEvent(.reopen)
             if !shower.page.presented { navigator.push(.shower) }
         case .idle, .unconfigured, .unavailable, .unresolved:

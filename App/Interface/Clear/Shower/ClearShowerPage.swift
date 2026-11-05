@@ -29,7 +29,7 @@ struct ClearShowerPage: View {
             VStack(alignment:.leading, spacing:24) {
                 roomLine
                 ClearShowerHeadline(phase:phase, configured:configured, live:live)
-                if phase == .unsure || phase == .needsCheck {
+                if phase == .unsure || phase == .stopped {
                     ClearShowerCheckCard()
                 } else {
                     ClearShowerCostCard(phase:phase, live:live)
@@ -50,7 +50,7 @@ struct ClearShowerPage: View {
         .onChange(of:flow.page?.phase) { _, phase in
             switch phase {
             case .done?: successTick += 1
-            case .connectFailed?, .denied?, .unsure?, .needsCheck?: errorTick += 1
+            case .connectFailed?, .denied?, .unsure?, .stopped?: errorTick += 1
             default: break
             }
             if let phase { AccessibilityNotification.Announcement(announcement(phase)).post() }
@@ -151,7 +151,7 @@ struct ClearShowerPage: View {
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
         case .unsure: return flow.page?.authorizeUnclear?.title ?? ShowerPageText.unsure
-        case .needsCheck: return ShowerPageText.check
+        case .stopped: return ShowerPageText.check
         }
     }
 }

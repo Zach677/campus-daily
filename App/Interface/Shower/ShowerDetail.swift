@@ -14,13 +14,13 @@ struct ShowerDetail: View {
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:24) {
-                if needsCheck { checkBlock }
+                if stopped { checkBlock }
                 // Large text: stack instead of squeezing both sides into narrow wrapped columns.
                 ViewThatFits(in:.horizontal) {
                     HStack { Text("宿舍热水").fixedSize(); Spacer(); Text(room).fixedSize() }
                     VStack(alignment:.leading,spacing:4) { Text("宿舍热水"); Text(room) }
                 }.font(.subheadline).foregroundStyle(.secondary)
-                if !needsCheck {
+                if !stopped {
                 if preview != nil { previewStatus } else {
                 VStack(alignment:.leading,spacing:13) {
                     HStack(spacing:9) {
@@ -57,7 +57,7 @@ struct ShowerDetail: View {
                         }
                     }.padding(18).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
                 }
-                if preview == nil && shower.mayResolveManually && !needsCheck {
+                if preview == nil && shower.mayResolveManually && !stopped {
                     // Way out of a record that can't close by itself; only after the user checked the official record.
                     Button(ShowerPageText.resolve) { confirmResolve = true }
                         .font(.subheadline).frame(minHeight:44).accessibilityIdentifier("resolveWaterManually")
@@ -92,7 +92,7 @@ struct ShowerDetail: View {
         }.background(NativeTheme.background)
             .navigationTitle("热水洗澡").navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge:.bottom) {
-                if needsCheck { resolveButton } else {
+                if stopped { resolveButton } else {
                 VStack(spacing:10) {
                     Button { perform(start:!closing) } label: {
                         HStack {
@@ -173,7 +173,7 @@ struct ShowerDetail: View {
     private var closing: Bool { preview == nil && shower.state.canFinish }
     /// The controller showed itself stopped under a running record: the check is done here
     /// (结束并结算 would only show it). Read from the page's record, which follows the engine.
-    private var needsCheck: Bool { preview == nil && shower.page.record.mayBeFlowing && shower.page.record.stateReviewRequired }
+    private var stopped: Bool { preview == nil && shower.page.record.mayBeFlowing && shower.page.record.stateReviewRequired }
     private var room: String { preview?.dorm ?? campus.room }
     private var lastEnded: Date? {
         guard let preview else { return shower.lastEnded }

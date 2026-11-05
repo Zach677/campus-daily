@@ -21,7 +21,7 @@ public enum ShowerPagePhase: String, Sendable, Equatable, CaseIterable {
     case unsure
     /// 结束并结算 found the controller stopped while the record says water runs: nothing was
     /// settled. The user checks the school's record and marks it done; no end, no start.
-    case needsCheck
+    case stopped
 }
 
 /// Why 结束并结算 went back to the timer (the close was not sent; water may still run).
@@ -153,7 +153,7 @@ public struct ShowerPage: Sendable, Equatable {
         case .authorizing:
             phase = .connecting; steps = [.current, .future, .future]
         case .writePending where s.stateReviewRequired, .running where s.stateReviewRequired:
-            phase = .needsCheck; steps = [.done, .done, .failed]
+            phase = .stopped; steps = [.done, .done, .failed]
         case .writePending, .running:
             phase = .running; steps = [.done, .current, .future]
         case .closing, .settling:
@@ -229,6 +229,10 @@ public enum ShowerPageEvent: Sendable, Equatable {
     case recheckReturned(ShowerRecheckResult?)
     /// 再结算一次 (unsure, a settlement that failed): the first tap arms it, the second sends it.
     case settleRetryTapped
+    /// 开始下一次洗澡 (stopped).
+    case startNextTapped
+    /// The next start came back; `failed`: it threw before anything went out.
+    case startNextReturned(failed: Bool)
     /// A copy of the page pushed on a stack (清爽) came on screen.
     case pushedAppeared
     /// A copy of the page pushed on a stack went off screen (popped, covered, its tab left).
@@ -237,6 +241,8 @@ public enum ShowerPageEvent: Sendable, Equatable {
 
 public enum ShowerPageEffect: Sendable, Equatable {
     case start
+    /// The next shower over a stopped one (`ShowerEngine.startNext`).
+    case startNext
     /// Ask the engine to stop the start (`ShowerEngine.cancelStart`).
     case cancelStart
     case finish
@@ -280,6 +286,16 @@ public struct ShowerPageFlow: Sendable, Equatable {
     /// while the flow is down (after 去核对, after a relaunch); while it is visible 再结算一次's
     /// first tap is held as on a page that is up.
     public private(set) var pushedShown: Int
+    /// Stub: 开始下一次洗澡 was tapped and the engine has not returned yet.
+    public var startingNext = false
+    /// Stub: the last 开始下一次洗澡 threw before anything went out.
+    public var nextFailed = false
+    /// Stub: not offered yet.
+    public var mayStartNext: Bool { false }
+    /// Stub: the check face's in-use flag.
+    public var foundInUse: Bool { checkInUse }
+    /// Stub: no route opens the page yet.
+    public var opensPageOnRoute: Bool { false }
 
     /// A pushed copy of the page is on screen.
     public var pushedVisible: Bool { pushedShown > 0 }
@@ -305,14 +321,14 @@ public struct ShowerPageFlow: Sendable, Equatable {
     /// with 去核对 or 我在学校记录里核对过了.
     public var mayCollapse: Bool { page?.phase == .running }
     /// 我在学校记录里核对过了 on the needs-check face.
-    public var mayResolve: Bool { page?.phase == .needsCheck && record.canResolveManually && !rechecking }
+    public var mayResolve: Bool { page?.phase == .stopped && record.canResolveManually && !rechecking }
     /// 再查一次水控 on the needs-check face, and on the unsure face of a close that may not have
     /// taken (water still running there goes back to the timer).
     public var mayRecheck: Bool { showsRecheck && record.canReview && !rechecking }
     /// The face has 再查一次水控.
     public var showsRecheck: Bool {
         switch page?.phase {
-        case .needsCheck?: return true
+        case .stopped?: return true
         case .unsure?: return record.phase == .failed && record.failure?.reason == .closeUnconfirmed
         default: return false
         }
@@ -321,7 +337,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
     /// (and let it go), or 再查一次水控 found water running after the session showed stopped.
     /// The face says 水控有人在用 until the next look or try.
     public var checkInUse: Bool {
-        guard page?.phase == .needsCheck || page?.phase == .unsure else { return false }
+        guard page?.phase == .stopped || page?.phase == .unsure else { return false }
         return (showsRecheck && recheckResult == .inUse) || (record.waitingForRelease && record.notice == .device(.busy))
     }
     public var mayCancel: Bool { page?.phase == .connecting && !cancelling && !cancelRefused }
@@ -478,13 +494,16 @@ public struct ShowerPageFlow: Sendable, Equatable {
             return (f, [])
 
         case .reviewTapped:
-            guard !flow.rechecking, flow.page?.phase == .unsure || flow.page?.phase == .needsCheck else { return (flow, []) }
+            guard !flow.rechecking, flow.page?.phase == .unsure || flow.page?.phase == .stopped else { return (flow, []) }
             f.presented = false
             return (f, [.openReview])
 
         case .settleRetryTapped:
             guard flow.mayRetrySettle, !flow.rechecking else { return (flow, []) }
             return (f, [flow.settleRetryArmed ? .confirmSettleRetry : .requestSettleRetry])
+
+        case .startNextTapped, .startNextReturned:
+            return (flow, [])
 
         case .pushedAppeared:
             f.pushedShown += 1

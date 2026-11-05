@@ -74,7 +74,7 @@ struct ClearShowerHeadline: View {
 
     private var problem: Bool {
         switch phase {
-        case .connectFailed?, .denied?, .unsure?, .needsCheck?: return true
+        case .connectFailed?, .denied?, .unsure?, .stopped?: return true
         case nil: return live && shower.problem
         default: return false
         }
@@ -90,7 +90,7 @@ struct ClearShowerHeadline: View {
         case .connectFailed?: return ShowerPageText.connectFailed
         case .denied?: return page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
         case .unsure?: return flow.checkInUse ? ShowerPageText.inUse : page?.authorizeUnclear?.title ?? ShowerPageText.unsure
-        case .needsCheck?: return ShowerPageText.checkTitle(flow)
+        case .stopped?: return ShowerPageText.checkTitle(flow)
         }
     }
 
@@ -107,7 +107,7 @@ struct ClearShowerHeadline: View {
             if flow.checkInUse { return ShowerPageText.checkInUseBody }
             if let copy = page?.authorizeUnclear { return copy.body }
             return flow.settleRetryCause.map(ShowerPageText.settleRetryBody) ?? ShowerPageText.unsureBody
-        case .needsCheck?: return ShowerPageText.checkBody(flow)
+        case .stopped?: return ShowerPageText.checkBody(flow)
         }
     }
 

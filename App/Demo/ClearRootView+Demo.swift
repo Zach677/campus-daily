@@ -108,7 +108,7 @@ extension ClearRootView {
             popAll()
             navigator.demo = normal
             if record.phase == .running, let start = record.startedAt { navigator.demo?.shower = .showering(start) }
-            if record.stateReviewRequired { navigator.demo?.shower = .needsCheck }
+            if record.stateReviewRequired { navigator.demo?.shower = .stopped }
             shower.showDemoPage(record)
             if name == "sh-endfail" { shower.page.endFailed = .noConnection }
             switch name {

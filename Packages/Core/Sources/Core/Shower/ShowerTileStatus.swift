@@ -52,7 +52,7 @@ public struct ShowerTileStatus: Equatable, Sendable {
         case .showering(let start): return ShowerTileStatus(text: "正在洗澡", tone: .accent, timerStart: start, shorter: [""])
         case .settling: return ShowerTileStatus(text: "正在结算…")
         case .unresolved(let review): return ShowerTileStatus(text: review.caption, tone: .notice)
-        case .needsCheck: return ShowerTileStatus(text: "核对上次洗澡", tone: .notice)
+        case .stopped: return ShowerTileStatus(text: "核对上次洗澡", tone: .notice)
         }
     }
 }

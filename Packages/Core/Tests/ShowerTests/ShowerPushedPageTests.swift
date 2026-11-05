@@ -24,7 +24,7 @@ final class ShowerPushedPageTests: XCTestCase {
 
     /// Up and not running: no back button, no tab bar. Running (it collapses) or down: both show.
     func testOnlyRunningOrADownPageMayBeLeft() {
-        let locked: Set<ShowerPagePhase> = [.connecting, .settling, .done, .connectFailed, .denied, .unsure, .needsCheck]
+        let locked: Set<ShowerPagePhase> = [.connecting, .settling, .done, .connectFailed, .denied, .unsure, .stopped]
         for record in records {
             let phase = ShowerPage(record)!.phase
             XCTAssertEqual(ShowerPageFlow(record: record, presented: true).mayLeave, !locked.contains(phase), phase.rawValue)
@@ -56,7 +56,7 @@ final class ShowerPushedPageTests: XCTestCase {
         let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)
         let (flow, effects) = ShowerPageFlow.reduce(ShowerPageFlow(record: check, presented: true), .reviewTapped)
         XCTAssertEqual(effects, [.openReview])
-        XCTAssertEqual(flow.pushedPhase, .needsCheck)
+        XCTAssertEqual(flow.pushedPhase, .stopped)
         XCTAssertTrue(flow.mayLeave)
     }
 
@@ -72,7 +72,7 @@ final class ShowerPushedPageTests: XCTestCase {
         for record in resolvable {
             XCTAssertTrue(record.canResolveManually)
             let down = ShowerPageFlow(record: record, presented: false).pushedPhase
-            XCTAssertTrue(down == .unsure || down == .needsCheck, "\(record.phase) \(String(describing: record.failure?.reason))")
+            XCTAssertTrue(down == .unsure || down == .stopped, "\(record.phase) \(String(describing: record.failure?.reason))")
         }
     }
 }

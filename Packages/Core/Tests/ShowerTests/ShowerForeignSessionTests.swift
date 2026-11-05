@@ -165,7 +165,7 @@ final class ShowerForeignSessionTests: XCTestCase {
                                               authorizationNotWritten: true))
         let e = try engine()
         var flow = ShowerPageFlow(record: await e.state, presented: true)
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
+        XCTAssertEqual(flow.page?.phase, .stopped)
         flow = ShowerPageFlow.reduce(flow, .recheckTapped).0
         XCTAssertTrue(flow.rechecking)
         transport.script(.frame(FakeFrames.active))

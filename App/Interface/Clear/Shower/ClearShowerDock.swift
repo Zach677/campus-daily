@@ -48,7 +48,7 @@ struct ClearShowerDock: View {
                     // After 去核对: marked checked here, as on 暖橙's 热水洗澡 screen.
                     primary(ShowerPageText.resolve, enabled:live && shower.mayResolveManually) { confirmResolve = true }
                 }
-            case .needsCheck?:
+            case .stopped?:
                 primary(ShowerPageText.resolve, enabled:flow.mayResolve && !(live && shower.busy)) { confirmResolve = true }
                 if flow.presented {
                     secondary(ShowerPageText.review, enabled:!flow.rechecking) { shower.pageEvent(.reviewTapped) }
@@ -92,7 +92,7 @@ struct ClearShowerDock: View {
     }
 
     private func resolve() {
-        if phase == .needsCheck { shower.pageEvent(.resolveTapped) } else { Task { await shower.resolveManually() } }
+        if phase == .stopped { shower.pageEvent(.resolveTapped) } else { Task { await shower.resolveManually() } }
     }
 
     private func close(_ event: ShowerPageEvent) {

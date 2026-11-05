@@ -188,7 +188,7 @@ final class ShowerPageTests: XCTestCase {
     func testAStoppedControllerShowsTheNeedsCheckFace() {
         for phase in [ShowerPhase.running, .writePending] {
             let page = ShowerPage(ShowerState(phase: phase, startedAt: t0, stateReviewRequired: true))
-            XCTAssertEqual(page?.phase, .needsCheck, "\(phase)")
+            XCTAssertEqual(page?.phase, .stopped, "\(phase)")
             XCTAssertEqual(page?.steps, [.done, .done, .failed])
         }
         var flow = ShowerPageFlow(record: ShowerState(phase: .running, machineID: "11223344", startedAt: t0), presented: true)
@@ -198,7 +198,7 @@ final class ShowerPageTests: XCTestCase {
         _ = reduce(&flow, .record(back))
         _ = reduce(&flow, .endNotSent(.notActive))
         _ = reduce(&flow, .endReturned)
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
+        XCTAssertEqual(flow.page?.phase, .stopped)
         XCTAssertNil(flow.endFailed, "the face says it, not an end-failed line")
         XCTAssertTrue(flow.presented)
         XCTAssertFalse(flow.mayEnd)
@@ -219,7 +219,7 @@ final class ShowerPageTests: XCTestCase {
                                      presented: true)
         XCTAssertFalse(probing.mayResolve)
         XCTAssertEqual(reduce(&probing, .resolveTapped), [])
-        XCTAssertEqual(ShowerHomeStatus.needsCheck.asksForSchoolSignIn(signedIn: false), false)
+        XCTAssertEqual(ShowerHomeStatus.stopped.asksForSchoolSignIn(signedIn: false), false)
     }
 
     /// Ended from the lock screen with the page down, and the controller was stopped: the
@@ -229,7 +229,7 @@ final class ShowerPageTests: XCTestCase {
         _ = reduce(&flow, .record(ShowerState(phase: .closing, startedAt: t0, closingFrom: .running)))
         _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)))
         XCTAssertTrue(flow.presented)
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
+        XCTAssertEqual(flow.page?.phase, .stopped)
     }
 
     /// 再查一次水控 on the check face: both buttons wait; still running goes back to the timer
@@ -323,7 +323,7 @@ final class ShowerPageTests: XCTestCase {
         _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, reviewing: true)))
         _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)))
         XCTAssertFalse(flow.presented)
-        XCTAssertEqual(flow.page?.phase, .needsCheck, "the home button still says 核对上次洗澡")
+        XCTAssertEqual(flow.page?.phase, .stopped, "the home button still says 核对上次洗澡")
     }
 
     /// 结束并结算 came back to the timer: a line says why, until the next tap.

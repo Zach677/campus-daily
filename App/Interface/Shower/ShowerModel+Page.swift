@@ -44,6 +44,8 @@ extension ShowerModel {
                 await untilIdle()
                 await dismiss(only:record)
             }
+        case .startNext:
+            break  // stub
         case .openReview:
             reviewRequested = true
         case .resolveManually:

@@ -119,7 +119,7 @@ extension HomeView {
                 demo = HomeDemo.normal.content().0
                 // Collapsed while water runs, home shows the showering button, as it would live.
                 if record.phase == .running, let start = record.startedAt { demo?.shower = .showering(start) }
-                if record.stateReviewRequired { demo?.shower = .needsCheck }
+                if record.stateReviewRequired { demo?.shower = .stopped }
                 shower.showDemoPage(record)
                 if url.lastPathComponent == "sh-endfail" { shower.page.endFailed = .noConnection }
                 switch url.lastPathComponent {

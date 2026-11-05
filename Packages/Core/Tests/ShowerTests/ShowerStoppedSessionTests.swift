@@ -78,7 +78,7 @@ final class ShowerStoppedSessionTests: XCTestCase {
         let probed = try await e.review(binding)
         (flow, _) = ShowerPageFlow.reduce(flow, .record(probed))
         (flow, _) = ShowerPageFlow.reduce(flow, .recheckReturned(try XCTUnwrap(ShowerRecheckResult(after: probed))))
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
+        XCTAssertEqual(flow.page?.phase, .stopped)
         XCTAssertTrue(flow.checkInUse, "recheck found water running")
 
         (flow, _) = ShowerPageFlow.reduce(flow, .recheckTapped)
@@ -92,7 +92,7 @@ final class ShowerStoppedSessionTests: XCTestCase {
         transport.script(.frame(FakeFrames.active))
         let busy = try await e.startNext(binding)
         (flow, _) = ShowerPageFlow.reduce(flow, .record(busy))
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
+        XCTAssertEqual(flow.page?.phase, .stopped)
         XCTAssertTrue(flow.checkInUse, "the next use found it in use")
 
         // After a relaunch the record still waits for the controller, but the face is the check again.

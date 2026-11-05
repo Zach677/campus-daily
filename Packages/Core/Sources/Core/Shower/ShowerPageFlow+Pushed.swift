@@ -16,7 +16,7 @@ extension ShowerPageFlow {
         if presented { return phase }
         switch phase {
         case .done, .denied, .connectFailed: return nil
-        case .connecting, .running, .settling, .unsure, .needsCheck: return phase
+        case .connecting, .running, .settling, .unsure, .stopped: return phase
         }
     }
 }
