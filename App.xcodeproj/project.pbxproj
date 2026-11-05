@@ -570,6 +570,15 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/XiaoRiChang.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/XiaoRiChang";
 				GENERATE_INFOPLIST_FILE = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-lz",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CoreTelephony,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).apptests";
 				PRODUCT_NAME = AppTests;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -584,6 +593,15 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/XiaoRiChang.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/XiaoRiChang";
 				GENERATE_INFOPLIST_FILE = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-lz",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CoreTelephony,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).apptests";
 				PRODUCT_NAME = AppTests;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";

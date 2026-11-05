@@ -146,7 +146,7 @@ enum ShowerProfileFiles {
         switch recordLoad {
         case .notLoaded: return .notLoaded
         case .failed: return .unreadable
-        case .loaded: return recordUnreadable ? .unreadable : .known(state)
+        case .loaded: return recordUnreadable || storageBlocked ? .unreadable : .known(state)
         }
     }
 
@@ -239,8 +239,9 @@ enum ShowerProfileFiles {
         do {
             let engine = try services.showerEngine(gateway:gateway, bleName:bleName)
             self.engine = engine
-            // The engine read the record: the one it reports is the one to go by.
-            if recordLoad == .failed { recordLoad = .loaded }
+            // The engine read the record: the one it reports is the one to go by, and until
+            // its first report is mirrored here nothing is known (the sample stays shut).
+            recordLoad = .notLoaded
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
                 self?.storageBlocked = blocked
@@ -248,9 +249,12 @@ enum ShowerProfileFiles {
                     guard let self else { return }
                     self.apply(next)
                     self.storageBlocked = await engine.storageBlocked
+                    self.recordLoad = .loaded
                 }
             }
         } catch {
+            // The engine could not read the record (or keep it): nothing is known of it.
+            recordLoad = .failed
             storageBlocked = true
             recordUnreadable = (error as? ShowerEngineError) == .unreadableRecord
             if recordUnreadable {

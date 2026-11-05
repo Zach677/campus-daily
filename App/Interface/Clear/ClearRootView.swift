@@ -28,6 +28,11 @@ struct ClearRootView: View {
     @State var recordsDemoRun = 0
     #endif
 
+    /// Tests: told this root's navigator once the root appears (nil in the app).
+    var navigatorShown: ((ClearNavigator) -> Void)?
+
+    init(navigatorShown: ((ClearNavigator) -> Void)? = nil) { self.navigatorShown = navigatorShown }
+
     var data: HomeData { navigator.data(campus:campus, shower:shower, laundry:laundry) }
 
     var body: some View {
@@ -106,6 +111,7 @@ struct ClearRootView: View {
         .onOpenURL { if RootLink($0) == nil { handleDemo($0) } }
         #endif
         .environment(navigator)
+        .onAppear { navigatorShown?(navigator) }
     }
 
     @ViewBuilder var recordsTab: some View {
