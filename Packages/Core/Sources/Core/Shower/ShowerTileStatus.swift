@@ -17,6 +17,9 @@ public struct ShowerTileStatus: Equatable, Sendable {
     public var dimmed = false
     /// Signed out: the tile opens the first-run checklist instead of the page.
     public var opensSetup = false
+    /// What VoiceOver reads when it differs from `text`. Not yet.
+    public var spokenText: String?
+    public var spoken: String { text }
 
     public init(text: String, tone: Tone = .secondary, timerStart: Date? = nil, shorter: [String] = [], dimmed: Bool = false,
                 opensSetup: Bool = false) {

@@ -72,7 +72,7 @@ final class ShowerForeignSessionTests: XCTestCase {
             XCTAssertEqual(held.consumption, HexCoding.upper(consumption), "kept for the retry")
             XCTAssertTrue(held.canRetrySettle)
             XCTAssertTrue(held.canResolveManually)
-            XCTAssertEqual(ShowerPage(held)?.phase, .unsure)
+            XCTAssertEqual(ShowerPage(held)?.phase, .stopped)
             XCTAssertEqual(try vault.showerState()?.consumption, HexCoding.upper(consumption), "persisted")
 
             // The usual two taps send it once.

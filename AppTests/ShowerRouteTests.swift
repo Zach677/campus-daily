@@ -13,7 +13,10 @@ final class ShowerRouteTests: XCTestCase {
         let on = [ShowerState(phase: .running, machineID: "11223344", startedAt: t0),
                   ShowerState(phase: .writePending, machineID: "11223344", startedAt: t0),
                   ShowerState(phase: .running, machineID: "11223344", startedAt: t0, stateReviewRequired: true),
-                  ShowerState(phase: .settling, machineID: "11223344", startedAt: t0)]
+                  ShowerState(phase: .settling, machineID: "11223344", startedAt: t0),
+                  // Kept for the school like a stopped shower: no 热水洗澡 screen to check it on.
+                  ShowerState(phase: .failed, machineID: "11223344", startedAt: t0,
+                              failure: ShowerFailure(reason: .settleUncertain, needsReview: true))]
         for record in on {
             let page = ShowerPageFlow(record: record)
             let fromRecents = HomeRoute.opened([.shower], over: [], page: page)
@@ -30,8 +33,8 @@ final class ShowerRouteTests: XCTestCase {
         let pushed = HomeRoute.opened([.records, .shower], over: [.records], page: idle)
         XCTAssertEqual(pushed.routes, [.records, .shower])
         XCTAssertFalse(pushed.showsPage)
-        let unsure = ShowerPageFlow(record: ShowerState(phase: .failed, failure: ShowerFailure(reason: .settleUncertain, needsReview: true)))
-        XCTAssertEqual(HomeRoute.opened([.shower], over: [], page: unsure).routes, [.shower], "the 不确定 record's screen")
+        let harmless = ShowerPageFlow(record: ShowerState(phase: .failed, failure: ShowerFailure(reason: .deviceUnavailable, needsReview: false)))
+        XCTAssertEqual(HomeRoute.opened([.shower], over: [], page: harmless).routes, [.shower])
     }
 
     func testOtherPushesAndPopsPassThrough() {
@@ -39,5 +42,13 @@ final class ShowerRouteTests: XCTestCase {
         XCTAssertEqual(HomeRoute.opened([.laundry], over: [], page: page).routes, [.laundry])
         XCTAssertFalse(HomeRoute.opened([.laundry], over: [], page: page).showsPage)
         XCTAssertEqual(HomeRoute.opened([], over: [.shower], page: page).routes, [], "a pop")
+    }
+
+    /// Home over a stopped or kept shower: 「去洗澡」, read 「去洗澡，上一次洗好了」; it opens
+    /// the timer page, whose button is 开始下一次洗澡.
+    func testHomeSaysGoShowerOverAKeptShower() {
+        XCTAssertEqual(HomeShowerButton.title(.stopped), "去洗澡")
+        XCTAssertEqual(HomeShowerButton.spokenTitle(.stopped), "去洗澡，上一次洗好了")
+        XCTAssertNil(HomeShowerButton.caption(.stopped), "no second line on home")
     }
 }

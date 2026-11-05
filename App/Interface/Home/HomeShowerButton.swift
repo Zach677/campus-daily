@@ -119,6 +119,11 @@ struct HomeShowerButton: View {
         }
     }
 
+    /// The button's words, what VoiceOver reads, and the line under it. Not yet.
+    static func title(_ kind: Kind) -> String { "" }
+    static func spokenTitle(_ kind: Kind) -> String { "" }
+    static func caption(_ kind: Kind) -> String? { "" }
+
     static func spoken(_ caption: String) -> String {
         var text = caption.replacingOccurrences(of:" · ", with:"，")
         if let range = text.range(of:#"¥([0-9.,]+)"#, options:.regularExpression) {

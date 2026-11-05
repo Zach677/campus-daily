@@ -24,9 +24,10 @@ final class ShowerTileStatusTests: XCTestCase {
         XCTAssertEqual(status(.starting).text, "正在连接水控…")
     }
 
-    func testRecordsToCheckAreNotices() {
-        XCTAssertEqual(status(.unresolved(.settlement)), ShowerTileStatus(text: "上次洗澡不确定结算了没有", tone: .notice))
-        XCTAssertEqual(status(.stopped), ShowerTileStatus(text: "开始下一次洗澡"))
+    func testAShowerThatIsOverSaysGoShower() {
+        var over = ShowerTileStatus(text: "去洗澡")
+        over.spokenText = "去洗澡，上一次洗好了"
+        XCTAssertEqual(status(.stopped), over)
     }
 
     func testUnavailableIsDimmedButOpensItsPage() {

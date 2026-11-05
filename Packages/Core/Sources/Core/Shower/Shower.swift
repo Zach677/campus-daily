@@ -221,6 +221,9 @@ public struct ShowerState: Sendable, Codable, Equatable {
             && [ShowerFailureReason.settleRefused, .settleUncertain, .settleUnconfirmed].contains { $0 == failure?.reason }
     }
 
+    /// The shower is over and the school settles it. Not yet.
+    public var showerOver: Bool { false }
+
     /// The reminder ("还没结束洗澡？") runs while water may be flowing.
     public var mayBeFlowing: Bool { phase == .writePending || phase == .running }
 

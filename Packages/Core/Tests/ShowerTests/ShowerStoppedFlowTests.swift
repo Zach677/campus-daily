@@ -235,6 +235,8 @@ final class ShowerStoppedFlowTests: XCTestCase {
             ShowerState(phase: .running, machineID: machine, startedAt: t0, stateReviewRequired: true),
             ShowerState(phase: .closing, machineID: machine, startedAt: t0, closingFrom: .running),
             ShowerState(phase: .settling, machineID: machine, startedAt: t0),
+            // Kept for the school like a stopped shower.
+            ShowerState(phase: .failed, machineID: machine, failure: ShowerFailure(reason: .settleUncertain, needsReview: true)),
         ]
         for record in on {
             let flow = ShowerPageFlow(record: record)
@@ -247,7 +249,7 @@ final class ShowerStoppedFlowTests: XCTestCase {
         let off: [ShowerState] = [
             .idle,
             ShowerState(phase: .done, machineID: machine, receipt: ShowerReceipt(amount: Money(fen: 42))),
-            ShowerState(phase: .failed, machineID: machine, failure: ShowerFailure(reason: .settleUncertain, needsReview: true)),
+            ShowerState(phase: .failed, machineID: machine, failure: ShowerFailure(reason: .deviceUnavailable, needsReview: false)),
         ]
         for record in off {
             XCTAssertFalse(ShowerPageFlow(record: record).opensPageOnRoute, "\(record.phase)")
