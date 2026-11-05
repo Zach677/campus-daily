@@ -593,6 +593,21 @@ Rules:
   controller's own button and someone started another): the check stands, the link is let go,
   and 结束 is not offered (`canFinish` is false), so no close or settlement goes out under the
   old authorization.
+- Next use over a record that waits for its check (`canStartNext`, the same records
+  `resolveManually` takes; ported as rules from upstream 0.9.0's `startNext`):
+  `ShowerEngine.startNext` connects and probes first. `0xA5` → the link is let go, nothing is
+  kept or authorized, and the record is marked `waitingForRelease` (saved, so a relaunch keeps
+  it; neither a probe nor 结束 re-opens the link for it). Another machine, no answer or an
+  unreadable frame → nothing changes. Idle with this machine's identity → the record is kept
+  as it is in Keychain `water.retained` (read back before going on; a failure blocks like any
+  storage failure), then a new record authorizes with that fresh identity frame: a new
+  authorization, never the old one written again. Kept records are never settled, retried
+  or dropped by the app (重置校日常 deletes them with everything else). A task cancelled while
+  it connects or probes changes nothing, whatever the controller answered. An open shower (no
+  check pending) still ends only with 结束. 「再洗一次」 sits on the check faces only, with
+  「上一次的记录会留着，扣没扣以学校的热水记录为准。先确认水控已经停水，再点这里。」 under it; when
+  it or 「再查一次水控」 finds the controller in use the face reads 水控有人在用
+  (`ShowerPageFlow.checkInUse`, until the next look or try).
 - `startedAt` is set when the authorization arrives and enters `writePending` (出水), not at the
   开始洗澡 tap: the ~15 s of connecting and authorizing are not shower time. The in-app timer,
   the Live Activity, the unsettled reminder and the shown duration (done page, settled lock
@@ -720,7 +735,7 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | school profile (dorm, meter) | Keychain `school.profile` | AfterFirstUnlockThisDeviceOnly | **yes** |
 | school account + saved password (opt-in) | Keychain `school.password` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget signs in by itself) |
 | CAS login device id | Keychain `school.device` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget's login shows the same browser id) |
-| water binding, shower session | Keychain `water.binding`, `water.session` | AfterFirstUnlockThisDeviceOnly | never (private group) |
+| water binding, shower session, records kept by a next use | Keychain `water.binding`, `water.session`, `water.retained` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
