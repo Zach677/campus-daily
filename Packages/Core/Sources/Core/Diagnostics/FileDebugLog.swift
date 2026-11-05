@@ -5,9 +5,10 @@ import CryptoKit
 /// (`t`: seconds since 1970, `e`: the event's text), and `salt` beside it (32 random bytes for
 /// the tags). The folder is kept out of backups before anything is written and the files are
 /// readable after the first unlock. At most `maxLines` lines and `maxBytes` bytes: the oldest go
-/// first. Lines older than `maxAge` go at launch (`pruneExpired`). Writes run on a queue of
-/// their own, one at a time (a line is on disk when `record` returns: a small append); a write
-/// that fails is dropped and never reaches the caller.
+/// first. Lines older than `maxAge` go at launch (`pruneExpired`). Writes run on a serial queue
+/// of their own: `record` only queues the line and never waits on the disk; `flush` waits for
+/// what was queued (the feedback send, its preview, tests). `lines`, `clear` and `tag` run after
+/// every line queued before them. A write that fails is dropped and never reaches the caller.
 public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
     // @unchecked: every field below `queue` is touched only on `queue`.
     public static let folderName = "DebugLog"
@@ -28,7 +29,7 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
     private let maxLines: Int
     private let maxBytes: Int
     private let maxAge: TimeInterval
-    private let queue = DispatchQueue(label: "org.zaxh.xiaorichang.debuglog")
+    private let queue: DispatchQueue
 
     private struct Entry: Codable { var t: Double; var e: String }
     private var entries: [Entry]?
@@ -38,8 +39,9 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
     private var dropped = 0
 
     public init(directory: URL, now: @escaping @Sendable () -> Date = Date.init, timeZone: TimeZone = .current,
-                maxLines: Int = FileDebugLog.maxLines, maxBytes: Int = FileDebugLog.maxBytes, maxAge: TimeInterval = FileDebugLog.maxAge) {
-        self.directory = directory; self.now = now
+                maxLines: Int = FileDebugLog.maxLines, maxBytes: Int = FileDebugLog.maxBytes, maxAge: TimeInterval = FileDebugLog.maxAge,
+                queue: DispatchQueue = DispatchQueue(label: "org.zaxh.xiaorichang.debuglog")) {
+        self.directory = directory; self.now = now; self.queue = queue
         self.maxLines = maxLines; self.maxBytes = maxBytes; self.maxAge = maxAge
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -53,7 +55,7 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
 
     public func record(_ event: DebugEvent) {
         let at = now()
-        queue.sync { [self] in
+        queue.async { [self] in
             let fields = event.fields { self.tagOnQueue($0) }
             var text = fields.isEmpty ? event.name : "\(event.name) \(fields)"
             if !DebugLogScreen.isSafe(text) {
@@ -80,6 +82,9 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
             salt = nil
         }
     }
+
+    /// Waits until every line recorded before it is written.
+    public func flush() { queue.sync {} }
 
     /// Drops the lines older than `maxAge` (at launch).
     public func pruneExpired() {

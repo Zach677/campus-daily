@@ -11,6 +11,12 @@ public protocol DebugLogSink: Sendable {
     func lines() -> [String]
     /// Empties the log and drops its salt (sign-outs, 清空调试记录); the next line starts a new one.
     func clear()
+    /// Returns once every line recorded before it is on disk (the feedback send, its preview, tests).
+    func flush()
+}
+
+public extension DebugLogSink {
+    func flush() {}
 }
 
 /// Records nothing, creates nothing.

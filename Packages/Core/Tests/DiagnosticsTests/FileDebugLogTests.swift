@@ -16,6 +16,26 @@ final class FileDebugLogTests: XCTestCase {
         FileDebugLog(directory: dir, now: clock.function, timeZone: utc, maxLines: maxLines, maxBytes: maxBytes)
     }
 
+    /// The caller never waits on the disk: with the writer busy, `record` still returns at once;
+    /// `flush` then waits for the line.
+    func testRecordDoesNotWaitForTheDisk() {
+        let queue = DispatchQueue(label: "test.debuglog")
+        let log = FileDebugLog(directory: dir, now: clock.function, timeZone: utc, queue: queue)
+        let busy = DispatchSemaphore(value: 0)
+        queue.async { busy.wait() }
+        let returned = expectation(description: "record returned")
+        DispatchQueue.global().async {
+            log.record(.navOpen(.home, from: .launch))
+            returned.fulfill()
+        }
+        wait(for: [returned], timeout: 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: log.eventsFile.path), "not written yet: the writer is busy")
+        busy.signal()
+        log.flush()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: log.eventsFile.path))
+        XCTAssertEqual(log.lines(), ["10-30 04:00:00 nav.open page=home from=launch"])
+    }
+
     func testTheLimitsAreAThousandLinesQuarterMegabyteAndSevenDays() {
         XCTAssertEqual(FileDebugLog.maxLines, 1000)
         XCTAssertEqual(FileDebugLog.maxBytes, 256 * 1024)
@@ -36,7 +56,9 @@ final class FileDebugLogTests: XCTestCase {
     }
 
     func testTheLinesAreThereAfterARelaunch() {
-        log().record(.schoolRefresh(.ok))
+        let first = log()
+        first.record(.schoolRefresh(.ok))
+        first.flush()
         XCTAssertEqual(log().lines(), ["10-30 04:00:00 school.refresh ok"])
     }
 
@@ -56,6 +78,7 @@ final class FileDebugLogTests: XCTestCase {
     func testTheFileStaysUnderItsByteLimit() throws {
         let log = log(maxBytes: 600)
         for _ in 0 ..< 40 { log.record(.navOpen(.laundry, from: .widget)) }
+        log.flush()
         let size = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: log.eventsFile.path)[.size] as? Int)
         XCTAssertLessThanOrEqual(size, 600)
         XCTAssertFalse(log.lines().isEmpty)
@@ -73,7 +96,9 @@ final class FileDebugLogTests: XCTestCase {
     }
 
     func testTheFolderIsKeptOutOfBackups() throws {
-        log().record(.navOpen(.home, from: .launch))
+        let log = log()
+        log.record(.navOpen(.home, from: .launch))
+        log.flush()
         let values = try dir.resourceValues(forKeys: [.isExcludedFromBackupKey])
         XCTAssertEqual(values.isExcludedFromBackup, true)
     }
@@ -92,6 +117,7 @@ final class FileDebugLogTests: XCTestCase {
     func testClearingRemovesTheLinesAndChangesTheSalt() {
         let log = log()
         log.record(.showerAction(.start(machine: .machine("11223344"))))
+        log.flush()
         let before = log.tag(.machine("11223344"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: log.saltFile.path))
         log.clear()
@@ -105,6 +131,7 @@ final class FileDebugLogTests: XCTestCase {
     func testTheSaltIsNeverInTheLines() throws {
         let log = log()
         log.record(.showerAction(.startNext(machine: .machine("11223344"))))
+        log.flush()
         let salt = try Data(contentsOf: log.saltFile)
         XCTAssertEqual(salt.count, 32)
         let hex = salt.map { String(format: "%02x", $0) }.joined()

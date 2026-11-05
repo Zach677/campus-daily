@@ -362,4 +362,16 @@ public enum DebugPage: String, Sendable, CaseIterable {
 public enum DebugEntry: String, Sendable, CaseIterable {
     case homeButton, recents, cardRecords, settings, tab, liveActivity, widget, notification, intent
     case deepLink, pageEvent, setup, launch
+    /// A page put back (the shower page popped while it must stay) or pages shown once a sheet went.
+    case restore
+    /// The first-run setup after 重置校日常.
+    case reset
+    /// Leaving 「先看看示例」 (去登录).
+    case sample
+    /// The account-switch alert's 去设置热水.
+    case alert
+    /// The expired-login line on home.
+    case updateLine
+    /// 常用洗衣机 saved, on to 洗衣.
+    case setupDone
 }

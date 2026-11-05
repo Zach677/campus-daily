@@ -122,6 +122,53 @@ final class DebugNavTests: XCTestCase {
         XCTAssertEqual(log.events, [.navOpen(.laundry, from: .homeButton)])
     }
 
+    /// An entry for named pages waits for them: a tab appearing on the way is not given it.
+    func testAnEntryForNamedPagesGoesToEachOfThemOnce() {
+        let log = RecordingDebugLog()
+        let nav = DebugNav(log: log, now: clock.function)
+        nav.from(.widget, to: [.settings, .account])
+        nav.opened(.home, default: .tab)
+        nav.opened(.settings, default: .tab)
+        nav.opened(.account, default: .settings)
+        nav.opened(.account, default: .settings)
+        XCTAssertEqual(log.events, [.navOpen(.home, from: .tab), .navOpen(.settings, from: .widget),
+                                    .navOpen(.account, from: .widget), .navOpen(.account, from: .settings)])
+    }
+
+    /// The page raising itself says `pageEvent` only when nothing said why first (a tap, a
+    /// Shortcut): the reason given first wins.
+    func testAPageEventDoesNotReplaceAReasonGivenFirst() {
+        let log = RecordingDebugLog()
+        let nav = DebugNav(log: log, now: clock.function)
+        nav.from(.homeButton, to: [.showerPage])
+        nav.from(.pageEvent, to: [.showerPage], unlessPending: true)
+        nav.opened(.showerPage, default: .pageEvent)
+        nav.from(.pageEvent, to: [.showerPage], unlessPending: true)
+        nav.opened(.showerPage, default: .homeButton)
+        XCTAssertEqual(log.events, [.navOpen(.showerPage, from: .homeButton), .navOpen(.showerPage, from: .pageEvent)])
+    }
+
+    /// The newest reason for a page wins over an older one still waiting.
+    func testTheNewestEntryForAPageWins() {
+        let log = RecordingDebugLog()
+        let nav = DebugNav(log: log, now: clock.function)
+        nav.from(.notification, to: [.laundry])
+        clock.advance(1)
+        nav.from(.widget, to: [.laundry])
+        nav.opened(.laundry, default: .homeButton)
+        nav.opened(.laundry, default: .homeButton)
+        XCTAssertEqual(log.events, [.navOpen(.laundry, from: .widget), .navOpen(.laundry, from: .homeButton)])
+    }
+
+    /// Every way in that is not a tap has a name of its own.
+    func testProgrammaticEntriesHaveTheirOwnNames() {
+        let names = Set(DebugEntry.allCases.map(\.rawValue))
+        for name in ["recents", "pageEvent", "restore", "reset", "sample", "alert", "updateLine", "setupDone",
+                     "widget", "notification", "intent", "liveActivity", "launch"] {
+            XCTAssertTrue(names.contains(name), name)
+        }
+    }
+
     func testNothingIsRecordedIntoADisabledLog() {
         let nav = DebugNav(log: NoDebugLog(), now: clock.function)
         nav.from(.intent)

@@ -111,14 +111,18 @@ final class DebugLogLaunchTests: XCTestCase {
 
     /// An App Store build installed over a TestFlight one: the old log goes at its first launch.
     func testNotTestFlightDeletesALogLeftByATestFlightBuild() {
-        FileDebugLog(directory: folder, now: clock.function).record(.navOpen(.home, from: .launch))
+        let old = FileDebugLog(directory: folder, now: clock.function)
+        old.record(.navOpen(.home, from: .launch))
+        old.flush()
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
         _ = DebugLogLaunch.sink(isTestFlight: false, applicationSupport: base, now: clock.function)
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
 
     func testTestFlightKeepsTheLogInItsFolderAndDropsWeekOldLines() {
-        FileDebugLog(directory: folder, now: clock.function).record(.navOpen(.home, from: .launch))
+        let old = FileDebugLog(directory: folder, now: clock.function)
+        old.record(.navOpen(.home, from: .launch))
+        old.flush()
         clock.advance(8 * 24 * 3600)
         let log = DebugLogLaunch.sink(isTestFlight: true, applicationSupport: base, now: clock.function)
         XCTAssertTrue(log.isEnabled)
