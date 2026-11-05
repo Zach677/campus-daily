@@ -51,4 +51,13 @@ final class ShowerRouteTests: XCTestCase {
         XCTAssertEqual(HomeShowerButton.spokenTitle(.stopped), "去洗澡，上一次洗好了")
         XCTAssertNil(HomeShowerButton.caption(.stopped), "no second line on home")
     }
+
+    /// 清爽's page over a shower that is over: no 「本次费用 · 结算后显示」 card (the app won't
+    /// settle it); 最近一次用水 and 连接检查 stay. Every other face keeps its cost card.
+    func testClearsStoppedPageHasNoCostCard() {
+        XCTAssertFalse(ClearShowerPage.showsCostCard(.stopped))
+        for phase: ShowerPagePhase? in [nil, .connecting, .running, .settling, .done, .connectFailed, .denied] {
+            XCTAssertTrue(ClearShowerPage.showsCostCard(phase), "\(String(describing: phase))")
+        }
+    }
 }

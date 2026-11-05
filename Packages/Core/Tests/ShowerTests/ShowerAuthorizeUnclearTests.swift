@@ -29,7 +29,7 @@ final class ShowerAuthorizeUnclearTests: XCTestCase {
         XCTAssertEqual(ShowerPage(s)?.phase, .stopped)
         XCTAssertEqual(ShowerDisplay.title(s), "水没开。学校提示：余额不足")
         XCTAssertEqual(ShowerDisplay.failureTitle(s.failure), "水没开。学校提示：余额不足")
-        XCTAssertEqual(siri(s), "水没开。学校提示：余额不足。打开校日常核对一下再开始。")
+        XCTAssertEqual(siri(s), "水没开。学校提示：余额不足。打开校日常再试一次。")
 
         for text in [ShowerDisplay.title(s), siri(s) ?? ""] {
             XCTAssertFalse(text.contains("结算"), text)
@@ -45,14 +45,14 @@ final class ShowerAuthorizeUnclearTests: XCTestCase {
             XCTAssertEqual(s.failure?.reason, .authorizeUncertain, "\(e)")
             XCTAssertEqual(ShowerPage(s)?.phase, .stopped, "\(e)")
             XCTAssertEqual(ShowerDisplay.title(s), "水没开")
-            XCTAssertEqual(siri(s), "水没开。打开校日常核对一下再开始。")
+            XCTAssertEqual(siri(s), "水没开。打开校日常再试一次。")
         }
     }
 
     /// The platform's sentence already ends a clause: Siri doesn't add a second full stop.
     func testSiriDoesNotDoubleTheFullStop() {
         let s = failedAuthorize(.rejected(.lxt6, code: "1", message: "余额不足。"))
-        XCTAssertEqual(siri(s), "水没开。学校提示：余额不足。打开校日常核对一下再开始。")
+        XCTAssertEqual(siri(s), "水没开。学校提示：余额不足。打开校日常再试一次。")
     }
 
     /// The platform said OK but its authorization can't be used (another machine, a bad
@@ -68,7 +68,7 @@ final class ShowerAuthorizeUnclearTests: XCTestCase {
 
         XCTAssertEqual(ShowerPage(s)?.phase, .stopped)
         XCTAssertEqual(ShowerDisplay.title(s), "水没开")
-        XCTAssertEqual(siri(s), "水没开。打开校日常核对一下再开始。")
-        XCTAssertEqual(ShowerActionFailure.blockedText(s.failure), "水没开。打开校日常核对一下再开始。")
+        XCTAssertEqual(siri(s), "水没开。打开校日常再试一次。")
+        XCTAssertEqual(ShowerActionFailure.blockedText(s.failure), "水没开。打开校日常再试一次。")
     }
 }

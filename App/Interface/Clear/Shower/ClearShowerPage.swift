@@ -24,6 +24,9 @@ struct ClearShowerPage: View {
     private var flow: ShowerPageFlow { shower.page }
     private var phase: ShowerPagePhase? { flow.pushedPhase }
 
+    /// Whether the face shows the cost card. Not yet: always.
+    static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { true }
+
     var body: some View {
         ScrollView {
             VStack(alignment:.leading, spacing:24) {

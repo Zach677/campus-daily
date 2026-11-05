@@ -31,6 +31,10 @@ final class ShowerRetiredWordsTests: XCTestCase {
         "sh-detail-check",
         // The first-run guide's line about a check that no longer exists.
         "上次洗澡还没核对",
+        // Siri, Shortcuts and status: no check is asked for any more.
+        "打开校日常核对一下",
+        "上次结算还没确认",
+        "结算待核对",
     ]
 
     /// The one file the product copy is in.

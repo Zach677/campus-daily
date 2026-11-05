@@ -14,4 +14,8 @@ public enum ShowerAuthorText {
     public static let homeButton = "去洗澡"
     /// What VoiceOver reads for that button.
     public static let homeButtonLabel = "去洗澡，上一次洗好了"
+    /// Not written yet.
+    public static let spokenNoWater = ""
+    public static let keptStatus = ""
+    public static let spokenInUse = ""
 }

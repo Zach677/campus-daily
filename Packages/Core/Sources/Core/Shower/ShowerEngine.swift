@@ -152,6 +152,10 @@ public actor ShowerEngine {
 
     // MARK: User actions
 
+    /// 开始洗澡 from Siri or Shortcuts. Not yet: the usual start.
+    @discardableResult
+    public func startOrNext(_ b: ShowerBinding) async throws -> ShowerState { try await start(b) }
+
     /// 开水: connect + identity probe, authorize, write the authorization.
     @discardableResult
     public func start(_ b: ShowerBinding) async throws -> ShowerState {
