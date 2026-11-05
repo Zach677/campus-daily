@@ -130,6 +130,7 @@ extension HomeView {
                 shower.showDemoPage(record)
                 if url.lastPathComponent == "sh-endfail" { shower.page.endFailed = .noConnection }
                 switch url.lastPathComponent {
+                case "sh-check-inuse": shower.page.recheckResult = .inUse
                 case "sh-check-rechecking": shower.page.rechecking = true
                 case "sh-check-stopped": shower.page.recheckResult = .stopped
                 case "sh-check-nocon": shower.page.recheckResult = .noConnection

@@ -317,6 +317,13 @@ public struct ShowerPageFlow: Sendable, Equatable {
         default: return false
         }
     }
+    /// The face that waits for the check found the controller in use: 再洗一次 found it so
+    /// (and let it go), or 再查一次水控 found water running after the session showed stopped.
+    /// The face says 水控有人在用 until the next look or try.
+    public var checkInUse: Bool {
+        guard page?.phase == .needsCheck || page?.phase == .unsure else { return false }
+        return (showsRecheck && recheckResult == .inUse) || (record.waitingForRelease && record.notice == .device(.busy))
+    }
     public var mayCancel: Bool { page?.phase == .connecting && !cancelling && !cancelRefused }
     public var mayEnd: Bool { page?.phase == .running && record.canFinish && !ending }
     /// 再结算一次 on the unsure face: a settlement that failed with its consumption kept.

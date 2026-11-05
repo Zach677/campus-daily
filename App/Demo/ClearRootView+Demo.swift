@@ -119,6 +119,7 @@ extension ClearRootView {
             shower.showDemoPage(record)
             if name == "sh-endfail" { shower.page.endFailed = .noConnection }
             switch name {
+            case "sh-check-inuse": shower.page.recheckResult = .inUse
             case "sh-check-rechecking", "sh-detail-check-rechecking": shower.page.rechecking = true
             case "sh-check-stopped": shower.page.recheckResult = .stopped
             case "sh-check-nocon": shower.page.recheckResult = .noConnection
