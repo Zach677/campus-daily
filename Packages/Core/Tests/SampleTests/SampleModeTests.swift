@@ -205,6 +205,8 @@ final class SampleModeTests: XCTestCase {
 
     func testCopy() {
         XCTAssertEqual(SampleCopy.entry, "先看看示例")
+        XCTAssertEqual(SampleCopy.entryRefused, "有一次洗澡还没结完，结完就能看示例。")
+        XCTAssertEqual(SampleCopy.entryUnavailable, "不可用")
         XCTAssertEqual(SampleCopy.barText, "示例数据，不是你的账号")
         XCTAssertEqual(SampleCopy.barAction, "去登录")
         XCTAssertEqual(SampleCopy.barSpoken, "示例数据，不是你的账号。去登录")

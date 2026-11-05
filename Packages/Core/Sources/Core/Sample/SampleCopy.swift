@@ -6,9 +6,12 @@ public enum SampleCopy {
     /// The login step's second entry, under 用学校网页登录.
     public static let entry = "先看看示例"
     /// Under the entry while it is shut (`LiveShowerGate`), one line for every reason (a real
-    /// shower not over, waiting for its check, or its record not read); VoiceOver reads it after
-    /// the entry's label.
+    /// shower still under way, or its record not read yet or unreadable; one over, settled or
+    /// awaiting review, doesn't shut it); VoiceOver reads it after the entry's label and
+    /// `entryUnavailable`.
     public static let entryRefused = "有一次洗澡还没结完，结完就能看示例。"
+    /// What VoiceOver says of the entry while it is shut, before `entryRefused`.
+    public static let entryUnavailable = "不可用"
     /// The bar's text, on its left.
     public static let barText = "示例数据，不是你的账号"
     /// The bar's button: leaves the sample, back to the login step.

@@ -68,17 +68,12 @@ struct ClearSetupAccountPage: View {
             }
             // As on 暖橙's login step: synthetic data, nothing stored or sent; the root closes this.
             // Shut while the real shower is not over or its record not read (`LiveShowerGate`).
-            ClearSetupTextButton(title:SampleCopy.entry) { sample.enter() }
-                .disabled(loggingIn || !sampleAllowed)
-                .accessibilityIdentifier("sampleEntry")
-                .accessibilityHint(sampleAllowed ? "" : SampleCopy.entryRefused)
-            if !sampleAllowed {
-                ClearNoticeText(SampleCopy.entryRefused)
-                    .font(.footnote).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
-                    .frame(maxWidth:.infinity)
-                    .accessibilityIdentifier("sampleEntryRefused")
-                    .accessibilityHidden(true)
+            if sampleAllowed {
+                ClearSetupTextButton(title:SampleCopy.entry) { sample.enter() }
+                    .disabled(loggingIn)
+                    .accessibilityIdentifier("sampleEntry")
+            } else {
+                SampleEntryRefused { $0.font(.body) }
             }
         }
         .sheet(isPresented:$webLogin) {
