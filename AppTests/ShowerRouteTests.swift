@@ -60,4 +60,12 @@ final class ShowerRouteTests: XCTestCase {
             XCTAssertTrue(ClearShowerPage.showsCostCard(phase), "\(String(describing: phase))")
         }
     }
+
+    /// 清爽's page over a shower that is over (stopped on the controller, or kept with its
+    /// outcome unknown): no 最近一次用水 card. It names the last shower the app settled, which
+    /// reads as the cost of the one that just ended. 连接检查 stays; the start layout keeps it.
+    func testClearsStoppedPageHasNoLastUseCard() {
+        XCTAssertFalse(ClearShowerPage.showsLastUse(.stopped))
+        XCTAssertTrue(ClearShowerPage.showsLastUse(nil))
+    }
 }

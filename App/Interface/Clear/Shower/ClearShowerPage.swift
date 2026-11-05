@@ -27,6 +27,8 @@ struct ClearShowerPage: View {
     /// Every face has its cost card but a shower that is over: the app won't settle it, so
     /// 「本次费用 · 结算后显示」 would promise what doesn't come.
     static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { phase != .stopped }
+    /// 最近一次用水 shows the start layout's last settled shower. Stub.
+    static func showsLastUse(_ phase: ShowerPagePhase?) -> Bool { true }
 
     var body: some View {
         ScrollView {
