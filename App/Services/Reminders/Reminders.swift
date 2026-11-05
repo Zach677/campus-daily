@@ -352,8 +352,8 @@ enum ReminderKey {
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let route = Route(userInfo:response.notification.request.content.userInfo)
         nonisolated(unsafe) let done = completionHandler
+        // The root that follows `route` says the pages it opens came from the notification.
         Task { @MainActor in
-            AppEnvironment.live.debugNav.from(.notification)
             self.route = route
             done()
         }

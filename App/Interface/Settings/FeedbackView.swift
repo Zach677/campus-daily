@@ -93,7 +93,7 @@ struct FeedbackView: View {
                 if !items.isEmpty { loadingImages = true }
                 Task { await load(items) }
             }
-            .onAppear { logLines = services.debugLog.isEnabled ? services.debugLog.lines() : [] }
+            .onAppear { logLines = Self.readLog(services.debugLog) }
             .sheet(isPresented:$showingLog) { debugLogPreview }
             .alert("发出去了", isPresented:$sent) {
                 Button("好") { dismiss() }
@@ -116,16 +116,23 @@ struct FeedbackView: View {
         }
     }
 
+    /// The log's lines once every line queued before is written (`flush`); none outside TestFlight.
+    static func readLog(_ log: any DebugLogSink) -> [String] {
+        guard log.isEnabled else { return [] }
+        log.flush()
+        return log.lines()
+    }
+
     /// TestFlight only, with something in the log: off unless turned on for this message.
     private var debugLogSection: some View {
         Section {
-            Toggle("附上调试记录", isOn:$attachLog)
+            Toggle(FeedbackLogText.toggle, isOn:$attachLog)
                 .disabled(sending)
                 .accessibilityIdentifier("feedbackAttachLog")
         } footer: {
             VStack(alignment:.leading, spacing:6) {
-                Text("测试版才有。只记打开了哪页、每一步的结果和状态码，不记账号、密码、订单号和机器号。勾上后最近 \(min(logLines.count, DebugLogReport.maxLines)) 条接在文字后面。")
-                Button("看看内容") { showingLog = true }
+                Text(FeedbackLogText.footer)
+                Button(FeedbackLogText.showButton) { logLines = Self.readLog(services.debugLog); showingLog = true }
                     .font(.footnote)
                     .accessibilityIdentifier("feedbackShowLog")
             }
@@ -142,7 +149,7 @@ struct FeedbackView: View {
                     .frame(maxWidth:.infinity, alignment:.leading)
                     .padding()
             }
-            .navigationTitle("调试记录").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(FeedbackLogText.previewTitle).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement:.confirmationAction) { Button("好") { showingLog = false } }
             }
@@ -202,7 +209,7 @@ struct FeedbackView: View {
         Task {
             do {
                 // Read again: what happened while the form was open goes too. Off: nothing more.
-                let lines = attachLog && services.debugLog.isEnabled ? services.debugLog.lines() : nil
+                let lines = attachLog && services.debugLog.isEnabled ? Self.readLog(services.debugLog) : nil
                 try await FeedbackReporter.send(message:message, images:images, to:endpoint, http:http, debugLog:lines)
                 sent = true
             } catch {
@@ -211,4 +218,12 @@ struct FeedbackView: View {
             sending = false
         }
     }
+}
+
+/// The words for 「附上调试记录」 on 反馈问题.
+enum FeedbackLogText {
+    static let toggle = "附上调试记录"
+    static let footer = "会带上最近的操作步骤：点了什么、走到哪一步、请求成没成。不带密码、账号、学号、姓名和宿舍，机器和订单只记一串代号。"
+    static let showButton = "看看内容"
+    static let previewTitle = "将要发出的调试记录"
 }

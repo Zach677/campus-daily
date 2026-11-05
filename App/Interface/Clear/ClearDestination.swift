@@ -48,6 +48,8 @@ struct ClearDestination: View {
     /// Saved or switched: back a page; on 日常 opened from home itself, on to 洗衣.
     private func washerSetupDone() {
         guard navigator.tab == .home else { navigator.pop(); return }
+        let next = WasherSetupExit.path(navigator.homePath, setup:.washerSetup, laundry:.laundry)
+        if next.last == .laundry, navigator.homePath.last != .laundry { navigator.mark(.setupDone, pages:[.laundry]) }
         navigator.homePath = WasherSetupExit.path(navigator.homePath, setup:.washerSetup, laundry:.laundry)
     }
 }

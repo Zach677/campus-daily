@@ -22,9 +22,36 @@ private struct DebugNavOpen: ViewModifier {
     }
 }
 
+/// `nav.open` for a face of a page that is already up: each time `shown` turns true while the
+/// page is on screen (and when the page appears showing it).
+private struct DebugNavShown: ViewModifier {
+    let page: DebugPage
+    let shown: Bool
+    let entry: DebugEntry
+    @Environment(\.campusServices) private var services
+    @State private var onScreen = false
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                onScreen = true
+                if shown { services.debugNav.opened(page, default:entry) }
+            }
+            .onDisappear { onScreen = false }
+            .onChange(of:shown) { _, now in
+                if now, onScreen { services.debugNav.opened(page, default:entry) }
+            }
+    }
+}
+
 extension View {
     func navOpen(_ page: DebugPage, from entry: DebugEntry, once: Bool = true) -> some View {
         modifier(DebugNavOpen(page:page, entry:entry, once:once))
+    }
+
+    /// A face of this page (`DebugNavShown`): `entry` unless something said why first.
+    func navOpen(_ page: DebugPage, shown: Bool, from entry: DebugEntry) -> some View {
+        modifier(DebugNavShown(page:page, shown:shown, entry:entry))
     }
 }
 

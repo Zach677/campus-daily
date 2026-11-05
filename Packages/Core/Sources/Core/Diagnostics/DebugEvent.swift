@@ -354,7 +354,8 @@ public enum DebugHTTPName: String, Sendable, CaseIterable {
 
 /// The page that opened (`nav.open`). Both themes use the same names.
 public enum DebugPage: String, Sendable, CaseIterable {
-    case home, showerPage, showerDetail, laundry, washerSetup, cardRecords, cardTopUp, power, powerSetup
+    /// `showerStopped`: the shower page's 上一次洗好了 face (开始下一次洗澡), each time it shows.
+    case home, showerPage, showerStopped, showerDetail, laundry, washerSetup, cardRecords, cardTopUp, power, powerSetup
     case records, settings, account, dorm, theme, advanced, setupChecklist, onboarding, feedback, signIn
 }
 
