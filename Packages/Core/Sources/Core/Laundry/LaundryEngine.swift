@@ -25,6 +25,7 @@ public actor LaundryEngine {
     let vault: LaundryVault
     let launcher: PaymentLauncher
     let accountID: String?
+    let inFront: @Sendable () async -> Bool
     let now: @Sendable () -> Date
     let sleep: @Sendable (TimeInterval) async throws -> Void
     /// The TestFlight debug log: phases, request outcomes, U净's status codes, a salted order tag.
@@ -40,12 +41,13 @@ public actor LaundryEngine {
     /// `resetMarker`: while a reset runs, no order is created (`AppReset.InProgress`).
     /// `accountID`: the signed-in U净 account `api` sends as; a new order records it.
     public init(api: LaundryOrdering, vault: LaundryVault, launcher: PaymentLauncher,
-                accountID: String? = nil, resetMarker: ResetMarker? = nil, now: @escaping @Sendable () -> Date = Date.init,
+                accountID: String? = nil, resetMarker: ResetMarker? = nil,
+                inFront: @escaping @Sendable () async -> Bool = { false }, now: @escaping @Sendable () -> Date = Date.init,
                 sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { s in
                     try await Task.sleep(nanoseconds: UInt64(max(0, s) * 1_000_000_000))
                 }, debugLog: any DebugLogSink = NoDebugLog()) throws {
         self.api = api; self.vault = vault; self.launcher = launcher; self.accountID = accountID
-        self.now = now; self.sleep = sleep; self.debugLog = debugLog
+        self.inFront = inFront; self.now = now; self.sleep = sleep; self.debugLog = debugLog
         self.resetMarker = resetMarker
         let persisted: LaundryCheckout?
         do { persisted = try vault.checkout() } catch { throw LaundryEngineError.storage }
@@ -74,13 +76,14 @@ public actor LaundryEngine {
     // MARK: User actions
 
     /// After the confirmation sheet (machine, program, price): create once, then read the order.
+    /// `immediate`: 立刻洗衣, the app starts the machine after payment (recorded on the order).
     @discardableResult
-    public func confirmOrder(_ snapshot: WasherSnapshot, program: WasherProgram) async throws -> LaundryCheckout {
+    public func confirmOrder(_ snapshot: WasherSnapshot, program: WasherProgram, immediate: Bool = false) async throws -> LaundryCheckout {
         try guardIdle()
         try resetMarker?.checkStart(at: now())
         guard state.canCreate else { throw LaundryEngineError.notAllowed }
         guard let draft = LaundryDraft.make(snapshot, program: program, now: now()) else { throw LaundryEngineError.washerChanged }
-        return try await run(.confirm(draft, at: now(), account: accountID))
+        return try await run(.confirm(draft, at: now(), account: accountID, immediate: immediate))
     }
 
     /// 付款: channel lookup, then payment arguments (once), then open Alipay.
@@ -257,7 +260,27 @@ public actor LaundryEngine {
             guard !Task.isCancelled else { return .cancelledBeforeSend }
             do { try await api.cancel(id); return .cancelAcknowledged }
             catch { return .cancelFailed(Self.serviceError(error, stateChanging: true)) }
+
+        case .readStartCheck(let id):
+            guard ownsOrder else { return .startBlocked(.account) }
+            guard !Task.isCancelled, await inFront(), !Task.isCancelled else { return .startNotNow }
+            do { return .startCheckRead(try await api.startCheck(id), at: now()) }
+            catch { return .startCheckFailed(Self.serviceError(error, stateChanging: false)) }
+
+        case .startWasher(let id):
+            // `start` is stored as sent. Up to the call it may still go back to "not tried";
+            // once the request is handed over, every outcome keeps it (never sent twice).
+            guard ownsOrder else { return .startBlocked(.account) }
+            guard !Task.isCancelled, await inFront(), !Task.isCancelled else { return .startNotNow }
+            do { try await api.startWasher(id); return .startSent(at: now()) }
+            catch { return .startFailed(Self.serviceError(error, stateChanging: true), at: now()) }
         }
+    }
+
+    /// The order was placed by the account `api` sends as (立刻洗衣 starts only then).
+    private var ownsOrder: Bool {
+        guard let owner = state.accountID, let accountID else { return false }
+        return owner == accountID
     }
 
     static func serviceError(_ error: Error, stateChanging: Bool) -> ServiceError {
