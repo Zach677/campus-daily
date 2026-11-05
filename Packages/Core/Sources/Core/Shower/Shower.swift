@@ -183,12 +183,18 @@ public struct ShowerState: Sendable, Codable, Equatable {
         }
     }
 
-    public var canFinish: Bool { (phase == .writePending || phase == .running) && !reviewing }
+    /// Not once the controller showed this session stopped (`stateReviewRequired`): water found
+    /// running after that may be anyone's, and a close would settle it under this record.
+    public var canFinish: Bool {
+        (phase == .writePending || phase == .running) && !reviewing && !stateReviewRequired
+    }
 
-    /// A read-only probe of the controller: while water may run, and from a close that may
-    /// not have taken (water still running there means the close can be sent again).
+    /// A read-only probe of the controller: while water may run (also while that waits for the
+    /// check), and from a close that may not have taken (water still running there means the
+    /// close can be sent again).
     public var canReview: Bool {
-        canFinish || (phase == .failed && failure?.reason == .closeUnconfirmed && !reviewing)
+        ((phase == .writePending || phase == .running) && !reviewing)
+            || (phase == .failed && failure?.reason == .closeUnconfirmed && !reviewing)
     }
 
     public var canResolveManually: Bool {
@@ -448,6 +454,11 @@ public enum ShowerReducer {
                 // Our authorization provably never reached it: the water is someone else's, and
                 // the probe says so instead of showing the timer as if it were ours.
                 s.stateReviewRequired = false
+                s.notice = .inUseByOther
+                return (s, [.releaseDevice])
+            case .active where state.stateReviewRequired:
+                // The controller already showed this session stopped: water running now may be
+                // anyone's. The check stands and the link is let go.
                 s.notice = .inUseByOther
                 return (s, [.releaseDevice])
             case .active:

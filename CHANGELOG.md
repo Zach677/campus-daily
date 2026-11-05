@@ -22,6 +22,7 @@
 
 ### Changed
 
+- Once the controller showed a shower stopped, 「再查一次水控」 finding water running keeps the check and lets go of the controller instead of going back to the timer, and 结束 is no longer offered for that shower: the water may be someone else's, and a close would settle it as yours.
 - Move the iPhone app's bundle id to `org.zaxh.xiaorichang`. It installs as a new app: sign in once more, and the old 校日常 can be deleted. Android keeps `com.beamjason.xiaorichang`.
 - Draw the row icons on home, 校园卡记录, the laundry page, Settings and the home-screen widget (small and medium) as one set of grey line symbols instead of emoji; they stay grey when a number turns red.
 - Look for the dorm's electricity meter one level at a time (campus, apartment, building, floor, room) with small reads instead of one read of every meter on the campus; each read is retried twice on a timeout or a lost connection.

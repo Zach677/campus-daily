@@ -68,6 +68,9 @@ public enum ShowerRecheckResult: Sendable, Equatable {
     case failed
     /// The probe could not start at all (the record moved on, no binding or engine yet).
     case unavailable
+    /// The controller is running water that can't be this record's (it showed this session
+    /// stopped before): the check stands and the link was let go.
+    case inUse
 
     /// From the record after the probe; nil when water runs again (the timer face).
     public init?(after record: ShowerState) {
@@ -80,7 +83,8 @@ public enum ShowerRecheckResult: Sendable, Equatable {
         case .device(.notFound)?, .device(.timedOut)?, .device(.disconnected)?, .device(.ambiguous)?, .device(.interrupted)?:
             self = .noConnection
         case .device(.busy)?: self = .busy
-        case .device(.malformedFrame)?, .writeUnconfirmed?, .inUseByOther?, nil: self = .failed
+        case .inUseByOther?: self = .inUse
+        case .device(.malformedFrame)?, .writeUnconfirmed?, nil: self = .failed
         }
     }
 

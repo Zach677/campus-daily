@@ -66,6 +66,7 @@ enum ShowerPageText {
         case .busy: return SchoolLoginText.busy
         case .failed: return "没查到水控，再试一次。"
         case .unavailable: return "现在查不了，等一下再试。"
+        case .inUse: return "〔待定〕水控在出水，但不是这次洗澡的，已断开。"  // PLACEHOLDER copy (Camo)
         }
     }
     static let resolveConfirm = "这次洗澡核对过了吗？"

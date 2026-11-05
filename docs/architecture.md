@@ -587,8 +587,12 @@ Rules:
   second sends it.
 - A probe that finds the controller stopped under a running record sets `stateReviewRequired`:
   the shower page shows a check face (去核对 / 「我在学校记录里核对过了」) and the home card's
-  button reads 去核对. 「再查一次水控」 on that face runs the same read-only probe again: water
-  still running returns to the timer; a stopped or unreachable controller is said under it.
+  button reads 去核对. 「再查一次水控」 on that face runs the same read-only probe again; a stopped
+  or unreachable controller is said under it. Once the controller showed the session stopped,
+  `0xA5` found later may be anyone's water (the session was most likely ended with the
+  controller's own button and someone started another): the check stands, the link is let go,
+  and 结束 is not offered (`canFinish` is false), so no close or settlement goes out under the
+  old authorization.
 - `startedAt` is set when the authorization arrives and enters `writePending` (出水), not at the
   开始洗澡 tap: the ~15 s of connecting and authorizing are not shower time. The in-app timer,
   the Live Activity, the unsettled reminder and the shown duration (done page, settled lock
