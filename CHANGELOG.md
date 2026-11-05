@@ -23,6 +23,7 @@
 
 ### Changed
 
+- Top up the campus card and the electricity on one page, 「校园充值」 (both themes), instead of the school's web pages inside the app: 「打开微信」 opens the school's WeChat service 「e广工商大办事大厅」 and 「用网页打开」 opens the school's page for it in Safari; the app handles no money. When WeChat does not open, the line under the buttons says 「微信没打开。点「用网页打开」，或者在微信里搜「e广工商大办事大厅」。」. Back in the app, the balances are read again once. In 暖橙 the card balance and (with a meter) the electricity open it; in 清爽 「充电费 ›」 and 「充校园卡 ›」 both read 「充值 ›」. In 先看看示例 the 充值 buttons on 余额 and 电量 open it too.
 - Once the controller showed a shower stopped, 「再查一次水控」 finding water running keeps the check and lets go of the controller instead of going back to the timer, and 结束 is no longer offered for that shower: the water may be someone else's, and a close would settle it as yours.
 - The check face no longer says 「核对完才能再洗」: it reads 「水控显示已经停了，但这次还没结算上。去学校的热水记录里看看扣了没有。」. The controller check in setup, while a shower waits for its check, says 「上次洗澡还没核对。先确认水控已经停水，就能再洗一次。」.
 - Move the iPhone app's bundle id to `org.zaxh.xiaorichang`. It installs as a new app: sign in once more, and the old 校日常 can be deleted. Android keeps `com.beamjason.xiaorichang`.

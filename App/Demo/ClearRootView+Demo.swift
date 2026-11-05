@@ -53,13 +53,6 @@ extension ClearRootView {
             navigator.tab = .records
             return
         }
-        if url.host == "demo", name == "recharge-blocked" {
-            navigator.setup = nil
-            navigator.demo = normal
-            navigator.rechargeBlockedDemo = true
-            freshPush(.card)
-            return
-        }
         if url.host == "demo", name.hasPrefix("account-switched") || name.hasPrefix("account-unconfirmed") {
             navigator.setup = nil; popAll()
             navigator.demo = normal
@@ -119,7 +112,6 @@ extension ClearRootView {
             shower.showDemoPage(record)
             if name == "sh-endfail" { shower.page.endFailed = .noConnection }
             switch name {
-            case "sh-check-inuse": shower.page.recheckResult = .inUse
             case "sh-check-rechecking", "sh-detail-check-rechecking": shower.page.rechecking = true
             case "sh-check-stopped": shower.page.recheckResult = .stopped
             case "sh-check-nocon": shower.page.recheckResult = .noConnection
@@ -127,6 +119,7 @@ extension ClearRootView {
             case "sh-check-busy": shower.page.recheckResult = .busy
             case "sh-check-failed": shower.page.recheckResult = .failed
             case "sh-check-unavailable": shower.page.recheckResult = .unavailable
+            case "sh-check-inuse": shower.page.recheckResult = .inUse
             default: break
             }
             if name.hasPrefix("sh-detail") {

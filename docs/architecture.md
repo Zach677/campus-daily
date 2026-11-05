@@ -688,40 +688,27 @@ Rules:
   `50`/`53`/`51`/`52` end the activity and the laundry-done notification and clear the record
   (`52` keeps a warning card until acknowledged). `LaundryDoneReminder` decides the notification.
 
-### 3.3 Recharge (card and electricity)
+### 3.3 校园充值 (card and electricity)
 
-Payment stays inside the school's own web pages (WKWebView); the app does not call the recharge
-submit APIs itself (not captured).
+The app handles no money and no school session for a top-up. One page, 校园充值, serves the card
+and the electricity: 「打开微信」 opens the school's WeChat service (`CampusTopUp.weChat`,
+`weixin://dl/business/?t=I0xUgrvZt1g`, issued by the school's own mini-program; the same
+address as upstream 0.9.0's OfficialCampusRechargeView) and 「用网页打开」 opens the school's
+hand-off page for it in Safari (`CampusTopUp.web`, `https://wxmpurl.cn/I0xUgrvZt1g`). Both go
+through `UIApplication.open`; `canOpenURL` is not used, so `LSApplicationQueriesSchemes` needs
+no `weixin` entry. Nothing opens by itself.
 
-```
-idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded─► inPage ─back─► idle
-                      │expired                                      │ alipays:// | weixin:// link
-                      ▼                                             ▼ open external app
-                  renewing (one forced refresh)                 inPage (still)
-                      │card read: checkingSession once more
-                      │not renewed, or expired again
-                      ▼
-                  needsLogin (re-login, then retry once)
-```
-
-- `renewing`: an expired card session (here or in the hot-water hand-off) is renewed once the
-  way home renews it, by a forced refresh (portal token, else the saved password), outside the
-  step's lease; when that refresh read the card, the step runs once more
-  (`CardSessionRenewal`). The user is asked to sign in only when the refresh did not read the
-  card or the second try finds the session expired again.
-- `checkingSession`: `boundCards` (liveness) then `freshLogin` → build `elecampus_state`
-  `{logintoken: <fresh token>, loginInfo, schoolid, custInfo, custid}` and inject it as a
-  document-start user script, ecykt origin only. Card: `/ykt-view/recharge?isbind=1`.
-  Electricity: `getPowerUrl?custid&syscustid` (302 → `/ykt-view/powersel?...`; let the WebView
-  follow it).
-- Navigation allow-list (`RechargeNavigation`): https on `ecykt.`, `portal.`, `cas.` school hosts;
-  `alipays`/`alipay`/`weixin` schemes only from a user link tap in the page itself on the ecykt
-  origin → `UIApplication.open`. Frames get the same list: a frame on another host is cancelled
-  (and logged by host), a frame never opens a pay app, and only `about:blank`/`about:srcdoc`
-  (which load nothing) are added for frames. The school login sheet does the same through
-  `SchoolLoginNavigation` (three school hosts, https, default port).
-- Back from the page, the app claims no result: the next refresh reads the balance and the room
-  meter as usual.
+- Entries (`CampusTopUpEntry`): 暖橙's card balance → the page once signed in; its electricity
+  → the page with a meter bound, else the meter picker; signed out → the login step. 清爽's
+  balance card shows 「充值 ›」 under each under the same conditions. Widgets and notifications
+  are unchanged.
+- `CampusTopUpFlow`: WeChat answering `false` turns the footnote into the failure line (notice
+  colour, announced once) until the next tap of either button. Back to active after either
+  button took the user out of the app, the balances are read once in the background
+  (`CampusModel.refresh(force:)`), with nothing on screen; the sample (先看看示例) opens the same
+  addresses and reads nothing.
+- The old signed-in web top-up (`RechargeWebSession`, `RechargeNavigation`) has no entry in the
+  app any more; its Core code and tests stay until they are removed on their own.
 
 ---
 
