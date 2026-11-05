@@ -37,12 +37,9 @@ extension DebugEvent {
             switch a {
             case .start(let m): f.word("start"); f["machine"] = tag(m)
             case .startNext(let m): f.word("startNext"); f["machine"] = tag(m)
+            case .shortcutStart(let next): f.word("shortcutStart"); f.flag("next", next)
             case .finish: f.word("finish")
             case .review: f.word("review")
-            case .settleRetryArm: f.word("settleRetryArm")
-            case .settleRetryConfirm: f.word("settleRetryConfirm")
-            case .settleRetryDisarm: f.word("settleRetryDisarm")
-            case .resolveManually: f.word("resolveManually")
             case .dismiss: f.word("dismiss")
             case .cancelStart(let accepted): f.word("cancelStart"); f.flag("accepted", accepted)
             }
@@ -77,7 +74,7 @@ extension DebugEvent {
             }
         case .lxtSettle(let step):
             switch step {
-            case .sent(let attempt): f.word("sent"); f["attempt"] = attempt == 0 ? "auto" : "manual\(attempt)"
+            case .sent: f.word("sent")
             case .notSent: f.word("notSent")
             case .ok(let fen): f.word("ok"); f["fen"] = fen.map(String.init) ?? "unknown"
             case .failed(let e): f.word("failed"); f.error(e)
@@ -187,8 +184,7 @@ struct DebugFields {
         if s.waitingForRelease { word("waitingForRelease") }
         if s.authorizationNotWritten { word("authorizationNotWritten") }
         if s.reviewing { word("reviewing") }
-        if s.settleRetryArmed { word("settleRetryArmed") }
-        if s.manualSettleAttempts > 0 { self["manualSettleAttempts"] = String(s.manualSettleAttempts) }
+        if s.showerOver { word("showerOver") }
         if let n = s.notice { self["notice"] = n.rawValue }
         if let d = s.noticeDevice { self["noticeDevice"] = d.rawValue }
     }

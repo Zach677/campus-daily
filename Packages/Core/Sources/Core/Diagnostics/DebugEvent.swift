@@ -42,16 +42,25 @@ public enum DebugEvent: Sendable, Equatable {
 /// What the user did on the hot-water record.
 public enum DebugShowerAction: Sendable, Equatable {
     case start(machine: DebugTag)
+    /// 开始下一次洗澡 over a shower that is over.
     case startNext(machine: DebugTag)
-    case finish, review
-    case settleRetryArm, settleRetryConfirm, settleRetryDisarm
-    case resolveManually, dismiss
+    /// 开始洗澡 from Siri or Shortcuts: `next`, over a shower that is over, it is 开始下一次洗澡.
+    case shortcutStart(next: Bool)
+    case finish, review, dismiss
     case cancelStart(accepted: Bool)
 }
 
 /// The engine's own notes (were plain strings): `name` keeps the old event names.
 public enum ShowerDiagnostic: Sendable, Equatable {
-    case nextUseDeviceBusy, nextUseRecordKept
+    /// 开始下一次洗澡's probe: in use (nothing sent), another controller, a frame nobody can read,
+    /// or cancelled while it connected or probed.
+    case nextUseDeviceBusy, nextUseWrongDevice, nextUseUnreadable, nextUseCancelled
+    /// The stopped record saved aside and read back: only then is the new one authorized.
+    case nextUseRecordKept
+    /// It could not be saved or read back: nothing was authorized.
+    case nextUseKeepFailed
+    /// The new record could not be saved: nothing went out, the stopped one stands.
+    case nextUseNotSaved
     case reviewWriteNeverApplied, finishWriteNeverApplied
     case settleHeldAfterUnconfirmedClose
     case settleManualRetry(Int)
@@ -60,7 +69,12 @@ public enum ShowerDiagnostic: Sendable, Equatable {
     public var name: String {
         switch self {
         case .nextUseDeviceBusy: return "nextUse.deviceBusy"
-        case .nextUseRecordKept: return "nextUse.recordKept"
+        case .nextUseWrongDevice: return "nextUse.wrongDevice"
+        case .nextUseUnreadable: return "nextUse.unreadable"
+        case .nextUseCancelled: return "nextUse.cancelled"
+        case .nextUseRecordKept: return "nextUse.recordKept.readBackOK"
+        case .nextUseKeepFailed: return "nextUse.keepFailed"
+        case .nextUseNotSaved: return "nextUse.newRecordNotSaved"
         case .reviewWriteNeverApplied: return "review.writeNeverApplied"
         case .finishWriteNeverApplied: return "finish.writeNeverApplied"
         case .settleHeldAfterUnconfirmedClose: return "settle.heldAfterUnconfirmedClose"
@@ -86,8 +100,8 @@ public struct DebugShowerState: Sendable, Equatable {
     public var waitingForRelease: Bool
     public var authorizationNotWritten: Bool
     public var reviewing: Bool
-    public var settleRetryArmed: Bool
-    public var manualSettleAttempts: Int
+    /// Over without a settlement in the app: the school settles it (`ShowerState.showerOver`).
+    public var showerOver: Bool
     public var notice: Notice?
     public var noticeDevice: ShowerDeviceError?
 
@@ -104,8 +118,7 @@ public struct DebugShowerState: Sendable, Equatable {
         waitingForRelease = s.waitingForRelease
         authorizationNotWritten = s.authorizationNotWritten
         reviewing = s.reviewing
-        settleRetryArmed = s.settleRetryArmed
-        manualSettleAttempts = s.manualSettleAttempts
+        showerOver = s.showerOver
         switch s.notice {
         case .device(let e)?: notice = .device; noticeDevice = e
         case .notActive?: notice = .notActive
@@ -180,8 +193,8 @@ public enum DebugAuthorizeStep: Sendable, Equatable {
 }
 
 public enum DebugSettleStep: Sendable, Equatable {
-    /// `attempt` 0: the automatic one after the close; N: the Nth manual retry.
-    case sent(attempt: Int)
+    /// The one settlement after the close.
+    case sent
     case ok(fen: Int?)
     case failed(DebugError)
     case notSent

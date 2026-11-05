@@ -65,9 +65,8 @@ final class DebugEventLineTests: XCTestCase {
     func testAShowerPhaseLineHasTheFlagsAndNoIds() {
         var s = ShowerState(phase: .failed, machineID: machine, peripheralID: "PERIPHERAL-A", authorizeSent: true, authorizationID: "A1B2C3D4")
         s.failure = ShowerFailure(reason: .settleRefused, needsReview: true, error: .rejected(.lxt6, code: "3", message: "重复结算"))
-        s.manualSettleAttempts = 1
         let text = line(.showerPhase(from: .settling, to: DebugShowerState(s)))
-        XCTAssertEqual(text, "from=settling to=failed failure=settleRefused error=rejected needsReview manualSettleAttempts=1")
+        XCTAssertEqual(text, "from=settling to=failed failure=settleRefused error=rejected needsReview showerOver")
         XCTAssertTrue(DebugLogTesting.leaks([machine, "PERIPHERAL", "A1B2C3D4", "重复结算"], in: text).isEmpty)
     }
 
@@ -76,6 +75,15 @@ final class DebugEventLineTests: XCTestCase {
         XCTAssertEqual(line(.showerNote(.settleManualRetry(2))), "settle.manualRetry#2")
         XCTAssertEqual(line(.showerNote(.resolvedManually(.failed))), "resolvedManually.failed")
         XCTAssertEqual(line(.showerNote(.nextUseDeviceBusy)), "nextUse.deviceBusy")
+        XCTAssertEqual(line(.showerNote(.nextUseRecordKept)), "nextUse.recordKept.readBackOK")
+        XCTAssertEqual(line(.showerNote(.nextUseKeepFailed)), "nextUse.keepFailed")
+        XCTAssertEqual(line(.showerNote(.nextUseNotSaved)), "nextUse.newRecordNotSaved")
+    }
+
+    /// 开始洗澡 from Siri or Shortcuts says which way it went.
+    func testAShortcutStartSaysWhetherItWasTheNextShower() {
+        XCTAssertEqual(line(.showerAction(.shortcutStart(next: true))), "shortcutStart next=yes")
+        XCTAssertEqual(line(.showerAction(.shortcutStart(next: false))), "shortcutStart next=no")
     }
 
     func testANavLineIsAPageAndAnEntry() {
