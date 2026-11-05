@@ -152,9 +152,15 @@ public actor ShowerEngine {
 
     // MARK: User actions
 
-    /// 开始洗澡 from Siri or Shortcuts. Not yet: the usual start.
+    /// 开始洗澡 from Siri or Shortcuts. Over a shower that is over (`ShowerState.showerOver`) it is
+    /// the page's 开始下一次洗澡 (`startNext`): a read-only probe, nothing sent while the
+    /// controller is in use, else the old record kept and read back before one new
+    /// authorization; it is never closed or settled. Otherwise the usual start.
     @discardableResult
-    public func startOrNext(_ b: ShowerBinding) async throws -> ShowerState { try await start(b) }
+    public func startOrNext(_ b: ShowerBinding) async throws -> ShowerState {
+        if state.showerOver && state.canStartNext { return try await startNext(b) }
+        return try await start(b)
+    }
 
     /// 开水: connect + identity probe, authorize, write the authorization.
     @discardableResult

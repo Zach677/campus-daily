@@ -8,7 +8,7 @@ import Foundation
 public enum ShowerAuthorizeUnclearText {
     public static let title = "水没开"
     /// Siri and Shortcuts.
-    public static let spoken = "水没开。打开校日常核对一下再开始。"
+    public static let spoken = ShowerAuthorText.spokenNoWater
 
     public static func note(_ message: String) -> String { "学校提示：\(message)" }
 
@@ -21,6 +21,6 @@ public enum ShowerAuthorizeUnclearText {
         guard let message = platformMessage else { return spoken }
         // The sentence goes on after it: one full stop, not two.
         let clause = String(message.reversed().drop(while: { $0 == "。" || $0 == "." }).reversed())
-        return "\(title)。\(note(clause.isEmpty ? message : clause))。打开校日常核对一下再开始。"
+        return "\(title)。\(note(clause.isEmpty ? message : clause))。\(ShowerAuthorText.spokenRetry)"
     }
 }

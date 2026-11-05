@@ -24,24 +24,18 @@ struct ClearShowerPage: View {
     private var flow: ShowerPageFlow { shower.page }
     private var phase: ShowerPagePhase? { flow.pushedPhase }
 
-    /// Whether the face shows the cost card. Not yet: always.
-    static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { true }
+    /// Every face has its cost card but a shower that is over: the app won't settle it, so
+    /// 「本次费用 · 结算后显示」 would promise what doesn't come.
+    static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { phase != .stopped }
 
     var body: some View {
         ScrollView {
             VStack(alignment:.leading, spacing:24) {
                 roomLine
                 ClearShowerHeadline(phase:phase, configured:configured, live:live)
-                if phase == .stopped {
-                    // Over: back to the start layout (in use: its own words only).
-                    if !flow.foundInUse {
-                        ClearShowerCostCard(phase:nil, live:live)
-                        idleExtras
-                    }
-                } else {
-                    ClearShowerCostCard(phase:phase, live:live)
-                }
-                if phase == nil { idleExtras }
+                if Self.showsCostCard(phase) { ClearShowerCostCard(phase:phase, live:live) }
+                // Over: the start layout's 最近一次用水 and 连接检查 (in use: its own words only).
+                if phase == nil || (phase == .stopped && !flow.foundInUse) { idleExtras }
             }
             .padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
         }

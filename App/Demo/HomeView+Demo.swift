@@ -134,7 +134,7 @@ extension HomeView {
                                                                   "settings-ask":.notDetermined, "settings-password-on":.authorized,
                                                                   "settings-paused":.authorized, "settings-paused-noanswer":.authorized,
                                                                   "settings-web-login":.authorized,
-                                                                  "settings-reset-shower":.authorized, "settings-reset-unsure":.authorized,
+                                                                  "settings-reset-shower":.authorized, "settings-reset-kept":.authorized,
                                                                   "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized,
                                                                   "settings-theme":.authorized, "settings-theme-shower":.authorized,
                                                                   "settings-theme-laundry":.authorized, "settings-theme-both":.authorized]

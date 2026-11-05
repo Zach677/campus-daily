@@ -21,7 +21,8 @@ enum HomeDemo: String, CaseIterable {
     case settingsWebLogin = "settings-web-login"
     /// Settings › 高级 › 重置校日常 locked: showering / a settlement to check.
     case settingsResetShower = "settings-reset-shower"
-    case settingsResetUnsure = "settings-reset-unsure"
+    /// 重置校日常 open over a shower that is over (kept for the school): it doesn't lock reset.
+    case settingsResetKept = "settings-reset-kept"
     case settingsResetLaundry = "settings-reset-laundry"
     /// Settings › 外观 › 主题: open / greyed out by a shower, a laundry order, both.
     case settingsTheme = "settings-theme"
@@ -87,9 +88,9 @@ enum HomeDemo: String, CaseIterable {
             data.shower = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
             data.resetLock = .showering
             return (data, nil)
-        case .settingsResetUnsure:
+        case .settingsResetKept:
             data.shower = .stopped
-            data.resetLock = .unsettled
+            data.resetLock = AppReset.lock(shower:SampleData.showerRecord("sh-stopped", now:now))
             return (data, nil)
         case .settingsResetLaundry:
             data.resetLock = .laundry

@@ -93,7 +93,7 @@ final class ShowerShortcutStartTests: XCTestCase {
         XCTAssertEqual(ShowerAuthorizeUnclearText.spoken, ShowerAuthorText.spokenNoWater)
         XCTAssertEqual(ShowerAuthorizeUnclearText.spoken(platformMessage: "余额不足"), "水没开。学校提示：余额不足。打开校日常再试一次。")
         XCTAssertEqual(ShowerActionFailure(.blocked).message, ShowerAuthorText.keptStatus)
-        XCTAssertFalse(ShowerAuthorText.spokenInUse.isEmpty)
+        XCTAssertEqual(ShowerAuthorText.spokenInUse, "水控有人在用，这次没开水，也没扣钱。如果是你没停的水，先在水控上按停再试。")
         for record in over {
             XCTAssertEqual(ShowerDisplay.title(record), ShowerAuthorText.keptStatus, label(record))
         }

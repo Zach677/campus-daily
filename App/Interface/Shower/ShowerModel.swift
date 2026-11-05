@@ -367,8 +367,10 @@ enum ShowerProfileFiles {
     @discardableResult func run(start: Bool) async throws -> ShowerActionOutcome {
         guard let engine, let binding else { throw ShowerActionFailure(unavailableText) }
         guard !busy else { throw ShowerActionFailure(.busy) }
+        // Over a shower that is over, 开始洗澡 (Siri, Shortcuts) is the page's 开始下一次洗澡.
+        let next = start && state.showerOver
         if start {
-            guard mayStart else { throw ShowerActionFailure(startRefusalText) }
+            guard next ? mayStartNext : mayStart else { throw ShowerActionFailure(startRefusalText) }
         } else {
             guard state.canFinish else { throw ShowerActionFailure(.notAllowed) }
             guard !platformMissing else { message = Self.platformMissingText; throw ShowerActionFailure(.platformMissing) }
@@ -384,14 +386,16 @@ enum ShowerProfileFiles {
             liveStepEnded()
         }
         do {
-            let result = start ? try await engine.start(binding) : try await engine.finish(binding)
+            let result = next ? try await engine.startOrNext(binding)
+                : start ? try await engine.start(binding) : try await engine.finish(binding)
             apply(result)
             // The engine saves the verified controller into the stored binding; pick it up so the
             // next start goes to it directly instead of after a relaunch.
             if start, let stored = (try? services.showerVault.binding()) ?? nil, stored.machineId == binding.machineId {
                 self.binding = stored
             }
-            message = Self.noticeText(result.notice)
+            // In use over a shower that is over: the page says 水控有人在用 itself, Siri its own words.
+            message = next && result.waitingForRelease && result.notice == .device(.busy) ? nil : Self.noticeText(result.notice)
             // Back on the timer: the page says why the end did not go through.
             if !start, result.mayBeFlowing { pageEvent(.endNotSent(result.notice)) }
             return try ShowerActionOutcome.after(start:start, result, notice:message).get()

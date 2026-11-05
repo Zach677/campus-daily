@@ -719,7 +719,7 @@ public enum ShowerDisplay {
         switch s.phase {
         case .idle: return "开水"
         case .authorizing: return "正在开水…"
-        case .writePending, .running: return "洗澡中"
+        case .writePending, .running: return s.stateReviewRequired ? ShowerAuthorText.keptStatus : "洗澡中"
         case .closing: return "正在结束…"
         case .settling: return "正在结算…"
         case .done: return s.receipt?.amount.map { "本次 ¥\($0.yuanText)" } ?? "已结算"
@@ -735,9 +735,8 @@ public enum ShowerDisplay {
         case .deviceBusy: return "水控正在使用中。"
         case .authorizeRefused: return ShowerAuthorizeRefusedText.title
         case .authorizeUncertain, .authorizationInvalid: return ShowerAuthorizeUnclearText.title(platformMessage: f.platformMessage)
-        case .closeUnconfirmed: return "结束指令未确认"
-        case .settleRefused, .settleUncertain: return "结算未确认"
-        case .settleUnconfirmed: return "结算待核对"
+        // Over without an answer: the school settles it (`ShowerState.showerOver`).
+        case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed: return ShowerAuthorText.keptStatus
         }
     }
 }
