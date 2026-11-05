@@ -41,17 +41,20 @@ struct ClearRootView: View {
         @Bindable var navigator = navigator
         TabView(selection:$navigator.tab) {
             NavigationStack(path:$navigator.homePath) {
-                ClearHomeView().navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
+                ClearHomeView().navOpen(.home, from:.tab, once:false)
+                    .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
             .tabItem { Label("日常", systemImage:"square.grid.2x2") }
             .tag(ClearNavigator.Tab.home)
             NavigationStack(path:$navigator.recordsPath) {
-                recordsTab.navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
+                recordsTab.navOpen(.records, from:.tab, once:false)
+                    .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
             .tabItem { Label("记录", systemImage:"clock.arrow.circlepath") }
             .tag(ClearNavigator.Tab.records)
             NavigationStack(path:$navigator.settingsPath) {
-                ClearSettingsTab().navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
+                ClearSettingsTab().navOpen(.settings, from:.tab, once:false)
+                    .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
             .tabItem { Label("设置", systemImage:"slider.horizontal.3") }
             .tag(ClearNavigator.Tab.settings)

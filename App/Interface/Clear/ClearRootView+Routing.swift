@@ -126,6 +126,7 @@ extension ClearRootView {
 
     /// The widget's links (`RootLink`).
     func open(_ link: RootLink) {
+        services.debugNav.from(.widget)
         // The newest destination: an older one still waiting (`openLoginAfterSample`) is dropped.
         destination.supersede()
         guard mayClosePages else { return }

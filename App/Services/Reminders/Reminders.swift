@@ -353,6 +353,7 @@ enum ReminderKey {
         let route = Route(userInfo:response.notification.request.content.userInfo)
         nonisolated(unsafe) let done = completionHandler
         Task { @MainActor in
+            AppEnvironment.live.debugNav.from(.notification)
             self.route = route
             done()
         }

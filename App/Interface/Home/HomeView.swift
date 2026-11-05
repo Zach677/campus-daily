@@ -173,7 +173,7 @@ struct HomeView: View {
                         if old == nil, new != nil { withAnimation(reduceMotion ? nil : Theme.spring) { proxy.scrollTo("top", anchor:.top) } }
                     }
                 }
-                .navigationDestination(for:HomeRoute.self) { route in destination(route) }
+                .navigationDestination(for:HomeRoute.self) { route in destination(route).navOpen(route.debugPage, from:.homeButton) }
             }
             
             SettlementOverlay(result:$panel)
@@ -184,16 +184,18 @@ struct HomeView: View {
         .accountSwitchAlert { pathAfterSettings = nil; campus.hotWaterSetupRequested = true; settings = true }
         .sheet(isPresented:$settings, onDismiss:{
             if let routes = pathAfterSettings { pathAfterSettings = nil; path = routes }
-        }) { settingsSheet.sampleChrome().typesettingLanguage(Theme.typesetting) }
-        .sheet(isPresented:$relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
+        }) { settingsSheet.navOpen(.settings, from:.homeButton).sampleChrome().typesettingLanguage(Theme.typesetting) }
+        .sheet(isPresented:$relogin) { SchoolReloginSheet().navOpen(.signIn, from:.homeButton).typesettingLanguage(Theme.typesetting) }
         // The shower page: down only by its own buttons, or a swipe while water runs (收起).
         .fullScreenCover(isPresented:Binding(get:{ pageCover },
                                              set:{ if !$0 { pageCover = false; if shower.page.presented { shower.pageEvent(.collapseTapped) } } })) {
             #if DEBUG
             ShowerPageView(room:demo?.dorm ?? campus.room).environmentObject(shower).onOpenURL { handleDemo($0) }
+                .navOpen(.showerPage, from:.homeButton)
                 .onAppear { pageShown = true }.onDisappear { pageShown = false }
             #else
             ShowerPageView(room:demo?.dorm ?? campus.room).environmentObject(shower)
+                .navOpen(.showerPage, from:.homeButton)
                 .onAppear { pageShown = true }.onDisappear { pageShown = false }
             #endif
         }
@@ -208,6 +210,7 @@ struct HomeView: View {
             #else
             OnboardingView(start:request.step) { onboarding = nil }
                 .onStep { onboarding?.guide.moved(to:$0) }.id(request.guide.contentID)
+                .navOpen(.onboarding, from:.setup)
             #endif
         }
         #if DEBUG
@@ -250,6 +253,7 @@ struct HomeView: View {
     /// The widget's link (`SampleMode.takePendingLink`: never while the sample is on, so never
     /// on a sample's root).
     func open(_ link: RootLink) {
+        services.debugNav.from(.widget)
         // The newest destination: an older one still waiting (below, `openLoginAfterSample`) is dropped.
         destination.supersede()
         // Never closes a top-up page or a laundry order being paid.

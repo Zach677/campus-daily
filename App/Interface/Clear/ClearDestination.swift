@@ -10,7 +10,10 @@ struct ClearDestination: View {
     @Environment(SampleMode.self) private var sample
 
     var body: some View {
-        if sample.isActive, let data = navigator.demo { sampleBody(data) } else { liveBody }
+        Group {
+            if sample.isActive, let data = navigator.demo { sampleBody(data) } else { liveBody }
+        }
+        .navOpen(route.debugPage, from:navigator.tab.debugEntry)
     }
 
     /// The sample's pages on its data: 余额 and 电量 are its own (the live ones are the school's
