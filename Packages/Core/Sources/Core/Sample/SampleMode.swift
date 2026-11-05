@@ -41,11 +41,15 @@ public enum SampleLinkOutcome: Equatable, Sendable {
     public private(set) var services: CampusServices?
     /// The action whose message is up (`SampleCopy.blocked`); nil when none.
     public var blocked: SampleAction?
-    /// Set by `leave`: the root shown next opens the login step, then calls `takeLogin`.
+    /// Set by `leave` with no kept link: the root shown next opens the login step, then calls
+    /// `takeLogin`.
     public private(set) var loginDue = false
     /// The widget's (or a login) link for the live root to open (`takePendingLink`); one that
     /// came in during the sample waits for it to be left, the latest only.
     public private(set) var pendingLink: RootLink?
+    /// Set by `leave` when a kept link is where it goes (`pendingLink`): the live root's
+    /// automatic first-run setup does not open after it, the link is the one destination.
+    public private(set) var firstRunHeld = false
     /// Other apps' links that came in during the sample, for the live app (`takeHeldLinks`).
     @ObservationIgnored private var held: [URL] = []
 
@@ -60,6 +64,7 @@ public enum SampleLinkOutcome: Equatable, Sendable {
         services = nil
         blocked = nil
         loginDue = false
+        firstRunHeld = false
         gate.sampleLeft()
     }
 
@@ -74,16 +79,19 @@ public enum SampleLinkOutcome: Equatable, Sendable {
         services = .sample()
         blocked = nil
         loginDue = false
+        firstRunHeld = false
         pendingLink = nil
         return .entered
     }
 
-    /// 去登录: back to the live app, on the login step. The sample's services, and everything
-    /// chosen in it, go.
+    /// 去登录: back to the live app, on one destination: the link kept from the sample when there
+    /// is one (`pendingLink`, with the first-run setup held, `firstRunHeld`), else the login
+    /// step. The sample's services, and everything chosen in it, go.
     public func leave() {
         services = nil
         blocked = nil
-        loginDue = true
+        firstRunHeld = pendingLink != nil
+        loginDue = !firstRunHeld
         gate.sampleLeft()
     }
 

@@ -41,14 +41,15 @@ final class GuideRequestTests: XCTestCase {
 
     /// Out of the sample onto a fresh install by 去登录, with or without a login link (a widget)
     /// that came in while it was shown and waited for it.
-    /// Each time the live root is built again and asks twice (first-run as it appears, then the
-    /// login a moment later), and presents once; no ask dismisses the guide, so 「seen」 is not
+    /// Each time the live root is built again and asks (first-run as it appears unless the kept
+    /// link holds it, then the login or its link a moment later), and presents once; no ask dismisses the guide, so 「seen」 is not
     /// written for it.
     func testLeavingTheSampleOpensTheGuideOnce() throws {
         let login = try XCTUnwrap(URL(string: "campusdaily://login"))
         let ways: [@MainActor (SampleMode) -> Bool] = [
             { $0.leave(); return $0.takeLogin() },
-            { _ = $0.open(login); $0.leave(); return $0.takeLogin() && $0.takePendingLink() == .login },
+            // The kept login link is the one destination: no login step due besides it.
+            { _ = $0.open(login); $0.leave(); return !$0.takeLogin() && $0.takePendingLink() == .login },
         ]
         for leave in ways {
             let sample = SampleMode.overIdleShower()
@@ -64,8 +65,8 @@ final class GuideRequestTests: XCTestCase {
             sample.enter()
             let due = leave(sample)
             XCTAssertFalse(sample.isActive)
-            ask(.login)                 // first-run, as the live root appears
-            XCTAssertTrue(due); ask(.login)  // the login asked for on the way out
+            if !sample.firstRunHeld { ask(.login) }  // first-run, as the live root appears
+            XCTAssertTrue(due); ask(.login)  // the login asked for on the way out (or its link)
             XCTAssertEqual(presentations, 1)
             XCTAssertEqual(seen.writes, 0)
         }

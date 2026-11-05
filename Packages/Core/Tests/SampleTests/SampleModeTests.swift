@@ -181,6 +181,28 @@ final class SampleModeTests: XCTestCase {
         XCTAssertFalse(sample.takeLogin())
     }
 
+    /// Leaving with a link kept from the sample has one destination, that link: no login step,
+    /// and the automatic first-run setup stays shut (also on a root built after the link was
+    /// taken). Without a kept link, the login step as before.
+    func testLeavingWithAKeptLinkGoesOnlyThere() throws {
+        let sample = SampleMode.overIdleShower()
+        sample.enter()
+        XCTAssertEqual(sample.open(try XCTUnwrap(URL(string: "campusdaily://login"))), .held)
+        XCTAssertEqual(sample.open(try XCTUnwrap(URL(string: "campusdaily://home"))), .held)
+        sample.leave()
+        XCTAssertFalse(sample.loginDue, "the kept link is where it goes")
+        XCTAssertTrue(sample.firstRunHeld)
+        XCTAssertFalse(sample.takeLogin())
+        XCTAssertEqual(sample.takePendingLink(), .home)
+        XCTAssertTrue(sample.firstRunHeld, "still held once the link is taken")
+
+        sample.enter()
+        XCTAssertFalse(sample.firstRunHeld)
+        sample.leave()
+        XCTAssertTrue(sample.loginDue, "no kept link: the login step")
+        XCTAssertFalse(sample.firstRunHeld)
+    }
+
     func testCopy() {
         XCTAssertEqual(SampleCopy.entry, "先看看示例")
         XCTAssertEqual(SampleCopy.barText, "示例数据，不是你的账号")

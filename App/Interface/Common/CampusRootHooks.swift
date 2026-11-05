@@ -20,6 +20,7 @@ struct CampusRootHooks: ViewModifier {
     @Environment(ThemeStore.self) private var themeStore
     @Environment(\.scenePhase) private var phase
     @EnvironmentObject private var resetter: AppResetter
+    @Environment(SampleMode.self) private var sample
     @AppStorage("didSeeQuickSetup") private var didSeeQuickSetup = false
 
     func body(content: Content) -> some View {
@@ -30,6 +31,8 @@ struct CampusRootHooks: ViewModifier {
                 await resetter.resumeIfInterrupted(campus:campus, shower:shower, laundry:laundry, theme:themeStore)
                 // A reset (running, or done and its setup still to open) opens the setup itself: once.
                 if resetter.running || resetter.setupDue.isDue || resetter.completed > 0 { return }
+                // Left the sample with a link kept from it: that link is the one destination.
+                if sample.firstRunHeld { return }
                 if !didSeeQuickSetup && !campus.configured && !shower.configured && !laundry.configured { firstRun() }
             }
             .alert(ResetLockText.blockedTitle(resetter.resumeStopped), isPresented:Binding(get:{ resetter.resumeStopped != nil },
