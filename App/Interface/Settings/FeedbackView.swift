@@ -10,6 +10,12 @@ struct FeedbackView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var appTheme
     @Environment(SampleMode.self) private var sample
+    @Environment(\.campusServices) private var services
+    /// 「附上调试记录」: off each time the form opens.
+    @State private var attachLog = false
+    /// The TestFlight log's lines, read when the form opens; empty outside TestFlight.
+    @State private var logLines: [String] = []
+    @State private var showingLog = false
     @State private var message = ""
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var images: [UIImage] = []
@@ -61,6 +67,7 @@ struct FeedbackView: View {
                         Text("最多 4 张。会附上 App 版本、手机型号和系统版本，不带账号和余额。")
                     }
                 }
+                if !logLines.isEmpty { debugLogSection }
                 if let failure {
                     Section {
                         failureLine(failure).accessibilityIdentifier("feedbackFailure")
@@ -86,6 +93,8 @@ struct FeedbackView: View {
                 if !items.isEmpty { loadingImages = true }
                 Task { await load(items) }
             }
+            .onAppear { logLines = services.debugLog.isEnabled ? services.debugLog.lines() : [] }
+            .sheet(isPresented:$showingLog) { debugLogPreview }
             .alert("发出去了", isPresented:$sent) {
                 Button("好") { dismiss() }
             } message: {
@@ -105,6 +114,40 @@ struct FeedbackView: View {
         } else {
             Text(line).font(.footnote).foregroundStyle(NativeTheme.notice)
         }
+    }
+
+    /// TestFlight only, with something in the log: off unless turned on for this message.
+    private var debugLogSection: some View {
+        Section {
+            Toggle("附上调试记录", isOn:$attachLog)
+                .disabled(sending)
+                .accessibilityIdentifier("feedbackAttachLog")
+        } footer: {
+            VStack(alignment:.leading, spacing:6) {
+                Text("测试版才有。只记打开了哪页、每一步的结果和状态码，不记账号、密码、订单号和机器号。勾上后最近 \(min(logLines.count, DebugLogReport.maxLines)) 条接在文字后面。")
+                Button("看看内容") { showingLog = true }
+                    .font(.footnote)
+                    .accessibilityIdentifier("feedbackShowLog")
+            }
+        }
+    }
+
+    /// Exactly the text that would go: the typed words, then the log as it rides along.
+    private var debugLogPreview: some View {
+        NavigationStack {
+            ScrollView {
+                Text(DebugLogReport.message(message, lines:logLines))
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                    .frame(maxWidth:.infinity, alignment:.leading)
+                    .padding()
+            }
+            .navigationTitle("调试记录").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement:.confirmationAction) { Button("好") { showingLog = false } }
+            }
+        }
+        .accessibilityIdentifier("feedbackLogPreview")
     }
 
     private var thumbnails: some View {
@@ -158,7 +201,9 @@ struct FeedbackView: View {
         failure = nil
         Task {
             do {
-                try await FeedbackReporter.send(message:message, images:images, to:endpoint, http:http)
+                // Read again: what happened while the form was open goes too. Off: nothing more.
+                let lines = attachLog && services.debugLog.isEnabled ? services.debugLog.lines() : nil
+                try await FeedbackReporter.send(message:message, images:images, to:endpoint, http:http, debugLog:lines)
                 sent = true
             } catch {
                 failure = FeedbackText.failure(error)
