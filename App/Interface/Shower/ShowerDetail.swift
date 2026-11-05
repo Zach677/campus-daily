@@ -9,7 +9,6 @@ struct ShowerDetail: View {
     @Environment(SampleMode.self) private var sample
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
-    @State private var confirmResolve = false
     @State private var confirmClear = false
     var body: some View {
         ScrollView {
@@ -53,18 +52,6 @@ struct ShowerDetail: View {
                             if let cost = lastCost { Text(Theme.yuan(cost)).font(.subheadline).monospacedDigit() }
                         }
                     }.padding(18).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
-                }
-                if preview == nil && shower.mayResolveManually && !stopped {
-                    // Way out of a record that can't close by itself; only after the user checked the official record.
-                    Button(ShowerPageText.resolve) { confirmResolve = true }
-                        .font(.subheadline).frame(minHeight:44).accessibilityIdentifier("resolveWaterManually")
-                        .disabled(shower.busy)
-                        .confirmationDialog(ShowerPageText.resolveConfirm, isPresented:$confirmResolve, titleVisibility:.visible) {
-                            Button(ShowerPageText.resolveConfirmButton) { Task { await shower.resolveManually() } }
-                            Button("取消", role:.cancel) {}
-                        } message: {
-                            Text(ShowerPageText.resolveConfirmNote)
-                        }
                 }
                 if preview == nil && shower.recordUnreadable {
                     // The record can't be read by this build: cleared only after the user checked the official record.
@@ -116,10 +103,10 @@ struct ShowerDetail: View {
         } else { Text("结算后显示").font(.subheadline) }
     }
     private var closing: Bool { preview == nil && shower.state.canFinish }
-    /// The controller showed itself stopped under a running record: the button is the next
-    /// shower, on the shower page (routes to here open that page while a shower is on, so this
-    /// shows mostly in passing). Read from the page's record, which follows the engine.
-    private var stopped: Bool { preview == nil && shower.page.record.mayBeFlowing && shower.page.record.stateReviewRequired }
+    /// The shower is over (`ShowerState.showerOver`): the button is the next shower, on the
+    /// shower page (routes to here open that page then, so this shows mostly in passing). Read
+    /// from the page's record, which follows the engine.
+    private var stopped: Bool { preview == nil && shower.page.record.showerOver }
     private var room: String { preview?.dorm ?? campus.room }
     private var lastEnded: Date? {
         guard let preview else { return shower.lastEnded }
@@ -141,7 +128,7 @@ struct ShowerDetail: View {
         if shower.busy { return "正在处理" }
         if shower.problem { return "本次待核对" }
         if !shower.configured { return "尚未配置热水" }
-        if stopped { return ShowerPageText.readyTitle }
+        if stopped { return ShowerPageText.stoppedTitle }
         switch shower.state.phase {
         case .running, .writePending: return "热水已授权"
         case .done: return "结算完成"

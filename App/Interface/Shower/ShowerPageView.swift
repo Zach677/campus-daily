@@ -20,60 +20,20 @@ enum ShowerPageText {
     static let deniedBody = "这次没扣钱。过一会儿再试，一直这样就去学校的热水记录里看看。"
     static let inUse = "水控有人在用"
     static let inUseBody = "附近的水控有人在用，现在开不了水。等它空了再试。这次没扣钱。"
-    static let unsure = "不确定结算了没有"
-    static let unsureBody = "别再点结算，免得重复扣钱。核对一下学校那边这次扣了没有。"
-    /// The unsure face's way to the 热水洗澡 screen, where the record is marked checked.
-    static let review = "去核对"
-    static let resolve = "我在学校记录里核对过了"
-    /// The unsure face's read-only probe of a close that may not have taken.
-    static let recheck = "再查一次水控"
-    /// The ready layout's headline (the 热水洗澡 screen's), also over a shower stopped on the
-    /// controller.
+    /// The ready layout's headline (the 热水洗澡 screen's).
     static let readyTitle = "准备洗澡"
-    /// Stopped on the controller (or its authorization gone): the page's one button.
-    static let startNext = "开始下一次洗澡"
-    /// The line under 开始下一次洗澡.
-    static let stoppedNote = "在水控上按停，这次就算洗完了，学校会自己扣费。"
-    /// Showers not settled in the app (`ShowerKept`), under that line; nil for none.
-    static func keptLine(_ count: Int) -> String? {
-        switch count {
-        case ...0: return nil
-        case 1: return "上一次是在水控上停的，学校会自己扣费，可以在学校的热水记录里看。"
-        default: return "有 \(count) 次是在水控上停的，学校会自己扣费，可以在学校的热水记录里看。"
-        }
-    }
+    /// The shower is over (stopped on the controller, or kept with its outcome unknown): the product
+    /// copy, kept in `ShowerAuthorText`.
+    static let stoppedTitle = ShowerAuthorText.stoppedTitle
+    /// The page's one button then.
+    static let startNext = ShowerAuthorText.startNext
+    /// The one line under it, for one or many such showers.
+    static let stoppedNote = ShowerAuthorText.stoppedNote
     /// The stopped page once the next start (or 再查一次) found the controller in use (title `inUse`).
     static let checkInUseBody = "水控显示正在用水，现在开不了新的一次。如果是你没停的水，先在水控上按停，再点「再查一次」。"
     /// That page's one button.
     static let recheckInUse = "再查一次"
     static let rechecking = "正在查水控…"
-    /// The unsure face of a settlement that failed: settle once more, after a second tap.
-    /// 我在学校记录里核对过了 is behind that face's 去核对.
-    static let settleRetryBody = "结算发出去了，但没等到学校回话。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
-    /// The school answered the settlement with a no.
-    static let settleRefusedBody = "学校拒绝了这次结算。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
-    /// The settlement never left.
-    static let settleNotSentBody = "结算没发出去，学校那边应该还没扣钱。再结算一次就行。"
-    /// Held back because the water read may be someone else's: after a close that may not have
-    /// taken, or a session the controller never confirmed. Also after a retry of it that failed.
-    static let settleHeldBody = "水控没确认这次是你开的水，读到的用水可能不是你的。先去学校的热水记录里看你这次洗澡扣了没有：扣了，点「我在学校记录里核对过了」；没扣、又确定刚才是你在用，再结算一次。"
-    static func settleRetryBody(_ cause: ShowerSettleRetryCause) -> String {
-        switch cause {
-        case .refused: return settleRefusedBody
-        case .notSent: return settleNotSentBody
-        case .noAnswer: return settleRetryBody
-        case .held: return settleHeldBody
-        }
-    }
-    static let settleRetry = "再结算一次"
-    static let settleRetryConfirm = "确认再结算一次"
-    static let settleRetryNote = "没扣才点。"
-    static let settleHeldRetryNote = "确定是你用的才点。"
-    /// The line under 再结算一次 before its first tap.
-    static func settleRetryNote(_ cause: ShowerSettleRetryCause?) -> String {
-        cause == .held ? settleHeldRetryNote : settleRetryNote
-    }
-    static let settleRetryArmedNote = "再点一下就发出去。扣过了别点，会扣两次。"
     static let bluetoothOff = "蓝牙关着，打开后再核对。"
     static func recheckResult(_ result: ShowerRecheckResult) -> String {
         switch result {
@@ -88,15 +48,12 @@ enum ShowerPageText {
         case .inUse: return inUse + "。" + checkInUseBody
         }
     }
-    static let resolveConfirm = "这次洗澡核对过了吗？"
     /// The way out of a saved record that can't be read, and its confirmation.
     static let unreadableClear = "清除这条记录"
     static let unreadableClearConfirm = "清除这条记录？"
     static let unreadableClearNote = "先去学校的热水记录里看看这次扣了没有。清除以后，校日常不会再结算这一次。"
     static let unreadableClearButton = "看过了，清除"
     static let unreadableKeep = "留着"
-    static let resolveConfirmButton = "核对过了"
-    static let resolveConfirmNote = "标记以后，校日常不会再结算这一次。先在学校的热水记录里找到这次洗澡，再点核对过了。"
 
     /// Above 结束并结算 when the last end came back to the timer.
     /// 结束 found the controller running someone else's session: no close was sent.
@@ -175,7 +132,7 @@ struct ShowerPageView: View {
             switch phase {
             // Stopped on the controller: this shower is over, not a failure.
             case .done?, .stopped?: successTick += 1
-            case .connectFailed?, .denied?, .unsure?: errorTick += 1
+            case .connectFailed?, .denied?: errorTick += 1
             default: break
             }
             if let phase { AccessibilityNotification.Announcement(announcement(phase)).post() }
@@ -279,19 +236,6 @@ struct ShowerPageView: View {
                     title(ShowerPageText.denied)
                     bodyText(ShowerPageText.deniedBody)
                 }
-            case .unsure:
-                icon("questionmark.circle", Theme.notice)
-                if let copy = page?.authorizeUnclear {
-                    // Nothing reached the controller: no settlement to talk about.
-                    title(copy.title)
-                    bodyText(copy.body)
-                } else {
-                    title(ShowerPageText.unsure)
-                    bodyText(flow.settleRetryCause.map(ShowerPageText.settleRetryBody) ?? ShowerPageText.unsureBody)
-                }
-                // A close that may not have taken: water still running goes back to the timer.
-                if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
-                if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }
             case .stopped:
                 if flow.foundInUse {
                     // The next start (or 再查一次) found water running: the in-use page.
@@ -299,8 +243,8 @@ struct ShowerPageView: View {
                     title(ShowerPageText.inUse)
                     bodyText(ShowerPageText.checkInUseBody)
                 } else {
-                    // Back to the start layout: the ready headline, no timer, nothing to alarm.
-                    title(ShowerPageText.readyTitle)
+                    // Over: the start layout with its own headline, no timer, nothing to alarm.
+                    title(ShowerPageText.stoppedTitle)
                 }
             }
         }
@@ -379,11 +323,6 @@ struct ShowerPageView: View {
             case .connectFailed:
                 capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                 textButton("取消") { shower.pageEvent(.closeTapped) }
-            case .unsure:
-                capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk, enabled:!flow.rechecking) {
-                    shower.pageEvent(.reviewTapped)
-                }
-                textButton("先回首页") { shower.pageEvent(.homeTapped) }
             }
         }
         .animation(.easeInOut(duration:0.2), value:page?.phase)
@@ -395,10 +334,9 @@ struct ShowerPageView: View {
     }
 
     /// The page's one button is the next step: 结束并结算 while water runs, 开始下一次洗澡 once
-    /// stopped on the controller (the same button, its words cross-fading). Under it the running
-    /// line (「结算完成前，先别离开水控。」 from the tap of 结束 until the settlement is done), or
-    /// once stopped the line and the count of showers not settled in the app, read as one after
-    /// the button. Stopped and found in use: only 再查一次.
+    /// the shower is over (the same button, its words cross-fading). Under it the running line
+    /// (「结算完成前，先别离开水控。」 from the tap of 结束 until the settlement is done), or once
+    /// over the one line. Over and found in use: only 再查一次.
     @ViewBuilder private func stepBottom(stopped: Bool) -> some View {
         if stopped, flow.foundInUse {
             capsule(flow.rechecking ? ShowerPageText.rechecking : ShowerPageText.recheckInUse,
@@ -416,13 +354,8 @@ struct ShowerPageView: View {
             }
             .accessibilityIdentifier(stopped ? "showerStartNext" : "showerEnd")
             if stopped {
-                VStack(spacing:4) {
-                    footnote(ShowerPageText.stoppedNote)
-                    if let kept = ShowerPageText.keptLine(shower.keptCount) { footnote(kept) }
-                }
-                .padding(.top,6)
-                .accessibilityElement(children:.combine)
-                .accessibilityIdentifier("showerStoppedNote")
+                footnote(ShowerPageText.stoppedNote).padding(.top,6)
+                    .accessibilityIdentifier("showerStoppedNote")
             } else if flow.endFailed == nil && !shower.platformMissing {
                 // The end-failed line takes its place while shown.
                 footnote(flow.ending ? ShowerPageText.endingNote : ShowerPageText.runningNote).padding(.top,6)
@@ -479,8 +412,7 @@ struct ShowerPageView: View {
         case .done: return ShowerPageText.doneLabel
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
-        case .unsure: return flow.page?.authorizeUnclear?.title ?? ShowerPageText.unsure
-        case .stopped: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedNote
+        case .stopped: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedTitle
         }
     }
 }

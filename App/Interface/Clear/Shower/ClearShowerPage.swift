@@ -29,10 +29,8 @@ struct ClearShowerPage: View {
             VStack(alignment:.leading, spacing:24) {
                 roomLine
                 ClearShowerHeadline(phase:phase, configured:configured, live:live)
-                if phase == .unsure {
-                    ClearShowerCheckCard()
-                } else if phase == .stopped {
-                    // Stopped on the controller: back to the start layout (in use: its own words only).
+                if phase == .stopped {
+                    // Over: back to the start layout (in use: its own words only).
                     if !flow.foundInUse {
                         ClearShowerCostCard(phase:nil, live:live)
                         idleExtras
@@ -57,7 +55,7 @@ struct ClearShowerPage: View {
             switch phase {
             // Stopped on the controller: this shower is over, not a failure.
             case .done?, .stopped?: successTick += 1
-            case .connectFailed?, .denied?, .unsure?: errorTick += 1
+            case .connectFailed?, .denied?: errorTick += 1
             default: break
             }
             if let phase { AccessibilityNotification.Announcement(announcement(phase)).post() }
@@ -78,8 +76,8 @@ struct ClearShowerPage: View {
             AccessibilityNotification.Announcement(ShowerPageText.endFailed(failure)).post()
         }
         .typesettingLanguage(Theme.typesetting)
-        // On screen, the page holds 再结算一次's first tap even while the flow is down (after
-        // 去核对, after a relaunch); going off screen takes it back (`ShowerPageFlow.pushedVisible`).
+        // On screen, the page counts as shown even while the flow is down (after a relaunch);
+        // going off screen takes back a settle retry an older build left armed (`ShowerPageFlow.pushedVisible`).
         .onAppear {
             guard !counted else { return }
             counted = true; shower.pageEvent(.pushedAppeared)
@@ -157,8 +155,7 @@ struct ClearShowerPage: View {
         case .done: return ShowerPageText.doneLabel
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
-        case .unsure: return flow.page?.authorizeUnclear?.title ?? ShowerPageText.unsure
-        case .stopped: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedNote
+        case .stopped: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedTitle
         }
     }
 }

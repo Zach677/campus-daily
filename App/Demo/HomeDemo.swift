@@ -88,7 +88,7 @@ enum HomeDemo: String, CaseIterable {
             data.resetLock = .showering
             return (data, nil)
         case .settingsResetUnsure:
-            data.shower = .unresolved(.settlement)
+            data.shower = .stopped
             data.resetLock = .unsettled
             return (data, nil)
         case .settingsResetLaundry:
@@ -136,7 +136,7 @@ enum HomeDemo: String, CaseIterable {
             data.laundry = .unresolved
             return (data, nil)
         case .unconfirmedRow:
-            data.shower = .unresolved(.settlement)
+            data.shower = .stopped
             return (data, nil)
         case .low:
             // Runs out tomorrow evening (只够到明晚); the balance is under the default line too.

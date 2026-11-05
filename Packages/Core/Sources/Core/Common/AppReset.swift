@@ -12,7 +12,8 @@ public enum AppReset {
     public enum Lock: Sendable, Equatable {
         /// Water may be flowing or a step of the shower is still running.
         case showering
-        /// A settlement is waiting to be checked against the school's records.
+        /// A shower that is over is kept for the school (`ShowerState.showerOver`): its record
+        /// goes once the next shower is settled.
         case unsettled
         /// A laundry order is not finished (being created, paid, running or needing attention).
         case laundry

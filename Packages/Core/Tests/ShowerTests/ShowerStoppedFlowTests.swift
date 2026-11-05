@@ -80,7 +80,6 @@ final class ShowerStoppedFlowTests: XCTestCase {
         XCTAssertEqual(gateway.settleFrames, [], "no settlement")
         XCTAssertEqual(gateway.authorizeFrames.count, 1, "only the first shower's authorization")
         XCTAssertEqual(try vault.showerState(), s.persistable, "the record is kept")
-        XCTAssertEqual(ShowerKept.count(retained: try vault.retainedShowers(), current: s), 1, "one shower not settled in the app")
     }
 
     func testTheStoppedPageCanGoDownAndComesBackAsItIs() async throws {
@@ -270,19 +269,5 @@ final class ShowerStoppedFlowTests: XCTestCase {
         }
         XCTAssertEqual(ShowerActivityAction(running, now: t0), .show(startedAt: t0, writeUnconfirmed: false))
         XCTAssertEqual(ShowerReminderStart.next(running, after: running, current: t0, now: t0), t0)
-    }
-
-    // MARK: Kept count
-
-    func testTheKeptCountCountsTheStoppedShowerOnce() {
-        let a = ShowerState(phase: .running, machineID: machine, startedAt: t0, authorizationID: "01", stateReviewRequired: true)
-        let b = ShowerState(phase: .running, machineID: machine, startedAt: t0, authorizationID: "02", stateReviewRequired: true)
-        let stopped = ShowerState(phase: .running, machineID: machine, startedAt: t0, authorizationID: "03", stateReviewRequired: true)
-        let running = ShowerState(phase: .running, machineID: machine, startedAt: t0, authorizationID: "04")
-        XCTAssertEqual(ShowerKept.count(retained: [], current: stopped), 1)
-        XCTAssertEqual(ShowerKept.count(retained: [a, b], current: stopped), 3)
-        XCTAssertEqual(ShowerKept.count(retained: [a, b, stopped], current: stopped), 3, "already kept: once")
-        XCTAssertEqual(ShowerKept.count(retained: [a], current: running), 1)
-        XCTAssertEqual(ShowerKept.count(retained: [], current: .idle), 0)
     }
 }

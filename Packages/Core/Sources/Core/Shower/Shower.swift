@@ -198,9 +198,11 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// A read-only probe of the controller: while water may run (also while that waits for the
     /// check), and from a close that may not have taken (water still running there means the
     /// close can be sent again).
+    /// Also over a kept failure the next start found in use (`waitingForRelease`): 再查一次.
     public var canReview: Bool {
         ((phase == .writePending || phase == .running) && !reviewing)
             || (phase == .failed && failure?.reason == .closeUnconfirmed && !reviewing)
+            || (phase == .failed && failure?.needsReview == true && waitingForRelease && !reviewing)
     }
 
     /// The next use (`ShowerEngine.startNext`) over a record that waits for the user's check:
@@ -221,8 +223,12 @@ public struct ShowerState: Sendable, Codable, Equatable {
             && [ShowerFailureReason.settleRefused, .settleUncertain, .settleUnconfirmed].contains { $0 == failure?.reason }
     }
 
-    /// The shower is over and the school settles it. Not yet.
-    public var showerOver: Bool { false }
+    /// The shower is over without a settlement in the app, and the school settles it: stopped
+    /// on the controller, or a failure whose outcome is unknown (`needsReview`). Such a record is
+    /// kept as it is, never settled again; the next step is the next shower (`canStartNext`).
+    public var showerOver: Bool {
+        (mayBeFlowing && stateReviewRequired) || (phase == .failed && failure?.needsReview == true)
+    }
 
     /// The reminder ("还没结束洗澡？") runs while water may be flowing.
     public var mayBeFlowing: Bool { phase == .writePending || phase == .running }
@@ -510,11 +516,15 @@ public enum ShowerReducer {
             s.reviewing = true
             return (s, [.probe(peripheralID: state.peripheralID)])
 
-        case (.failed, .probeReplied(let frame)) where state.reviewing && state.failure?.reason == .closeUnconfirmed:
+        case (.failed, .probeReplied(let frame)) where state.reviewing
+                && (state.failure?.reason == .closeUnconfirmed || state.waitingForRelease):
             s.reviewing = false
             switch ShowerFrames.classify(frame) {
             case .active where state.waitingForRelease:
                 // The next use already found it in use and let it go: it stays let go.
+                s.notice = .inUseByOther
+            case .active where state.failure?.reason != .closeUnconfirmed:
+                // Not a close to send again: someone else's water.
                 s.notice = .inUseByOther
             case .active:
                 // Back to the timer, so 结束 can send the close again. Our close most likely took
@@ -528,7 +538,9 @@ public enum ShowerReducer {
                 s.holdSettle = true
                 return (s, [.releaseDevice])
             case .idle(let id) where id == state.machineID:
-                // Stopped: the close may have taken, or water stopped by itself. The check stands.
+                // Stopped: the close may have taken, or water stopped by itself. The record stays
+                // as it is, and is free again for the next shower.
+                s.waitingForRelease = false
                 s.notice = .notActive
             case .idle:
                 s.notice = .wrongDevice

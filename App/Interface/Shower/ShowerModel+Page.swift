@@ -50,8 +50,6 @@ extension ShowerModel {
                 startTask = nil
                 pageEvent(.startNextReturned(failed:!went))
             }
-        case .openReview:
-            reviewRequested = true
         case .recheck:
             Task {
                 let result = await recheckSession()
@@ -59,13 +57,9 @@ extension ShowerModel {
                 // Water runs again: the timer comes up wherever the probe was tapped.
                 if result == nil, page.presented { pageWanted += 1 }
             }
-        case .requestSettleRetry:
-            Task { await requestSettleRetry() }
-        case .confirmSettleRetry:
-            Task { await confirmSettleRetry() }
         case .disarmSettleRetry:
             Task {
-                // Taken back once whatever runs now (a retry's first tap, say) is done.
+                // Taken back once whatever runs now is done.
                 await untilIdle()
                 await disarmSettleRetry()
             }

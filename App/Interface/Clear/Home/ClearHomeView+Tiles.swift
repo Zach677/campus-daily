@@ -49,7 +49,7 @@ extension ClearHomeView {
         case .starting, .showering, .settling, .stopped:
             shower.pageEvent(.reopen)
             if !shower.page.presented { navigator.push(.shower) }
-        case .idle, .unconfigured, .unavailable, .unresolved:
+        case .idle, .unconfigured, .unavailable:
             navigator.push(.shower)
         }
     }

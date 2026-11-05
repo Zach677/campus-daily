@@ -74,7 +74,7 @@ struct ClearShowerHeadline: View {
 
     private var problem: Bool {
         switch phase {
-        case .connectFailed?, .denied?, .unsure?: return true
+        case .connectFailed?, .denied?: return true
         case .stopped?: return flow.foundInUse
         case nil: return live && shower.problem
         default: return false
@@ -90,9 +90,8 @@ struct ClearShowerHeadline: View {
         case .done?: return ShowerPageText.doneLabel
         case .connectFailed?: return ShowerPageText.connectFailed
         case .denied?: return page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
-        case .unsure?: return page?.authorizeUnclear?.title ?? ShowerPageText.unsure
-        // Back to the start layout's headline; found in use, the in-use page's.
-        case .stopped?: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.readyTitle
+        // Over: its own headline; found in use, the in-use page's.
+        case .stopped?: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedTitle
         }
     }
 
@@ -105,9 +104,6 @@ struct ClearShowerHeadline: View {
         case .done?: return ShowerPageText.doneBody(minutes:page?.minutes)
         case .connectFailed?: return ShowerPageText.connectFailedBody
         case .denied?: return page?.denial == .inUse ? ShowerPageText.inUseBody : ShowerPageText.deniedBody
-        case .unsure?:
-            if let copy = page?.authorizeUnclear { return copy.body }
-            return flow.settleRetryCause.map(ShowerPageText.settleRetryBody) ?? ShowerPageText.unsureBody
         case .stopped?: return flow.foundInUse ? ShowerPageText.checkInUseBody : ""
         }
     }
