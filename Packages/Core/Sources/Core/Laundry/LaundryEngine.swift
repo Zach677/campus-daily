@@ -83,6 +83,7 @@ public actor LaundryEngine {
         try resetMarker?.checkStart(at: now())
         guard state.canCreate else { throw LaundryEngineError.notAllowed }
         guard let draft = LaundryDraft.make(snapshot, program: program, now: now()) else { throw LaundryEngineError.washerChanged }
+        debugLog.record(.laundryStart(.chosen(immediate: immediate)))
         return try await run(.confirm(draft, at: now(), account: accountID, immediate: immediate))
     }
 
@@ -115,6 +116,7 @@ public actor LaundryEngine {
     public func returnedFromPayment() async throws -> LaundryCheckout {
         try guardIdle()
         guard state.phase == .paying else { return state }
+        await logReturn()
         return try await run(.returnedFromPayment)
     }
 
@@ -130,6 +132,7 @@ public actor LaundryEngine {
     @discardableResult
     public func refresh() async throws -> LaundryCheckout {
         try guardIdle()
+        await logReturn()
         return try await run(.refresh)
     }
 
@@ -162,8 +165,13 @@ public actor LaundryEngine {
         var queue = [first]
         while !queue.isEmpty {
             let event = queue.removeFirst()
+            let before = state
             let (next, effects) = LaundryReducer.reduce(state, event)
-            try commit(next)
+            do { try commit(next) } catch {
+                if next.start?.isSent == true, before.start?.isSent != true { debugLog.record(.laundryStart(.skipped(.notSaved))) }
+                throw error
+            }
+            logStart(event, before: before, after: next, effects: effects)
             for effect in effects {
                 if let follow = await perform(effect) { queue.append(follow) }
             }
@@ -199,6 +207,31 @@ public actor LaundryEngine {
         return event
     }
 
+    /// 立刻洗衣 coming back to an order not tried yet: whether the app is in front.
+    private func logReturn() async {
+        guard state.immediate, state.start == nil, state.phase == .paying || state.phase == .active || state.phase == .verifying
+        else { return }
+        debugLog.record(.laundryStart(.returned(inFront: await inFront())))
+    }
+
+    /// 立刻洗衣's start record after a step: stored as sent (the write succeeded), given up for
+    /// good, or a pre-start read that did not lead to a start.
+    private func logStart(_ event: LaundryEvent, before: LaundryCheckout, after: LaundryCheckout, effects: [LaundryEffect]) {
+        guard after.immediate else { return }
+        if after.start != before.start {
+            if after.start?.isSent == true { debugLog.record(.laundryStart(.saved)) }
+            if case .blocked(let reason)? = after.start { debugLog.record(.laundryStart(.skipped(DebugStartSkip(reason)))) }
+        }
+        guard case .startCheckRead(let check, _) = event, after.start == before.start,
+              !effects.contains(where: { if case .startWasher = $0 { return true } else { return false } })
+        else { return }
+        let reason: DebugStartSkip
+        if check.order.id != before.orderID || !LaundryReducer.belongs(check.order, before) { reason = .otherOrder }
+        else if check.order.paid != true || check.order.status.code != "20" { reason = .status }
+        else { reason = .price }
+        debugLog.record(.laundryStart(.skipped(reason)))
+    }
+
     /// One line per answer: which request and how it went (U净's code only), and the order's status.
     private func log(_ event: LaundryEvent) {
         switch event {
@@ -217,6 +250,19 @@ public actor LaundryEngine {
         case .launched(let opened): debugLog.record(.laundryPayLaunch(opened: opened))
         case .cancelAcknowledged: debugLog.record(.laundryRequest(.cancelOrder, .ok))
         case .cancelFailed(let e): debugLog.record(.laundryRequest(.cancelOrder, DebugOutcome(e)))
+        case .startCheckRead(let check, _):
+            debugLog.record(.laundryRequest(.startCheck, .ok))
+            debugLog.record(.laundryStart(.check(paid: check.order.paid == true, status: DebugCode(check.order.status.code),
+                                                 price: DebugPriceCheck(read: check.order.price, confirmed: state.draft?.program.price),
+                                                 moduleType: check.moduleType, order: DebugTag(.order, check.order.id))))
+        case .startCheckFailed(let e): debugLog.record(.laundryRequest(.startCheck, DebugOutcome(e)))
+        case .startSent:
+            debugLog.record(.laundryRequest(.startWasher, .ok))
+            debugLog.record(.laundryStart(.result(.ok)))
+        case .startFailed(let e, _):
+            debugLog.record(.laundryRequest(.startWasher, DebugOutcome(e)))
+            debugLog.record(.laundryStart(.result(DebugStartResult(e))))
+        case .startBlocked: break  // `logStart` writes the reason once it is stored
         default: break
         }
     }
@@ -263,7 +309,7 @@ public actor LaundryEngine {
 
         case .readStartCheck(let id):
             guard ownsOrder else { return .startBlocked(.account) }
-            guard !Task.isCancelled, await inFront(), !Task.isCancelled else { return .startNotNow }
+            if let skip = await frontGate() { debugLog.record(.laundryStart(.skipped(skip))); return .startNotNow }
             do { return .startCheckRead(try await api.startCheck(id), at: now()) }
             catch { return .startCheckFailed(Self.serviceError(error, stateChanging: false)) }
 
@@ -271,10 +317,18 @@ public actor LaundryEngine {
             // `start` is stored as sent. Up to the call it may still go back to "not tried";
             // once the request is handed over, every outcome keeps it (never sent twice).
             guard ownsOrder else { return .startBlocked(.account) }
-            guard !Task.isCancelled, await inFront(), !Task.isCancelled else { return .startNotNow }
+            if let skip = await frontGate() { debugLog.record(.laundryStart(.skipped(skip))); return .startNotNow }
+            debugLog.record(.laundryStart(.handed))
             do { try await api.startWasher(id); return .startSent(at: now()) }
             catch { return .startFailed(Self.serviceError(error, stateChanging: true), at: now()) }
         }
+    }
+
+    /// Nil when a 立刻洗衣 request may go out now: the task is live and the app is in front.
+    private func frontGate() async -> DebugStartSkip? {
+        guard !Task.isCancelled else { return .cancelled }
+        guard await inFront() else { return .notFront }
+        return Task.isCancelled ? .cancelled : nil
     }
 
     /// The order was placed by the account `api` sends as (立刻洗衣 starts only then).
