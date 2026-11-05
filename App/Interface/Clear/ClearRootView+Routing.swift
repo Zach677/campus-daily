@@ -136,7 +136,7 @@ extension ClearRootView {
         case .login:
             popAll()
             navigator.openSetup(at:.account)
-        case .settings(account:false): break
+        case .settings(account:false): show([], in:.settings)
         }
     }
 }

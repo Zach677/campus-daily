@@ -269,7 +269,10 @@ struct HomeView: View {
             settings = false; path = []
             // As after a reset or the sample: let a sheet go first, or the cover is not presented.
             Task { try? await Task.sleep(for:.milliseconds(sheetUp ? 600 : 300)); openOnboarding() }
-        case .settings(account:false): break
+        case .settings(account:false):
+            path = []
+            // Just after the sample left (or a cover went), its sheet goes first.
+            if !settings { Task { try? await Task.sleep(for:.milliseconds(600)); settings = true } }
         }
     }
 
