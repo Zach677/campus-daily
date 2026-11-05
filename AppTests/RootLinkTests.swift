@@ -80,6 +80,62 @@ final class RootLinkTests: XCTestCase {
         }
     }
 
+    /// 暖橙: the live root takes the kept settings link, then a home link comes in before the
+    /// settings sheet's 600 ms are up. Home wins; the older settings sheet never shows.
+    func testANewerHomeLinkWinsOverTheKeptSettingsLink() async {
+        let h = await harness(.warm)
+        XCTAssertEqual(h.sample.enter(), .entered)
+        await pause(800)
+        XCTAssertEqual(h.link("campusdaily://settings"), .held)
+        h.sample.leave()
+        await waitUntil { h.sample.pendingLink == nil }
+        XCTAssertNil(h.sample.pendingLink)
+        XCTAssertEqual(h.link("campusdaily://home"), .live)
+        await pause(1500)
+        XCTAssertNil(h.presented, "暖橙: home, not the older settings sheet")
+    }
+
+    /// 清爽: the live root takes the kept login link, then home or settings comes in before
+    /// its 600 ms are up. The newest link wins; the checklist never opens.
+    func testANewerLinkWinsOverTheKeptLoginLink() async {
+        let cases: [(String, ClearNavigator.Tab)] = [("campusdaily://home", .home), ("campusdaily://settings", .settings)]
+        for (newer, tab) in cases {
+            let h = await harness(.clear)
+            XCTAssertEqual(h.sample.enter(), .entered, newer)
+            await pause(800)
+            XCTAssertEqual(h.link("campusdaily://login"), .held, newer)
+            h.sample.leave()
+            await waitUntil { h.sample.pendingLink == nil }
+            XCTAssertNil(h.sample.pendingLink, newer)
+            XCTAssertEqual(h.link(newer), .live, newer)
+            await pause(1500)
+            XCTAssertNil(h.navigator?.setup, "\(newer): not the older login step")
+            XCTAssertEqual(h.navigator?.tab, tab, newer)
+            XCTAssertNil(h.presented, newer)
+            h.close()
+        }
+    }
+
+    /// No kept link: the login step is due after leaving, but a home link comes in before its
+    /// 600 ms are up. Home wins, in both themes.
+    func testANewerHomeLinkWinsOverTheDefaultLogin() async {
+        for theme in [AppTheme.warm, .clear] {
+            let h = await harness(theme)
+            XCTAssertEqual(h.sample.enter(), .entered)
+            await pause(800)
+            h.sample.leave()
+            await pause(100)
+            XCTAssertEqual(h.link("campusdaily://home"), .live, "\(theme)")
+            await pause(1500)
+            XCTAssertNil(h.presented, "\(theme): home, not the older login step")
+            if theme == .clear {
+                XCTAssertNil(h.navigator?.setup)
+                XCTAssertEqual(h.navigator?.tab, .home)
+            }
+            h.close()
+        }
+    }
+
     /// No kept link: leaving opens the login step, once (unchanged).
     func testLeavingWithoutALinkOpensTheLoginStep() async {
         for theme in [AppTheme.warm, .clear] {

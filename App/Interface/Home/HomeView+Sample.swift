@@ -22,7 +22,8 @@ extension HomeView {
     /// 去登录: the login step, on this root or on the one shown after the sample's theme went.
     func openLoginAfterSample(_ due: Bool) {
         guard due, sample.takeLogin() else { return }
-        // As after a reset: let a sheet go first, or the cover is not presented.
-        Task { try? await Task.sleep(for:.milliseconds(600)); openOnboarding() }
+        // As after a reset: let a sheet go first, or the cover is not presented. A newer link
+        // in the meantime wins (`destination`).
+        destination.after(600) { openOnboarding() }
     }
 }

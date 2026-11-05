@@ -16,6 +16,8 @@ struct ClearRootView: View {
     @Environment(\.campusServices) var services
     @State var navigator = ClearNavigator()
     @State var successTick = 0
+    /// The newest link or login-after-the-sample: an older one still waiting for a sheet is dropped.
+    @State var destination = RootDestination()
     @EnvironmentObject var reminders: Reminders
     /// Last laundry order whose done panel was shown (once per order, shared with 暖橙).
     @AppStorage("laundryDoneShownOrder") var laundryDoneShown = ""

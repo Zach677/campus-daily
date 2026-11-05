@@ -25,7 +25,8 @@ extension ClearRootView {
     /// theme went.
     func openLoginAfterSample(_ due: Bool) {
         guard due, sample.takeLogin() else { return }
-        // Let a closing sheet go first, otherwise the new one is not presented.
-        Task { try? await Task.sleep(for:.milliseconds(600)); navigator.openSetup(at:.account) }
+        // Let a closing sheet go first, otherwise the new one is not presented. A newer link in
+        // the meantime wins (`destination`).
+        destination.after(600) { navigator.openSetup(at:.account) }
     }
 }

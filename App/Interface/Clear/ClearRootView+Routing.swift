@@ -117,17 +117,17 @@ extension ClearRootView {
     // MARK: Links
 
     /// The widget's link (`SampleMode.takePendingLink`: never while the sample is on, so never
-    /// on a sample's root), once. Just after the sample left, its sheets go first.
+    /// on a sample's root), once. Just after the sample left, its sheets go first; a newer
+    /// link in the meantime wins (`destination`).
     func takePendingLink() {
         guard let link = sample.takePendingLink() else { return }
-        Task {
-            if link == .login { try? await Task.sleep(for:.milliseconds(600)) }
-            open(link)
-        }
+        if link == .login { destination.after(600) { open(link) } } else { open(link) }
     }
 
     /// The widget's links (`RootLink`).
     func open(_ link: RootLink) {
+        // The newest destination: an older one still waiting (`openLoginAfterSample`) is dropped.
+        destination.supersede()
         guard mayClosePages else { return }
         switch link {
         case .home: popAll()

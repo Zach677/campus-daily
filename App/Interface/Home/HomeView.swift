@@ -31,6 +31,8 @@ struct HomeView: View {
     nonisolated static let contentSpace = "homeContent"
     /// Pages to push once the settings sheet has gone (`open(_:)`).
     @State var pathAfterSettings: [HomeRoute]?
+    /// The newest link or login-after-the-sample: an older one still waiting for a sheet is dropped.
+    @State var destination = RootDestination()
     @State var panel: SettlementResult?
     @State var startTick = 0
     /// The shower page's cover. Follows `shower.page.presented`, but only once no sheet is up:
@@ -255,6 +257,8 @@ struct HomeView: View {
     /// The widget's link (`SampleMode.takePendingLink`: never while the sample is on, so never
     /// on a sample's root).
     func open(_ link: RootLink) {
+        // The newest destination: an older one still waiting (below, `openLoginAfterSample`) is dropped.
+        destination.supersede()
         // Never closes a top-up page or a laundry order being paid.
         guard mayClosePages else { return }
         // Newer than pages still waiting for the settings sheet to close: those are dropped.
@@ -268,11 +272,11 @@ struct HomeView: View {
             let sheetUp = settings
             settings = false; path = []
             // As after a reset or the sample: let a sheet go first, or the cover is not presented.
-            Task { try? await Task.sleep(for:.milliseconds(sheetUp ? 600 : 300)); openOnboarding() }
+            destination.after(sheetUp ? 600 : 300) { openOnboarding() }
         case .settings(account:false):
             path = []
             // Just after the sample left (or a cover went), its sheet goes first.
-            if !settings { Task { try? await Task.sleep(for:.milliseconds(600)); settings = true } }
+            if !settings { destination.after(600) { settings = true } }
         }
     }
 
