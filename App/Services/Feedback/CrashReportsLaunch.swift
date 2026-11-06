@@ -16,6 +16,12 @@ struct CrashReportsLaunch: Equatable {
         self.endpoint = endpoint
     }
 
+    /// Where `AirCrashReports` keeps the reports it has not sent yet (its `defaultFolder()` on
+    /// iOS), for 重置校日常.
+    static func pendingFolder(in applicationSupport: URL) -> URL {
+        applicationSupport.appending(path:"AirCrashReports", directoryHint:.isDirectory)
+    }
+
     /// Calls `start` with both values, or not at all; true when it did.
     @discardableResult
     static func start(info: [String: Any], start: (_ apiKey: String, _ endpoint: String) -> Void) -> Bool {
