@@ -236,6 +236,56 @@ final class DebugLogLaunchTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
     }
 
+    /// A request sent at launch, before StoreKit has answered: its line is held like any other,
+    /// kept on TestFlight, and gone (no file) on any other install.
+    func testARequestLineWrittenBeforeTheAnswerIsHeldUntilItComes() throws {
+        let entry = HTTPLogEntry(service: .ecykt, method: "POST", host: SchoolEndpoints.ecyktHost, name: "S1234567",
+                                 status: 200, milliseconds: 42, code: "0", error: nil)
+        let kept = launchLog()
+        DebugHTTPLogSink(kept, next: RecordingLogSink()).record(entry)
+        kept.resolve(.testFlight)
+        kept.flush()
+        XCTAssertEqual(kept.lines().filter { $0.contains(" http ") }.count, 1, kept.lines().joined(separator: "\n"))
+
+        for decision in [DebugLogDecision.appStore, .undetermined] {
+            let support = DebugLogTesting.temporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: support) }
+            let log = launchLog(support)
+            DebugHTTPLogSink(log, next: RecordingLogSink()).record(entry)
+            log.resolve(decision)
+            log.flush()
+            XCTAssertEqual(log.lines(), [], "\(decision)")
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: support.path), [], "\(decision)")
+        }
+    }
+
+    /// A page opened at launch, before StoreKit has answered (with the reason said just before
+    /// it): its line is held, kept on TestFlight, and gone (no file) on any other install.
+    func testAPageOpenedBeforeTheAnswerIsHeldUntilItComes() throws {
+        let kept = launchLog()
+        let nav = DebugNav(log: kept, now: clock.function)
+        nav.from(.widget, to: [.laundry])
+        nav.opened(.laundry, default: .homeButton)
+        kept.resolve(.testFlight)
+        kept.flush()
+        let lines = kept.lines()
+        XCTAssertEqual(lines.count, 1, lines.joined(separator: "\n"))
+        XCTAssertTrue(lines.first?.hasSuffix(" nav.open page=laundry from=widget") ?? false, lines.joined(separator: "\n"))
+
+        for decision in [DebugLogDecision.appStore, .undetermined] {
+            let support = DebugLogTesting.temporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: support) }
+            let log = launchLog(support)
+            let nav = DebugNav(log: log, now: clock.function)
+            nav.from(.widget, to: [.laundry])
+            nav.opened(.laundry, default: .homeButton)
+            log.resolve(decision)
+            log.flush()
+            XCTAssertEqual(log.lines(), [], "\(decision)")
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: support.path), [], "\(decision)")
+        }
+    }
+
     func testNoDebugLogKeepsNothing() async {
         let log = NoDebugLog()
         log.record(.navOpen(.home, from: .launch))
