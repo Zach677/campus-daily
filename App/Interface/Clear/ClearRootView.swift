@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// The page tree of 清爽: a tab bar with 日常, 记录 and 设置, each tab its own stack of
+/// The page tree of 清爽: a tab bar with 日常, 订单 (the records) and 设备 (the settings), each tab its own stack of
 /// `ClearRoute`s. Its pages navigate through `ClearNavigator`; what is not a page's (links,
 /// notification taps, the shower page, the sheets over the tab bar) is handled here
 /// (`ClearRootView+Routing`). A theme switch builds this tree anew: 日常, every stack at its root.
@@ -51,13 +51,13 @@ struct ClearRootView: View {
                 recordsTab.navOpen(.records, from:.tab, once:false)
                     .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
-            .tabItem { Label("记录", systemImage:"clock.arrow.circlepath") }
+            .tabItem { Label("订单", systemImage:"clock.arrow.circlepath") }
             .tag(ClearNavigator.Tab.records)
             NavigationStack(path:$navigator.settingsPath) {
                 ClearSettingsTab().navOpen(.settings, from:.tab, once:false)
                     .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
-            .tabItem { Label("设置", systemImage:"slider.horizontal.3") }
+            .tabItem { Label("设备", systemImage:"slider.horizontal.3") }
             .tag(ClearNavigator.Tab.settings)
         }
         .sensoryFeedback(.success, trigger:successTick)

@@ -21,7 +21,8 @@ struct ClearDestination: View {
     @ViewBuilder private func sampleBody(_ data: HomeData) -> some View {
         switch route {
         case .card: SampleCardPage(data:data)
-        case .power, .powerSetup: SamplePowerPage(data:data)
+        case .power: SamplePowerPage(data:data)
+        case .powerSetup: ClearSampleMeterPage(data:data)
         case .theme: ThemeSettingsView(preview:data)
         case .advanced: AdvancedSettingsView(preview:data)
         case .laundry, .washerSetup: ClearLaundryPage()
