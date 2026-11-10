@@ -7,7 +7,7 @@ import Core
 final class DebugLogClearRowTests: XCTestCase {
     func testTheRowWordsAreFinal() {
         XCTAssertEqual(DebugLogClearRow.title, "清空调试记录")
-        XCTAssertEqual(DebugLogClearRow.footer, "调试记录只存在这台手机上，最多留 7 天，退出登录也会清空。")
+        XCTAssertEqual(DebugLogClearRow.footer, "调试记录只存在这台手机上，最多留 7 天，退出登录也会清空。导出后发给谁由你决定。")
         XCTAssertEqual(DebugLogClearRow.clearedLine, "已清空")
         XCTAssertEqual(DebugLogClearRow.confirmTitle, "清空调试记录？")
         XCTAssertEqual(DebugLogClearRow.confirmButton, "清空")
