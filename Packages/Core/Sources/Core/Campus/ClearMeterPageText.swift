@@ -12,6 +12,9 @@ public enum ClearMeterPageText {
     public static let confirm = "确认是我的寝室并保存"
     public static let rechoose = "重新选择位置"
     public static let reading = "正在读取电表信息…"
+    /// The automatic lookup running, and the way to run it again after it failed.
+    public static let matching = "正在匹配电表，可以先保存热水宿舍"
+    public static let retryMatch = "重试匹配电表"
 
     /// 「北校区 · 东苑公寓 · 3栋」, or the prompt before any level is chosen.
     public static func path(_ names: [String]) -> String {

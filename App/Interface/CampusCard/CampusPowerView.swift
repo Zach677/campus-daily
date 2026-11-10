@@ -222,15 +222,16 @@ struct AutomaticPowerSection: View {
         let atStop = onMeterPage && campus.powerStop != nil && campus.powerChoices.isEmpty && !campus.powerConfigured
         if atStop {
             if let note = MeterPageText.noteAtStop(finding:campus.matchingPower, issue:campus.powerMatchIssue) {
-                Section("电表") {
+                Section(clearPage ? ClearMeterPageText.section : "电表") {
                     Text(note).font(.footnote).foregroundStyle(.secondary)
-                    Button("再找一次电表") {campus.matchPowerAutomatically()}
+                    Button(clearPage ? ClearMeterPageText.retryMatch : "再找一次电表") {campus.matchPowerAutomatically()}
                 }.listRowBackground(Theme.group)
             }
         } else if campus.matchingPower || !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil || campus.powerConfigured {
             Section(campus.powerChoices.isEmpty ? (clearPage ? ClearMeterPageText.section : "电表") : SameNameText.titleLead + SameNameText.titleAccent + SameNameText.titleTail) {
                 if campus.matchingPower {
-                    if onMeterPage { Text(MeterPageText.finding).foregroundStyle(Theme.ink2) }
+                    if clearPage { Label(ClearMeterPageText.matching, systemImage:"bolt") }
+                    else if onMeterPage { Text(MeterPageText.finding).foregroundStyle(Theme.ink2) }
                     else { Label("正在找电表，可以先保存宿舍。",systemImage:"bolt") }
                 }
                 else if !campus.powerChoices.isEmpty {
@@ -250,7 +251,7 @@ struct AutomaticPowerSection: View {
                 }
                 if let issue = campus.powerMatchIssue {
                     Text(onMeterPage ? MeterPageText.issue(issue) : issue).font(.footnote).foregroundStyle(.secondary)
-                    Button("再找一次电表") {campus.matchPowerAutomatically()}
+                    Button(clearPage ? ClearMeterPageText.retryMatch : "再找一次电表") {campus.matchPowerAutomatically()}
                 }
             }
             .listRowBackground(onMeterPage ? Theme.group : nil)

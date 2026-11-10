@@ -12,6 +12,8 @@ final class ClearMeterPageTextTests: XCTestCase {
         XCTAssertEqual(ClearMeterPageText.confirm, "确认是我的寝室并保存")
         XCTAssertEqual(ClearMeterPageText.rechoose, "重新选择位置")
         XCTAssertEqual(ClearMeterPageText.reading, "正在读取电表信息…")
+        XCTAssertEqual(ClearMeterPageText.matching, "正在匹配电表，可以先保存热水宿舍")
+        XCTAssertEqual(ClearMeterPageText.retryMatch, "重试匹配电表")
     }
 
     func testPathLine() {
