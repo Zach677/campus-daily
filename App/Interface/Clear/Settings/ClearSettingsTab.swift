@@ -83,7 +83,8 @@ struct ClearSettingsTab: View {
     }
 
     private func washerConnected(_ data: HomeData) -> Bool { preview != nil ? data.laundryBound : laundry.accountConnected }
-    private func washerCount(_ data: HomeData) -> Int { preview != nil ? (data.laundryBound ? 1 : 0) : laundry.savedMachines.count }
+    /// On demo data: the two machines its 常用洗衣机 shows.
+    private func washerCount(_ data: HomeData) -> Int { preview != nil ? (data.laundryBound ? 2 : 0) : laundry.savedMachines.count }
 
     /// 「校日常 0.9.0 (53)」 and that it is not the school's app.
     private var footer: some View {

@@ -38,7 +38,7 @@ struct ClearDestination: View {
         switch route {
         case .shower: ClearShowerPage()
         case .laundry: ClearLaundryPage()
-        case .washerSetup: WasherSetupView(onDone:washerSetupDone, laundrySwitch:laundrySwitch)
+        case .washerSetup: washerSetup
         case .power: if campus.powerConfigured { CampusTopUpView() } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
         case .card: CampusTopUpView()
@@ -51,6 +51,20 @@ struct ClearDestination: View {
         case .reminders: ClearReminderPage(laundryOn:navigator.demo?.laundryEnabled ?? laundry.schoolEnabled)
         case .shortcuts: ClearShortcutsPage()
         }
+    }
+
+    /// 常用洗衣机; on demo data, the demo's machines (two saved, or signed out of U净).
+    @ViewBuilder private var washerSetup: some View {
+        #if DEBUG
+        if let demo = navigator.demo {
+            WasherSetupView(onDone:washerSetupDone, laundrySwitch:laundrySwitch,
+                            preview:demo.laundryBound ? .twoSaved : WasherSetupDemo())
+        } else {
+            WasherSetupView(onDone:washerSetupDone, laundrySwitch:laundrySwitch)
+        }
+        #else
+        WasherSetupView(onDone:washerSetupDone, laundrySwitch:laundrySwitch)
+        #endif
     }
 
     private var homeData: HomeData { navigator.data(campus:campus, shower:shower, laundry:laundry) }
