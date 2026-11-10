@@ -51,4 +51,13 @@ final class ClearShowerTextTests: XCTestCase {
         XCTAssertEqual(ClearShowerText.lastUse, "最近一次用水")
         XCTAssertEqual(ClearShowerText.costMissing, "金额未返回")
     }
+
+    /// The settled face's button reads 开始洗澡 and only takes the page back to its ready face
+    /// (the start is a second tap there); the refused face keeps 好, which closes the page.
+    func testAnsweredFacesButton() {
+        XCTAssertEqual(ClearShowerText.answerButton(.done).title, "开始洗澡")
+        XCTAssertFalse(ClearShowerText.answerButton(.done).leavesPage)
+        XCTAssertEqual(ClearShowerText.answerButton(.denied).title, "好")
+        XCTAssertTrue(ClearShowerText.answerButton(.denied).leavesPage)
+    }
 }

@@ -60,7 +60,11 @@ struct ClearShowerDock: View {
                 primary(ClearShowerText.busyButton, spinning:true, enabled:false) {}
                 note(ClearShowerText.endNote)
             case .done?, .denied?:
-                primary("好", enabled:true) { close(.closeTapped) }
+                // Both send the same answer; settled stays on the page, which turns to its ready face.
+                let button = ClearShowerText.answerButton(phase == .done ? .done : .denied)
+                primary(button.title, symbol:button.leavesPage ? nil : "arrow.up.right", enabled:true) {
+                    if button.leavesPage { close(.closeTapped) } else { shower.pageEvent(.closeTapped) }
+                }
             case .connectFailed?:
                 primary(ClearShowerText.start, symbol:"arrow.up.right", enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                 secondary("取消", enabled:true) { close(.closeTapped) }

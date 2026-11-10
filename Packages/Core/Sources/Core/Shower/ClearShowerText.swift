@@ -64,6 +64,12 @@ public enum ClearShowerText {
         }
     }
 
+    /// The button of an answered face: settled, 开始洗澡, which only brings back the ready face
+    /// (starting takes a second tap there); refused, 好, which closes the page.
+    public static func answerButton(_ phase: ShowerPagePhase) -> (title: String, leavesPage: Bool) {
+        phase == .done ? (start, false) : ("好", true)
+    }
+
     /// The footnote under the page's button.
     public static func note(_ phase: ShowerPagePhase?) -> String? {
         switch phase {
