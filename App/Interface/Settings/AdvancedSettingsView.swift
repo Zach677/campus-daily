@@ -120,7 +120,7 @@ struct AdvancedSettingsView: View {
         }
     }
 
-    private func importSection(header: String, footer: String) -> some View {
+    private func importSection(header: LocalizedStringKey, footer: LocalizedStringKey) -> some View {
         Section {
             importRow("导入热水配置").disabled(preview == nil && !shower.mayImportProfile)
         } header: { Text(header) } footer: {
