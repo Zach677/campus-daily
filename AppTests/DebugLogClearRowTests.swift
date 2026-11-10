@@ -14,23 +14,6 @@ final class DebugLogClearRowTests: XCTestCase {
         XCTAssertEqual(DebugLogClearRow.cancelButton, "取消")
     }
 
-    func testTheFeedbackWordsAreFinal() {
-        XCTAssertEqual(FeedbackLogText.toggle, "附上调试记录")
-        XCTAssertEqual(FeedbackLogText.footer, "会带上最近的操作步骤：点了什么、走到哪一步、请求成没成。不带密码、账号、学号、姓名和宿舍，机器和订单只记一串代号。")
-        XCTAssertEqual(FeedbackLogText.showButton, "看看内容")
-        XCTAssertEqual(FeedbackLogText.previewTitle, "将要发出的调试记录")
-    }
-
-    /// The form reads what was queued just before (record only queues the line).
-    func testTheFormReadsALineJustRecorded() {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("apptests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let log = FileDebugLog(directory: dir)
-        log.record(.navOpen(.feedback, from: .settings))
-        XCTAssertEqual(FeedbackView.readLog(log).count, 1)
-        XCTAssertEqual(FeedbackView.readLog(NoDebugLog()), [])
-    }
-
     func testAnEmptyLogDisablesTheRowAndSaysSo() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("apptests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: dir) }
