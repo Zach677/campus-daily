@@ -4,14 +4,21 @@
 
 登录学校官方账号后，可以查看校园卡和学校登记的宿舍信息，匹配宿舍电表、核对热水水控。iPhone 还可以通过桌面小组件查看校园卡余额与宿舍电费。
 
-📦 [选择设备下载](https://jasonbeam.github.io/campus-daily/) · [查看 0.8.0 版本](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0) · [版本记录](CHANGELOG.md)
+📦 [选择设备下载](https://jasonbeam.github.io/campus-daily/) · [查看 0.9.0 版本](https://github.com/JasonBeam/campus-daily/releases/tag/v0.9.0) · [版本记录](CHANGELOG.md)
+
+📖 [安装与签名教程](#安装) · 🔗 [连接与使用教程](#安装)
+
+✨ [界面预览](docs/media/android-0.2.0-alpha12/README.md) · [AI 使用教程](https://github.com/JasonBeam/campus-daily/blob/v0.8.0/docs/ai-guide.md) · [版本说明](docs/release-0.9.0.md)
 
 ## 功能介绍
 
 - 校园卡：登录学校账号后查看余额和登记宿舍。
 - 宿舍电费：根据宿舍目录匹配电表；有同名公寓时，按提示确认位置。
 - 宿舍热水：核对宿舍和水控设备编号，按页面提示使用。
-- U 净洗衣：登录本人账号，保存常用洗衣机，查看状态、程序和价格。
+- U 净洗衣：保存常用洗衣机，选择正常洗衣或立刻洗衣；立刻洗衣需本人确认设备、下单和支付，回到 App 后核对已付款再启动。
+- 洗衣提醒：根据本机已跟踪订单的倒计时提醒，重新打开后补查完成状态；可在设置中开关；Android 和 iPhone 的清爽主题有 10 秒测试提醒。
+- 校园充值：校园卡与电费合并到官方微信服务入口，充值和到账由学校处理。
+- 设置：Android 和 iPhone 的清爽主题按账号与设备、日常使用、帮助分组。版本检查和更新提醒仅 Android；iPhone 版通过 TestFlight 和 App Store 更新。
 - iPhone 小组件：在桌面查看校园卡余额与宿舍电费。
 
 ## 安装
@@ -24,9 +31,13 @@
 ## 注意事项
 
 - 校日常由个人开发，不代表学校或相关服务平台，当前围绕广东工商职业技术大学环境制作。
-- Android 安装包为 alpha23 测试包。
-- Android 已由用户实机测试；鸿蒙 6.0 至 7.0 可通过卓易通安装使用，但用户反馈鸿蒙设备无法跳转支付宝。其他机型、iPhone 全新用户流程、第三方签名小组件，以及完整热水授权、出水和结算仍待验收。热水操作可能产生费用，请在现场核对设备和官方结果。
+- Android 安装包为 alpha25 测试包。Android 支持目标为 6.0 及以上，APK 下载后按系统提示安装；iPhone 支持 iOS 17 及以上，IPA 需要用自己的 Apple 账号签名后安装。
+- iPhone 的立刻洗衣和洗衣提醒已有用户实测；本次提速与设置布局仍需更多真机验证。Android 新增功能尚未真机验收；鸿蒙原生支付宝跳转仍有兼容性问题。第三方签名小组件需单独验证。热水账务以学校明细为准，请在现场核对设备和官方结果。
+- Android 早期版本已由用户实机测试；鸿蒙 6.0 至 7.0 可通过卓易通安装使用，但用户反馈鸿蒙设备无法跳转支付宝。其他机型、iPhone 全新用户流程、第三方签名小组件，以及完整热水授权、出水和结算仍待验收。热水操作可能产生费用，请在现场核对设备和官方结果。
 - 请使用本人账号，不要公开密码、验证码、校园令牌、学号、宿舍信息、设备二维码或交易链接。每个公开安装包都明文带着通用热水平台参数 `secret` 和 `sid`（所有人一样，谁都能从包里取出来）。热水平台只凭它们签名，不需要账号密码：取出来的人能替任何学号签名热水平台的请求，扣费记在这个学号自己的热水余额上；授权出水还要水控在真实蓝牙连接里给出的数据。这是平台本身的风险，客户端改不了。安装包不含作者的个人账号、宿舍、设备或交易记录。存了什么、发给了谁，见[隐私说明](docs/privacy.md)。
+- 图片预览来自较早的 Android 版本，页面细节可能与当前版本不同。
+
+更多说明请查看[版本说明](docs/release-0.9.0.md)、[版本记录](CHANGELOG.md)和[安装](#安装)。
 
 ## 从源码运行（iPhone）
 
@@ -53,7 +64,7 @@ mise run check         # 维护者提交前跑：同样的步骤，隐私扫描�
 | `Shared/` | App 和小组件共用的界面：小组件、灵动岛、主题 |
 | `Widget/` | 小组件和灵动岛扩展 |
 | `Packages/Core/` | 不含界面的逻辑：学校、热水、洗衣、最新数据、网络、存储，以及全部逻辑测试和合成样本 |
-| `Android/` | Android Gradle 工程（`bash Android/build-android.sh`） |
+| `platforms/android/` | Android Gradle 工程，保持作者原样（`bash tools/build-android.sh`，或 `mise android`；构建时读 `Shared/CampusLoginAutomation.js` 和 `tools/stage_platform_profile.py`） |
 | `Configuration/` | xcconfig：显示名、包名、团队、版本号 |
 | `Scripts/` | 构建、打包和隐私检查脚本，通过 `mise` 调用 |
 
